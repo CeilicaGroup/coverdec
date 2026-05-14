@@ -1,0 +1,424 @@
+// Schema CoverDec MVP — multiempresa compartida
+// Reglas clave:
+// - Empresa es un tenant lógico para Project / Planning / TimeEntry / ProductionOrder / FactoryItem.
+// - Person, ProcessDefinition, FrameType, Holiday son globales del grupo (un único equipo productivo en nave Silla).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  JEFE_PRODUCCION
+  OPERARIO
+}
+
+enum ProcessCode {
+  CNC
+  ENSAMBLAJE
+  LIJADO
+  IMPRIMACION
+  PINTURA
+  PERFILES
+  EMBALAJE
+  PEGADO_ESPEJO
+  CORTE_MANUAL
+  LIMPIEZA
+}
+
+enum RiskLevel {
+  OK
+  ATENCION
+  RIESGO
+}
+
+enum PlanningStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum TimeEntrySource {
+  TIMER
+  MANUAL
+}
+
+enum FactoryStatus {
+  DOSSIER
+  PRODUCCION
+  CONTROL_CALIDAD
+  EMBALAJE
+  ENVIADO
+}
+
+// ---------- Tenants ----------
+
+model Empresa {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  razonSocial String  @unique
+  marca     String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  projects      Project[]
+  plannings     Planning[]
+  productionOrders ProductionOrder[]
+  factoryItems  FactoryItem[]
+  timeEntries   TimeEntry[]
+}
+
+// ---------- Auth (better-auth schema) ----------
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          Role      @default(OPERARIO)
+  activeEmpresaId String?
+  personId      String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  memberships Membership[]
+  person      Person?      @relation(fields: [personId], references: [id])
+  timeEntries TimeEntry[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Membership {
+  id        String  @id @default(cuid())
+  userId    String
+  empresaId String
+  role      Role    @default(OPERARIO)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, empresaId])
+}
+
+// ---------- Equipo productivo (global) ----------
+
+model Person {
+  id              String   @id @default(cuid())
+  nombre          String
+  alias           String?
+  iniciales       String   @unique
+  color           String
+  capacityHours   Float    @default(8)
+  isActive        Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User?
+  specialties     PersonSpecialty[]
+  absences        Absence[]
+  assignments     PlanningAssignment[]
+}
+
+model PersonSpecialty {
+  id        String      @id @default(cuid())
+  personId  String
+  process   ProcessCode
+  isPrimary Boolean     @default(false)
+  isFallback Boolean    @default(false)
+  person    Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, process])
+}
+
+model ProcessDefinition {
+  id          String      @id @default(cuid())
+  code        ProcessCode @unique
+  label       String
+  factor      Float       @default(1)
+  setupHours  Float       @default(0)
+  dryHours    Float       @default(0)
+  deadlineDay Int?
+  bgColor     String
+  fgColor     String
+  borderColor String
+  sequence    Int
+
+  frameTypeProcesses FrameTypeProcess[]
+}
+
+// ---------- Catálogo de bastidores ----------
+
+model FrameType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  baseUnit    String   @default("m2")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  processes FrameTypeProcess[]
+  lamps     Lamp[]
+}
+
+model FrameTypeProcess {
+  id           String      @id @default(cuid())
+  frameTypeId  String
+  process      ProcessCode
+  hoursPerUnit Float
+  fixedHours   Float       @default(0)
+  notes        String?
+
+  frameType   FrameType         @relation(fields: [frameTypeId], references: [id], onDelete: Cascade)
+  definition  ProcessDefinition @relation(fields: [process], references: [code])
+
+  @@unique([frameTypeId, process])
+}
+
+// ---------- Proyectos y producción ----------
+
+model Project {
+  id          String    @id @default(cuid())
+  empresaId   String
+  code        String
+  name        String
+  client      String?
+  obra        String?
+  deliveryDate DateTime?
+  priority    Int        @default(50)
+  isBillable  Boolean    @default(true)
+  isActive    Boolean    @default(true)
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  lamps   Lamp[]
+  tasks   Task[]
+  timeEntries TimeEntry[]
+  productionOrders ProductionOrder[]
+
+  @@unique([empresaId, code])
+}
+
+model Lamp {
+  id          String   @id @default(cuid())
+  projectId   String
+  frameTypeId String?
+  code        String?
+  name        String
+  width       Float?
+  height      Float?
+  depth       Float?
+  units       Int      @default(1)
+  surfaceM2   Float?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  frameType  FrameType? @relation(fields: [frameTypeId], references: [id])
+  tasks      Task[]
+  timeEntries TimeEntry[]
+}
+
+model Task {
+  id            String      @id @default(cuid())
+  projectId     String
+  lampId        String?
+  process       ProcessCode
+  estimatedHours Float
+  pendingHours  Float
+  doneHours     Float       @default(0)
+  order         Int         @default(0)
+  isLocked      Boolean     @default(false)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lamp        Lamp?   @relation(fields: [lampId], references: [id])
+  assignments PlanningAssignment[]
+  timeEntries TimeEntry[]
+}
+
+// ---------- Planning ----------
+
+model Planning {
+  id          String         @id @default(cuid())
+  empresaId   String
+  year        Int
+  week        Int
+  weekStart   DateTime
+  weekEnd     DateTime
+  status      PlanningStatus @default(DRAFT)
+  publishedAt DateTime?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  empresa     Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  assignments PlanningAssignment[]
+
+  @@unique([empresaId, year, week])
+}
+
+model PlanningAssignment {
+  id          String   @id @default(cuid())
+  planningId  String
+  taskId      String
+  personId    String
+  date        DateTime
+  startSlot   Float
+  endSlot     Float
+  hours       Float
+  process     ProcessCode
+  isOverride  Boolean  @default(false)
+  isAfternoon Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  planning Planning @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person   Person   @relation(fields: [personId], references: [id])
+
+  @@index([planningId, personId, date])
+}
+
+model Absence {
+  id       String   @id @default(cuid())
+  personId String
+  date     DateTime
+  hours    Float    @default(8)
+  reason   String?
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, date])
+}
+
+model Holiday {
+  id      String   @id @default(cuid())
+  date    DateTime @unique
+  name    String
+  region  String   @default("Silla 46460")
+}
+
+// ---------- Registro de horas ----------
+
+model TimeEntry {
+  id         String           @id @default(cuid())
+  empresaId  String
+  userId     String
+  projectId  String?
+  lampId     String?
+  taskId     String?
+  process    ProcessCode?
+  source     TimeEntrySource  @default(MANUAL)
+  startedAt  DateTime
+  endedAt    DateTime?
+  hours      Float?
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  lamp    Lamp?    @relation(fields: [lampId], references: [id])
+  task    Task?    @relation(fields: [taskId], references: [id])
+
+  @@index([empresaId, userId, startedAt])
+}
+
+// ---------- Órdenes de producción ----------
+
+model ProductionOrder {
+  id         String   @id @default(cuid())
+  empresaId  String
+  number     String   @unique
+  year       Int
+  serial     Int
+  projectId  String
+  lampLabel  String?
+  process    ProcessCode?
+  hours      Float?
+  scheduledAt DateTime?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([empresaId, year, serial])
+}
+
+// ---------- Fábrica ----------
+
+model FactoryItem {
+  id          String         @id @default(cuid())
+  empresaId   String
+  code        String?
+  product     String
+  client      String?
+  obra        String?
+  nave        String?
+  status      FactoryStatus  @default(DOSSIER)
+  scheduledAt DateTime?
+  shippedAt   DateTime?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, status])
+}

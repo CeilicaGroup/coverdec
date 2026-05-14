@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prompt Maestro Definitivo · CONTRACT+ · Coverdec Innovación SL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gold:#9A7B3F;--gold2:#7A5F2C;--gold-lt:#F5EDD6;--gold-md:#E8D4A0;
+  --bg:#F7F6F2;--white:#FFFFFF;--border:#E3DDD0;
+  --text:#1A1814;--t2:#5A5448;--t3:#9A9080;
+  --red:#C0392B;--grn:#1E6B3C;--blu:#1A4F8A;
+  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+  --r:10px;--r2:6px;
+}
+html{font-size:13px;scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+.layout{display:flex;min-height:100vh}
+/* NAV LATERAL */
+.nav{width:240px;background:var(--white);border-right:1px solid var(--border);
+  padding:24px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.nav-logo{font-weight:900;font-size:18px;letter-spacing:-.5px;color:var(--text)}
+.nav-sub{font-size:9.5px;font-weight:700;letter-spacing:1.5px;color:var(--gold);margin-top:3px;text-transform:uppercase}
+.nav-sep{height:1px;background:var(--border);margin:16px 0 10px}
+.nav-label{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--gold);padding:8px 6px 5px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r2);
+  color:var(--t2);cursor:pointer;font-size:12px;margin-bottom:2px;font-weight:500;text-decoration:none;transition:.12s}
+.nav-item:hover{background:var(--gold-lt);color:var(--gold2)}
+.nav-ic{width:16px;text-align:center;flex-shrink:0;font-size:14px}
+.nav-badge{margin-left:auto;background:var(--gold-lt);color:var(--gold2);border-radius:8px;padding:1px 7px;font-size:9.5px;font-weight:700}
+/* MAIN */
+.main{flex:1;padding:0;overflow:hidden}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:16px 40px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.tb-title{font-size:16px;font-weight:800;color:var(--text)}
+.tb-sub{font-size:11px;color:var(--t2);margin-top:2px}
+.tb-badge{padding:7px 14px;background:var(--gold-lt);border:1px solid var(--gold-md);
+  border-radius:var(--r2);font-size:11px;font-weight:700;color:var(--gold2)}
+.copy-btn{padding:8px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--r2);
+  cursor:pointer;font-size:11.5px;font-weight:700;font-family:var(--font);transition:.15s}
+.copy-btn:hover{background:var(--gold2)}
+.content{padding:32px 40px;max-width:1100px}
+/* SECCIONES */
+.sec{margin-bottom:48px;scroll-margin-top:80px}
+.sec-num{display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;background:var(--gold);color:#fff;border-radius:50%;
+  font-size:11px;font-weight:800;flex-shrink:0;margin-right:10px}
+.sec-title{font-size:20px;font-weight:800;color:var(--text);display:flex;align-items:center;margin-bottom:18px;border-bottom:2px solid var(--gold-md);padding-bottom:10px}
+.sec-subtitle{font-size:14px;font-weight:700;color:var(--gold2);margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.sec-subtitle::before{content:'';display:inline-block;width:3px;height:16px;background:var(--gold);border-radius:2px;flex-shrink:0}
+/* CARDS */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;background:#FAF8F4}
+.card-ic{font-size:16px}.card-t{font-size:13px;font-weight:700;color:var(--text)}
+.card-b{padding:18px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+/* TABLA */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{padding:9px 12px;background:var(--gold-lt);border:1px solid var(--border);
+  font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);text-align:left}
+.tbl td{padding:8px 12px;border:1px solid var(--border);line-height:1.6;vertical-align:top}
+.tbl tr:nth-child(even) td{background:#FAF8F4}
+/* CODE BLOCK */
+.code-block{background:#1A1814;color:#E8D4A0;border-radius:var(--r);padding:18px 20px;
+  font-family:var(--mono);font-size:11px;line-height:1.7;overflow-x:auto;margin:10px 0;position:relative}
+.code-label{position:absolute;top:10px;right:12px;font-size:9px;color:#9A9080;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.kw{color:#C2410C}.str{color:#059669}.cm{color:#6B7280}.var{color:#0891B2}.fn{color:#9A7B3F}.num{color:#7C3AED}
+/* PROMPT BOX */
+.prompt-box{background:#1A1814;color:#D4C5A0;border-radius:var(--r);padding:20px 22px;
+  font-family:var(--mono);font-size:10.5px;line-height:1.8;white-space:pre-wrap;overflow-x:auto;position:relative}
+.prompt-section{color:#9A7B3F;font-weight:700}
+.prompt-key{color:#0891B2}
+.prompt-val{color:#D4C5A0}
+.prompt-comment{color:#6B7280;font-style:italic}
+.prompt-alert{color:#C2410C;font-weight:700}
+/* BADGE */
+.badge{display:inline-block;padding:2px 8px;border-radius:9px;font-size:9.5px;font-weight:700;text-transform:uppercase}
+.b-gold{background:var(--gold-lt);color:var(--gold2)}
+.b-grn{background:#DCFCE7;color:#15803D}
+.b-red{background:#FEE2E2;color:#B91C1C}
+.b-blu{background:#DBEAFE;color:#1D4ED8}
+.b-ora{background:#FFEDD5;color:#C2410C}
+.b-gray{background:#F3F4F6;color:#6B7280}
+/* PERSON CHIPS */
+.person-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
+  border-radius:20px;font-size:11.5px;font-weight:600;margin:3px}
+.pb{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;
+  justify-content:center;color:#fff;font-weight:700;font-size:9px;flex-shrink:0}
+/* PROCESO CHIPS */
+.proc-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:var(--r2);font-size:11px;font-weight:600;margin:3px;border-left:3px solid}
+/* NOTA */
+.nota{padding:10px 14px;border-radius:var(--r2);margin:10px 0;font-size:12px;
+  border-left:4px solid;display:flex;align-items:flex-start;gap:9px}
+.nota-ic{font-size:16px;flex-shrink:0}
+.nota-t{font-weight:700;display:block;font-size:12px}
+.nota-d{font-size:11px;opacity:.9;margin-top:2px}
+.nota-gold{background:var(--gold-lt);border-color:var(--gold);color:var(--gold2)}
+.nota-red{background:#FEE2E2;border-color:#B91C1C;color:#991B1B}
+.nota-blue{background:#DBEAFE;border-color:#1D4ED8;color:#1E40AF}
+.nota-green{background:#DCFCE7;border-color:#15803D;color:#14532D}
+/* FLUJO VISUAL */
+.flujo-steps{display:flex;align-items:flex-start;gap:0;margin:14px 0;overflow-x:auto;padding-bottom:6px}
+.flujo-step{flex:1;min-width:110px;text-align:center;position:relative;padding:0 8px}
+.flujo-step::after{content:'→';position:absolute;right:-8px;top:16px;font-size:14px;color:var(--t3)}
+.flujo-step:last-child::after{display:none}
+.flujo-ico{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:18px;margin:0 auto 6px;border:2px solid}
+.flujo-lbl{font-size:10px;font-weight:700;color:var(--text);line-height:1.3}
+.flujo-sub{font-size:9px;color:var(--t3);margin-top:2px}
+/* SEMANA DEMO */
+.demo-cal{display:grid;grid-template-columns:100px repeat(5,1fr);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;font-size:10.5px}
+.demo-head{background:#FAF8F4;padding:8px;text-align:center;border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:700;font-size:10px;color:var(--t2)}
+.demo-cell{padding:5px;min-height:60px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:3px}
+.demo-task{padding:4px 6px;border-radius:5px;font-size:9.5px;border-left:3px solid;line-height:1.35}
+.demo-person{background:#FAF8F4;padding:8px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:700;font-size:10px;display:flex;align-items:center;gap:5px}
+/* STICKY UPDATE ZONE */
+.update-zone{background:linear-gradient(135deg,#1A1814 0%,#2D2820 100%);border-radius:var(--r);
+  padding:24px 28px;border:2px solid var(--gold)}
+.update-zone .sec-subtitle{color:#E8D4A0}
+.update-zone .sec-subtitle::before{background:var(--gold)}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- NAVEGACIÓN LATERAL -->
+<nav class="nav">
+  <div class="nav-logo">CONTRACT+</div>
+  <div class="nav-sub">Prompt Maestro Definitivo</div>
+  <div style="font-size:10px;color:var(--t3);margin-top:6px">Coverdec Innovación SL · Nave 2</div>
+  <div class="nav-sep"></div>
+  <div class="nav-label">Secciones</div>
+  <a class="nav-item" href="#s01"><span class="nav-ic">🏢</span>Empresa e identidad</a>
+  <a class="nav-item" href="#s02"><span class="nav-ic">👷</span>Equipo operativo</a>
+  <a class="nav-item" href="#s03"><span class="nav-ic">⚙️</span>Procesos y factores</a>
+  <a class="nav-item" href="#s04"><span class="nav-ic">📁</span>Proyectos activos</a>
+  <a class="nav-item" href="#s05"><span class="nav-ic">📅</span>Horario y calendario</a>
+  <a class="nav-item" href="#s06"><span class="nav-ic">🎨</span>Diseño del dashboard</a>
+  <a class="nav-item" href="#s07"><span class="nav-ic">📊</span>8 Pestañas requeridas</a>
+  <a class="nav-item" href="#s08"><span class="nav-ic">📋</span>Reglas de distribución</a>
+  <a class="nav-item" href="#s09"><span class="nav-ic">💶</span>Costes y tarifas</a>
+  <a class="nav-item" href="#s10"><span class="nav-ic">⚠️</span>Alertas y KPIs</a>
+  <a class="nav-item" href="#s11"><span class="nav-ic">🖨️</span>Órdenes de producción</a>
+  <a class="nav-item" href="#s12" style="background:var(--gold-lt)"><span class="nav-ic">✏️</span>Notas semanales<span class="nav-badge">EDITAR</span></a>
+  <div class="nav-sep"></div>
+  <button class="copy-btn" style="width:100%" onclick="copyFullPrompt()">📋 Copiar prompt completo</button>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+<div class="topbar">
+  <div>
+    <div class="tb-title">Prompt Maestro Definitivo · Planning Semanal</div>
+    <div class="tb-sub">CONTRACT+ · Coverdec Innovación SL · Nave 2 Silla (Valencia)</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="tb-badge">v4.0 · 2026</span>
+    <button class="copy-btn" onclick="copyFullPrompt()">📋 Copiar prompt</button>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 01 · EMPRESA E IDENTIDAD -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s01">
+  <div class="sec-title"><span class="sec-num">01</span>Empresa, identidad y contexto</div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="card-h"><span class="card-ic">🏢</span><span class="card-t">Datos de empresa</span></div>
+      <div class="card-b">
+        <table class="tbl"><tbody>
+          <tr><th>Razón social</th><td><strong>Coverdec Innovación SL</strong></td></tr>
+          <tr><th>Marca comercial</th><td><strong>CONTRACT+</strong></td></tr>
+          <tr><th>Nave</th><td>Nave 2 · Silla (CP 46460, Valencia)</td></tr>
+          <tr><th>Actividad</th><td>Fabricación y pintura de iluminación decorativa a medida para grandes superficies comerciales (Druni, Arenal, etc.)</td></tr>
+          <tr><th>Documentación</th><td>Siempre: razón social + logo CONTRACT+ juntos en órdenes de producción e informes</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="card-ic">👔</span><span class="card-t">Dirección operativa</span></div>
+      <div class="card-b">
+        <table class="tbl"><tbody>
+          <tr><th>Jefe Producción</th><td><strong>John Castelblanco</strong> · Dirección operativa y administrativa</td></tr>
+          <tr><th>Rol en planning</th><td><span class="badge b-gray">NO aparece en tareas productivas</span> — solo supervisión y firma en órdenes</td></tr>
+          <tr><th>Opera CNC</th><td>Solo si Daniil está ausente (sustitución puntual)</td></tr>
+          <tr><th>Responsabilidad</th><td>Control calidad, coordinación entregas, gestión administrativa, trato con clientes</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="nota nota-gold">
+    <span class="nota-ic">⚠️</span>
+    <div><span class="nota-t">Regla de documentación</span>
+    <span class="nota-d">Todos los documentos de producción (plannings, órdenes de producción, informes) deben mostrar SIEMPRE los dos elementos: "Coverdec Innovación SL" como razón social legal Y el logo/marca "CONTRACT+". Nunca uno sin el otro.</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 02 · EQUIPO OPERATIVO -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s02">
+  <div class="sec-title"><span class="sec-num">02</span>Equipo operativo productivo</div>
+
+  <div class="nota nota-blue">
+    <span class="nota-ic">🔵</span>
+    <div><span class="nota-t">Principio de planificación</span>
+    <span class="nota-d">John Castelblanco NO se incluye en la distribución de tareas ni en cómputos de horas productivas. El equipo productivo es: Claudio, Serhii (Sergio), Ihor, Tetiana y Daniil.</span></div>
+  </div>
+
+  <table class="tbl" style="margin-bottom:16px">
+    <thead><tr><th>Nombre</th><th>Nombre interno</th><th>Iniciales</th><th>Color</th><th>Especialidad principal</th><th>Responsabilidades fijas</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Claudio Peralta</strong></td>
+        <td>Claudio</td>
+        <td><span class="pb" style="background:#059669">CP</span></td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:#059669;border-radius:3px;vertical-align:middle;margin-right:6px"></span>#059669</td>
+        <td><strong>Pintura · Responsable de nave</strong></td>
+        <td>Pintura (único responsable) · Lijado/masillado · Ensamblaje · Perfiles · Embalaje · Supervisión calidad · Preparación chapas</td>
+      </tr>
+      <tr>
+        <td><strong>Serhii Kotluienko</strong></td>
+        <td><strong>Sergio</strong> (siempre)</td>
+        <td><span class="pb" style="background:#EA580C">SK</span></td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:#EA580C;border-radius:3px;vertical-align:middle;margin-right:6px"></span>#EA580C</td>
+        <td><strong>Imprimación (único responsable)</strong></td>
+        <td>Imprimación · Apoyo ensamblaje (si no tiene imprimación pendiente) · Limpieza nave (puntual)</td>
+      </tr>
+      <tr>
+        <td><strong>Ihor Alieksieiev</strong></td>
+        <td>Ihor</td>
+        <td><span class="pb" style="background:#2563EB">IA</span></td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:#2563EB;border-radius:3px;vertical-align:middle;margin-right:6px"></span>#2563EB</td>
+        <td><strong>Ensamblaje · Perfiles · Embalaje</strong></td>
+        <td>Ensamblaje general · Perfiles · Embalaje · Pegado composite espejo plata (Hair) · Apoyo puntual donde se necesite</td>
+      </tr>
+      <tr>
+        <td><strong>Tetiana Mesriakin</strong></td>
+        <td>Tetiana</td>
+        <td><span class="pb" style="background:#7C3AED">TM</span></td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:#7C3AED;border-radius:3px;vertical-align:middle;margin-right:6px"></span>#7C3AED</td>
+        <td><strong>Lijado / Masillado</strong></td>
+        <td>Lijado 1ª y 2ª mano · Masillado · Preparación superficie antes de imprimación</td>
+      </tr>
+      <tr>
+        <td><strong>Daniil Shcheglov</strong></td>
+        <td>Daniil</td>
+        <td><span class="pb" style="background:#0891B2">DS</span></td>
+        <td><span style="display:inline-block;width:14px;height:14px;background:#0891B2;border-radius:3px;vertical-align:middle;margin-right:6px"></span>#0891B2</td>
+        <td><strong>CNC (operador principal)</strong></td>
+        <td>CNC 8h/día cuando está activo · Apoyo ensamblaje si no hay CNC pendiente · John opera CNC solo si Daniil ausente</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="sec-subtitle">Reglas de sustitución y ausencias</div>
+  <div class="g2">
+    <div class="card"><div class="card-b" style="font-size:12px;line-height:1.8">
+      <strong>Cuando Daniil está ausente:</strong><br>
+      John puede operar CNC si hay urgencia. De lo contrario, Daniil queda como vacío en el planning y se redistribuye la carga entre el resto.<br><br>
+      <strong>Cuando Tetiana está ausente:</strong><br>
+      El lijado se reduce. Claudio puede asumir lijado puntual si tiene huecos. Priorizar que no queden lámparas sin lijar antes de imprimación.
+    </div></div>
+    <div class="card"><div class="card-b" style="font-size:12px;line-height:1.8">
+      <strong>Limpieza de nave (Serhii):</strong><br>
+      Cuando se asigna limpieza a Serhii, ocupa su jornada completa o el bloque indicado. No se mezcla con imprimación el mismo día.<br><br>
+      <strong>Ausencias programadas:</strong><br>
+      Se informan en la sección <em>"Notas Específicas Esta Semana"</em> al final de este prompt. El planning se adapta automáticamente.
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 03 · PROCESOS Y FACTORES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s03">
+  <div class="sec-title"><span class="sec-num">03</span>Procesos productivos, factores y secuencias</div>
+
+  <div class="sec-subtitle">Tabla de procesos y colores corporativos</div>
+  <table class="tbl">
+    <thead><tr><th>Proceso (nombre Excel)</th><th>Etiqueta display</th><th>Color fondo</th><th>Color texto</th><th>Factor tiempo</th><th>Quién lo hace</th></tr></thead>
+    <tbody>
+      <tr><td>CNC</td><td><span style="background:#DBEAFE;color:#1D4ED8;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">CNC</span></td><td>#DBEAFE</td><td>#1D4ED8</td><td>×1.0 (100%)</td><td>Daniil (John solo si ausente)</td></tr>
+      <tr><td>Ensamblaje</td><td><span style="background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Ensamblaje</span></td><td>#DCFCE7</td><td>#15803D</td><td>×1.0 + 1h setup</td><td>Ihor / Serhii apoyo / Daniil apoyo</td></tr>
+      <tr><td>Lijado y/o Masillado</td><td><span style="background:#FEF9C3;color:#A16207;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Lijado/Masillado</span></td><td>#FEF9C3</td><td>#A16207</td><td>×0.7 (70%) + 2/3h</td><td>Tetiana (principal) / Claudio apoyo</td></tr>
+      <tr><td>Imprimación/Pintura <em>(fase imprimación)</em></td><td><span style="background:#FFEDD5;color:#C2410C;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Imprimación</span></td><td>#FFEDD5</td><td>#C2410C</td><td>×0.55 + 12h secado</td><td><strong>Serhii (único responsable)</strong></td></tr>
+      <tr><td>Imprimación/Pintura <em>(fase pintura)</em></td><td><span style="background:#FEE2E2;color:#B91C1C;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Pintura</span></td><td>#FEE2E2</td><td>#B91C1C</td><td>×0.45 + 12h secado</td><td><strong>Claudio (único responsable)</strong></td></tr>
+      <tr><td>Colocación de perfiles</td><td><span style="background:#CCFBF1;color:#0F766E;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Perfiles</span></td><td>#CCFBF1</td><td>#0F766E</td><td>×1.0 (100%)</td><td>Ihor / Serhii (Hair La Vie)</td></tr>
+      <tr><td>Embalaje</td><td><span style="background:#D1FAE5;color:#166534;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Embalaje</span></td><td>#D1FAE5</td><td>#166534</td><td>×1.0 (100%)</td><td>Ihor / Serhii (Selcos metacrilato)</td></tr>
+      <tr><td>Pegado de composite espejo plata</td><td><span style="background:#EDE9FE;color:#5B21B6;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Pegado espejo</span></td><td>#EDE9FE</td><td>#5B21B6</td><td>×1.0 (100%)</td><td><strong>Ihor (responsable Hair)</strong></td></tr>
+      <tr><td>Corte manual</td><td><span style="background:#F3F4F6;color:#374151;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Corte manual</span></td><td>#F3F4F6</td><td>#374151</td><td>×1.0 (100%)</td><td>Según disponibilidad</td></tr>
+      <tr><td>Limpieza (puntual)</td><td><span style="background:#E0F2FE;color:#0369A1;padding:2px 8px;border-radius:5px;font-weight:700;font-size:10px">Limpieza</span></td><td>#E0F2FE</td><td>#0369A1</td><td>Jornada completa</td><td>Serhii (cuando se asigne)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sec-subtitle">Secuencia productiva estándar (regla rígida)</div>
+  <div class="flujo-steps">
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#DBEAFE;border-color:#1D4ED8">🔧</div>
+      <div class="flujo-lbl">CNC</div><div class="flujo-sub">Corte piezas</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#DCFCE7;border-color:#15803D">🔨</div>
+      <div class="flujo-lbl">Ensamblaje</div><div class="flujo-sub">Estructura</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#FEF9C3;border-color:#A16207">🪨</div>
+      <div class="flujo-lbl">Lijado</div><div class="flujo-sub">Superficie</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#FFEDD5;border-color:#C2410C">🎨</div>
+      <div class="flujo-lbl">Imprimación</div><div class="flujo-sub">Serhii · máx mié</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#FEE2E2;border-color:#B91C1C">🖌️</div>
+      <div class="flujo-lbl">Pintura</div><div class="flujo-sub">Claudio · máx jue</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#CCFBF1;border-color:#0F766E">📐</div>
+      <div class="flujo-lbl">Perfiles</div><div class="flujo-sub">viernes</div>
+    </div>
+    <div class="flujo-step">
+      <div class="flujo-ico" style="background:#D1FAE5;border-color:#166534">📦</div>
+      <div class="flujo-lbl">Embalaje</div><div class="flujo-sub">viernes</div>
+    </div>
+  </div>
+
+  <div class="nota nota-red">
+    <span class="nota-ic">🔴</span>
+    <div><span class="nota-t">Regla crítica de días tope — imprimación y pintura</span>
+    <span class="nota-d">Imprimación → máximo el MIÉRCOLES (necesita 12h de secado para pintar al día siguiente) · Pintura → máximo el JUEVES (necesita 12h para perfiles el viernes) · Perfiles + Embalaje → VIERNES obligatorio para cerrar la semana. Si no se cumple esta secuencia, la lámpara no puede entregarse esa semana.</span></div>
+  </div>
+
+  <div class="sec-subtitle">Secuencias especiales (no siguen el flujo estándar)</div>
+  <div class="g3">
+    <div class="card"><div class="card-h"><span class="card-ic">💡</span><span class="card-t">Hair (iluminación)</span></div><div class="card-b" style="font-size:11.5px;line-height:1.8">
+      Secuencia: CNC → Ensamblaje → Pegado espejo (Ihor) → Perfiles (Serhii Hair La Vie) → Embalaje<br>
+      <span class="badge b-gray" style="margin-top:6px">Sin lijado ni pintura separada</span>
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🔲</span><span class="card-t">Selcos metacrilato</span></div><div class="card-b" style="font-size:11.5px;line-height:1.8">
+      Secuencia: Ensamblaje → Embalaje<br>
+      <span class="badge b-gray" style="margin-top:6px">Sin CNC · Sin lijado · Sin imprimación · Sin pintura · Sin perfiles</span><br>
+      <strong>Serhii responsable</strong> (ensamblaje + embalaje Selcos en todos los proyectos)
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🪵</span><span class="card-t">Chapas / Revestimiento</span></div><div class="card-b" style="font-size:11.5px;line-height:1.8">
+      Producto terminado: solo Embalaje<br>
+      <span class="badge b-gray" style="margin-top:6px">Sin tratamiento superficial</span>
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 04 · PROYECTOS ACTIVOS Y PRIORIDADES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s04">
+  <div class="sec-title"><span class="sec-num">04</span>Proyectos activos y sistema de prioridades</div>
+
+  <div class="sec-subtitle">Semáforo de entrega</div>
+  <div class="g3" style="margin-bottom:14px">
+    <div style="background:#FEE2E2;border:1px solid #B91C1C;border-radius:var(--r2);padding:12px;text-align:center">
+      <div style="font-size:22px;margin-bottom:4px">🔴</div>
+      <div style="font-weight:700;color:#B91C1C;font-size:12px">RIESGO</div>
+      <div style="font-size:11px;color:#7F1D1D">≤ 7 días laborables<br>(≤ 1 semana)</div>
+    </div>
+    <div style="background:#FEF9C3;border:1px solid #A16207;border-radius:var(--r2);padding:12px;text-align:center">
+      <div style="font-size:22px;margin-bottom:4px">🟡</div>
+      <div style="font-weight:700;color:#A16207;font-size:12px">ATENCIÓN</div>
+      <div style="font-size:11px;color:#78350F">8–14 días laborables<br>(≤ 2 semanas)</div>
+    </div>
+    <div style="background:#DCFCE7;border:1px solid #15803D;border-radius:var(--r2);padding:12px;text-align:center">
+      <div style="font-size:22px;margin-bottom:4px">🟢</div>
+      <div style="font-weight:700;color:#15803D;font-size:12px">OK</div>
+      <div style="font-size:11px;color:#14532D">≥ 15 días laborables<br>(≥ 3 semanas)</div>
+    </div>
+  </div>
+
+  <div class="sec-subtitle">Orden de prioridad en la distribución de tareas</div>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Proyecto</th><th>Cliente / Obra</th><th>Semáforo tipo</th><th>Nota especial</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1</strong></td><td>Druni cc la Vie</td><td>Druni</td><td><span class="badge b-ora">🟡 Urgente</span></td><td>Terminar lámparas en curso esta semana · Pilar CNC jueves</td></tr>
+      <tr><td><strong>2</strong></td><td>NOVODECOR Delybreads</td><td>Novodecor</td><td><span class="badge b-ora">🟡 Urgente</span></td><td>Prototipo FACTURABLE (excepción única) · CNC cuando lleguen planos</td></tr>
+      <tr><td><strong>3</strong></td><td>Druni Baricentro</td><td>Druni</td><td><span class="badge b-ora">🟡 Urgente</span></td><td>CNC + lijado + imprimación en marcha</td></tr>
+      <tr><td><strong>4</strong></td><td>Prototipo Mueble</td><td>Interno</td><td><span class="badge b-red">🔴 Crítico</span></td><td>NO facturable · solo si hay huecos · entrega interna</td></tr>
+      <tr><td><strong>5</strong></td><td>Druni cc León</td><td>Druni</td><td><span class="badge b-red">🔴 Crítico</span></td><td>CNC + imprimación pendiente</td></tr>
+      <tr><td><strong>6</strong></td><td>Arenal vialia</td><td>Arenal</td><td><span class="badge" style="background:#DCFCE7;color:#15803D">🟢 OK</span></td><td>Gran volumen (162h) · inicio ensamblaje esta semana · imprimación Serhii</td></tr>
+      <tr><td><strong>7</strong></td><td>Druni X Madrid</td><td>Druni</td><td><span class="badge" style="background:#DCFCE7;color:#15803D">🟢 OK</span></td><td>Sol metacrilato: ensamblaje + embalaje · sin tratamiento superficial</td></tr>
+    </tbody>
+  </table>
+
+  <div class="nota nota-gold">
+    <span class="nota-ic">💡</span>
+    <div><span class="nota-t">Cómo leer el Excel de proyectos</span>
+    <span class="nota-d">Hoja "🗂️ Proyectos" · Columna Hr_Pend = horas reales pendientes (usar SIEMPRE este dato, nunca Hr_plan) · Filtrar solo filas con Hr_Pend > 0 · Los procesos del Excel son los únicos que se asignan: no inventar procesos que no aparezcan en esa fila</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 05 · HORARIO Y CALENDARIO -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s05">
+  <div class="sec-title"><span class="sec-num">05</span>Horario estándar y calendario</div>
+
+  <div class="g2">
+    <div class="card"><div class="card-h"><span class="card-ic">🕐</span><span class="card-t">Jornada laboral</span></div><div class="card-b">
+      <table class="tbl"><tbody>
+        <tr><th>Mañana</th><td>08:00 – 14:00 (6 horas)</td></tr>
+        <tr><th>Tarde</th><td>15:00 – 17:00 (2 horas)</td></tr>
+        <tr><th>Total día</th><td><strong>8 horas productivas</strong></td></tr>
+        <tr><th>Semana estándar</th><td>Lunes a Viernes · 40 horas</td></tr>
+        <tr><th>Horario extra</th><td>Tarifa +40% · objetivo: evitar siempre</td></tr>
+        <tr><th>Descanso mediodía</th><td>14:00–15:00 (1h) · no se asignan tareas</td></tr>
+      </tbody></table>
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">📐</span><span class="card-t">Distribución de slots</span></div><div class="card-b" style="font-size:12px;line-height:2">
+      <strong>Slot 0 → 6</strong> = mañana (08:00 → 14:00)<br>
+      <strong>Slot 6 → 8</strong> = tarde (15:00 → 17:00)<br>
+      <em>Pausa 14–15h automática entre slots 6 y 8</em><br>
+      Las tareas se distribuyen por su duración real (Hr_Pend), se parten entre días si exceden la jornada.<br>
+      <strong>No usar bloques fijos</strong> (2h, 3h): respetar las horas reales del Excel.
+    </div></div>
+  </div>
+
+  <div class="sec-subtitle">Festivos Silla (CP 46460) — 2026</div>
+  <div class="code-block">
+<span class="cm"># Festivos a bloquear en el calendario (0 horas disponibles esos días)</span>
+<span class="var">FESTIVOS_2026</span> = [
+    <span class="str">"2026-01-01"</span>,  <span class="cm"># Año Nuevo</span>
+    <span class="str">"2026-01-06"</span>,  <span class="cm"># Reyes</span>
+    <span class="str">"2026-03-19"</span>,  <span class="cm"># San José (Valencia)</span>
+    <span class="str">"2026-04-02"</span>,  <span class="cm"># Jueves Santo</span>
+    <span class="str">"2026-04-03"</span>,  <span class="cm"># Viernes Santo</span>
+    <span class="str">"2026-04-06"</span>,  <span class="cm"># Lunes de Pascua (Valencia)</span>
+    <span class="str">"2026-05-01"</span>,  <span class="cm"># Día del Trabajo</span>
+    <span class="str">"2026-06-24"</span>,  <span class="cm"># San Juan (Valencia)</span>
+    <span class="str">"2026-08-15"</span>,  <span class="cm"># Asunción</span>
+    <span class="str">"2026-10-09"</span>,  <span class="cm"># Día de la Comunitat Valenciana</span>
+    <span class="str">"2026-10-12"</span>,  <span class="cm"># Día de la Hispanidad</span>
+    <span class="str">"2026-11-01"</span>,  <span class="cm"># Todos los Santos</span>
+    <span class="str">"2026-12-06"</span>,  <span class="cm"># Constitución</span>
+    <span class="str">"2026-12-08"</span>,  <span class="cm"># Inmaculada</span>
+    <span class="str">"2026-12-25"</span>,  <span class="cm"># Navidad</span>
+]</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 06 · DISEÑO DEL DASHBOARD -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s06">
+  <div class="sec-title"><span class="sec-num">06</span>Diseño visual del dashboard · sistema de diseño CONTRACT+</div>
+
+  <div class="sec-subtitle">Paleta de colores exacta</div>
+  <div class="g2">
+    <div class="card"><div class="card-h"><span class="card-ic">🎨</span><span class="card-t">Variables CSS raíz</span></div><div class="card-b">
+      <div class="code-block"><span class="cm">/* :root — Variables inmutables CONTRACT+ */</span>
+<span class="var">--gold</span>: <span class="num">#9A7B3F</span>;    <span class="cm">/* dorado principal */</span>
+<span class="var">--gold2</span>: <span class="num">#7A5F2C</span>;   <span class="cm">/* dorado oscuro */</span>
+<span class="var">--gold-lt</span>: <span class="num">#F5EDD6</span>; <span class="cm">/* dorado claro (fondos) */</span>
+<span class="var">--gold-md</span>: <span class="num">#E8D4A0</span>; <span class="cm">/* dorado medio (bordes) */</span>
+<span class="var">--bg</span>: <span class="num">#F7F6F2</span>;       <span class="cm">/* fondo general */</span>
+<span class="var">--white</span>: <span class="num">#FFFFFF</span>;    <span class="cm">/* panels y sidebar */</span>
+<span class="var">--border</span>: <span class="num">#E3DDD0</span>;  <span class="cm">/* bordes suaves */</span>
+<span class="var">--text</span>: <span class="num">#1A1814</span>;     <span class="cm">/* texto principal */</span>
+<span class="var">--t2</span>: <span class="num">#5A5448</span>;       <span class="cm">/* texto secundario */</span>
+<span class="var">--t3</span>: <span class="num">#9A9080</span>;       <span class="cm">/* texto terciario */</span>
+<span class="var">--font</span>: <span class="str">'Inter'</span>, sans-serif;
+<span class="var">--mono</span>: <span class="str">'JetBrains Mono'</span>, monospace;
+<span class="var">--r</span>: <span class="num">10px</span>;  <span class="var">--r2</span>: <span class="num">6px</span>;  <span class="cm">/* border-radius */</span></div>
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🖥️</span><span class="card-t">Layout del dashboard</span></div><div class="card-b" style="font-size:12px;line-height:1.9">
+      <strong>Estructura:</strong> Sidebar 220px (fija) + Main (flex 1)<br>
+      <strong>Sidebar:</strong> fondo blanco · logo CONTRACT+ · subtítulo "Nave 2 · Planning" · separador dorado · 8 items navegación con icono + texto<br>
+      <strong>Item activo:</strong> fondo var(--gold) · texto blanco · border-radius 6px<br>
+      <strong>Topbar:</strong> sticky · blanco · título + subtítulo izquierda · selector mes + semana + flechas derecha<br>
+      <strong>Content:</strong> padding 20px 28px · scroll vertical<br>
+      <strong>Fuentes:</strong> Inter (UI) + JetBrains Mono (horarios y OPs)
+    </div></div>
+  </div>
+
+  <div class="sec-subtitle">Tarjeta de tarea (elemento fundamental)</div>
+  <div class="g2">
+    <div class="card"><div class="card-b">
+      <div style="background:#FFEDD5;border-left:3px solid #C2410C;color:#C2410C;border-radius:5px;padding:7px 9px;font-size:11px;max-width:220px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:block;opacity:.8">09:23–12:21</span>
+        <div style="font-weight:700;font-size:11px;color:#1A1814;margin-top:2px">NOVODECOR Delybreads</div>
+        <div style="font-size:10px;margin-top:1px;opacity:.85">Bastidor especial · Imprimación</div>
+        <span style="font-size:9px;font-weight:700;background:rgba(0,0,0,.07);padding:1px 5px;border-radius:4px;margin-top:3px;display:inline-block">2.97h</span>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-top:10px;line-height:1.8">
+        ① Horario exacto (JetBrains Mono) · ② Proyecto · ③ Lámpara + Proceso · ④ Horas reales del Excel<br>
+        Clic → abre modal orden de producción
+      </div>
+    </div></div>
+    <div class="card"><div class="card-b">
+      <div class="code-block" style="font-size:10px"><span class="cm">/* Estructura CSS de la tarjeta */</span>
+<span class="var">.task</span> {
+  border-radius: <span class="num">5px</span>;
+  padding: <span class="num">4px 6px</span>;
+  border-left: <span class="num">3px</span> solid <span class="cm">/* color proceso */</span>;
+  background: <span class="cm">/* bg del proceso */</span>;
+  color: <span class="cm">/* fg del proceso */</span>;
+  cursor: pointer;
+  transition: <span class="num">.1s</span>;
+  font-size: <span class="num">9.5px</span>;
+}
+<span class="var">.task</span>:hover {
+  transform: translateY(<span class="num">-1px</span>);
+  box-shadow: <span class="num">0 2px 5px</span> rgba(<span class="num">0,0,0,.08</span>);
+}</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 07 · LAS 8 PESTAÑAS REQUERIDAS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s07">
+  <div class="sec-title"><span class="sec-num">07</span>Las 8 pestañas del dashboard (obligatorias y en este orden)</div>
+
+  <table class="tbl">
+    <thead><tr><th>#</th><th>ID Pane</th><th>Icono</th><th>Título sidebar</th><th>Contenido principal</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>1</strong></td><td><code>pane-resumen</code></td><td>📊</td><td>Resumen</td>
+        <td>5 KPIs superiores (capacidad, asignadas, extras, urgentes, riesgo 14d) · Alertas semanales priorizadas · Tabla proyectos con semáforos y h asignadas S·XX · Mapa ocupación diaria (5 celdas L-V con % y barra de color)</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td><td><code>pane-persona</code></td><td>👤</td><td>Por persona</td>
+        <td>Tabs selector de operario (uno por persona productiva) · Para cada persona: header con badge + nombre + rol + total semana · Grid calendario L-V × (Mañana 08-14 / Tarde 15-17) · Tarjetas de tarea con horas reales · Fila totales diarios · Ausencias marcadas como 🏖️</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td><td><code>pane-semana</code></td><td>📅</td><td>Por semana</td>
+        <td>Grid completo: filas = personas, columnas = días L-V + total · Todas las tareas de todos en una sola vista · Fila total equipo al pie (horas/capacidad por día)</td>
+      </tr>
+      <tr>
+        <td><strong>4</strong></td><td><code>pane-proyecto</code></td><td>📁</td><td>Por proyecto</td>
+        <td>Tabs selector de proyecto (ordenados por prioridad) · Para cada proyecto: header con semáforo, días restantes, h total pendiente · Tabla detallada: día / horario exacto / persona / lámpara / proceso / horas reales / nº OP · Fila total asignado esa semana</td>
+      </tr>
+      <tr>
+        <td><strong>5</strong></td><td><code>pane-gantt</code></td><td>📈</td><td>Gantt</td>
+        <td>Barras horizontales proporcionales a días restantes · Color por semáforo (rojo/amarillo/verde) · Hitos semanales: 5 recuadros L-V con texto descriptivo del plan de cada día</td>
+      </tr>
+      <tr>
+        <td><strong>6</strong></td><td><code>pane-disponibilidad</code></td><td>🕐</td><td>Disponibilidad</td>
+        <td>Tabla horas libres por persona/día · Total libre por semana · Mapa de calor 5×5 (personas × días) con código de color: rojo=pleno / amarillo=algo libre / verde=libre</td>
+      </tr>
+      <tr>
+        <td><strong>7</strong></td><td><code>pane-costes</code></td><td>💶</td><td>Costes 🔒</td>
+        <td>Banner amarillo "PANEL PRIVADO · John Castelblanco" · Tarifas · Coste por proyecto (h asig × 14.75€) · Coste por persona · Tabla prototipos (facturable vs no facturable · NOVODECOR = facturable siempre)</td>
+      </tr>
+      <tr>
+        <td><strong>8</strong></td><td><code>pane-operario</code></td><td>🔧</td><td>Vista operario</td>
+        <td><strong>Ficha individual para TODOS los operarios productivos</strong> (Claudio, Serhii, Ihor, Tetiana, Daniil) · Botón imprimir todo · Por cada persona: header con color + nombre + total semana · Por cada día: lista de tareas con franja horaria / duración / proyecto / lámpara / proceso · Ausencias marcadas · Diseño para imprimir y entregar en nave</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="nota nota-blue">
+    <span class="nota-ic">🔵</span>
+    <div><span class="nota-t">Navegación interactiva (todas las pestañas)</span>
+    <span class="nota-d">Selector MES (dropdown Abr–Dic 2026) + flechas ◀▶ para navegar semana a semana · Semana activa resaltada · Historial: 2 semanas atrás · Futuro: 3 meses adelante · El sidebar muestra siempre la semana activa en formato "S·XX · DD–DD Mes AAAA"</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 08 · REGLAS DE DISTRIBUCIÓN -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s08">
+  <div class="sec-title"><span class="sec-num">08</span>Reglas de distribución y asignación de tareas</div>
+
+  <div class="g2">
+    <div>
+      <div class="sec-subtitle">Principios generales</div>
+      <div class="card"><div class="card-b" style="font-size:12px;line-height:2">
+        ① <strong>Horas reales del Excel siempre</strong> — usar Hr_Pend. No inventar ni estimar.<br>
+        ② <strong>Secuencia de procesos obligatoria</strong> — no pintar sin lijar antes, no lijar sin ensamblar antes.<br>
+        ③ <strong>Días tope</strong> — imprimación máx. miércoles, pintura máx. jueves.<br>
+        ④ <strong>0 horas extras</strong> como objetivo — redistribuir si alguien se sobrecarga.<br>
+        ⑤ <strong>Una tarea puede partirse entre días</strong> si supera la jornada.<br>
+        ⑥ <strong>Prioridad de proyectos</strong> — asignar huecos libres según orden 1→7.<br>
+        ⑦ <strong>No inventar procesos</strong> — si una lámpara no tiene CNC en el Excel, no asignar CNC.<br>
+        ⑧ <strong>John no aparece en tareas</strong> — solo en firma de órdenes de producción.
+      </div></div>
+    </div>
+    <div>
+      <div class="sec-subtitle">Asignaciones fijas (no negociables)</div>
+      <div class="card"><div class="card-b" style="font-size:12px;line-height:2">
+        🔴 <strong>Imprimación → siempre Serhii</strong> (único responsable)<br>
+        🖌️ <strong>Pintura → siempre Claudio</strong> (único responsable)<br>
+        🔧 <strong>CNC → siempre Daniil</strong> (John solo si Daniil ausente)<br>
+        🔲 <strong>Selcos metacrilato → Serhii</strong> (ensamblaje + embalaje)<br>
+        🪞 <strong>Hair pegado espejo → Ihor</strong><br>
+        📐 <strong>Hair perfiles (La Vie) → Serhii</strong><br>
+        🧹 <strong>Limpieza nave → Serhii</strong> (cuando se asigne, jornada completa)
+      </div></div>
+    </div>
+  </div>
+
+  <div class="sec-subtitle">Lógica de distribución horaria</div>
+  <div class="code-block"><span class="code-label">ALGORITMO SLOTS</span>
+<span class="cm"># Horario: 08:00–14:00 (slot 0→6) + pausa + 15:00–17:00 (slot 6→8)</span>
+<span class="fn">def</span> <span class="var">slot_to_hhmm</span>(slot):
+    <span class="kw">if</span> slot >= <span class="num">6</span>:   <span class="cm"># tarde</span>
+        real = <span class="num">15</span> + (slot - <span class="num">6</span>)
+    <span class="kw">else</span>:            <span class="cm"># mañana</span>
+        real = <span class="num">8</span> + slot
+    <span class="kw">return</span> <span class="str">f"{int(real):02d}:{int((real%1)*60):02d}"</span>
+
+<span class="cm"># Ejemplo: slot 3.94 → 11:56 · slot 6.0 → 15:00 · slot 7.78 → 16:47</span>
+<span class="cm"># Tarea que supera la jornada: continúa al día siguiente desde slot 0</span></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 09 · COSTES Y TARIFAS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s09">
+  <div class="sec-title"><span class="sec-num">09</span>Costes y tarifas · Panel privado</div>
+
+  <div class="g2">
+    <div class="card"><div class="card-h"><span class="card-ic">💶</span><span class="card-t">Tarifas hora</span></div><div class="card-b">
+      <table class="tbl"><tbody>
+        <tr><th>Hora normal</th><td><strong>14,75 €/h</strong></td></tr>
+        <tr><th>Hora extra (+40%)</th><td><strong>20,65 €/h</strong></td></tr>
+        <tr><th>Jornada 8h</th><td><strong>118,00 €/día</strong></td></tr>
+        <tr><th>Semana 40h</th><td><strong>590,00 €/semana/persona</strong></td></tr>
+        <tr><th>Coste disponible</th><td>h_normales × 14,75 + h_extra × 20,65</td></tr>
+        <tr><th>Coste facturable</th><td>(h_normales − h_proto_no_fact) × 14,75 + h_extra × 20,65</td></tr>
+      </tbody></table>
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🔬</span><span class="card-t">Prototipos · lógica facturación</span></div><div class="card-b" style="font-size:12px;line-height:2">
+      <strong>Regla general:</strong> Las horas de prototipo generan coste real pero <strong>NO se facturan</strong> al cliente.<br>
+      <strong>Excepción única → NOVODECOR Delybreads:</strong> el bastidor especial SÍ es facturable. Marcar siempre como <span class="badge b-grn">✓ FACTURADO</span>.<br>
+      Mostrar siempre en pestaña Costes: subtotales facturable vs no facturable.
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 10 · ALERTAS Y KPIs -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s10">
+  <div class="sec-title"><span class="sec-num">10</span>Sistema de alertas y KPIs</div>
+
+  <div class="sec-subtitle">Alertas priorizadas (orden de visualización)</div>
+  <table class="tbl">
+    <thead><tr><th>Prioridad</th><th>Tipo</th><th>Condición</th><th>Acción</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><span class="badge b-red">🔴 RIESGO ENTREGA</span></td><td>Hr_pend > 0 y fecha_entrega ≤ 7 días laborables</td><td>Alerta roja · reasignar recursos prioritariamente</td></tr>
+      <tr><td>2</td><td><span class="badge b-ora">🟠 SOBRECARGA</span></td><td>Persona con carga > 8h en cualquier día</td><td>Redistribuir tarea al siguiente día o a otro operario</td></tr>
+      <tr><td>3</td><td><span class="badge b-gold">🟡 SIN ASIGNAR</span></td><td>Persona con >4h libres en la semana</td><td>Asignar tareas de proyectos en cola</td></tr>
+      <tr><td>4</td><td><span class="badge b-blu">🔵 CNC SIN PLANOS</span></td><td>Proyecto pendiente CNC sin planos confirmados</td><td>Bloquear · anotar fecha esperada</td></tr>
+    </tbody>
+  </table>
+
+  <div class="sec-subtitle">KPIs del resumen (5 tarjetas superiores)</div>
+  <div class="g3" style="margin-top:10px">
+    <div class="card"><div class="card-b" style="text-align:center;padding:14px">
+      <div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px">Capacidad equipo</div>
+      <div style="font-size:22px;font-weight:800">184<span style="font-size:12px;color:var(--t2)">h</span></div>
+      <div style="font-size:10px;color:var(--t2)">Lun 3 · Mar–Vie 5 operarios</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:14px">
+      <div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px">Asignadas</div>
+      <div style="font-size:22px;font-weight:800;color:#15803D">183<span style="font-size:12px;color:var(--t2)">h</span></div>
+      <div style="font-size:10px;color:var(--t2)">99.5% ocupación</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:14px">
+      <div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px">Horas extras</div>
+      <div style="font-size:22px;font-weight:800;color:#15803D">0<span style="font-size:12px;color:var(--t2)">h</span></div>
+      <div style="font-size:10px;color:var(--t2)">Objetivo cumplido ✓</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 11 · ÓRDENES DE PRODUCCIÓN -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s11">
+  <div class="sec-title"><span class="sec-num">11</span>Órdenes de producción (modal imprimible)</div>
+
+  <div class="g2">
+    <div class="card"><div class="card-h"><span class="card-ic">📄</span><span class="card-t">Estructura de la orden</span></div><div class="card-b">
+      <table class="tbl"><tbody>
+        <tr><th>Cabecera</th><td>Logo/texto CONTRACT+ (izquierda) + Número OP (derecha)</td></tr>
+        <tr><th>Numeración</th><td><code>OP0001-2026</code> … <code>OP9999-2026</code> · correlativo anual</td></tr>
+        <tr><th>Empresa</th><td>Coverdec Innovación SL (siempre la razón social completa)</td></tr>
+        <tr><th>Campos obligatorios</th><td>Proyecto · Lámpara/Elemento · Proceso · Horario · Tiempo estimado · Semana · Responsable</td></tr>
+        <tr><th>Notas</th><td>Campo editable en el modal</td></tr>
+        <tr><th>Firmas</th><td>Firma operario + V°B° John Castelblanco</td></tr>
+        <tr><th>Activación</th><td>Clic en cualquier tarjeta de tarea → abre modal</td></tr>
+        <tr><th>Impresión</th><td>Botón "🖨️ Imprimir orden" → CSS print A4</td></tr>
+      </tbody></table>
+    </div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🖨️</span><span class="card-t">CSS de impresión</span></div><div class="card-b">
+      <div class="code-block"><span class="kw">@media</span> print {
+  <span class="var">.sidebar</span>, <span class="var">.topbar</span>, <span class="var">.no-print</span> {
+    display: none <span class="kw">!important</span>;
+  }
+  <span class="var">.content</span> { padding: <span class="num">0</span>; }
+  <span class="var">body</span> { background: white; }
+}</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 12 · ZONA DE EDICIÓN SEMANAL -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="sec" id="s12">
+  <div class="sec-title"><span class="sec-num">12</span>Notas específicas esta semana ← <span style="color:var(--gold)">EDITAR AQUÍ</span></div>
+
+  <div class="update-zone">
+    <div class="sec-subtitle" style="color:#E8D4A0">Instrucciones de uso</div>
+    <p style="font-size:12px;color:#D4C5A0;line-height:1.8;margin-bottom:16px">
+      Esta es la <strong style="color:#E8D4A0">única sección que cambia cada semana</strong>. El resto del prompt es fijo. Rellena los campos de abajo y envía el prompt completo a Claude adjuntando el Excel actualizado.
+    </p>
+
+    <div class="prompt-box" id="prompt-editable">
+<span class="prompt-section">## SEMANA:</span> <span class="prompt-val">[FECHA INICIO] al [FECHA FIN] (SXX)</span>
+
+<span class="prompt-section">## FESTIVOS O DÍAS ESPECIALES:</span>
+<span class="prompt-comment">// Ej: Lunes 1 mayo → festivo. Solo 4 días laborables.</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-section">## LLEGADA DE PLANOS / DESBLOQUEOS:</span>
+<span class="prompt-comment">// Ej: Novodecor → planos llegan el jueves. Daniil inicia CNC ese día (3.5h).</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-section">## INCIDENCIAS DE PERSONAL:</span>
+<span class="prompt-comment">// Ej: Daniil y Tetiana ausentes lunes (vacaciones programadas)</span>
+<span class="prompt-comment">// Ej: Serhii → limpieza nave todo el lunes, retoma imprimación desde martes</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-section">## TAREAS ESPECIALES / CAMBIOS DE ASIGNACIÓN:</span>
+<span class="prompt-comment">// Ej: La Vie Parafarmacia → ya tiene imprimación, solo lijar y pintar</span>
+<span class="prompt-comment">// Ej: Cruz La Vie → imprimación a cargo de Claudio esta semana</span>
+<span class="prompt-comment">// Ej: Selcos metacrilato La Vie → Serhii responsable (4 unidades, 6.4h ensam + 6.12h embalaje)</span>
+<span class="prompt-comment">// Ej: Hair La Vie → pegar perfil Serhii (1.5h) · pegado espejo plata Ihor (4.572h)</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-section">## CAMBIOS EN FECHAS DE ENTREGA:</span>
+<span class="prompt-comment">// Ej: Druni X Madrid adelanta entrega al 20 mayo</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-section">## OTROS PARÁMETROS PUNTUALES:</span>
+<span class="prompt-comment">// Cualquier cosa puntual de esta semana</span>
+<span class="prompt-val">-</span>
+
+<span class="prompt-alert">## INSTRUCCIÓN FINAL:</span>
+<span class="prompt-val">Genera el planning HTML completo para esta semana usando el diseño CONTRACT+ exacto
+(8 pestañas: Resumen, Por Persona, Por Semana, Por Proyecto, Gantt, Disponibilidad,
+Costes 🔒, Vista Operario). Usa las horas reales de la columna Hr_Pend del Excel adjunto.
+No uses bloques fijos de tiempo: asigna exactamente las horas pendientes de cada tarea.
+John no aparece en el planning productivo. Genera ficha operario para todos los 5 operarios.</span>
+    </div>
+
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="copy-btn" onclick="copyUpdateSection()">📋 Copiar solo sección notas</button>
+      <button class="copy-btn" onclick="copyFullPrompt()" style="background:#1A1814">📋 Copiar prompt maestro completo</button>
+    </div>
+  </div>
+</div>
+
+<!-- EJEMPLO DE USO -->
+<div class="sec">
+  <div class="sec-title"><span class="sec-num">🗂️</span>Ejemplo de uso — Semana S17 (20–24 abril 2026)</div>
+  <div class="card"><div class="card-h"><span class="card-ic">✅</span><span class="card-t">Notas S17 tal como se enviaron</span></div><div class="card-b">
+    <div class="prompt-box" style="font-size:10.5px">
+<span class="prompt-section">## SEMANA:</span> 20 al 24 Abril 2026 (S17)
+
+<span class="prompt-section">## FESTIVOS:</span> Sin festivos. 5 días laborables completos.
+
+<span class="prompt-section">## INCIDENCIAS:</span>
+- Daniil y Tetiana: ausentes LUNES 20 (vacaciones programadas)
+- Serhii: LUNES 20 limpieza nave todo el día → retoma desde martes
+
+<span class="prompt-section">## TAREAS ESPECIALES:</span>
+- La Vie Parafarmacia → ya tiene imprimación. Solo lijar (4.152h) y luego pintar (7.768h)
+- Cruz La Vie → imprimación a cargo de Claudio (3.936h)
+- Selcos metacrilato La Vie = 4 unidades → ensamblaje 6.4h + embalaje 6.12h → Serhii responsable
+- Hair La Vie: pegar perfil → Serhii (1.5h) · pegado espejo plata → Ihor (4.572h)
+- Arenal Vialia: iniciar ensamblaje desde lunes (Ihor cubre, Daniil retoma martes)
+- Arenal imprimación toda la tienda → Serhii (desde martes)
+- Novodecor: planos llegan jueves 23 → Daniil CNC 3.5h ese día
+- Pilar La Vie: CNC jueves con Daniil (1.008h)
+
+<span class="prompt-section">## PRIORIDAD ESTA SEMANA:</span>
+1. Terminar lámparas La Vie en curso (Cruz, Parafarmacia, Hair, Pilar, Selcos)
+2. Iniciar Arenal Vialia ensamblaje
+3. CNC Novodecor + Pilar La Vie el jueves
+4. Avanzar Baricentro CNC con Daniil
+    </div>
+  </div></div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+function copyFullPrompt(){
+  const sections = document.querySelectorAll('.sec');
+  let text = '# PROMPT MAESTRO DEFINITIVO — CONTRACT+ · Coverdec Innovación SL\n';
+  text += '# Planning Semanal de Producción · Nave 2 Silla (Valencia)\n';
+  text += '# v4.0 · 2026\n\n';
+  text += '════════════════════════════════════════════════════════════════\n';
+  text += 'INSTRUCCIÓN PARA CLAUDE\n';
+  text += '════════════════════════════════════════════════════════════════\n\n';
+  text += 'Eres el sistema de planificación de producción de Coverdec Innovación SL (marca CONTRACT+).\n';
+  text += 'Genera un planning semanal HTML completo (self-contained, sin dependencias externas salvo Google Fonts)\n';
+  text += 'siguiendo estrictamente todos los parámetros de este prompt maestro.\n\n';
+
+  // Extract text from each section
+  sections.forEach(sec => {
+    const title = sec.querySelector('.sec-title');
+    if(title) text += '\n' + '═'.repeat(60) + '\n' + title.innerText.trim().toUpperCase() + '\n' + '═'.repeat(60) + '\n';
+    const tables = sec.querySelectorAll('.tbl');
+    tables.forEach(t => { text += '\n' + t.innerText.trim() + '\n'; });
+    const cards = sec.querySelectorAll('.card-b');
+    cards.forEach(c => {
+      const t = c.innerText.trim();
+      if(t && !c.querySelector('.tbl')) text += '\n' + t + '\n';
+    });
+    const notas = sec.querySelectorAll('.nota');
+    notas.forEach(n => { text += '\n⚠️ ' + n.innerText.trim() + '\n'; });
+    const codes = sec.querySelectorAll('.code-block,.prompt-box');
+    codes.forEach(c => { text += '\n```\n' + c.innerText.trim() + '\n```\n'; });
+  });
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btns = document.querySelectorAll('.copy-btn');
+    btns.forEach(b => { b.textContent = '✅ Copiado — pega en chat nuevo + adjunta el Excel'; b.style.background='#15803D'; });
+    setTimeout(() => { btns.forEach(b => { b.textContent = '📋 Copiar prompt completo'; b.style.background=''; }); }, 3000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('✅ Prompt copiado al portapapeles');
+  });
+}
+
+function copyUpdateSection(){
+  const box = document.getElementById('prompt-editable');
+  const text = box.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('✅ Sección de notas copiada. Edita los campos y pégala en el chat junto con el Excel.');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('✅ Copiado');
+  });
+}
+</script>
+</body>
+</html>

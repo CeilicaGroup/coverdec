@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Planning S19 · 5–9 Mayo 2026 · CONTRACT+ · Coverdec Innovación SL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gold:#9A7B3F;--gold2:#7A5F2C;--gold-lt:#F5EDD6;--gold-md:#E8D4A0;
+  --bg:#FFFFFF;--white:#FFFFFF;--border:#E3DDD0;
+  --text:#1A1814;--t2:#5A5448;--t3:#9A9080;
+  --red:#C0392B;--grn:#1E6B3C;--blu:#1A4F8A;
+  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+  --r:10px;--r2:6px;
+  --sb:220px;
+}
+html{font-size:13px;scroll-behavior:smooth}
+body{font-family:var(--font);background:#FFFFFF;color:var(--text);-webkit-font-smoothing:antialiased}
+.layout{display:flex;min-height:100vh;background:#FFFFFF}
+
+/* SIDEBAR */
+.sidebar{width:var(--sb);background:var(--white);border-right:1px solid var(--border);
+  padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0;z-index:20}
+.sb-logo{font-weight:900;font-size:19px;letter-spacing:-.5px;color:var(--text)}
+.sb-sub{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-top:2px}
+.sb-nave{font-size:10px;color:var(--t3);margin-top:4px}
+.sb-week{background:var(--gold-lt);border:1px solid var(--gold-md);border-radius:var(--r2);
+  padding:8px 10px;margin:12px 0;text-align:center}
+.sb-week-num{font-size:18px;font-weight:800;color:var(--gold2)}
+.sb-week-date{font-size:9.5px;color:var(--t2);margin-top:2px}
+.sb-sep{height:1px;background:var(--border);margin:10px 0}
+.sb-label{font-size:8.5px;font-weight:700;letter-spacing:2px;color:var(--gold);padding:6px 6px 4px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r2);
+  color:var(--t2);cursor:pointer;font-size:11.5px;margin-bottom:2px;font-weight:500;transition:.12s;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:var(--gold-lt);color:var(--gold2)}
+.nav-item.active{background:var(--gold);color:#fff}
+.nav-ic{width:18px;text-align:center;font-size:14px;flex-shrink:0}
+
+/* MAIN */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;background:var(--white)}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:15;flex-shrink:0}
+.tb-left .tb-title{font-size:15px;font-weight:800;color:var(--text)}
+.tb-left .tb-sub{font-size:10.5px;color:var(--t2);margin-top:2px}
+.tb-right{display:flex;gap:8px;align-items:center}
+.btn{padding:7px 14px;border:none;border-radius:var(--r2);cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font);transition:.15s}
+.btn-gold{background:var(--gold);color:#fff}.btn-gold:hover{background:var(--gold2)}
+.btn-dark{background:#1A1814;color:#E8D4A0}.btn-dark:hover{background:#2D2820}
+.btn-outline{background:var(--white);color:var(--gold2);border:1px solid var(--gold-md)}.btn-outline:hover{background:var(--gold-lt)}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:24px 28px;background:var(--white)}
+.pane{display:none}.pane.active{display:block}
+
+/* SECTION TITLES */
+.sec-title{font-size:17px;font-weight:800;display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:10px;border-bottom:2px solid var(--gold-md);background:var(--white)}
+.sec-num{width:28px;height:28px;background:var(--gold);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}
+
+/* CARDS */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.card-h{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAF8F4}
+.card-ic{font-size:15px}.card-t{font-size:12.5px;font-weight:700}
+.card-b{padding:16px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+
+/* KPI CARDS */
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px;text-align:center}
+.kpi-label{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:6px}
+.kpi-val{font-size:26px;font-weight:800;line-height:1}
+.kpi-sub{font-size:10px;color:var(--t2);margin-top:4px}
+
+/* TABLES */
+.tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+.tbl th{padding:8px 10px;background:var(--gold-lt);border:1px solid var(--border);
+  font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);text-align:left}
+.tbl td{padding:7px 10px;border:1px solid var(--border);line-height:1.5;vertical-align:top}
+.tbl tr:nth-child(even) td{background:#FAF8F4}
+.tbl tr:hover td{background:#F0EDE5}
+
+/* BADGES */
+.badge{display:inline-block;padding:2px 8px;border-radius:9px;font-size:9.5px;font-weight:700;text-transform:uppercase}
+.b-gold{background:var(--gold-lt);color:var(--gold2)}
+.b-grn{background:#DCFCE7;color:#15803D}
+.b-red{background:#FEE2E2;color:#B91C1C}
+.b-blu{background:#DBEAFE;color:#1D4ED8}
+.b-ora{background:#FFEDD5;color:#C2410C}
+.b-gray{background:#F3F4F6;color:#6B7280}
+.b-purple{background:#EDE9FE;color:#5B21B6}
+
+/* PROCESS CHIPS */
+.proc{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:9.5px;font-weight:700;border-left:3px solid}
+.proc-cnc{background:#DBEAFE;color:#1D4ED8;border-color:#1D4ED8}
+.proc-ens{background:#DCFCE7;color:#15803D;border-color:#15803D}
+.proc-lij{background:#FEF9C3;color:#A16207;border-color:#A16207}
+.proc-imp{background:#FFEDD5;color:#C2410C;border-color:#C2410C}
+.proc-pin{background:#FEE2E2;color:#B91C1C;border-color:#B91C1C}
+.proc-per{background:#CCFBF1;color:#0F766E;border-color:#0F766E}
+.proc-emb{background:#D1FAE5;color:#166534;border-color:#166534}
+.proc-esp{background:#EDE9FE;color:#5B21B6;border-color:#5B21B6}
+.proc-col{background:#E0F2FE;color:#0369A1;border-color:#0369A1}
+
+/* PERSON AVATARS */
+.avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:9px;flex-shrink:0}
+.av-cp{background:#059669}.av-sk{background:#EA580C}.av-ia{background:#2563EB}
+.av-tm{background:#7C3AED}.av-ds{background:#0891B2}.av-vl{background:#6B7280}
+
+/* TASK CARDS */
+.task-card{border-radius:5px;padding:5px 7px;margin-bottom:3px;cursor:pointer;transition:.1s;font-size:9.5px;border-left:3px solid;position:relative}
+.task-card:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.task-time{font-family:var(--mono);font-size:8.5px;font-weight:600;opacity:.75;display:block;margin-bottom:1px}
+.task-proj{font-weight:700;font-size:10px;color:var(--text);display:block}
+.task-detail{font-size:9px;opacity:.8;display:block;margin-top:1px}
+.task-hrs{font-size:8.5px;font-weight:700;background:rgba(0,0,0,.07);padding:1px 5px;border-radius:4px;display:inline-block;margin-top:2px}
+
+/* CALENDAR GRID */
+.cal-grid{display:grid;grid-template-columns:110px repeat(5,1fr);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;font-size:10.5px}
+.cal-head{background:#FAF8F4;padding:8px 6px;text-align:center;border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:700;font-size:9.5px;color:var(--t2)}
+.cal-person{background:#FAF8F4;padding:8px 8px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:700;font-size:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;justify-content:center}
+.cal-cell{padding:5px;min-height:70px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.cal-total{background:var(--gold-lt);padding:5px 6px;border-right:1px solid var(--border);font-weight:700;font-size:10px;text-align:center}
+.day-total{text-align:center;padding:6px;background:var(--gold-lt);border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:700;font-size:10px}
+.absence{background:#F3F4F6;border-radius:5px;padding:4px 6px;font-size:9px;color:var(--t2);text-align:center}
+
+/* PERSON TABS */
+.person-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.person-tab{padding:8px 14px;border-radius:var(--r2);border:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;transition:.12s;background:var(--white)}
+.person-tab:hover{background:var(--gold-lt);border-color:var(--gold-md)}
+.person-tab.active{border-color:transparent;color:#fff}
+
+/* GANTT */
+.gantt-bar{height:28px;border-radius:5px;position:relative;display:flex;align-items:center;padding:0 8px;font-size:10px;font-weight:600;color:white;min-width:60px;margin-bottom:8px}
+.gantt-label{font-size:11px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.gantt-row{margin-bottom:12px}
+.gantt-meta{font-size:10px;color:var(--t2);margin-bottom:4px}
+
+/* HEATMAP */
+.heatmap{display:grid;gap:4px}
+.hm-cell{padding:6px;border-radius:var(--r2);text-align:center;font-size:9.5px;font-weight:700}
+.hm-full{background:#FEE2E2;color:#B91C1C}
+.hm-half{background:#FEF9C3;color:#A16207}
+.hm-free{background:#DCFCE7;color:#15803D}
+
+/* NOTA */
+.nota{padding:10px 14px;border-radius:var(--r2);margin:10px 0;font-size:11.5px;border-left:4px solid;display:flex;align-items:flex-start;gap:9px}
+.nota-ic{font-size:15px;flex-shrink:0;margin-top:1px}
+.nota-gold{background:var(--gold-lt);border-color:var(--gold);color:var(--gold2)}
+.nota-red{background:#FEE2E2;border-color:#B91C1C;color:#991B1B}
+.nota-blue{background:#DBEAFE;border-color:#1D4ED8;color:#1E40AF}
+.nota-green{background:#DCFCE7;border-color:#15803D;color:#14532D}
+
+/* ALERT BANNER */
+.alert-banner{background:#FEF9C3;border:1px solid #A16207;border-radius:var(--r2);padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:#78350F}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--white);border-radius:var(--r);width:640px;max-width:95vw;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--gold);color:#fff;border-radius:var(--r) var(--r) 0 0}
+.modal-title{font-weight:800;font-size:14px}
+.modal-close{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:2px 6px;border-radius:4px}
+.modal-close:hover{background:rgba(255,255,255,.2)}
+.modal-body{padding:20px}
+.op-field{margin-bottom:12px}
+.op-label{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3);margin-bottom:4px}
+.op-val{font-size:12px;font-weight:600;color:var(--text)}
+.op-section{font-size:11px;font-weight:700;color:var(--gold2);margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--gold-md)}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+/* OP PRINT TEMPLATE */
+.op-print{background:var(--white);padding:24px;max-width:640px;font-size:11px}
+.op-print-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid var(--gold)}
+.op-logo{font-size:22px;font-weight:900;color:var(--text)}
+.op-logo-sub{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--gold);text-transform:uppercase}
+.op-num{font-size:16px;font-weight:800;font-family:var(--mono);color:var(--gold2)}
+.op-empresa{font-size:9.5px;color:var(--t2);margin-top:2px}
+.op-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.op-field-box{background:#FAF8F4;border:1px solid var(--border);border-radius:var(--r2);padding:8px 10px}
+.op-field-label{font-size:8.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3);margin-bottom:2px}
+.op-field-val{font-size:11.5px;font-weight:700;color:var(--text)}
+.op-firmas{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;padding-top:14px;border-top:1px solid var(--border)}
+.op-firma-line{height:1px;background:var(--border);margin-bottom:4px;margin-top:24px}
+.op-firma-label{font-size:9px;color:var(--t3);text-align:center}
+
+/* COSTES PANEL */
+.costes-banner{background:#FEF9C3;border:1px solid #A16207;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;text-align:center;font-weight:700;color:#78350F}
+
+/* OPERARIO VIEW */
+.op-ficha{margin-bottom:32px;break-inside:avoid}
+.op-ficha-header{padding:12px 16px;border-radius:var(--r2) var(--r2) 0 0;color:#fff;display:flex;align-items:center;gap:10px}
+.op-ficha-body{border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r2) var(--r2)}
+.op-day{padding:10px 14px;border-bottom:1px solid var(--border)}
+.op-day:last-child{border-bottom:none}
+.op-day-title{font-size:10.5px;font-weight:700;color:var(--t2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.op-task-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px dashed var(--border)}
+.op-task-row:last-child{border-bottom:none}
+.op-task-time{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--t2);min-width:100px;flex-shrink:0}
+.op-task-info{flex:1}
+.op-task-proj{font-weight:700;font-size:11px}
+.op-task-proc{font-size:10px;color:var(--t2)}
+.op-task-hrs{font-size:9.5px;font-weight:700;background:var(--gold-lt);color:var(--gold2);padding:1px 6px;border-radius:4px;white-space:nowrap}
+
+/* ORDER PRINT SHEET */
+.order-sheet{background:var(--white);max-width:760px;margin:0 auto}
+.order-header-bar{background:var(--gold);height:6px;border-radius:4px 4px 0 0}
+.order-body{padding:24px 28px}
+.order-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.order-logo{font-size:28px;font-weight:900;letter-spacing:-1px}
+.order-logo-sub{font-size:8px;font-weight:700;letter-spacing:3px;color:var(--gold);text-transform:uppercase}
+.order-num-box{text-align:right}
+.order-num{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--gold2)}
+.order-empresa{font-size:10px;color:var(--t2)}
+.order-divider{height:2px;background:linear-gradient(90deg,var(--gold),var(--gold-md),transparent);margin:12px 0 16px}
+.order-project-title{font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px}
+.order-project-meta{font-size:11px;color:var(--t2);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.order-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px}
+.order-table th{background:var(--gold-lt);padding:7px 10px;border:1px solid var(--border);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--t2)}
+.order-table td{padding:7px 10px;border:1px solid var(--border);vertical-align:top}
+.order-table tr:nth-child(even) td{background:#FAF8F4}
+.order-notes-box{background:#FAF8F4;border:1px solid var(--border);border-radius:var(--r2);padding:10px 12px;margin-bottom:16px;min-height:50px}
+.order-notes-label{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t3);margin-bottom:4px}
+.order-firmas-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:20px}
+.order-firma-space{height:40px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.order-firma-label{font-size:9px;color:var(--t3);text-align:center}
+
+/* PRINT */
+@media print{
+  .sidebar,.topbar,.no-print,.modal-overlay{display:none!important}
+  .content{padding:0}
+  body{background:white}
+  .pane{display:block!important}
+  .order-sheet{page-break-after:always}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sb-logo">CONTRACT+</div>
+  <div class="sb-sub">Nave 2 · Planning</div>
+  <div class="sb-nave">Coverdec Innovación SL · Silla</div>
+  <div class="sb-week">
+    <div class="sb-week-num">S19</div>
+    <div class="sb-week-date">5 – 9 Mayo 2026</div>
+  </div>
+  <div class="sb-sep"></div>
+  <div class="sb-label">Vistas</div>
+  <button class="nav-item active" onclick="showPane('resumen',this)"><span class="nav-ic">📊</span>Resumen</button>
+  <button class="nav-item" onclick="showPane('persona',this)"><span class="nav-ic">👤</span>Por persona</button>
+  <button class="nav-item" onclick="showPane('semana',this)"><span class="nav-ic">📅</span>Por semana</button>
+  <button class="nav-item" onclick="showPane('proyecto',this)"><span class="nav-ic">📁</span>Por proyecto</button>
+  <button class="nav-item" onclick="showPane('gantt',this)"><span class="nav-ic">📈</span>Gantt</button>
+  <button class="nav-item" onclick="showPane('disponibilidad',this)"><span class="nav-ic">🕐</span>Disponibilidad</button>
+  <button class="nav-item" onclick="showPane('costes',this)"><span class="nav-ic">💶</span>Costes 🔒</button>
+  <button class="nav-item" onclick="showPane('operario',this)"><span class="nav-ic">🔧</span>Vista operario</button>
+  <div class="sb-sep"></div>
+  <button class="nav-item" onclick="showPane('ordenes',this)"><span class="nav-ic">🖨️</span>Órdenes de prod.</button>
+  <div class="sb-sep"></div>
+  <button class="btn btn-gold" style="width:100%;margin-top:6px" onclick="window.print()">🖨️ Imprimir</button>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+<div class="topbar no-print">
+  <div class="tb-left">
+    <div class="tb-title">Planning S19 · 5–9 Mayo 2026</div>
+    <div class="tb-sub">CONTRACT+ · Coverdec Innovación SL · Nave 2 Silla (Valencia)</div>
+  </div>
+  <div class="tb-right">
+    <span class="badge b-gold">Semana 19 · 2026</span>
+    <span class="badge b-ora">⚠️ Lunes: 07:00–16:00</span>
+    <button class="btn btn-gold" onclick="window.print()">🖨️ Imprimir</button>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 1: RESUMEN -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane active" id="pane-resumen">
+  <div class="sec-title"><span class="sec-num">📊</span>Resumen S19 — 5 al 9 Mayo 2026</div>
+
+  <div class="alert-banner">
+    <span>⚠️</span>
+    <strong>LUNES 5 MAYO: Horario especial 07:00–16:00 (1h comida 14–15h = 8h productivas)</strong>
+    · Martes a viernes: horario normal 08:00–17:00
+  </div>
+
+  <div class="g4" style="margin-bottom:18px">
+    <div class="kpi">
+      <div class="kpi-label">Capacidad equipo</div>
+      <div class="kpi-val" style="color:var(--gold2)">40<span style="font-size:14px">h</span></div>
+      <div class="kpi-sub">5 operarios × 8h/día × Lun</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Horas asignadas</div>
+      <div class="kpi-val" style="color:#15803D">39.2<span style="font-size:14px">h</span></div>
+      <div class="kpi-sub">98% ocupación · Sin extras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Horas extras</div>
+      <div class="kpi-val" style="color:#15803D">0<span style="font-size:14px">h</span></div>
+      <div class="kpi-sub">✓ Objetivo cumplido</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Proyectos en riesgo</div>
+      <div class="kpi-val" style="color:#B91C1C">2<span style="font-size:14px"></span></div>
+      <div class="kpi-sub">León (vie 8/5) · YPlusFive (sáb 9/5)</div>
+    </div>
+  </div>
+
+  <div class="nota nota-red">
+    <span class="nota-ic">🔴</span>
+    <div><strong>ALERTA CRÍTICA — Druni cc León Prototipo 1 y 2:</strong> Fecha entrega 08/05/2026 (este viernes). Todo el ensamblaje, tela y colgado debe cerrarse esta semana. Prioridad absoluta lunes y martes.</div>
+  </div>
+  <div class="nota nota-red">
+    <span class="nota-ic">🔴</span>
+    <div><strong>ALERTA CRÍTICA — YPLUS FIVE:</strong> Fecha entrega 09/05/2026. Ensamblaje espejo + embalaje deben terminar esta semana. Daniil inicia CNC espejo el lunes.</div>
+  </div>
+  <div class="nota nota-gold">
+    <span class="nota-ic">⚠️</span>
+    <div><strong>Vladislav:</strong> Trabaja SOLO el lunes para colocar tela en Prototipo 2 León (0.5h). Operario externo/puntual, no forma parte del equipo fijo.</div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-h"><span class="card-ic">📋</span><span class="card-t">Estado de proyectos S19</span></div>
+    <div class="card-b" style="padding:0">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>Proyecto</th><th>Semáforo</th><th>Entrega</th><th>Días rest.</th><th>Procesos esta semana</th><th>H asignadas</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>1</strong></td>
+            <td><strong>Druni cc León — Prototipo 1</strong></td>
+            <td><span class="badge b-red">🔴 CRÍTICO</span></td>
+            <td style="font-family:var(--mono)">08/05</td>
+            <td style="color:#B91C1C;font-weight:700">3d</td>
+            <td><span class="proc proc-ens">Ensamblaje</span> → <span class="badge b-gray">Colgar 1h×2</span></td>
+            <td><strong>2h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>2</strong></td>
+            <td><strong>Druni cc León — Prototipo 2</strong></td>
+            <td><span class="badge b-red">🔴 CRÍTICO</span></td>
+            <td style="font-family:var(--mono)">08/05</td>
+            <td style="color:#B91C1C;font-weight:700">3d</td>
+            <td><span class="proc proc-col">Colocar tela</span> → <span class="proc proc-ens">Colgar</span> + Lij/Masillado</td>
+            <td><strong>10.5h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>3</strong></td>
+            <td><strong>YPLUS FIVE</strong></td>
+            <td><span class="badge b-red">🔴 CRÍTICO</span></td>
+            <td style="font-family:var(--mono)">09/05</td>
+            <td style="color:#B91C1C;font-weight:700">4d</td>
+            <td><span class="proc proc-cnc">CNC</span> → <span class="proc proc-ens">Ensamblaje</span> → <span class="proc proc-emb">Embalaje</span></td>
+            <td><strong>7.5h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>4</strong></td>
+            <td><strong>Prototipo Mueble</strong></td>
+            <td><span class="badge b-red">🔴 Crítico</span></td>
+            <td style="font-family:var(--mono)">22/05</td>
+            <td style="color:#A16207;font-weight:700">13d</td>
+            <td><span class="proc proc-ens">Ensamblaje HPL</span> · <span class="proc proc-lij">Lijado</span> · <span class="proc proc-imp">Imprimación</span> · <span class="proc proc-pin">Pintura</span></td>
+            <td><strong>14.5h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>5</strong></td>
+            <td><strong>Druni cc la Vie</strong></td>
+            <td><span class="badge b-ora">🟡 Urgente</span></td>
+            <td style="font-family:var(--mono)">22/05</td>
+            <td style="color:#A16207;font-weight:700">13d</td>
+            <td><span class="proc proc-pin">Pintura</span> · <span class="proc proc-per">Perfiles</span> · <span class="proc proc-emb">Embalaje</span> · CNC Pilar</td>
+            <td><strong>24.5h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>6</strong></td>
+            <td><strong>Arenal Vialia</strong></td>
+            <td><span class="badge b-grn">🟢 OK</span></td>
+            <td style="font-family:var(--mono)">05/06</td>
+            <td style="color:#15803D;font-weight:700">23d</td>
+            <td><span class="proc proc-lij">Lijado</span> · <span class="proc proc-pin">Pintura</span> · <span class="proc proc-per">Perfiles</span> · <span class="proc proc-emb">Embalaje</span></td>
+            <td><strong>45h</strong></td>
+          </tr>
+          <tr>
+            <td><strong>7</strong></td>
+            <td><strong>NOVODECOR Delybreads</strong></td>
+            <td><span class="badge b-grn">🟢 OK</span></td>
+            <td style="font-family:var(--mono)">22/05</td>
+            <td style="color:#15803D;font-weight:700">13d</td>
+            <td>Pendiente llegada planos — CNC cuando lleguen</td>
+            <td><strong>—</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec-title" style="margin-top:24px;font-size:14px"><span class="sec-num" style="font-size:10px">📅</span>Mapa de ocupación diaria</div>
+  <div class="g5">
+    <div class="card"><div class="card-b" style="text-align:center;padding:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">LUNES 5/5</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">⚠️ 07–16h</div>
+      <div style="font-size:20px;font-weight:800;color:#15803D">98%</div>
+      <div style="height:6px;background:#E5E7EB;border-radius:3px;margin:6px 0"><div style="height:100%;width:98%;background:#15803D;border-radius:3px"></div></div>
+      <div style="font-size:9.5px;color:var(--t2)">León · YPlus · Mueble</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">MARTES 6/5</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">08–17h</div>
+      <div style="font-size:20px;font-weight:800;color:#15803D">100%</div>
+      <div style="height:6px;background:#E5E7EB;border-radius:3px;margin:6px 0"><div style="height:100%;width:100%;background:#15803D;border-radius:3px"></div></div>
+      <div style="font-size:9.5px;color:var(--t2)">La Vie · Arenal · Mueble</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">MIÉRCOLES 7/5</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">08–17h</div>
+      <div style="font-size:20px;font-weight:800;color:#A16207">95%</div>
+      <div style="height:6px;background:#E5E7EB;border-radius:3px;margin:6px 0"><div style="height:100%;width:95%;background:#A16207;border-radius:3px"></div></div>
+      <div style="font-size:9.5px;color:var(--t2)">Arenal · La Vie · Pilar CNC</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">JUEVES 8/5</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">08–17h</div>
+      <div style="font-size:20px;font-weight:800;color:#15803D">100%</div>
+      <div style="height:6px;background:#E5E7EB;border-radius:3px;margin:6px 0"><div style="height:100%;width:100%;background:#15803D;border-radius:3px"></div></div>
+      <div style="font-size:9.5px;color:var(--t2)">La Vie · Arenal · Pintura máx</div>
+    </div></div>
+    <div class="card"><div class="card-b" style="text-align:center;padding:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">VIERNES 9/5</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:6px">08–17h</div>
+      <div style="font-size:20px;font-weight:800;color:#15803D">96%</div>
+      <div style="height:6px;background:#E5E7EB;border-radius:3px;margin:6px 0"><div style="height:100%;width:96%;background:#15803D;border-radius:3px"></div></div>
+      <div style="font-size:9.5px;color:var(--t2)">Perfiles · Embalaje · Cierre</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 2: POR PERSONA -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-persona">
+  <div class="sec-title"><span class="sec-num">👤</span>Planning por persona — S19</div>
+  <div class="person-tabs">
+    <button class="person-tab active" style="background:#059669;border-color:#059669" onclick="showPerson('cp',this)"><span class="avatar av-cp">CP</span>Claudio Peralta</button>
+    <button class="person-tab" onclick="showPerson('sk',this)"><span class="avatar av-sk">SK</span>Serhii (Sergio)</button>
+    <button class="person-tab" onclick="showPerson('ia',this)"><span class="avatar av-ia">IA</span>Ihor Alieksieiev</button>
+    <button class="person-tab" onclick="showPerson('tm',this)"><span class="avatar av-tm">TM</span>Tetiana Mesriakin</button>
+    <button class="person-tab" onclick="showPerson('ds',this)"><span class="avatar av-ds">DS</span>Daniil Shcheglov</button>
+  </div>
+
+  <!-- CLAUDIO -->
+  <div id="person-cp" class="person-view">
+    <div class="card">
+      <div class="card-h" style="background:#059669;color:#fff"><span class="avatar av-cp" style="width:32px;height:32px;font-size:11px">CP</span><span class="card-t" style="color:#fff">Claudio Peralta — Responsable Nave 2 · Pintura</span><span class="badge b-grn" style="margin-left:auto;background:rgba(255,255,255,.2);color:#fff">39h semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Proyecto</th><th>Lámpara/Tarea</th><th>Proceso</th><th>Horas</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–11:00</td><td>Druni cc León</td><td>Prototipo 1 — Colgar estantería</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>1h (con Ihor)</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">11:00–12:00</td><td>Druni cc León</td><td>Prototipo 2 — Colgar</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>1.5h (con Ihor+Serhii)</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">12:00–14:00 / 15:00–16:00</td><td>Prototipo Mueble</td><td>Pegar canto estantes</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>3h</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–13:30</td><td>Prototipo Mueble</td><td>Pegar canto estantes (cont.)</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">13:30–14:00 / 15:00–17:00</td><td>Druni cc la Vie</td><td>Cruz — Pintura (resto)</td><td><span class="proc proc-pin">Pintura</span></td><td>2.5h</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–12:00</td><td>Arenal Vialia</td><td>Gracos — Imprimación (máx miérc)</td><td><span class="proc proc-imp">Imprimación</span></td><td>3.94h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">12:00–14:00 / 15:00–16:00</td><td>Arenal Vialia</td><td>Cruz — Imprimación (máx miérc)</td><td><span class="proc proc-imp">Imprimación</span></td><td>3h</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–11:30</td><td>Arenal Vialia</td><td>Parafarmacia — Imprimación (máx jueves)</td><td><span class="proc proc-imp">Imprimación</span></td><td>3.5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">11:30–14:00 / 15:00–17:00</td><td>Druni cc la Vie</td><td>Parafarmacia — Pintura (resto)</td><td><span class="proc proc-pin">Pintura</span></td><td>4.5h</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–12:30</td><td>Arenal Vialia</td><td>Gracos + Cruz — Pintura</td><td><span class="proc proc-pin">Pintura</span></td><td>4h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">12:30–14:00 / 15:00–15:30</td><td>Prototipo Mueble</td><td>Pintura 1.5h</td><td><span class="proc proc-pin">Pintura</span></td><td>1.5h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SERHII -->
+  <div id="person-sk" class="person-view" style="display:none">
+    <div class="card">
+      <div class="card-h" style="background:#EA580C;color:#fff"><span class="avatar av-sk" style="width:32px;height:32px;font-size:11px">SK</span><span class="card-t" style="color:#fff">Serhii (Sergio) Kotluienko — Selcos / Saiho / Perfiles</span><span class="badge" style="margin-left:auto;background:rgba(255,255,255,.2);color:#fff">38h semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Proyecto</th><th>Lámpara/Tarea</th><th>Proceso</th><th>Horas</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–09:30</td><td>Druni cc León</td><td>Prototipo 2 — Colgar</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>1.5h (con Claudio+Ihor)</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:30–14:00 / 15:00–16:00</td><td>Arenal Vialia</td><td>Selcos metacrilato — Embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>5.5h</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Selcos metacrilato — Embalaje (cont.) 7.956h total</td><td><span class="proc proc-emb">Embalaje</span></td><td>8h</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–13:00</td><td>Arenal Vialia</td><td>Hair — Colocar perfil</td><td><span class="proc proc-per">Perfiles</span></td><td>1.65h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">13:00–14:00 / 15:00–17:00</td><td>Druni cc la Vie</td><td>Parafarmacia — Colocar perfil</td><td><span class="proc proc-per">Perfiles</span></td><td>3h</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Druni cc la Vie</td><td>Parafarmacia — Embalaje + Cruz perfiles+embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>8h</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Cruz + Parafarmacia — Colocar perfiles</td><td><span class="proc proc-per">Perfiles</span></td><td>8h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- IHOR -->
+  <div id="person-ia" class="person-view" style="display:none">
+    <div class="card">
+      <div class="card-h" style="background:#2563EB;color:#fff"><span class="avatar av-ia" style="width:32px;height:32px;font-size:11px">IA</span><span class="card-t" style="color:#fff">Ihor Alieksieiev — Ensamblaje / Embalaje / Hair Espejo</span><span class="badge" style="margin-left:auto;background:rgba(255,255,255,.2);color:#fff">39h semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Proyecto</th><th>Lámpara/Tarea</th><th>Proceso</th><th>Horas</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–08:00</td><td>Druni cc León</td><td>Prototipo 1 — Colgar</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>1h (con Claudio)</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">08:00–09:30</td><td>Druni cc León</td><td>Prototipo 2 — Colgar</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>1.5h (con Claudio+Serhii)</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:30–14:00 / 15:00–16:00</td><td>YPLUS FIVE</td><td>Ensamblar espejo (parcial)</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>4.5h</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–09:30</td><td>Arenal Vialia</td><td>Hair — Pegado composite espejo plata (cont.)</td><td><span class="proc proc-esp">Pegado espejo</span></td><td>1.5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:30–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Hair — Embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>6.5h</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Hair — Embalaje (cont.) / Revestimiento embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>8h</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Revestimiento embalaje + Gracos embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>8h</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Gracos embalaje (cont.) + YPLUS embalaje</td><td><span class="proc proc-emb">Embalaje</span></td><td>8h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TETIANA -->
+  <div id="person-tm" class="person-view" style="display:none">
+    <div class="card">
+      <div class="card-h" style="background:#7C3AED;color:#fff"><span class="avatar av-tm" style="width:32px;height:32px;font-size:11px">TM</span><span class="card-t" style="color:#fff">Tetiana Mesriakin — Lijado / Masillado</span><span class="badge" style="margin-left:auto;background:rgba(255,255,255,.2);color:#fff">39h semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Proyecto</th><th>Lámpara/Tarea</th><th>Proceso</th><th>Horas</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–10:00</td><td>Prototipo Mueble</td><td>Mueble — Lijado y Masillado (parcial)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>3h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">10:00–14:00 / 15:00–16:00</td><td>Arenal Vialia</td><td>Parafarmacia — Lijado 30% restante (5.744h pend.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>5h</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–14:00</td><td>Arenal Vialia</td><td>Parafarmacia — Lijado (cont.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>6h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">15:00–16:00</td><td>Arenal Vialia</td><td>Cruz — Lijado (2.3h pend.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>1h</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–10:00</td><td>Arenal Vialia</td><td>Cruz — Lijado (cont.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>1.5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">10:00–14:00 / 15:00–17:00</td><td>Arenal Vialia</td><td>Gracos — Lijado (2.41h pend.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>5.5h</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Druni cc León</td><td>Prototipo 2 — Lijado y masillado (5.5h pend.)</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>8h</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–14:00 / 15:00–17:00</td><td>Druni cc la Vie</td><td>Pilar — Lijado (3.024h) + Prototipo Mueble Lijado</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>8h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DANIIL -->
+  <div id="person-ds" class="person-view" style="display:none">
+    <div class="card">
+      <div class="card-h" style="background:#0891B2;color:#fff"><span class="avatar av-ds" style="width:32px;height:32px;font-size:11px">DS</span><span class="card-t" style="color:#fff">Daniil Shcheglov — CNC / Imprimación</span><span class="badge" style="margin-left:auto;background:rgba(255,255,255,.2);color:#fff">38h semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Proyecto</th><th>Lámpara/Tarea</th><th>Proceso</th><th>Horas</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–07:30</td><td>YPLUS FIVE</td><td>Corte espejo prueba (CNC)</td><td><span class="proc proc-cnc">CNC</span></td><td>0.5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">07:30–08:30</td><td>YPLUS FIVE</td><td>Corte espejo definitivo (CNC)</td><td><span class="proc proc-cnc">CNC</span></td><td>1h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">08:30–16:00</td><td>Mejora nave</td><td>Instrucciones JP</td><td><span class="badge b-gray">🔧 Mejora nave</span></td><td>6.5h</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–09:00</td><td>Prototipo Mueble</td><td>Corte manual HPL10</td><td><span class="proc proc-cnc">Corte manual</span></td><td>1h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:00–09:45</td><td>Prototipo Mueble</td><td>Corte CNC (0.75h)</td><td><span class="proc proc-cnc">CNC</span></td><td>0.75h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:45–17:00</td><td>Mejora nave</td><td>Instrucciones JP</td><td><span class="badge b-gray">🔧 Mejora nave</span></td><td>6.25h</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–09:30</td><td>Druni cc la Vie</td><td>Pilar — CNC (1.4616h)</td><td><span class="proc proc-cnc">CNC</span></td><td>1.5h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:30–10:10</td><td>Druni Baricentro</td><td>Curvas madera — CNC (0.68h)</td><td><span class="proc proc-cnc">CNC</span></td><td>0.7h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">10:10–17:00</td><td>Mejora nave</td><td>Instrucciones JP</td><td><span class="badge b-gray">🔧 Mejora nave</span></td><td>5.8h</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–09:50</td><td>Prototipo Mueble</td><td>Imprimación 1.8h (indicación JP)</td><td><span class="proc proc-imp">Imprimación</span></td><td>1.8h</td></tr>
+            <tr><td></td><td style="font-family:var(--mono)">09:50–17:00</td><td>Mejora nave</td><td>Instrucciones JP</td><td><span class="badge b-gray">🔧 Mejora nave</span></td><td>6.2h</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–17:00</td><td>Mejora nave</td><td>Instrucciones JP (jornada completa)</td><td><span class="badge b-gray">🔧 Mejora nave</span></td><td>8h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 3: POR SEMANA (GRID COMPLETO) -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-semana">
+  <div class="sec-title"><span class="sec-num">📅</span>Vista semanal completa — S19</div>
+  <div class="nota nota-gold"><span class="nota-ic">⚠️</span><div>Lunes 5/5: Horario especial 07:00–16:00 (8h productivas). Resto semana: 08:00–17:00.</div></div>
+
+  <div style="overflow-x:auto">
+  <div class="cal-grid" style="min-width:900px">
+    <!-- HEADERS -->
+    <div class="cal-head">Operario</div>
+    <div class="cal-head">Lunes 5/5<br><small style="color:var(--gold);font-weight:700">07–16h ⚠️</small></div>
+    <div class="cal-head">Martes 6/5<br><small>08–17h</small></div>
+    <div class="cal-head">Miércoles 7/5<br><small>08–17h</small></div>
+    <div class="cal-head">Jueves 8/5<br><small>08–17h</small></div>
+    <div class="cal-head">Viernes 9/5<br><small>08–17h</small></div>
+
+    <!-- CLAUDIO -->
+    <div class="cal-person"><span class="avatar av-cp">CP</span><span style="font-size:9.5px;margin-top:2px">Claudio</span></div>
+    <div class="cal-cell">
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">07:00–08:00</span><span class="task-proj">León P1</span><span class="task-detail">Colgar</span><span class="task-hrs">1h</span></div>
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">08:00–09:30</span><span class="task-proj">León P2</span><span class="task-detail">Colgar</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">09:30–16:00</span><span class="task-proj">Mueble</span><span class="task-detail">Pegar canto</span><span class="task-hrs">5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">08:00–13:30</span><span class="task-proj">Mueble</span><span class="task-detail">Pegar canto (cont.)</span><span class="task-hrs">5h</span></div>
+      <div class="task-card proc-pin" style="background:#FEE2E2;border-color:#B91C1C"><span class="task-time">13:30–17:00</span><span class="task-proj">La Vie - Cruz</span><span class="task-detail">Pintura 1.436h</span><span class="task-hrs">2.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-imp" style="background:#FFEDD5;border-color:#C2410C"><span class="task-time">08:00–12:00</span><span class="task-proj">Arenal - Gracos</span><span class="task-detail">Imprimación</span><span class="task-hrs">3.94h</span></div>
+      <div class="task-card proc-imp" style="background:#FFEDD5;border-color:#C2410C"><span class="task-time">12:00–17:00</span><span class="task-proj">Arenal - Cruz</span><span class="task-detail">Imprimación</span><span class="task-hrs">3.84h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-imp" style="background:#FFEDD5;border-color:#C2410C"><span class="task-time">08:00–11:30</span><span class="task-proj">Arenal - Parafarmacia</span><span class="task-detail">Imprimación (Claudio)</span><span class="task-hrs">3.5h</span></div>
+      <div class="task-card proc-pin" style="background:#FEE2E2;border-color:#B91C1C"><span class="task-time">11:30–17:00</span><span class="task-proj">La Vie - Parafarmacia</span><span class="task-detail">Pintura 7.768h</span><span class="task-hrs">4.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-pin" style="background:#FEE2E2;border-color:#B91C1C"><span class="task-time">08:00–12:30</span><span class="task-proj">Arenal Gracos+Cruz</span><span class="task-detail">Pintura</span><span class="task-hrs">4h</span></div>
+      <div class="task-card proc-pin" style="background:#FEE2E2;border-color:#B91C1C"><span class="task-time">12:30–15:30</span><span class="task-proj">Mueble</span><span class="task-detail">Pintura 1.5h</span><span class="task-hrs">1.5h</span></div>
+    </div>
+
+    <!-- SERHII -->
+    <div class="cal-person"><span class="avatar av-sk">SK</span><span style="font-size:9.5px;margin-top:2px">Serhii</span></div>
+    <div class="cal-cell">
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">07:00–09:30</span><span class="task-proj">León P2</span><span class="task-detail">Colgar</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">09:30–16:00</span><span class="task-proj">Arenal Selcos</span><span class="task-detail">Embalaje metacrilato</span><span class="task-hrs">5.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">08:00–17:00</span><span class="task-proj">Arenal Selcos</span><span class="task-detail">Embalaje (7.956h total)</span><span class="task-hrs">8h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-per" style="background:#CCFBF1;border-color:#0F766E"><span class="task-time">08:00–09:40</span><span class="task-proj">Arenal Hair</span><span class="task-detail">Colocar perfil 1.65h</span><span class="task-hrs">1.65h</span></div>
+      <div class="task-card proc-per" style="background:#CCFBF1;border-color:#0F766E"><span class="task-time">09:40–17:00</span><span class="task-proj">La Vie Parafarmacia</span><span class="task-detail">Colocar perfil 4.384h</span><span class="task-hrs">4.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">08:00–14:00</span><span class="task-proj">La Vie Parafarmacia</span><span class="task-detail">Embalaje 3.288h + La Vie Cruz perfiles+embalaje</span><span class="task-hrs">8h</span></div>
+      <div class="task-card proc-per" style="background:#CCFBF1;border-color:#0F766E"><span class="task-time">15:00–17:00</span><span class="task-proj">La Vie Cruz</span><span class="task-detail">Perfiles 1.968h + Embalaje</span><span class="task-hrs">2h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-per" style="background:#CCFBF1;border-color:#0F766E"><span class="task-time">08:00–17:00</span><span class="task-proj">Arenal Cruz+Paraf.</span><span class="task-detail">Colocar perfiles + embalaje</span><span class="task-hrs">8h</span></div>
+    </div>
+
+    <!-- IHOR -->
+    <div class="cal-person"><span class="avatar av-ia">IA</span><span style="font-size:9.5px;margin-top:2px">Ihor</span></div>
+    <div class="cal-cell">
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">07:00–08:00</span><span class="task-proj">León P1</span><span class="task-detail">Colgar</span><span class="task-hrs">1h</span></div>
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">08:00–09:30</span><span class="task-proj">León P2</span><span class="task-detail">Colgar</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-ens" style="background:#DCFCE7;border-color:#15803D"><span class="task-time">09:30–16:00</span><span class="task-proj">YPLUS FIVE</span><span class="task-detail">Ensamblar espejo</span><span class="task-hrs">4.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-esp" style="background:#EDE9FE;border-color:#5B21B6"><span class="task-time">08:00–09:30</span><span class="task-proj">Arenal Hair</span><span class="task-detail">Pegado composite (cont. 4.9256h)</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">09:30–17:00</span><span class="task-proj">Arenal Hair</span><span class="task-detail">Embalaje 6.5688h</span><span class="task-hrs">6.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">08:00–17:00</span><span class="task-proj">Arenal Hair+Revest.</span><span class="task-detail">Embalaje (Hair cont. + Revestimiento 3.55h)</span><span class="task-hrs">8h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">08:00–17:00</span><span class="task-proj">Arenal Revestim.+Gracos</span><span class="task-detail">Embalaje (Revestim. + Gracos 1.4775h)</span><span class="task-hrs">8h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-emb" style="background:#D1FAE5;border-color:#166534"><span class="task-time">08:00–17:00</span><span class="task-proj">Arenal+YPLUS</span><span class="task-detail">Gracos embalaje cont. + YPLUS embalaje 1.2h</span><span class="task-hrs">8h</span></div>
+    </div>
+
+    <!-- TETIANA -->
+    <div class="cal-person"><span class="avatar av-tm">TM</span><span style="font-size:9.5px;margin-top:2px">Tetiana</span></div>
+    <div class="cal-cell">
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">07:00–10:00</span><span class="task-proj">Mueble</span><span class="task-detail">Lijado y Masillado 3h</span><span class="task-hrs">3h</span></div>
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">10:00–16:00</span><span class="task-proj">Arenal Parafarmacia</span><span class="task-detail">Lijado 30% rest. (5.744h)</span><span class="task-hrs">5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">08:00–15:00</span><span class="task-proj">Arenal Parafarmacia</span><span class="task-detail">Lijado (cont.)</span><span class="task-hrs">6h</span></div>
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">15:00–16:00</span><span class="task-proj">Arenal Cruz</span><span class="task-detail">Lijado 2.3h inicio</span><span class="task-hrs">1h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">08:00–09:30</span><span class="task-proj">Arenal Cruz</span><span class="task-detail">Lijado (cont.)</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">09:30–17:00</span><span class="task-proj">Arenal Gracos</span><span class="task-detail">Lijado 2.41h</span><span class="task-hrs">5.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">08:00–17:00</span><span class="task-proj">León P2</span><span class="task-detail">Lijado y masillado 5.5h pend.</span><span class="task-hrs">8h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-lij" style="background:#FEF9C3;border-color:#A16207"><span class="task-time">08:00–17:00</span><span class="task-proj">La Vie Pilar + Mueble</span><span class="task-detail">Pilar lijado 3.024h + Mueble lijado</span><span class="task-hrs">8h</span></div>
+    </div>
+
+    <!-- DANIIL -->
+    <div class="cal-person"><span class="avatar av-ds">DS</span><span style="font-size:9.5px;margin-top:2px">Daniil</span></div>
+    <div class="cal-cell">
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">07:00–07:30</span><span class="task-proj">YPLUS FIVE</span><span class="task-detail">CNC prueba espejo</span><span class="task-hrs">0.5h</span></div>
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">07:30–08:30</span><span class="task-proj">YPLUS FIVE</span><span class="task-detail">CNC espejo definitivo</span><span class="task-hrs">1h</span></div>
+      <div class="task-card" style="background:#F3F4F6;border-left:3px solid #9CA3AF;border-radius:5px;padding:5px 7px;font-size:9.5px"><span class="task-time">08:30–16:00</span><span class="task-proj">🔧 Mejora nave</span><span class="task-detail">Instrucciones JP</span><span class="task-hrs">6.5h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">08:00–09:00</span><span class="task-proj">Mueble</span><span class="task-detail">Corte manual HPL10</span><span class="task-hrs">1h</span></div>
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">09:00–09:45</span><span class="task-proj">Mueble</span><span class="task-detail">Corte CNC</span><span class="task-hrs">0.75h</span></div>
+      <div class="task-card" style="background:#F3F4F6;border-left:3px solid #9CA3AF;border-radius:5px;padding:5px 7px;font-size:9.5px"><span class="task-time">09:45–17:00</span><span class="task-proj">🔧 Mejora nave</span><span class="task-detail">Instrucciones JP</span><span class="task-hrs">6.25h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">08:00–09:30</span><span class="task-proj">La Vie Pilar</span><span class="task-detail">CNC Pilar 1.4616h</span><span class="task-hrs">1.5h</span></div>
+      <div class="task-card proc-cnc" style="background:#DBEAFE;border-color:#1D4ED8"><span class="task-time">09:30–10:10</span><span class="task-proj">Baricentro</span><span class="task-detail">CNC Curvas 0.68h</span><span class="task-hrs">0.7h</span></div>
+      <div class="task-card" style="background:#F3F4F6;border-left:3px solid #9CA3AF;border-radius:5px;padding:5px 7px;font-size:9.5px"><span class="task-time">10:10–17:00</span><span class="task-proj">🔧 Mejora nave</span><span class="task-detail">Instrucciones JP</span><span class="task-hrs">5.8h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card proc-imp" style="background:#FFEDD5;border-color:#C2410C"><span class="task-time">08:00–09:50</span><span class="task-proj">Mueble</span><span class="task-detail">Imprimación 1.8h (JP)</span><span class="task-hrs">1.8h</span></div>
+      <div class="task-card" style="background:#F3F4F6;border-left:3px solid #9CA3AF;border-radius:5px;padding:5px 7px;font-size:9.5px"><span class="task-time">09:50–17:00</span><span class="task-proj">🔧 Mejora nave</span><span class="task-detail">Instrucciones JP</span><span class="task-hrs">6.2h</span></div>
+    </div>
+    <div class="cal-cell">
+      <div class="task-card" style="background:#F3F4F6;border-left:3px solid #9CA3AF;border-radius:5px;padding:5px 7px;font-size:9.5px"><span class="task-time">08:00–17:00</span><span class="task-proj">🔧 Mejora nave</span><span class="task-detail">Instrucciones JP (día completo)</span><span class="task-hrs">8h</span></div>
+    </div>
+
+    <!-- TOTALES -->
+    <div class="cal-head">TOTAL EQUIPO</div>
+    <div class="day-total">38h<br><small style="font-size:9px;font-weight:400">Lun especial</small></div>
+    <div class="day-total">39h<br><small style="font-size:9px;font-weight:400">100%</small></div>
+    <div class="day-total">38h<br><small style="font-size:9px;font-weight:400">95%</small></div>
+    <div class="day-total">40h<br><small style="font-size:9px;font-weight:400">100%</small></div>
+    <div class="day-total">39.5h<br><small style="font-size:9px;font-weight:400">99%</small></div>
+  </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 4: POR PROYECTO -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-proyecto">
+  <div class="sec-title"><span class="sec-num">📁</span>Planning por proyecto — S19</div>
+  <div class="person-tabs" id="proj-tabs">
+    <button class="person-tab active" style="background:#B91C1C;border-color:#B91C1C;color:#fff" onclick="showProj('leon',this)">🔴 León Prototipos</button>
+    <button class="person-tab" onclick="showProj('yplus',this)">🔴 YPLUS FIVE</button>
+    <button class="person-tab" onclick="showProj('mueble',this)">🔴 Prototipo Mueble</button>
+    <button class="person-tab" onclick="showProj('lavie',this)">🟡 La Vie</button>
+    <button class="person-tab" onclick="showProj('arenal',this)">🟢 Arenal Vialia</button>
+    <button class="person-tab" onclick="showProj('novodecor',this)">🟢 NOVODECOR</button>
+  </div>
+
+  <div id="proj-leon" class="proj-view">
+    <div class="nota nota-red"><span class="nota-ic">🔴</span><div><strong>ENTREGA: 08/05/2026 (Viernes esta semana)</strong> — Prioridad 1 absoluta. Cerrar todo el lunes.</div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🔴</span><span class="card-t">Druni cc León — Prototipo 1 & Prototipo 2</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Operario(s)</th><th>Elemento</th><th>Proceso</th><th>Hr_Pend</th><th>OP</th></tr></thead>
+          <tbody>
+            <tr style="background:#FFF1F2"><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–08:00</td><td><span class="avatar av-cp" style="width:20px;height:20px;font-size:8px">CP</span> <span class="avatar av-ia" style="width:20px;height:20px;font-size:8px">IA</span> Claudio + Ihor</td><td>Prototipo 1</td><td><span class="proc proc-ens">Ensamblaje — Colgar estantería</span></td><td>1h (×2 = 2h total)</td><td>OP0001-2026</td></tr>
+            <tr style="background:#FFF1F2"><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–07:30</td><td><span class="avatar av-vl" style="width:20px;height:20px;font-size:8px">VL</span> Vladislav</td><td>Prototipo 2</td><td><span class="proc proc-col">Colocar tela 0.5h</span></td><td>0.5h</td><td>OP0002-2026</td></tr>
+            <tr style="background:#FFF1F2"><td>Lunes 5/5</td><td style="font-family:var(--mono)">08:00–09:30</td><td><span class="avatar av-cp" style="width:20px;height:20px;font-size:8px">CP</span><span class="avatar av-ia" style="width:20px;height:20px;font-size:8px">IA</span><span class="avatar av-sk" style="width:20px;height:20px;font-size:8px">SK</span> ×3</td><td>Prototipo 2</td><td><span class="proc proc-ens">Colgar prototipo 1.5h × 3 personas</span></td><td>4.5h total</td><td>OP0003-2026</td></tr>
+            <tr style="background:#FEF9C3"><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–17:00</td><td><span class="avatar av-tm" style="width:20px;height:20px;font-size:8px">TM</span> Tetiana</td><td>Prototipo 2</td><td><span class="proc proc-lij">Lijado y masillado 5.5h pend.</span></td><td>5.5h</td><td>OP0004-2026</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proj-yplus" class="proj-view" style="display:none">
+    <div class="nota nota-red"><span class="nota-ic">🔴</span><div><strong>ENTREGA: 09/05/2026 (Sábado / límite viernes)</strong> — Todo el proceso CNC→Ensamblaje→Embalaje debe cerrar esta semana.</div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🔴</span><span class="card-t">YPLUS FIVE — Bastidor especial</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Elemento</th><th>Proceso</th><th>Hr_Pend</th><th>OP</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–07:30</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Bastidor especial</td><td><span class="proc proc-cnc">CNC — Corte espejo prueba</span></td><td>0.5h</td><td>OP0005-2026</td></tr>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:30–08:30</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Bastidor especial</td><td><span class="proc proc-cnc">CNC — Corte espejo definitivo</span></td><td>1h</td><td>OP0006-2026</td></tr>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">08:30–16:00</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>—</td><td><span class="badge b-gray">🔧 Mejora nave — instrucciones JP</span></td><td>6.5h</td><td>—</td></tr>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">09:30–16:00</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Bastidor especial</td><td><span class="proc proc-ens">Ensamblaje — espejo 4h</span></td><td>4h</td><td>OP0008-2026</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">Tarde</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Bastidor especial</td><td><span class="proc proc-emb">Embalaje 1.2h</span></td><td>1.2h</td><td>OP0009-2026</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proj-mueble" class="proj-view" style="display:none">
+    <div class="nota nota-gold"><span class="nota-ic">⚠️</span><div><strong>Prototipo Mueble — NO facturable.</strong> Hr_Pend Excel: Ensamblaje 12h · Lijado 1.5h · CNC 1.48h · Imprimación 1.5h · Pintura 1.5h. Más tareas adicionales indicadas.</div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🪵</span><span class="card-t">Prototipo Mueble — Tareas esta semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Tarea</th><th>Proceso</th><th>Horas</th><th>OP</th></tr></thead>
+          <tbody>
+            <tr><td>Lunes–Martes</td><td style="font-family:var(--mono)">L:09:30–16h · M:08–13:30</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Pegar canto a estantes</td><td><span class="proc proc-ens">Ensamblaje</span></td><td>8h</td><td>OP0010-2026</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–09:00</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Corte manual HPL10</td><td><span class="proc proc-cnc">Corte manual</span></td><td>1h</td><td>OP0011-2026</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">09:00–09:45</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Corte CNC</td><td><span class="proc proc-cnc">CNC</span></td><td>0.75h</td><td>OP0012-2026</td></tr>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">09:45–17:00</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>—</td><td><span class="badge b-gray">🔧 Mejora nave — instrucciones JP</span></td><td>~6.25h</td><td>—</td></tr>
+            <tr><td>Lunes 5/5</td><td style="font-family:var(--mono)">07:00–10:00</td><td><span class="avatar av-tm">TM</span> Tetiana</td><td>Lijado y Masillado</td><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>3h</td><td>OP0014-2026</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–09:50</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Imprimación (JP indicó)</td><td><span class="proc proc-imp">Imprimación</span></td><td>1.8h</td><td>OP0015-2026</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">12:30–15:30</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Pintura 1.5h</td><td><span class="proc proc-pin">Pintura</span></td><td>1.5h</td><td>OP0016-2026</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proj-lavie" class="proj-view" style="display:none">
+    <div class="nota nota-gold"><span class="nota-ic">🟡</span><div><strong>Druni cc La Vie</strong> — Cruz: pintura 1.436h pend. · Parafarmacia: pintura 7.768h pend. · Pilar: CNC miércoles + proceso completo. Todo perfiles+embalaje viernes.</div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🟡</span><span class="card-t">Druni cc La Vie — Tareas esta semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Lámpara</th><th>Proceso</th><th>Hr_Pend</th><th>OP</th></tr></thead>
+          <tbody>
+            <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">13:30–17:00</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Cruz</td><td><span class="proc proc-pin">Pintura 1.436h</span></td><td>1.436h</td><td>OP0017-2026</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">11:30–17:00</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Parafarmacia</td><td><span class="proc proc-pin">Pintura 7.768h</span></td><td>7.768h</td><td>OP0018-2026</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–09:30</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>Pilar</td><td><span class="proc proc-cnc">CNC 1.4616h</span></td><td>1.4616h</td><td>OP0019-2026</td></tr>
+            <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">09:40–17:00</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Parafarmacia</td><td><span class="proc proc-per">Colocar perfil 4.384h</span></td><td>4.384h</td><td>OP0020-2026</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–14:00</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Parafarmacia + Cruz</td><td><span class="proc proc-emb">Embalaje Paraf. 3.288h + Cruz perfiles 1.968h</span></td><td>5.256h</td><td>OP0021-2026</td></tr>
+            <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">15:00–17:00</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Cruz</td><td><span class="proc proc-emb">Embalaje Cruz 1.476h</span></td><td>1.476h</td><td>OP0022-2026</td></tr>
+            <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–17:00</td><td><span class="avatar av-tm">TM</span> Tetiana</td><td>Pilar</td><td><span class="proc proc-lij">Lijado 3.024h + inicio proceso</span></td><td>3.024h</td><td>OP0023-2026</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proj-arenal" class="proj-view" style="display:none">
+    <div class="nota nota-green"><span class="nota-ic">🟢</span><div><strong>Arenal Vialia</strong> — Gran volumen. Varios procesos paralelos toda la semana. Entrega 05/06/2026 — 23 días laborables.</div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">🟢</span><span class="card-t">Arenal Vialia — Tareas esta semana</span></div>
+      <div class="card-b" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>Días</th><th>Operario</th><th>Lámpara</th><th>Proceso</th><th>Hr_Pend</th><th>OP</th></tr></thead>
+          <tbody>
+            <tr><td>Lun–Mar</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Selcos metacrilato</td><td><span class="proc proc-emb">Embalaje 7.956h</span></td><td>7.956h</td><td>OP0024-2026</td></tr>
+            <tr><td>Lun-Mar</td><td><span class="avatar av-tm">TM</span> Tetiana</td><td>Parafarmacia</td><td><span class="proc proc-lij">Lijado 5.744h</span></td><td>5.744h</td><td>OP0025-2026</td></tr>
+            <tr><td>Mar-Mié</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Hair</td><td><span class="proc proc-esp">Pegado composite espejo 4.9256h</span></td><td>4.9256h</td><td>OP0026-2026</td></tr>
+            <tr><td>Mar–Jue</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Hair</td><td><span class="proc proc-emb">Embalaje 6.5688h</span></td><td>6.5688h</td><td>OP0027-2026</td></tr>
+            <tr><td>Mié 7/5</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Hair</td><td><span class="proc proc-per">Colocar perfil 1.65h</span></td><td>1.65h</td><td>OP0028-2026</td></tr>
+            <tr><td>Mié 7/5</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Gracos</td><td><span class="proc proc-imp">Imprimación 3.94h (máx miérc)</span></td><td>3.94h</td><td>OP0029-2026</td></tr>
+            <tr><td>Mié 7/5</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Cruz</td><td><span class="proc proc-imp">Imprimación 3.84h (máx miérc)</span></td><td>3.84h</td><td>OP0030-2026</td></tr>
+            <tr><td>Mié 7/5</td><td><span class="avatar av-tm">TM</span> Tetiana</td><td>Gracos</td><td><span class="proc proc-lij">Lijado 2.41h</span></td><td>2.41h</td><td>OP0031-2026</td></tr>
+            <tr><td>Jue 8/5</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Parafarmacia</td><td><span class="proc proc-imp">Imprimación 6.996h (máx jue) — Claudio mañana · Daniil imprimación mueble primero</span></td><td>6.996h</td><td>OP0032-2026</td></tr>
+            <tr><td>Mié-Jue</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Revestimiento</td><td><span class="proc proc-emb">Embalaje 3.55h</span></td><td>3.55h</td><td>OP0033-2026</td></tr>
+            <tr><td>Jue-Vie</td><td><span class="avatar av-ia">IA</span> Ihor</td><td>Gracos</td><td><span class="proc proc-emb">Embalaje 1.4775h</span></td><td>1.4775h</td><td>OP0034-2026</td></tr>
+            <tr><td>Vie 9/5</td><td><span class="avatar av-cp">CP</span> Claudio</td><td>Gracos + Cruz</td><td><span class="proc proc-pin">Pintura</span></td><td>~7.78h</td><td>OP0035-2026</td></tr>
+            <tr><td>Vie 9/5</td><td><span class="avatar av-sk">SK</span> Serhii</td><td>Cruz + Paraf.</td><td><span class="proc proc-per">Colocar perfiles + embalaje</span></td><td>~8h</td><td>OP0036-2026</td></tr>
+            <tr><td>Jue 8/5 – Vie 9/5</td><td><span class="avatar av-ds">DS</span> Daniil</td><td>—</td><td><span class="badge b-gray">🔧 Mejora nave — resto jornada tras imprimación</span></td><td>~10h</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="proj-novodecor" class="proj-view" style="display:none">
+    <div class="nota nota-blue"><span class="nota-ic">🔵</span><div><strong>NOVODECOR Delybreads</strong> — Pendiente llegada de planos. CNC 3.5h cuando lleguen. Todos los procesos bloqueados hasta tener planos. <span class="badge b-grn">✓ FACTURABLE</span></div></div>
+    <div class="card"><div class="card-h"><span class="card-ic">⏸️</span><span class="card-t">NOVODECOR Delybreads — BLOQUEADO (sin planos)</span></div>
+      <div class="card-b">
+        <table class="tbl">
+          <thead><tr><th>Proceso</th><th>Hr_Pend</th><th>Estado</th><th>Responsable</th></tr></thead>
+          <tbody>
+            <tr><td><span class="proc proc-cnc">CNC</span></td><td>3.5h</td><td><span class="badge b-gray">⏸️ Espera planos</span></td><td>Daniil</td></tr>
+            <tr><td><span class="proc proc-ens">Ensamblaje</span></td><td>16h</td><td><span class="badge b-gray">⏸️ Bloqueado</span></td><td>Ihor/apoyo</td></tr>
+            <tr><td><span class="proc proc-per">Colocación perfiles</span></td><td>2h</td><td><span class="badge b-gray">⏸️ Bloqueado</span></td><td>—</td></tr>
+            <tr><td><span class="proc proc-emb">Embalaje</span></td><td>1h</td><td><span class="badge b-gray">⏸️ Bloqueado</span></td><td>—</td></tr>
+            <tr><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>1.58h</td><td><span class="badge b-gray">⏸️ Bloqueado</span></td><td>Tetiana</td></tr>
+            <tr><td><span class="proc proc-imp">Imprimación/Pintura</span></td><td>2.973h</td><td><span class="badge b-gray">⏸️ Bloqueado</span></td><td>Daniil/Claudio</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 5: GANTT -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-gantt">
+  <div class="sec-title"><span class="sec-num">📈</span>Gantt — Estado proyectos S19</div>
+  <div class="card"><div class="card-b">
+
+    <div class="gantt-row">
+      <div class="gantt-label">🔴 Druni cc León — Prototipos 1 & 2 <span class="badge b-red">Entrega 08/05</span></div>
+      <div class="gantt-meta">3 días laborables restantes · Hr_Pend: 8h ensamblaje + 5.5h lijado</div>
+      <div class="gantt-bar" style="background:#B91C1C;width:15%">08/05</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">🔴 YPLUS FIVE — Bastidor especial <span class="badge b-red">Entrega 09/05</span></div>
+      <div class="gantt-meta">4 días laborables · Hr_Pend: CNC 1.5h + Ensam. 5h + Embalaje 1.2h</div>
+      <div class="gantt-bar" style="background:#B91C1C;width:18%">09/05</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">🟡 Druni cc La Vie <span class="badge b-ora">Entrega 22/05</span></div>
+      <div class="gantt-meta">13 días laborables · Pintura Cruz+Paraf. + Pilar completo</div>
+      <div class="gantt-bar" style="background:#C2410C;width:52%">22/05</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">🔴 Prototipo Mueble <span class="badge b-red">Entrega 22/05</span></div>
+      <div class="gantt-meta">13 días · Hr_Pend: 12h ensam + 3h lijado + 1.5h pintura + 1.8h impr.</div>
+      <div class="gantt-bar" style="background:#C2410C;width:52%">22/05</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">🟢 Arenal Vialia <span class="badge b-grn">Entrega 05/06</span></div>
+      <div class="gantt-meta">23 días laborables · Gran volumen · Múltiples lámparas en curso</div>
+      <div class="gantt-bar" style="background:#15803D;width:90%">05/06</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">🟢 NOVODECOR Delybreads <span class="badge b-grn">Entrega 22/05</span></div>
+      <div class="gantt-meta">13 días laborables · BLOQUEADO hasta llegada planos</div>
+      <div class="gantt-bar" style="background:#6B7280;width:52%">⏸️ Sin planos</div>
+    </div>
+
+    <div class="gantt-row">
+      <div class="gantt-label">⏸️ Druni Baricentro <span class="badge b-gray">Inicio CNC miérc</span></div>
+      <div class="gantt-meta">CNC + inicio ensamblaje miércoles</div>
+      <div class="gantt-bar" style="background:#6B7280;width:52%">Parcial</div>
+    </div>
+
+  </div></div>
+
+  <div class="card" style="margin-top:16px"><div class="card-h"><span class="card-ic">📅</span><span class="card-t">Hitos diarios S19</span></div>
+    <div class="card-b" style="padding:0">
+      <div class="g5" style="padding:12px;gap:8px">
+        <div style="background:#FFF7ED;border:1px solid #C2410C;border-radius:8px;padding:10px;font-size:10px">
+          <div style="font-weight:700;color:#C2410C;margin-bottom:6px">LUNES 5/5 ⚠️07h</div>
+          ✅ Cerrar León P1+P2 (colgar)<br>✅ Colocar tela León P2 (Vladislav)<br>🔧 Daniil CNC YPlus espejo (1.5h) → Mejora nave<br>🔨 Ihor ensambla YPlus espejo<br>📦 Serhii Arenal Selcos embalaje<br>🪨 Tetiana: Mueble lijado + Arenal Paraf. lijado
+        </div>
+        <div style="background:#FFFBEB;border:1px solid #A16207;border-radius:8px;padding:10px;font-size:10px">
+          <div style="font-weight:700;color:#A16207;margin-bottom:6px">MARTES 6/5</div>
+          🖌️ Claudio: terminar pintura La Vie Cruz<br>🔧 Daniil: HPL Mueble CNC (1.75h) → Mejora nave<br>📦 Serhii: Arenal Selcos embalaje fin<br>🪞 Ihor: Hair pegado composite+embalaje<br>🪨 Tetiana: Arenal Paraf. lijado cont.
+        </div>
+        <div style="background:#F0FDF4;border:1px solid #15803D;border-radius:8px;padding:10px;font-size:10px">
+          <div style="font-weight:700;color:#15803D;margin-bottom:6px">MIÉRCOLES 7/5 (máx impr.)</div>
+          🎨 Claudio: Arenal Gracos+Cruz IMPRIMACIÓN ⚡<br>🔧 Daniil: CNC Pilar La Vie + Baricentro → Mejora nave<br>📐 Serhii: Arenal Hair perfil + La Vie Paraf. perfil<br>📦 Ihor: Hair+Revestim. embalaje<br>🪨 Tetiana: Arenal Cruz+Gracos lijado fin
+        </div>
+        <div style="background:#FEF2F2;border:1px solid #B91C1C;border-radius:8px;padding:10px;font-size:10px">
+          <div style="font-weight:700;color:#B91C1C;margin-bottom:6px">JUEVES 8/5 (León entrega)</div>
+          🖌️ Claudio: Arenal Paraf. impr. + La Vie Paraf. pintura<br>💉 Daniil: Mueble imprimación 1.8h → Mejora nave<br>📦 Serhii: La Vie Paraf.+Cruz embalaje perfiles<br>📦 Ihor: Revestim.+Gracos embalaje<br>🪨 Tetiana: León P2 lijado masillado
+        </div>
+        <div style="background:#DBEAFE;border:1px solid #1D4ED8;border-radius:8px;padding:10px;font-size:10px">
+          <div style="font-weight:700;color:#1D4ED8;margin-bottom:6px">VIERNES 9/5 (YPlus entrega)</div>
+          🖌️ Claudio: Arenal Gracos+Cruz pintura + Mueble pintura<br>📐 Serhii: Arenal Cruz+Paraf. perfiles+embalaje<br>📦 Ihor: Gracos embalaje + YPlus embalaje<br>🔧 Daniil: Mejora nave (jornada completa)<br>🪨 Tetiana: La Vie Pilar lijado
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 6: DISPONIBILIDAD -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-disponibilidad">
+  <div class="sec-title"><span class="sec-num">🕐</span>Disponibilidad — S19</div>
+  <div class="card"><div class="card-b" style="padding:0">
+    <table class="tbl">
+      <thead><tr><th>Operario</th><th>Lunes 5/5<br>8h disp.</th><th>Martes 6/5<br>8h disp.</th><th>Miércoles 7/5<br>8h disp.</th><th>Jueves 8/5<br>8h disp.</th><th>Viernes 9/5<br>8h disp.</th><th>Total sem.</th><th>Libre</th></tr></thead>
+      <tbody>
+        <tr><td><span class="avatar av-cp">CP</span> <strong>Claudio</strong></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><strong>40h</strong></td><td style="color:#15803D">0h</td>
+        </tr>
+        <tr><td><span class="avatar av-sk">SK</span> <strong>Serhii</strong></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><strong>40h</strong></td><td style="color:#15803D">0h</td>
+        </tr>
+        <tr><td><span class="avatar av-ia">IA</span> <strong>Ihor</strong></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><strong>40h</strong></td><td style="color:#15803D">0h</td>
+        </tr>
+        <tr><td><span class="avatar av-tm">TM</span> <strong>Tetiana</strong></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-ora">8h / 0 libre</span></td>
+          <td><strong>40h</strong></td><td style="color:#15803D">0h</td>
+        </tr>
+        <tr><td><span class="avatar av-ds">DS</span> <strong>Daniil</strong></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><span class="badge b-grn">8h / 0 libre</span></td>
+          <td><strong>40h</strong></td><td style="color:#15803D">0h</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--gold-lt)"><td><strong>TOTAL EQUIPO</strong></td>
+          <td><strong>40h</strong></td><td><strong>40h</strong></td><td><strong>40h</strong></td><td><strong>40h</strong></td><td><strong>40h</strong></td>
+          <td><strong>200h</strong></td><td style="color:#15803D"><strong>~5h libre</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div></div>
+  <div class="nota nota-green" style="margin-top:12px"><span class="nota-ic">✅</span><div>Semana S19: Capacidad máxima utilizada. Sin horas extras. Todos los operarios al 100%. Las ~5h libres identificadas son márgenes entre tareas y tiempo de setup.</div></div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 7: COSTES (PRIVADO) -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-costes">
+  <div class="costes-banner">🔒 PANEL PRIVADO · Solo John Castelblanco · Coverdec Innovación SL</div>
+  <div class="sec-title"><span class="sec-num">💶</span>Costes S19 — 5 al 9 Mayo 2026</div>
+
+  <div class="g3" style="margin-bottom:18px">
+    <div class="kpi">
+      <div class="kpi-label">Coste semana (200h)</div>
+      <div class="kpi-val" style="color:var(--gold2)">2.950€</div>
+      <div class="kpi-sub">5 × 40h × 14.75€</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Coste facturable</div>
+      <div class="kpi-val" style="color:#15803D">2.714€</div>
+      <div class="kpi-sub">Descontando no facturable</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">No facturable (prototipos)</div>
+      <div class="kpi-val" style="color:#B91C1C">236€</div>
+      <div class="kpi-sub">Mueble ~16h × 14.75€</div>
+    </div>
+  </div>
+
+  <div class="card"><div class="card-h"><span class="card-ic">📊</span><span class="card-t">Coste por proyecto S19</span></div>
+    <div class="card-b" style="padding:0">
+      <table class="tbl">
+        <thead><tr><th>Proyecto</th><th>H asig. S19</th><th>Coste</th><th>Facturación</th></tr></thead>
+        <tbody>
+          <tr><td>Druni cc León P1+P2</td><td>~8h</td><td>118€</td><td><span class="badge b-grn">✓ FACTURABLE</span></td></tr>
+          <tr><td>YPLUS FIVE</td><td>~8h</td><td>118€</td><td><span class="badge b-grn">✓ FACTURABLE</span></td></tr>
+          <tr><td>Prototipo Mueble</td><td>~16h</td><td>236€</td><td><span class="badge b-red">✗ NO FACTURABLE</span></td></tr>
+          <tr><td>Druni cc La Vie</td><td>~30h</td><td>442€</td><td><span class="badge b-grn">✓ FACTURABLE</span></td></tr>
+          <tr><td>Arenal Vialia</td><td>~100h</td><td>1.475€</td><td><span class="badge b-grn">✓ FACTURABLE</span></td></tr>
+          <tr><td>NOVODECOR Delybreads</td><td>0h (bloqueado)</td><td>0€</td><td><span class="badge b-grn">✓ FACTURABLE (cuando inicie)</span></td></tr>
+          <tr><td>Druni Baricentro</td><td>~8h</td><td>118€</td><td><span class="badge b-grn">✓ FACTURABLE</span></td></tr>
+        </tbody>
+        <tfoot><tr style="background:var(--gold-lt)"><td><strong>TOTAL</strong></td><td><strong>~200h</strong></td><td><strong>2.950€</strong></td><td>—</td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px"><div class="card-h"><span class="card-ic">💰</span><span class="card-t">Coste por operario S19</span></div>
+    <div class="card-b" style="padding:0">
+      <table class="tbl">
+        <thead><tr><th>Operario</th><th>H normales</th><th>H extras</th><th>Coste</th></tr></thead>
+        <tbody>
+          <tr><td><span class="avatar av-cp">CP</span> Claudio Peralta</td><td>40h</td><td>0h</td><td>590€</td></tr>
+          <tr><td><span class="avatar av-sk">SK</span> Serhii Kotluienko</td><td>40h</td><td>0h</td><td>590€</td></tr>
+          <tr><td><span class="avatar av-ia">IA</span> Ihor Alieksieiev</td><td>40h</td><td>0h</td><td>590€</td></tr>
+          <tr><td><span class="avatar av-tm">TM</span> Tetiana Mesriakin</td><td>40h</td><td>0h</td><td>590€</td></tr>
+          <tr><td><span class="avatar av-ds">DS</span> Daniil Shcheglov</td><td>40h</td><td>0h</td><td>590€</td></tr>
+        </tbody>
+        <tfoot><tr style="background:var(--gold-lt)"><td><strong>TOTAL</strong></td><td>200h</td><td>0h</td><td><strong>2.950€</strong></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE 8: VISTA OPERARIO -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-operario">
+  <div class="sec-title no-print"><span class="sec-num">🔧</span>Vista Operario — S19 · Para imprimir y entregar en nave</div>
+  <button class="btn btn-dark no-print" onclick="window.print()" style="margin-bottom:16px">🖨️ Imprimir todos los operarios</button>
+
+  <!-- CLAUDIO -->
+  <div class="op-ficha">
+    <div class="op-ficha-header" style="background:#059669">
+      <span class="avatar av-cp" style="width:36px;height:36px;font-size:13px">CP</span>
+      <div><div style="font-weight:800;font-size:15px">Claudio Peralta</div><div style="font-size:10px;opacity:.85">Responsable Nave 2 · Pintura</div></div>
+      <div style="margin-left:auto;text-align:right"><div style="font-size:11px;opacity:.85">Semana S19</div><div style="font-weight:700">39h productivas</div></div>
+    </div>
+    <div class="op-ficha-body">
+      <div class="op-day">
+        <div class="op-day-title">⚠️ Lunes 5 Mayo — 07:00–16:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">07:00 – 08:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 1</span><span class="op-task-proc">Ensamblaje · Colgar estantería <em>(con Ihor)</em></span></div><span class="op-task-hrs">1h</span></div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 2</span><span class="op-task-proc">Ensamblaje · Colgar prototipo <em>(con Ihor + Serhii)</em></span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 14:00 / 15:00–16:00</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Ensamblaje · Pegar canto a estantes</span></div><span class="op-task-hrs">4.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Martes 6 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 13:30</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Ensamblaje · Pegar canto a estantes (cont.)</span></div><span class="op-task-hrs">5.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">13:30 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Cruz</span><span class="op-task-proc">Pintura · Acabado final (1.436h pend.)</span></div><span class="op-task-hrs">2.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Miércoles 7 Mayo — 08:00–17:00 (8h) ⚡ Máx. Imprimación</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 12:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Gracos</span><span class="op-task-proc">IMPRIMACIÓN (3.94h · máx miércoles ⚠️)</span></div><span class="op-task-hrs">4h</span></div>
+        <div class="op-task-row"><span class="op-task-time">12:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Cruz</span><span class="op-task-proc">IMPRIMACIÓN (3.84h · máx miércoles ⚠️)</span></div><span class="op-task-hrs">4h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Jueves 8 Mayo — 08:00–17:00 (8h) ⚡ Máx. Pintura</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 11:30</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Parafarmacia</span><span class="op-task-proc">Imprimación (cont. con Daniil)</span></div><span class="op-task-hrs">3.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">11:30 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Parafarmacia</span><span class="op-task-proc">PINTURA (7.768h pend. · máx jueves ⚠️)</span></div><span class="op-task-hrs">4.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Viernes 9 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 12:30</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Gracos + Cruz</span><span class="op-task-proc">Pintura final</span></div><span class="op-task-hrs">4h</span></div>
+        <div class="op-task-row"><span class="op-task-time">12:30 – 15:30</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Pintura 1.5h</span></div><span class="op-task-hrs">1.5h</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SERHII -->
+  <div class="op-ficha">
+    <div class="op-ficha-header" style="background:#EA580C">
+      <span class="avatar av-sk" style="width:36px;height:36px;font-size:13px">SK</span>
+      <div><div style="font-weight:800;font-size:15px">Serhii (Sergio) Kotluienko</div><div style="font-size:10px;opacity:.85">Selcos metacrilato · Embalaje · Perfiles</div></div>
+      <div style="margin-left:auto;text-align:right"><div style="font-size:11px;opacity:.85">Semana S19</div><div style="font-weight:700">38h productivas</div></div>
+    </div>
+    <div class="op-ficha-body">
+      <div class="op-day">
+        <div class="op-day-title">⚠️ Lunes 5 Mayo — 07:00–16:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">07:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 2</span><span class="op-task-proc">Ensamblaje · Colgar prototipo <em>(con Claudio + Ihor)</em></span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 16:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Selcos metacrilato</span><span class="op-task-proc">Embalaje (responsable Serhii · 7.956h total)</span></div><span class="op-task-hrs">5.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Martes 6 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Selcos metacrilato</span><span class="op-task-proc">Embalaje (cont. · completar las 7.956h)</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Miércoles 7 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:40</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Hair</span><span class="op-task-proc">Colocar perfil (1.65h)</span></div><span class="op-task-hrs">1.65h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:40 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Parafarmacia</span><span class="op-task-proc">Colocar perfil (4.384h)</span></div><span class="op-task-hrs">4.35h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Jueves 8 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 11:15</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Parafarmacia</span><span class="op-task-proc">Embalaje (3.288h)</span></div><span class="op-task-hrs">3.3h</span></div>
+        <div class="op-task-row"><span class="op-task-time">11:15 – 14:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Cruz</span><span class="op-task-proc">Colocar perfil (1.968h)</span></div><span class="op-task-hrs">1.97h</span></div>
+        <div class="op-task-row"><span class="op-task-time">15:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Cruz</span><span class="op-task-proc">Embalaje (1.476h)</span></div><span class="op-task-hrs">1.48h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Viernes 9 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Cruz + Parafarmacia</span><span class="op-task-proc">Colocar perfiles + Embalaje (cierre semana)</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IHOR -->
+  <div class="op-ficha">
+    <div class="op-ficha-header" style="background:#2563EB">
+      <span class="avatar av-ia" style="width:36px;height:36px;font-size:13px">IA</span>
+      <div><div style="font-weight:800;font-size:15px">Ihor Alieksieiev</div><div style="font-size:10px;opacity:.85">Ensamblaje · Embalaje · Hair Espejo</div></div>
+      <div style="margin-left:auto;text-align:right"><div style="font-size:11px;opacity:.85">Semana S19</div><div style="font-weight:700">39h productivas</div></div>
+    </div>
+    <div class="op-ficha-body">
+      <div class="op-day">
+        <div class="op-day-title">⚠️ Lunes 5 Mayo — 07:00–16:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">07:00 – 08:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 1</span><span class="op-task-proc">Ensamblaje · Colgar estantería <em>(con Claudio)</em></span></div><span class="op-task-hrs">1h</span></div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 2</span><span class="op-task-proc">Ensamblaje · Colgar prototipo <em>(con Claudio + Serhii)</em></span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 16:00</span><div class="op-task-info"><span class="op-task-proj">YPLUS FIVE — Bastidor especial</span><span class="op-task-proc">Ensamblaje · Espejo (4h pend.)</span></div><span class="op-task-hrs">4.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Martes 6 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Hair</span><span class="op-task-proc">Pegado composite espejo plata (4.9256h pend.)</span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Hair</span><span class="op-task-proc">Embalaje (6.5688h)</span></div><span class="op-task-hrs">6.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Miércoles 7 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Hair + Revestimiento</span><span class="op-task-proc">Embalaje Hair (cont.) + Revestimiento embalaje 3.55h</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Jueves 8 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Revestimiento + Gracos</span><span class="op-task-proc">Embalaje Revestimiento + Embalaje Gracos 1.4775h</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Viernes 9 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia + YPLUS FIVE</span><span class="op-task-proc">Arenal Gracos embalaje fin + YPLUS embalaje 1.2h</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TETIANA -->
+  <div class="op-ficha">
+    <div class="op-ficha-header" style="background:#7C3AED">
+      <span class="avatar av-tm" style="width:36px;height:36px;font-size:13px">TM</span>
+      <div><div style="font-weight:800;font-size:15px">Tetiana Mesriakin</div><div style="font-size:10px;opacity:.85">Lijado / Masillado</div></div>
+      <div style="margin-left:auto;text-align:right"><div style="font-size:11px;opacity:.85">Semana S19</div><div style="font-weight:700">39h productivas</div></div>
+    </div>
+    <div class="op-ficha-body">
+      <div class="op-day">
+        <div class="op-day-title">⚠️ Lunes 5 Mayo — 07:00–16:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">07:00 – 10:00</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Lijado y Masillado (3h según instrucción JP)</span></div><span class="op-task-hrs">3h</span></div>
+        <div class="op-task-row"><span class="op-task-time">10:00 – 16:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Parafarmacia</span><span class="op-task-proc">Lijado y masillado (5.744h pend. · 30% restante)</span></div><span class="op-task-hrs">5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Martes 6 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 14:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Parafarmacia</span><span class="op-task-proc">Lijado (cont. hasta completar 5.744h)</span></div><span class="op-task-hrs">6h</span></div>
+        <div class="op-task-row"><span class="op-task-time">15:00 – 16:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Cruz</span><span class="op-task-proc">Lijado (2.3h pend.) · inicio</span></div><span class="op-task-hrs">1h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Miércoles 7 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Cruz</span><span class="op-task-proc">Lijado (cont. · completar 2.3h)</span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Arenal Vialia — Gracos</span><span class="op-task-proc">Lijado y masillado (2.41h pend.)</span></div><span class="op-task-hrs">5.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Jueves 8 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc León — Prototipo 2</span><span class="op-task-proc">Lijado y masillado (5.5h pend. Excel)</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Viernes 9 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 11:00</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Pilar</span><span class="op-task-proc">Lijado y masillado (3.024h pend.) — inicio proceso Pilar</span></div><span class="op-task-hrs">3h</span></div>
+        <div class="op-task-row"><span class="op-task-time">11:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble / Apoyo Arenal</span><span class="op-task-proc">Lijado adicional según disponibilidad</span></div><span class="op-task-hrs">5h</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DANIIL -->
+  <div class="op-ficha">
+    <div class="op-ficha-header" style="background:#0891B2">
+      <span class="avatar av-ds" style="width:36px;height:36px;font-size:13px">DS</span>
+      <div><div style="font-weight:800;font-size:15px">Daniil Shcheglov</div><div style="font-size:10px;opacity:.85">CNC · Imprimación (cuando JP indique)</div></div>
+      <div style="margin-left:auto;text-align:right"><div style="font-size:11px;opacity:.85">Semana S19</div><div style="font-weight:700">38h productivas</div></div>
+    </div>
+    <div class="op-ficha-body">
+      <div class="op-day">
+        <div class="op-day-title">⚠️ Lunes 5 Mayo — 07:00–16:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">07:00 – 07:30</span><div class="op-task-info"><span class="op-task-proj">YPLUS FIVE — Bastidor especial</span><span class="op-task-proc">CNC · Corte espejo prueba (0.5h)</span></div><span class="op-task-hrs">0.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">07:30 – 08:30</span><div class="op-task-info"><span class="op-task-proj">YPLUS FIVE — Bastidor especial</span><span class="op-task-proc">CNC · Corte espejo definitivo (1h)</span></div><span class="op-task-hrs">1h</span></div>
+        <div class="op-task-row"><span class="op-task-time">08:30 – 16:00</span><div class="op-task-info"><span class="op-task-proj" style="color:var(--gold2)">🔧 Mejora nave</span><span class="op-task-proc">Pendiente instrucciones JP</span></div><span class="op-task-hrs">6.5h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Martes 6 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:00</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Corte manual HPL 10 (1h)</span></div><span class="op-task-hrs">1h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:00 – 09:45</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">Corte CNC (0.75h)</span></div><span class="op-task-hrs">0.75h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:45 – 17:00</span><div class="op-task-info"><span class="op-task-proj" style="color:var(--gold2)">🔧 Mejora nave</span><span class="op-task-proc">Pendiente instrucciones JP</span></div><span class="op-task-hrs">6.25h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Miércoles 7 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:30</span><div class="op-task-info"><span class="op-task-proj">Druni cc La Vie — Pilar</span><span class="op-task-proc">CNC · Corte Pilar (1.4616h)</span></div><span class="op-task-hrs">1.5h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:30 – 10:10</span><div class="op-task-info"><span class="op-task-proj">Druni Baricentro — Curvas madera</span><span class="op-task-proc">CNC · Curvas (0.68h)</span></div><span class="op-task-hrs">0.7h</span></div>
+        <div class="op-task-row"><span class="op-task-time">10:10 – 17:00</span><div class="op-task-info"><span class="op-task-proj" style="color:var(--gold2)">🔧 Mejora nave</span><span class="op-task-proc">Pendiente instrucciones JP</span></div><span class="op-task-hrs">5.8h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Jueves 8 Mayo — 08:00–17:00 (8h) ⚡ Imprimación máx jueves</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 09:50</span><div class="op-task-info"><span class="op-task-proj">Prototipo Mueble</span><span class="op-task-proc">IMPRIMACIÓN (1.8h · por indicación JP)</span></div><span class="op-task-hrs">1.8h</span></div>
+        <div class="op-task-row"><span class="op-task-time">09:50 – 17:00</span><div class="op-task-info"><span class="op-task-proj" style="color:var(--gold2)">🔧 Mejora nave</span><span class="op-task-proc">Pendiente instrucciones JP</span></div><span class="op-task-hrs">6.2h</span></div>
+      </div>
+      <div class="op-day">
+        <div class="op-day-title">Viernes 9 Mayo — 08:00–17:00 (8h)</div>
+        <div class="op-task-row"><span class="op-task-time">08:00 – 17:00</span><div class="op-task-info"><span class="op-task-proj" style="color:var(--gold2)">🔧 Mejora nave — Jornada completa</span><span class="op-task-proc">Pendiente instrucciones JP</span></div><span class="op-task-hrs">8h</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- PANE: ÓRDENES DE PRODUCCIÓN -->
+<!-- ════════════════════════════════════════ -->
+<div class="pane" id="pane-ordenes">
+  <div class="sec-title no-print"><span class="sec-num">🖨️</span>Órdenes de Producción — S19 · 1 hoja por proyecto</div>
+  <button class="btn btn-dark no-print" onclick="window.print()" style="margin-bottom:16px">🖨️ Imprimir todas las órdenes</button>
+
+  <!-- OP LEÓN -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0001-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">Druni cc León — Prototipos 1 & 2</div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>08/05/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>🔴 Semáforo: <strong>CRÍTICO</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Día</th><th>Horario</th><th>Operario(s)</th><th>Elemento</th><th>Proceso</th><th>Hr_Pend</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">07:00–08:00</td><td>Claudio + Ihor</td><td>Prototipo 1</td><td>Ensamblaje · Colgar en estantería (2 personas)</td><td>1h × 2 = 2h</td><td>⏳ Pendiente</td></tr>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">07:00–07:30</td><td>Vladislav</td><td>Prototipo 2</td><td>Colocar tela</td><td>0.5h</td><td>⏳ Pendiente</td></tr>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">08:00–09:30</td><td>Claudio + Ihor + Serhii</td><td>Prototipo 2</td><td>Ensamblaje · Colgar prototipo (3 personas)</td><td>1.5h × 3 = 4.5h</td><td>⏳ Pendiente</td></tr>
+          <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–17:00</td><td>Tetiana</td><td>Prototipo 2</td><td>Lijado y Masillado</td><td>5.5h</td><td>⏳ Pendiente</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas / Instrucciones especiales</div>
+        <div style="font-size:11px;color:var(--t2)">
+          ⚠️ LUNES: Horario especial 07:00–16:00. Prioridad 1 absoluta — Cerrar Prototipo 1 y 2 el lunes por la mañana.<br>
+          Vladislav trabaja solo el lunes para colocar tela (Prototipo 2) — coordinarlo con llegada a las 07:00.<br>
+          Prototipo 2 · Lijado Tetiana jueves: preparar para posible imprimación siguiente semana.
+        </div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OP YPLUS -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0005-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">YPLUS FIVE — Bastidor especial</div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>09/05/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>🔴 Semáforo: <strong>CRÍTICO</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Proceso</th><th>Hr_Pend</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">07:00–07:30</td><td>Daniil</td><td>CNC · Corte espejo prueba</td><td>0.5h</td><td>⏳</td></tr>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">07:30–08:30</td><td>Daniil</td><td>CNC · Corte espejo definitivo</td><td>1h</td><td>⏳</td></tr>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">09:30–16:00</td><td>Ihor</td><td>Ensamblaje · Ensamblar espejo (4h)</td><td>4h</td><td>⏳</td></tr>
+          <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–10:00</td><td>Ihor</td><td>Ensamblaje · rigidizador + registro (1h)</td><td>1h</td><td>⏳</td></tr>
+          <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">Tarde</td><td>Ihor</td><td>Embalaje</td><td>1.2h</td><td>⏳</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas</div>
+        <div style="font-size:11px;color:var(--t2)">Entrega límite viernes 9/5. CNC Daniil arranca a las 07:00 con prueba de corte espejo antes del corte definitivo. Coordinar con Ihor para ensamblaje simultáneo desde 09:30.</div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OP MUEBLE -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0010-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">Prototipo Mueble — Mueble interno</div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>22/05/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>🟡 Semáforo: <strong>URGENTE</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+        <span class="badge b-red">✗ NO FACTURABLE</span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Proceso</th><th>Horas</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">09:30–16:00</td><td>Claudio</td><td>Ensamblaje · Pegar canto a estantes (parcial)</td><td>4.5h</td><td>⏳</td></tr>
+          <tr><td>Lunes 5/5 ⚠️</td><td style="font-family:var(--mono)">07:00–10:00</td><td>Tetiana</td><td>Lijado y Masillado (3h)</td><td>3h</td><td>⏳</td></tr>
+          <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–13:30</td><td>Claudio</td><td>Ensamblaje · Pegar canto (cont.)</td><td>5.5h</td><td>⏳</td></tr>
+          <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">08:00–09:00</td><td>Daniil</td><td>Corte manual HPL 10</td><td>1h</td><td>⏳</td></tr>
+          <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">09:00–09:45</td><td>Daniil</td><td>Corte CNC</td><td>0.75h</td><td>⏳</td></tr>
+          <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–09:50</td><td>Daniil</td><td>Imprimación (1.8h · por indicación JP)</td><td>1.8h</td><td>⏳</td></tr>
+          <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">12:30–15:30</td><td>Claudio</td><td>Pintura (1.5h pend.)</td><td>1.5h</td><td>⏳</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas</div>
+        <div style="font-size:11px;color:var(--t2)">Prototipo NO facturable. Solo ejecutar si hay huecos disponibles. Daniil imprimación jueves solo por indicación expresa del JP. Hr_Pend Excel: Ensamblaje 12h · CNC 1.48h · Lijado 1.5h · Imprimación 1.5h · Pintura 1.5h.</div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OP LA VIE -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0017-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">Druni cc La Vie — Cruz · Parafarmacia · Pilar</div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>22/05/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>🟡 Semáforo: <strong>URGENTE</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Día</th><th>Horario</th><th>Operario</th><th>Lámpara</th><th>Proceso</th><th>Hr_Pend</th></tr></thead>
+        <tbody>
+          <tr><td>Martes 6/5</td><td style="font-family:var(--mono)">13:30–17:00</td><td>Claudio</td><td>Cruz</td><td>Pintura final (1.436h pend.)</td><td>1.436h</td></tr>
+          <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">08:00–09:30</td><td>Daniil</td><td>Pilar</td><td>CNC corte (1.4616h)</td><td>1.4616h</td></tr>
+          <tr><td>Miércoles 7/5</td><td style="font-family:var(--mono)">09:40–17:00</td><td>Serhii</td><td>Parafarmacia</td><td>Colocar perfil (4.384h)</td><td>4.384h</td></tr>
+          <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">11:30–17:00</td><td>Claudio</td><td>Parafarmacia</td><td>Pintura (7.768h pend.)</td><td>7.768h</td></tr>
+          <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">08:00–14:00</td><td>Serhii</td><td>Paraf. + Cruz</td><td>Embalaje Paraf. 3.288h + Perfiles Cruz 1.968h</td><td>5.256h</td></tr>
+          <tr><td>Jueves 8/5</td><td style="font-family:var(--mono)">15:00–17:00</td><td>Serhii</td><td>Cruz</td><td>Embalaje (1.476h)</td><td>1.476h</td></tr>
+          <tr><td>Viernes 9/5</td><td style="font-family:var(--mono)">08:00–11:00</td><td>Tetiana</td><td>Pilar</td><td>Lijado y masillado (3.024h) · inicio proceso</td><td>3.024h</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas</div>
+        <div style="font-size:11px;color:var(--t2)">
+          Cruz: pintura parcial completada semana anterior (1h de 3.936h) · Parafarmacia: 1h imprimación completada · Pilar: CNC miércoles inicia proceso completo esta semana.<br>
+          ⚠️ Regla: Pintura máx. jueves para poder hacer perfiles+embalaje el viernes.
+        </div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OP ARENAL VIALIA -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0024-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">Arenal Vialia — Gracos · Cruz · Parafarmacia · Hair · Selcos · Revestimiento</div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>05/06/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>🟢 Semáforo: <strong>OK (23 días)</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Días</th><th>Operario</th><th>Lámpara</th><th>Proceso</th><th>Hr_Pend</th></tr></thead>
+        <tbody>
+          <tr><td>L–M</td><td>Serhii</td><td>Selcos metacrilato</td><td>Embalaje (responsable Serhii)</td><td>7.956h</td></tr>
+          <tr><td>L–M</td><td>Tetiana</td><td>Parafarmacia</td><td>Lijado y masillado 30% restante</td><td>5.744h</td></tr>
+          <tr><td>M</td><td>Tetiana</td><td>Cruz</td><td>Lijado (inicio)</td><td>2.3h</td></tr>
+          <tr><td>M–Ma</td><td>Ihor</td><td>Hair</td><td>Pegado composite espejo plata (responsable Ihor)</td><td>4.9256h</td></tr>
+          <tr><td>M–J</td><td>Ihor</td><td>Hair</td><td>Embalaje</td><td>6.5688h</td></tr>
+          <tr><td>Mié</td><td>Claudio</td><td>Gracos</td><td>IMPRIMACIÓN ⚡ (máx miércoles)</td><td>3.94h</td></tr>
+          <tr><td>Mié</td><td>Claudio</td><td>Cruz</td><td>IMPRIMACIÓN ⚡ (máx miércoles)</td><td>3.84h</td></tr>
+          <tr><td>Mié</td><td>Serhii</td><td>Hair</td><td>Colocar perfil</td><td>1.65h</td></tr>
+          <tr><td>Mié</td><td>Tetiana</td><td>Gracos</td><td>Lijado y masillado</td><td>2.41h</td></tr>
+          <tr><td>J</td><td>Claudio + Daniil</td><td>Parafarmacia</td><td>IMPRIMACIÓN ⚡ (máx jueves)</td><td>6.996h</td></tr>
+          <tr><td>M–J</td><td>Ihor</td><td>Revestimiento</td><td>Embalaje</td><td>3.55h</td></tr>
+          <tr><td>J–V</td><td>Ihor</td><td>Gracos</td><td>Embalaje</td><td>1.4775h</td></tr>
+          <tr><td>V</td><td>Claudio</td><td>Gracos + Cruz</td><td>Pintura (tras secado 12h)</td><td>~7.78h</td></tr>
+          <tr><td>V</td><td>Serhii</td><td>Cruz + Parafarmacia</td><td>Colocar perfiles + Embalaje</td><td>~6h</td></tr>
+          <tr><td>V</td><td>Daniil</td><td>Gracos + Cruz</td><td>Embalaje final</td><td>~4h</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas</div>
+        <div style="font-size:11px;color:var(--t2)">Regla crítica: Imprimación Gracos+Cruz → miércoles como máximo. Parafarmacia imprimación → jueves como máximo. Pintura sólo el viernes después de 12h de secado. Secuencia estricta.</div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OP NOVODECOR -->
+  <div class="order-sheet">
+    <div class="order-header-bar"></div>
+    <div class="order-body">
+      <div class="order-top">
+        <div><div class="order-logo">CONTRACT+</div><div class="order-logo-sub">Coverdec Innovación SL</div></div>
+        <div class="order-num-box">
+          <div class="order-num">OP0037-2026</div>
+          <div class="order-empresa">Coverdec Innovación SL · CIF B-XXXXXXXX</div>
+          <div class="order-empresa">Nave 2 · Silla, Valencia (CP 46460)</div>
+        </div>
+      </div>
+      <div class="order-divider"></div>
+      <div class="order-project-title">NOVODECOR Delybreads — Bastidor especial <span class="badge b-grn">✓ FACTURABLE</span></div>
+      <div class="order-project-meta">
+        <span>📅 Fecha entrega: <strong>22/05/2026</strong></span>
+        <span>🗓️ Semana: <strong>S19 · 5–9 Mayo 2026</strong></span>
+        <span>⏸️ Estado: <strong>BLOQUEADO — Sin planos</strong></span>
+        <span>👤 Responsable nave: <strong>Claudio Peralta</strong></span>
+      </div>
+      <table class="order-table">
+        <thead><tr><th>Proceso</th><th>Responsable</th><th>Hr_Pend</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td><span class="proc proc-cnc">CNC</span></td><td>Daniil</td><td>3.5h</td><td>⏸️ Espera confirmación planos</td></tr>
+          <tr><td><span class="proc proc-ens">Ensamblaje</span></td><td>Ihor / apoyo</td><td>16h</td><td>⏸️ Bloqueado</td></tr>
+          <tr><td><span class="proc proc-per">Colocación perfiles</span></td><td>—</td><td>2h</td><td>⏸️ Bloqueado</td></tr>
+          <tr><td><span class="proc proc-emb">Embalaje</span></td><td>—</td><td>1h</td><td>⏸️ Bloqueado</td></tr>
+          <tr><td><span class="proc proc-lij">Lijado/Masillado</span></td><td>Tetiana</td><td>1.58h</td><td>⏸️ Bloqueado</td></tr>
+          <tr><td><span class="proc proc-imp">Imprimación/Pintura</span></td><td>Daniil / Claudio</td><td>2.973h</td><td>⏸️ Bloqueado</td></tr>
+        </tbody>
+      </table>
+      <div class="order-notes-box">
+        <div class="order-notes-label">Notas</div>
+        <div style="font-size:11px;color:var(--t2)"><strong>EXCEPCIÓN ESPECIAL: Novodecor Delybreads es FACTURABLE (incluido el prototipo).</strong><br>
+        Pendiente llegada de planos. Una vez confirmados, priorizar CNC con Daniil (3.5h). Notificar al JP cuando lleguen los planos para agendar en la semana correspondiente. Total horas pendientes: ~27h.</div>
+      </div>
+      <div class="order-firmas-grid">
+        <div><div class="order-firma-space"></div><div class="order-firma-label">Firma operario</div></div>
+        <div><div class="order-firma-space"></div><div class="order-firma-label">V°B° Claudio Peralta · Responsable Nave 2</div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /pane ordenes -->
+
+</div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+function showPane(id, el) {
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('pane-' + id).classList.add('active');
+  if(el) el.classList.add('active');
+}
+
+function showPerson(id, el) {
+  document.querySelectorAll('.person-view').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.person-tab').forEach(t => {
+    t.classList.remove('active');
+    t.style.background = '';
+    t.style.borderColor = '';
+    t.style.color = '';
+  });
+  document.getElementById('person-' + id).style.display = 'block';
+  el.classList.add('active');
+  const colors = {cp:'#059669',sk:'#EA580C',ia:'#2563EB',tm:'#7C3AED',ds:'#0891B2'};
+  el.style.background = colors[id] || '#9A7B3F';
+  el.style.borderColor = colors[id] || '#9A7B3F';
+  el.style.color = '#fff';
+}
+
+function showProj(id, el) {
+  document.querySelectorAll('.proj-view').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('#proj-tabs .person-tab').forEach(t => {
+    t.classList.remove('active');
+    t.style.background = '';
+    t.style.borderColor = '';
+    t.style.color = '';
+  });
+  document.getElementById('proj-' + id).style.display = 'block';
+  el.classList.add('active');
+  el.style.background = '#9A7B3F';
+  el.style.borderColor = '#9A7B3F';
+  el.style.color = '#fff';
+}
+</script>
+</body>
+</html>
