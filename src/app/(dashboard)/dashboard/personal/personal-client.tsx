@@ -26,9 +26,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { savePerson } from "@/features/people/actions";
+import { savePerson, deletePerson } from "@/features/people/actions";
 import type { Person, PersonSpecialty, ProcessCode } from "@/generated/prisma";
 
 interface ProcessDefOption {
@@ -36,18 +36,18 @@ interface ProcessDefOption {
   label: string;
 }
 
-type PersonWithSpecs = Person & { specialties: PersonSpecialty[] };
+type PersonWithSpecs = Person & { specialties: PersonSpecialty[]; canHardDelete: boolean };
 
-type SpecMode = "none" | "primary" | "fallback" | "other";
+type SpecMode = "ninguno" | "responsable" | "apoyo" | "otra";
 
 function modeFromSpecialty(s: PersonSpecialty): SpecMode {
-  if (s.isPrimary) return "primary";
-  if (s.isFallback) return "fallback";
-  return "other";
+  if (s.isPrimary) return "responsable";
+  if (s.isFallback) return "apoyo";
+  return "otra";
 }
 
 function emptySpecMap(processDefs: ProcessDefOption[]): Record<string, SpecMode> {
-  return Object.fromEntries(processDefs.map((d) => [d.code, "none" as SpecMode]));
+  return Object.fromEntries(processDefs.map((d) => [d.code, "ninguno" as SpecMode]));
 }
 
 export function PersonalTeamClient({
@@ -117,11 +117,11 @@ export function PersonalTeamClient({
         }
         const specialties = processDefs
           .map((d) => {
-            const m = specMap[d.code] ?? "none";
-            if (m === "none") return null;
+            const m = specMap[d.code] ?? "ninguno";
+            if (m === "ninguno") return null;
             return {
               process: d.code,
-              mode: m === "primary" ? "primary" : m === "fallback" ? "fallback" : "other",
+              mode: m,
             } as const;
           })
           .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -141,6 +141,38 @@ export function PersonalTeamClient({
         router.refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Error al guardar");
+      }
+    });
+  }
+
+  function formatActionError(err: unknown): string {
+    if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
+      return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
+    }
+    return err instanceof Error ? err.message : "Error";
+  }
+
+  function onDeletePerson(p: PersonWithSpecs) {
+    if (!p.canHardDelete) {
+      toast.error(
+        "Hay planning o un usuario vinculado. Solo puedes desactivar la persona desde Editar.",
+      );
+      return;
+    }
+    if (
+      !globalThis.confirm(
+        `¿Eliminar definitivamente a ${p.nombre} (${p.iniciales})? Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await deletePerson({ personId: p.id });
+        toast.success("Persona eliminada");
+        router.refresh();
+      } catch (e) {
+        toast.error(formatActionError(e));
       }
     });
   }
@@ -195,16 +227,34 @@ export function PersonalTeamClient({
                     </div>
                   </div>
                   {canManage ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0"
-                      onClick={() => openEdit(p)}
-                      aria-label="Editar"
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => openEdit(p)}
+                        aria-label="Editar persona"
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive disabled:opacity-40"
+                        disabled={!p.canHardDelete}
+                        onClick={() => onDeletePerson(p)}
+                        title={
+                          p.canHardDelete
+                            ? "Eliminar del todo"
+                            : "Solo desactivar: hay planning o usuario vinculado"
+                        }
+                        aria-label="Eliminar persona"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </CardHeader>
@@ -330,18 +380,18 @@ export function PersonalTeamClient({
                   >
                     <span className="text-muted-foreground truncate">{d.label}</span>
                     <Select
-                      value={specMap[d.code] ?? "none"}
+                      value={specMap[d.code] ?? "ninguno"}
                       onValueChange={(v) => setModeForProcess(d.code, v as SpecMode)}
                       disabled={pending}
                     >
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
+                        <SelectValue placeholder="Ninguna" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        <SelectItem value="primary">Responsable</SelectItem>
-                        <SelectItem value="fallback">Apoyo</SelectItem>
-                        <SelectItem value="other">Otra</SelectItem>
+                        <SelectItem value="ninguno">Ninguna</SelectItem>
+                        <SelectItem value="responsable">Responsable</SelectItem>
+                        <SelectItem value="apoyo">Apoyo</SelectItem>
+                        <SelectItem value="otra">Otra</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

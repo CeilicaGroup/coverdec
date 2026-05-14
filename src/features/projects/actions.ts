@@ -149,3 +149,34 @@ export async function toggleProjectActive(input: z.infer<typeof toggleSchema>) {
   });
   revalidatePath("/dashboard/proyectos");
 }
+
+const deleteProjectSchema = z.object({ projectId: z.string().min(1) });
+
+export async function deleteProject(input: z.infer<typeof deleteProjectSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const { projectId } = deleteProjectSchema.parse(input);
+
+  await prisma.project.findFirstOrThrow({
+    where: { id: projectId, empresaId: ctx.empresaId },
+  });
+
+  const [timeEntries, orders] = await Promise.all([
+    prisma.timeEntry.count({ where: { projectId } }),
+    prisma.productionOrder.count({ where: { projectId } }),
+  ]);
+
+  if (timeEntries > 0 || orders > 0) {
+    throw new Error(
+      "ARCHIVE_ONLY: Hay partes de trabajo u órdenes de producción vinculadas. Solo se puede archivar el proyecto (desactivar).",
+    );
+  }
+
+  await prisma.project.delete({ where: { id: projectId } });
+  log.info({ projectId }, "project deleted");
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
+  revalidatePath("/dashboard/proyecto");
+}

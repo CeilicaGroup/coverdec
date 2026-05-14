@@ -25,6 +25,8 @@ import {
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
 import { AddTaskForm } from "./add-task-form";
+import { ProjectDangerZone } from "./project-danger-zone";
+import { Role } from "@/generated/prisma";
 
 export default async function ProjectDetailPage({
   params,
@@ -42,6 +44,14 @@ export default async function ProjectDetailPage({
   });
   if (!project) notFound();
 
+  const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+
+  const [timeEntries, orders] = await Promise.all([
+    prisma.timeEntry.count({ where: { projectId: id } }),
+    prisma.productionOrder.count({ where: { projectId: id } }),
+  ]);
+  const canHardDelete = timeEntries === 0 && orders === 0;
+
   const frameTypes = await prisma.frameType.findMany({
     where: { isActive: true },
     orderBy: { name: "asc" },
@@ -57,10 +67,20 @@ export default async function ProjectDetailPage({
         title={project.name}
         description={`${project.code} · ${project.client ?? project.obra ?? "Sin cliente"}`}
         actions={
-          <Button variant="outline" render={<Link href="/dashboard/proyectos" />}>
-            <ArrowLeft className="size-4 mr-1" />
-            Volver
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {canManage ? (
+              <ProjectDangerZone
+                projectId={project.id}
+                projectName={project.name}
+                isActive={project.isActive}
+                canHardDelete={canHardDelete}
+              />
+            ) : null}
+            <Button variant="outline" render={<Link href="/dashboard/proyectos" />}>
+              <ArrowLeft className="size-4 mr-1" />
+              Volver
+            </Button>
+          </div>
         }
       />
 

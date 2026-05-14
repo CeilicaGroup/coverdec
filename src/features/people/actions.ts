@@ -42,7 +42,7 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
 
 const specialtySchema = z.object({
   process: z.nativeEnum(ProcessCode),
-  mode: z.enum(["primary", "fallback", "other"]),
+  mode: z.enum(["responsable", "apoyo", "otra"]),
 });
 
 const savePersonSchema = z
@@ -75,8 +75,8 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
 
   const specialtyRows = data.specialties.map((s) => ({
     process: s.process,
-    isPrimary: s.mode === "primary",
-    isFallback: s.mode === "fallback",
+    isPrimary: s.mode === "responsable",
+    isFallback: s.mode === "apoyo",
   }));
 
   try {
@@ -137,4 +137,29 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
   }
 
   revalidatePath("/dashboard/personal");
+}
+
+const deletePersonSchema = z.object({ personId: z.string().min(1) });
+
+export async function deletePerson(input: z.infer<typeof deletePersonSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const { personId } = deletePersonSchema.parse(input);
+
+  const [assignments, linkedUser] = await Promise.all([
+    prisma.planningAssignment.count({ where: { personId } }),
+    prisma.user.count({ where: { personId } }),
+  ]);
+
+  if (assignments > 0 || linkedUser > 0) {
+    throw new Error(
+      "ARCHIVE_ONLY: Hay planning histórico o un usuario vinculado. Solo se puede desactivar la persona.",
+    );
+  }
+
+  await prisma.person.delete({ where: { id: personId } });
+  log.info({ personId }, "person deleted");
+  revalidatePath("/dashboard/personal");
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
 }

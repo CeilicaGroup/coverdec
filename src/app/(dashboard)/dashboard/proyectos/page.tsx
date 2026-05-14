@@ -3,6 +3,7 @@ import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "../../_components/page-header";
 import { CreateProjectDialog } from "./create-project-dialog";
+import { ProjectRowActions } from "./project-row-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -20,9 +21,12 @@ import {
 } from "@/lib/format";
 import { RiskBadge } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
+import { Role } from "@/generated/prisma";
 
 export default async function ProyectosPage() {
   const ctx = await requireDashboardContext();
+  const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+
   const projects = await prisma.project.findMany({
     where: { empresaId: ctx.empresaId },
     include: {
@@ -31,6 +35,29 @@ export default async function ProyectosPage() {
     },
     orderBy: [{ isActive: "desc" }, { deliveryDate: { sort: "asc", nulls: "last" } }],
   });
+
+  const projectIds = projects.map((p) => p.id);
+  const blocksProject = new Set<string>();
+  if (projectIds.length > 0) {
+    const [teRows, poRows] = await Promise.all([
+      prisma.timeEntry.groupBy({
+        by: ["projectId"],
+        where: { projectId: { in: projectIds } },
+        _count: { _all: true },
+      }),
+      prisma.productionOrder.groupBy({
+        by: ["projectId"],
+        where: { projectId: { in: projectIds } },
+        _count: { _all: true },
+      }),
+    ]);
+    for (const r of teRows) {
+      if (r.projectId) blocksProject.add(r.projectId);
+    }
+    for (const r of poRows) {
+      blocksProject.add(r.projectId);
+    }
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -52,6 +79,7 @@ export default async function ProyectosPage() {
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
                 <TableHead>Facturable</TableHead>
+                {canManage ? <TableHead className="w-[88px] text-right">Acciones</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -60,6 +88,7 @@ export default async function ProyectosPage() {
                 const estimated = p.tasks.reduce((acc, t) => acc + t.estimatedHours, 0);
                 const done = p.tasks.reduce((acc, t) => acc + t.doneHours, 0);
                 const pct = estimated > 0 ? Math.round((done / estimated) * 100) : 0;
+                const canHardDelete = !blocksProject.has(p.id);
                 return (
                   <TableRow key={p.id} className={p.isActive ? "" : "opacity-50"}>
                     <TableCell>
@@ -101,6 +130,16 @@ export default async function ProyectosPage() {
                         </Badge>
                       )}
                     </TableCell>
+                    {canManage ? (
+                      <TableCell className="text-right p-1">
+                        <ProjectRowActions
+                          projectId={p.id}
+                          projectName={p.name}
+                          isActive={p.isActive}
+                          canHardDelete={canHardDelete}
+                        />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 );
               })}

@@ -99,3 +99,24 @@ export async function setFrameTypeActive(input: z.infer<typeof setActiveSchema>)
   });
   revalidatePath("/dashboard/catalogo");
 }
+
+const deleteFrameSchema = z.object({ frameTypeId: z.string().min(1) });
+
+export async function deleteFrameType(input: z.infer<typeof deleteFrameSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const { frameTypeId } = deleteFrameSchema.parse(input);
+
+  const lamps = await prisma.lamp.count({ where: { frameTypeId } });
+  if (lamps > 0) {
+    throw new Error(
+      "ARCHIVE_ONLY: Hay lámparas que usan este bastidor. Solo se puede archivar.",
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.frameTypeProcess.deleteMany({ where: { frameTypeId } }),
+    prisma.frameType.delete({ where: { id: frameTypeId } }),
+  ]);
+  revalidatePath("/dashboard/catalogo");
+}

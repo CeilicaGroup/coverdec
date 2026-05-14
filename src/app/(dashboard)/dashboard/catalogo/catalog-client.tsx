@@ -33,9 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Archive } from "lucide-react";
 import { toast } from "sonner";
-import { setFrameTypeActive, upsertFrameType } from "@/features/catalog/actions";
+import { deleteFrameType, setFrameTypeActive, upsertFrameType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/generated/prisma";
 
 interface ProcessDefOption {
@@ -57,6 +57,7 @@ interface FrameRow {
   description: string | null;
   isActive: boolean;
   processes: FrameProcessRow[];
+  lampCount: number;
 }
 
 type DialogMode = "create" | "edit";
@@ -214,6 +215,36 @@ export function CatalogoCatalogClient({
     });
   }
 
+  function formatActionError(err: unknown): string {
+    if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
+      return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
+    }
+    return err instanceof Error ? err.message : "Error";
+  }
+
+  function hardDelete(frame: FrameRow) {
+    if (frame.lampCount > 0) {
+      toast.error("Hay lámparas vinculadas. Solo puedes archivar el bastidor.");
+      return;
+    }
+    if (
+      !globalThis.confirm(
+        `¿Eliminar definitivamente el bastidor «${frame.name}» (${frame.code})?`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await deleteFrameType({ frameTypeId: frame.id });
+        toast.success("Bastidor eliminado");
+        router.refresh();
+      } catch (e) {
+        toast.error(formatActionError(e));
+      }
+    });
+  }
+
   return (
     <>
       <PageHeader
@@ -238,7 +269,7 @@ export function CatalogoCatalogClient({
                 <TableHead>Nombre</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Procesos</TableHead>
-                {canManage ? <TableHead className="w-[120px]" /> : null}
+                {canManage ? <TableHead className="w-[152px] text-right">Acciones</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -293,7 +324,7 @@ export function CatalogoCatalogClient({
                           size="icon"
                           className="size-8"
                           onClick={() => openEdit(f)}
-                          aria-label="Editar"
+                          aria-label="Editar bastidor"
                         >
                           <Pencil className="size-3.5" />
                         </Button>
@@ -304,9 +335,9 @@ export function CatalogoCatalogClient({
                             size="icon"
                             className="size-8 text-muted-foreground"
                             onClick={() => archive(f)}
-                            aria-label="Archivar"
+                            aria-label="Archivar bastidor"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Archive className="size-3.5" />
                           </Button>
                         ) : (
                           <Button
@@ -319,6 +350,22 @@ export function CatalogoCatalogClient({
                             Reactivar
                           </Button>
                         )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive disabled:opacity-40"
+                          disabled={f.lampCount > 0}
+                          onClick={() => hardDelete(f)}
+                          title={
+                            f.lampCount > 0
+                              ? "Solo archivar: hay lámparas que usan este bastidor"
+                              : "Eliminar del todo"
+                          }
+                          aria-label="Eliminar bastidor"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
                       </TableCell>
                     ) : null}
                   </TableRow>

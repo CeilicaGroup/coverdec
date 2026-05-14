@@ -135,7 +135,7 @@ export function DashboardShell({
                     const active =
                       "exact" in item && item.exact
                         ? pathname === item.href
-                        : pathname.startsWith(item.href);
+                        : pathname === item.href || pathname.startsWith(`${item.href}/`);
                     const Icon = item.icon;
                     return (
                       <Link
