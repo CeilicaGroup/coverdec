@@ -52,36 +52,30 @@ export function GenerateButton({
   };
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-2">
-        <Button onClick={onGenerate} disabled={pending} className="gap-2">
-          {pending ? (
+    <div className="flex items-center gap-2">
+      <Button onClick={onGenerate} disabled={pending} className="gap-2">
+        {pending ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Sparkles className="size-4" />
+        )}
+        {planningId ? "Regenerar" : "Generar planning"}
+      </Button>
+      {planningId && planningStatus === "DRAFT" && (
+        <Button
+          onClick={onPublish}
+          disabled={publishing}
+          variant="outline"
+          className="gap-2"
+        >
+          {publishing ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            <Sparkles className="size-4" />
+            <CheckCircle2 className="size-4" />
           )}
-          {planningId ? "Regenerar" : "Generar planning"}
+          Publicar
         </Button>
-        {planningId && planningStatus === "DRAFT" && (
-          <Button
-            onClick={onPublish}
-            disabled={publishing}
-            variant="outline"
-            className="gap-2"
-          >
-            {publishing ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-4" />
-            )}
-            Publicar
-          </Button>
-        )}
-      </div>
-      <p className="text-[10px] text-muted-foreground max-w-[280px] text-right leading-snug">
-        Las horas se comprometen al generar. La semana siguiente solo se puede generar si la anterior
-        tiene al menos 40 h planificadas (suma de asignaciones).
-      </p>
+      )}
     </div>
   );
 }

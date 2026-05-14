@@ -27,10 +27,9 @@ Reglas principales cubiertas por el motor: orden de tareas (entrega, prioridad, 
 
 Tests de referencia: [`src/features/planning/engine/__tests__/scheduler.test.ts`](src/features/planning/engine/__tests__/scheduler.test.ts).
 
-## Planning: compromiso de horas y orden por semanas
+## Planning: compromiso de horas
 
-- Al **generar** (o regenerar) un planning en borrador, las horas de cada `PlanningAssignment` se **descuentan** de `Task.pendingHours` en la misma transacción. Si se vuelve a generar la misma semana, primero se **restaurán** las horas de las asignaciones anteriores de ese planning y luego se aplican las nuevas.
-- Solo se puede generar la **semana ISO siguiente** si existe un planning para la semana anterior **y** la suma de horas de sus asignaciones es **≥ 40 h** (constante `MIN_PLANNED_HOURS_PREVIOUS_WEEK` en [`service.ts`](src/features/planning/service.ts)). Si no hay planning de la semana anterior, se permite generar (arranque de la cadena).
+Al **generar** (o regenerar) un planning en borrador, las horas de cada `PlanningAssignment` se **descuentan** de `Task.pendingHours` en la misma transacción. Si se vuelve a generar la misma semana, primero se **restauran** las horas de las asignaciones anteriores de ese planning y luego se aplican las nuevas.
 
 ## Auth y roles
 

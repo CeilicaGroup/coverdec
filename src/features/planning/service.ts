@@ -8,15 +8,12 @@ import type {
   EngineAbsence,
 } from "./engine/types";
 import { PlanningStatus, type ProcessCode } from "@/generated/prisma";
-import { getMondayOf, isoWeek, shiftWeek } from "@/lib/week";
+import { getMondayOf, isoWeek } from "@/lib/week";
 
 const log = childLogger({ module: "planning.service" });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ENGINE_HORIZON_DAYS = 5;
-
-/** Horas planificadas mínimas en la semana ISO anterior para poder generar la siguiente. */
-export const MIN_PLANNED_HOURS_PREVIOUS_WEEK = 40;
 
 export interface GeneratePlanningArgs {
   empresaId: string;
@@ -31,37 +28,6 @@ export interface GeneratedPlanning {
   assignmentsCount: number;
 }
 
-async function assertPreviousWeekMeetsHourGate(
-  empresaId: string,
-  weekStartMonday: Date,
-): Promise<void> {
-  const prevMonday = shiftWeek(weekStartMonday, -1);
-  const { year: prevYear, week: prevWeek } = isoWeek(prevMonday);
-
-  const prevPlanning = await prisma.planning.findUnique({
-    where: {
-      empresaId_year_week: { empresaId, year: prevYear, week: prevWeek },
-    },
-    select: { id: true },
-  });
-
-  if (!prevPlanning) {
-    return;
-  }
-
-  const agg = await prisma.planningAssignment.aggregate({
-    where: { planningId: prevPlanning.id },
-    _sum: { hours: true },
-  });
-  const total = agg._sum.hours ?? 0;
-  if (total < MIN_PLANNED_HOURS_PREVIOUS_WEEK - 1e-6) {
-    throw new Error(
-      `La semana anterior (semana ${prevWeek} de ${prevYear}) tiene ${total.toFixed(1)} h planificadas. ` +
-        `Hacen falta al menos ${MIN_PLANNED_HOURS_PREVIOUS_WEEK} h antes de generar esta semana.`,
-    );
-  }
-}
-
 export async function generatePlanning(
   args: GeneratePlanningArgs,
 ): Promise<GeneratedPlanning> {
@@ -69,8 +35,6 @@ export async function generatePlanning(
   const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
   const { year, week } = isoWeek(weekStart);
   log.info({ empresaId: args.empresaId, year, week }, "generate planning start");
-
-  await assertPreviousWeekMeetsHourGate(args.empresaId, weekStart);
 
   const [processes, peopleRaw, absencesRaw, holidaysRaw] = await Promise.all([
     prisma.processDefinition.findMany(),
