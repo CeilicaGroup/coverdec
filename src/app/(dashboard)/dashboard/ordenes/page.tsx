@@ -21,13 +21,12 @@ export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
   const [orders, projects, processDefs] = await Promise.all([
     prisma.productionOrder.findMany({
-      where: { empresaId: ctx.empresaId },
       include: { project: true },
       orderBy: [{ year: "desc" }, { serial: "desc" }],
       take: 200,
     }),
     prisma.project.findMany({
-      where: { empresaId: ctx.empresaId, isActive: true },
+      where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

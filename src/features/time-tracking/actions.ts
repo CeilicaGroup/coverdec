@@ -6,29 +6,22 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import type { Prisma } from "@/generated/prisma";
-import {TimeEntrySource } from "@/generated/prisma";
+import { TimeEntrySource } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
 async function creditWorkOnTask(
   tx: Prisma.TransactionClient,
-  params: {
-    empresaId: string;
-    taskId: string | null | undefined;
-    hours: number;
-  },
+  params: { taskId: string | null | undefined; hours: number },
 ) {
   if (!params.taskId || params.hours <= 0) return;
   const task = await tx.task.findFirst({
-    where: { id: params.taskId, project: { empresaId: params.empresaId } },
+    where: { id: params.taskId },
     select: { id: true, doneHours: true, pendingHours: true },
   });
   if (!task) {
-    log.warn(
-      { taskId: params.taskId, empresaId: params.empresaId },
-      "time entry task missing or outside tenant; skipping task hour sync",
-    );
+    log.warn({ taskId: params.taskId }, "time entry task not found; skipping task hour sync");
     return;
   }
   await tx.task.update({
@@ -42,22 +35,15 @@ async function creditWorkOnTask(
 
 async function reverseWorkOnTask(
   tx: Prisma.TransactionClient,
-  params: {
-    empresaId: string;
-    taskId: string | null | undefined;
-    hours: number;
-  },
+  params: { taskId: string | null | undefined; hours: number },
 ) {
   if (!params.taskId || params.hours <= 0) return;
   const task = await tx.task.findFirst({
-    where: { id: params.taskId, project: { empresaId: params.empresaId } },
+    where: { id: params.taskId },
     select: { id: true, doneHours: true, pendingHours: true },
   });
   if (!task) {
-    log.warn(
-      { taskId: params.taskId, empresaId: params.empresaId },
-      "delete time entry: task missing or outside tenant; skipping task hour sync",
-    );
+    log.warn({ taskId: params.taskId }, "delete time entry: task not found; skipping task hour sync");
     return;
   }
   await tx.task.update({
@@ -101,7 +87,6 @@ export async function startTimer(input: z.infer<typeof startSchema>) {
   }
   await prisma.timeEntry.create({
     data: {
-      empresaId: ctx.empresaId,
       userId: ctx.userId,
       projectId: data.projectId,
       lampId: data.lampId,
@@ -132,11 +117,7 @@ export async function stopTimer(input: z.infer<typeof stopSchema>) {
       where: { id: entry.id },
       data: { endedAt, hours },
     });
-    await creditWorkOnTask(tx, {
-      empresaId: ctx.empresaId,
-      taskId: entry.taskId,
-      hours,
-    });
+    await creditWorkOnTask(tx, { taskId: entry.taskId, hours });
   });
   log.info({ entryId: entry.id, hours }, "timer stopped");
   revalidateHorasAndLoad();
@@ -168,7 +149,6 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.create({
       data: {
-        empresaId: ctx.empresaId,
         userId: ctx.userId,
         projectId: data.projectId,
         lampId: data.lampId,
@@ -181,11 +161,7 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
         notes: data.notes,
       },
     });
-    await creditWorkOnTask(tx, {
-      empresaId: ctx.empresaId,
-      taskId: data.taskId,
-      hours: data.hours,
-    });
+    await creditWorkOnTask(tx, { taskId: data.taskId, hours: data.hours });
   });
   revalidateHorasAndLoad();
 }
@@ -204,11 +180,7 @@ export async function deleteEntry(input: z.infer<typeof deleteSchema>) {
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.delete({ where: { id: entry.id } });
     if (entry.endedAt && hours > 0) {
-      await reverseWorkOnTask(tx, {
-        empresaId: ctx.empresaId,
-        taskId: entry.taskId,
-        hours,
-      });
+      await reverseWorkOnTask(tx, { taskId: entry.taskId, hours });
     }
   });
   revalidateHorasAndLoad();

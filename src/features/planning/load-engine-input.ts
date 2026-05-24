@@ -132,7 +132,7 @@ export function buildFixedAssignmentsFromPrevious(
 }
 
 export async function loadSolverInput(args: {
-  empresaId: string;
+  naveId: string;
   weekStart: Date;
   weekEnd: Date;
   planFrom?: PlanFrom;
@@ -164,7 +164,7 @@ export async function loadSolverInput(args: {
   ] = await Promise.all([
     prisma.processDefinition.findMany(),
     prisma.person.findMany({
-      where: { isActive: true },
+      where: { naveId: args.naveId, isActive: true },
       include: {
         specialties: true,
         workWindows: true,
@@ -182,10 +182,11 @@ export async function loadSolverInput(args: {
         ],
       },
     }),
-    getPlanningWeights(args.empresaId),
+    getPlanningWeights(args.naveId),
     prisma.task.findMany({
       where: {
-        project: { empresaId: args.empresaId, isActive: true },
+        naveId: args.naveId,
+        project: { isActive: true },
       },
       include: {
         project: {
@@ -195,7 +196,6 @@ export async function loadSolverInput(args: {
     }),
     prisma.timeEntry.findMany({
       where: {
-        empresaId: args.empresaId,
         startedAt: { gte: weekStart, lte: args.weekEnd },
         endedAt: { not: null },
       },

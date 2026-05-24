@@ -1,7 +1,6 @@
-// Schema CoverDec MVP — multiempresa compartida
-// Reglas clave:
-// - Empresa es un tenant lógico para Project / Planning / TimeEntry / ProductionOrder / FactoryItem.
-// - Person, ProcessDefinition, FrameType, Holiday son globales del grupo (un único equipo productivo en nave Silla).
+// Schema CoverDec MVP
+// Person, ProcessDefinition, FrameType, Holiday son globales.
+// Planning y PlanningPolicy son por nave. El resto es global.
 
 generator client {
   provider = "prisma-client-js"
@@ -43,30 +42,26 @@ enum FactoryStatus {
   ENVIADO
 }
 
-// ---------- Tenants ----------
+// ---------- Naves (talleres físicos, global) ----------
 
-model Empresa {
-  id        String   @id @default(cuid())
-  nombre    String   @unique
-  razonSocial String  @unique
-  marca     String?
-  logoUrl   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Nave {
+  id       String  @id @default(cuid())
+  codigo   String  @unique
+  nombre   String
+  isActive Boolean @default(true)
 
-  memberships   Membership[]
-  projects      Project[]
-  plannings     Planning[]
-  planningPolicy PlanningPolicy?
-  productionOrders ProductionOrder[]
-  factoryItems  FactoryItem[]
-  timeEntries   TimeEntry[]
+  tasks          Task[]
+  users          User[]          @relation("AssignedNave")
+  activeUsers    User[]          @relation("ActiveNave")
+  people         Person[]        @relation("NavePeople")
+  plannings      Planning[]      @relation("NavePlannings")
+  planningPolicy PlanningPolicy? @relation("NavePolicy")
 }
 
-/// Pesos multi-objetivo del motor CP-SAT (1:1 con empresa).
+/// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
 model PlanningPolicy {
   id             String   @id @default(cuid())
-  empresaId      String   @unique
+  naveId         String   @unique
   wLate          Float    @default(1)
   wUnscheduled   Float    @default(1)
   wLoadBalance   Float    @default(1)
@@ -75,7 +70,7 @@ model PlanningPolicy {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nave Nave @relation("NavePolicy", fields: [naveId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Auth (better-auth schema) ----------
@@ -87,16 +82,18 @@ model User {
   emailVerified Boolean   @default(false)
   image         String?
   role          Role      @default(OPERARIO)
-  activeEmpresaId String?
   personId      String?   @unique
+  naveId        String?
+  activeNaveId  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   sessions    Session[]
   accounts    Account[]
-  memberships Membership[]
   person      Person?      @relation(fields: [personId], references: [id])
   timeEntries TimeEntry[]
+  nave        Nave?        @relation("AssignedNave", fields: [naveId], references: [id])
+  activeNave  Nave?        @relation("ActiveNave", fields: [activeNaveId], references: [id])
 }
 
 model Session {
@@ -137,18 +134,6 @@ model Verification {
   updatedAt  DateTime @updatedAt
 }
 
-model Membership {
-  id        String  @id @default(cuid())
-  userId    String
-  empresaId String
-  role      Role    @default(OPERARIO)
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@unique([userId, empresaId])
-}
-
 // ---------- Equipo productivo (global) ----------
 
 model Person {
@@ -161,11 +146,13 @@ model Person {
   hourlyRate         Decimal  @default(14.75) @db.Decimal(10, 2)
   overtimeHourlyRate Decimal  @default(22.13) @db.Decimal(10, 2)
   isActive           Boolean  @default(true)
+  naveId             String
   notes              String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   user               User?
+  nave               Nave     @relation("NavePeople", fields: [naveId], references: [id])
   specialties        PersonSpecialty[]
   absences           Absence[]
   assignments        PlanningAssignment[]
@@ -274,8 +261,7 @@ model FrameTypeProcess {
 
 model Project {
   id          String    @id @default(cuid())
-  empresaId   String
-  code        String
+  code        String    @unique
   name        String
   client      String?
   obra        String?
@@ -287,13 +273,10 @@ model Project {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   lamps   Lamp[]
   tasks   Task[]
   timeEntries TimeEntry[]
   productionOrders ProductionOrder[]
-
-  @@unique([empresaId, code])
 }
 
 model Lamp {
@@ -327,6 +310,7 @@ model Task {
   doneHours     Float  @default(0)
   order         Int    @default(0)
   isLocked      Boolean @default(false)
+  naveId        String
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -334,6 +318,7 @@ model Task {
   project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   lamp               Lamp                @relation(fields: [lampId], references: [id], onDelete: Cascade)
   processDefinition  ProcessDefinition   @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  nave               Nave                @relation(fields: [naveId], references: [id])
   assignments        PlanningAssignment[]
   timeEntries         TimeEntry[]
 }
@@ -342,7 +327,7 @@ model Task {
 
 model Planning {
   id          String         @id @default(cuid())
-  empresaId   String
+  naveId      String
   year        Int
   week        Int
   weekStart   DateTime
@@ -353,10 +338,10 @@ model Planning {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  empresa     Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nave        Nave                @relation("NavePlannings", fields: [naveId], references: [id], onDelete: Cascade)
   assignments PlanningAssignment[]
 
-  @@unique([empresaId, year, week])
+  @@unique([naveId, year, week])
 }
 
 model PlanningAssignment {
@@ -412,7 +397,6 @@ model Holiday {
 
 model TimeEntry {
   id         String           @id @default(cuid())
-  empresaId  String
   userId     String
   projectId  String?
   lampId     String?
@@ -426,21 +410,19 @@ model TimeEntry {
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
-  empresa            Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   user                 User               @relation(fields: [userId], references: [id])
   project              Project?           @relation(fields: [projectId], references: [id])
   lamp                 Lamp?              @relation(fields: [lampId], references: [id])
   task                 Task?              @relation(fields: [taskId], references: [id])
   processDefinition    ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
-  @@index([empresaId, userId, startedAt])
+  @@index([userId, startedAt])
 }
 
 // ---------- Órdenes de producción ----------
 
 model ProductionOrder {
   id         String   @id @default(cuid())
-  empresaId  String
   number     String   @unique
   year       Int
   serial     Int
@@ -452,18 +434,16 @@ model ProductionOrder {
   notes      String?
   createdAt  DateTime @default(now())
 
-  empresa            Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   project              Project            @relation(fields: [projectId], references: [id])
   processDefinition    ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
-  @@unique([empresaId, year, serial])
+  @@unique([year, serial])
 }
 
 // ---------- Fábrica ----------
 
 model FactoryItem {
   id          String         @id @default(cuid())
-  empresaId   String
   code        String?
   product     String
   client      String?
@@ -476,7 +456,5 @@ model FactoryItem {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-
-  @@index([empresaId, status])
+  @@index([status])
 }

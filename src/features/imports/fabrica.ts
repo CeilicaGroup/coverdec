@@ -9,7 +9,6 @@ const log = childLogger({ module: "import.fabrica" });
 
 const argsSchema = z.object({
   filePath: z.string().min(1),
-  empresaId: z.string().min(1),
 });
 
 export interface FabricaSummary {
@@ -42,9 +41,8 @@ function mapStatus(raw: string | null): FactoryStatus {
 
 export async function importFabrica(args: {
   filePath: string;
-  empresaId: string;
 }): Promise<FabricaSummary> {
-  const { filePath, empresaId } = argsSchema.parse(args);
+  const { filePath } = argsSchema.parse(args);
   const summary: FabricaSummary = {
     items: { created: 0, updated: 0, skipped: 0 },
     warnings: [],
@@ -73,7 +71,7 @@ export async function importFabrica(args: {
     return summary;
   }
 
-  log.info({ filePath, empresaId, headerRow }, "fabrica import start");
+  log.info({ filePath, headerRow }, "fabrica import start");
 
   for (let r = headerRow + 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
@@ -103,7 +101,7 @@ export async function importFabrica(args: {
     // Deduplicate by stable composite key: code if present, else row index suffix.
     const stableCode = codigo ?? `row-${r}`;
     const existing = await prisma.factoryItem.findFirst({
-      where: { empresaId, code: stableCode },
+      where: { code: stableCode },
     });
 
     if (existing) {
@@ -123,7 +121,6 @@ export async function importFabrica(args: {
     } else {
       await prisma.factoryItem.create({
         data: {
-          empresaId,
           code: stableCode,
           product: productName,
           obra: proyecto ?? undefined,

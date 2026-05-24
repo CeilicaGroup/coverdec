@@ -30,7 +30,14 @@ import {
   updateTaskHours,
   updateTaskNotes,
 } from "@/features/projects/actions";
+import { updateTaskNave } from "@/features/naves/actions";
 import { toast } from "sonner";
+
+interface NaveSummary {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
 
 interface LampTaskRow {
   id: string;
@@ -40,6 +47,7 @@ interface LampTaskRow {
   pendingHours: number;
   order: number;
   notes: string | null;
+  naveId: string | null;
 }
 
 export function LampTasksPanel({
@@ -48,18 +56,21 @@ export function LampTasksPanel({
   usedProcesses,
   waitHoursByProcess,
   canManage,
+  naves = [],
 }: {
   lampId: string;
   tasks: LampTaskRow[];
   usedProcesses: ProcessCode[];
   waitHoursByProcess: Record<string, number>;
   canManage: boolean;
+  naves?: NaveSummary[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editTask, setEditTask] = useState<LampTaskRow | null>(null);
   const [editHours, setEditHours] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editNaveId, setEditNaveId] = useState<string>("none");
   const [addOpen, setAddOpen] = useState(false);
   const [addProcess, setAddProcess] = useState("");
   const [addHours, setAddHours] = useState("");
@@ -128,6 +139,7 @@ export function LampTasksPanel({
                         setEditTask(t);
                         setEditHours(String(t.estimatedHours));
                         setEditNotes(t.notes ?? "");
+                        setEditNaveId(t.naveId ?? "none");
                       }}
                       aria-label="Editar tarea"
                     >
@@ -200,6 +212,10 @@ export function LampTasksPanel({
                   toast.error("Horas inválidas");
                   return;
                 }
+                if (naves.length > 0 && (!editNaveId || editNaveId === "none")) {
+                  toast.error("Selecciona una nave");
+                  return;
+                }
                 startTransition(async () => {
                   try {
                     await updateTaskHours({
@@ -210,6 +226,9 @@ export function LampTasksPanel({
                       taskId: editTask.id,
                       notes: editNotes.trim() || null,
                     });
+                    if (editNaveId && editNaveId !== "none") {
+                      await updateTaskNave(editTask.id, editNaveId);
+                    }
                     toast.success("Tarea actualizada");
                     setEditTask(null);
                     router.refresh();
@@ -241,6 +260,24 @@ export function LampTasksPanel({
                   rows={2}
                 />
               </div>
+              {naves.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Nave</Label>
+                  <Select value={editNaveId} onValueChange={(v) => setEditNaveId(v ?? "none")}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sin asignar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {naves.map((n) => (
+                        <SelectItem key={n.id} value={n.id}>
+                          {n.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <DialogFooter>
                 <Button type="submit" disabled={pending}>
                   Guardar

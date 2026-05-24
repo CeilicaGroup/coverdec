@@ -6,6 +6,13 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { requireDashboardContext } from "@/lib/context";
 import {
   formatWeekRange,
@@ -20,7 +27,7 @@ import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import {
   getAbsencesForRange,
   getActiveProjectsWithLoad,
-  getEmpresaPeople,
+  getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
   getPlanningWeights,
@@ -62,14 +69,37 @@ export default async function ResumenPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
+  if (!ctx.naveId) {
+    return (
+      <div className="p-6 lg:p-8">
+        <PageHeader
+          title="Planning"
+          description="Vista global activa — selecciona una nave para ver el planning"
+          actions={
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                  <Button size="sm" disabled>Generar plan</Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Selecciona una nave específica para generar el planning
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          }
+        />
+      </div>
+    );
+  }
+
   const [planning, people, projects, holidays, absences, planningWeights, processStyles] =
     await Promise.all([
-    getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
-    getEmpresaPeople(),
-    getActiveProjectsWithLoad(ctx.empresaId),
+    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
+    getNavePersonnel(ctx.naveId),
+    getActiveProjectsWithLoad(ctx.naveId),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
-    getPlanningWeights(ctx.empresaId),
+    getPlanningWeights(ctx.naveId),
     getProcessBadgeStylesByCode(),
   ]);
 
@@ -444,7 +474,7 @@ function Kpi({ label, value, sub, icon, highlight }: KpiProps) {
 
 function computeCapacity(
   days: Date[],
-  people: Awaited<ReturnType<typeof getEmpresaPeople>>,
+  people: Awaited<ReturnType<typeof getNavePersonnel>>,
   holidayDates: Set<string>,
   absences: Awaited<ReturnType<typeof getAbsencesForRange>>,
 ): { totalCapacity: number; byDay: Map<string, number> } {

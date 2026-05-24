@@ -1,4 +1,3 @@
-import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "../../_components/page-header";
 import { FactoryBoard } from "./factory-board";
@@ -22,9 +21,7 @@ const STATUS_LABEL: Record<FactoryStatus, string> = {
 };
 
 export default async function FabricaPage() {
-  const ctx = await requireDashboardContext();
   const items = await prisma.factoryItem.findMany({
-    where: { empresaId: ctx.empresaId },
     orderBy: [{ updatedAt: "desc" }],
     take: 600,
   });

@@ -16,6 +16,7 @@ import {
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
 import { LampTasksPanel } from "./lamp-tasks-panel";
+import { LampNaveAssign } from "./lamp-nave-assign";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
 import { EditProjectDialog } from "../edit-project-dialog";
@@ -29,12 +30,12 @@ export default async function ProjectDetailPage({
   const ctx = await requireDashboardContext();
   const { id } = await params;
   const project = await prisma.project.findFirst({
-    where: { id, empresaId: ctx.empresaId },
+    where: { id },
     include: {
       lamps: {
         include: {
           frameType: true,
-          tasks: { orderBy: { order: "asc" } },
+          tasks: { orderBy: { order: "asc" }, include: { nave: { select: { id: true } } } },
         },
         orderBy: { name: "asc" },
       },
@@ -50,7 +51,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [frameTypes, processDefs] = await Promise.all([
+  const [frameTypes, processDefs, naves] = await Promise.all([
     prisma.frameType.findMany({
       where: { isActive: true },
       include: {
@@ -63,6 +64,11 @@ export default async function ProjectDetailPage({
     }),
     prisma.processDefinition.findMany({
       select: { code: true, waitHours: true },
+    }),
+    prisma.nave.findMany({
+      where: { isActive: true },
+      orderBy: { codigo: "asc" },
+      select: { id: true, codigo: true, nombre: true },
     }),
   ]);
 
@@ -149,6 +155,7 @@ export default async function ProjectDetailPage({
             <div className="divide-y">
               {project.lamps.map((l) => {
                 const lampPending = l.tasks.reduce((a, t) => a + t.pendingHours, 0);
+                const lampNaveId = l.tasks.find((t) => t.naveId)?.naveId ?? null;
                 return (
                   <div key={l.id}>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
@@ -165,6 +172,13 @@ export default async function ProjectDetailPage({
                       <div className="text-xs font-mono ml-auto">
                         Pendiente: <span className="font-semibold">{formatHours(lampPending)}</span>
                       </div>
+                      {canManage && naves.length > 0 ? (
+                        <LampNaveAssign
+                          lampId={l.id}
+                          currentNaveId={lampNaveId}
+                          naves={naves}
+                        />
+                      ) : null}
                       {canManage ? (
                         <DeleteLampButton lampId={l.id} lampName={l.name} />
                       ) : null}
@@ -175,6 +189,7 @@ export default async function ProjectDetailPage({
                       usedProcesses={l.tasks.map((t) => t.process)}
                       waitHoursByProcess={waitHoursByProcess}
                       canManage={canManage}
+                      naves={naves}
                     />
                   </div>
                 );

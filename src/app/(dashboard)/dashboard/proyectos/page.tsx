@@ -28,7 +28,6 @@ export default async function ProyectosPage() {
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
 
   const projects = await prisma.project.findMany({
-    where: { empresaId: ctx.empresaId },
     include: {
       _count: { select: { lamps: true, tasks: true } },
       tasks: { select: { pendingHours: true, doneHours: true, estimatedHours: true } },

@@ -27,7 +27,7 @@ export default async function HorasPage() {
       take: 50,
     }),
     prisma.project.findMany({
-      where: { empresaId: ctx.empresaId, isActive: true },
+      where: { isActive: true },
       select: {
         id: true,
         name: true,

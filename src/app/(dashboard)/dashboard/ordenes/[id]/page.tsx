@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { formatHours, formatShortDate } from "@/lib/format";
@@ -12,13 +11,11 @@ export default async function OrdenDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const ctx = await requireDashboardContext();
   const { id } = await params;
   const order = await prisma.productionOrder.findFirst({
-    where: { id, empresaId: ctx.empresaId },
+    where: { id },
     include: {
       project: true,
-      empresa: true,
     },
   });
   if (!order) notFound();
@@ -40,7 +37,7 @@ export default async function OrdenDetailPage({
                 Coverdec Innovación SL
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                {order.empresa.razonSocial}
+                Coverdec Innovación SL
               </div>
             </div>
             <div className="text-right">
@@ -111,7 +108,7 @@ export default async function OrdenDetailPage({
           </section>
 
           <footer className="text-[9px] text-muted-foreground mt-10 text-center">
-            Coverdec Innovación SL · CIF B12345678 · {order.empresa.razonSocial}
+            Coverdec Innovación SL · CIF B12345678
           </footer>
         </div>
       </div>

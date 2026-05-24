@@ -46,9 +46,17 @@ export default async function ProyectoPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
+  if (!ctx.naveId) {
+    return (
+      <div className="p-6 lg:p-8">
+        <PageHeader title="Por proyecto" description="Selecciona una nave para ver el planning." />
+      </div>
+    );
+  }
+
   const [planning, projects, processByCode] = await Promise.all([
-    getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
-    getActiveProjectsWithLoad(ctx.empresaId),
+    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
+    getActiveProjectsWithLoad(ctx.naveId),
     getProcessDefinitionsByCode(),
   ]);
 

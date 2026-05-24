@@ -57,9 +57,9 @@ async function restoreAssignmentHoursToTasks(
   );
 }
 
-async function syncTaskPendingBeforeSolve(empresaId: string): Promise<void> {
+async function syncTaskPendingBeforeSolve(naveId: string): Promise<void> {
   const tasks = await prisma.task.findMany({
-    where: { project: { empresaId, isActive: true } },
+    where: { naveId, project: { isActive: true } },
     select: {
       id: true,
       pendingHours: true,
@@ -82,7 +82,7 @@ async function syncTaskPendingBeforeSolve(empresaId: string): Promise<void> {
 const ENGINE_HORIZON_DAYS = 5;
 
 export interface GeneratePlanningArgs {
-  empresaId: string;
+  naveId: string;
   weekStart: Date;
   replaceDraft?: boolean;
   planFrom?: PlanFrom;
@@ -103,11 +103,11 @@ export async function generatePlanning(
   const weekStart = getMondayOf(args.weekStart);
   const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
   const { year, week } = isoWeek(weekStart);
-  log.info({ empresaId: args.empresaId, year, week }, "generate planning start");
+  log.info({ naveId: args.naveId, year, week }, "generate planning start");
 
   const existing = await prisma.planning.findUnique({
     where: {
-      empresaId_year_week: { empresaId: args.empresaId, year, week },
+      naveId_year_week: { naveId: args.naveId, year, week },
     },
   });
 
@@ -128,11 +128,11 @@ export async function generatePlanning(
       await restoreAssignmentHoursToTasks(tx, existing.id);
     });
   } else {
-    await syncTaskPendingBeforeSolve(args.empresaId);
+    await syncTaskPendingBeforeSolve(args.naveId);
   }
 
   const engineInput = await loadSolverInput({
-    empresaId: args.empresaId,
+    naveId: args.naveId,
     weekStart,
     weekEnd,
     planFrom: args.planFrom,
@@ -156,7 +156,7 @@ export async function generatePlanning(
   const result = await runPlanningEngine(engineInput);
   log.info(
     {
-      empresaId: args.empresaId,
+      naveId: args.naveId,
       year,
       week,
       taskCount: engineInput.tasks.length,
@@ -193,7 +193,7 @@ export async function generatePlanning(
         })
         : await tx.planning.create({
           data: {
-            empresaId: args.empresaId,
+            naveId: args.naveId,
             year,
             week,
             weekStart,
@@ -260,18 +260,18 @@ export async function publishPlanning(planningId: string): Promise<void> {
 }
 
 export async function hasFuturePlannings(
-  empresaId: string,
+  naveId: string,
   weekStart: Date,
 ): Promise<boolean> {
   const monday = getMondayOf(weekStart);
   const count = await prisma.planning.count({
-    where: { empresaId, weekStart: { gt: monday } },
+    where: { naveId, weekStart: { gt: monday } },
   });
   return count > 0;
 }
 
 export async function undoPlanning(args: {
-  empresaId: string;
+  naveId: string;
   weekStart: Date;
 }): Promise<void> {
   const weekStart = getMondayOf(args.weekStart);
@@ -279,14 +279,14 @@ export async function undoPlanning(args: {
 
   const existing = await prisma.planning.findUnique({
     where: {
-      empresaId_year_week: { empresaId: args.empresaId, year, week },
+      naveId_year_week: { naveId: args.naveId, year, week },
     },
   });
   if (!existing) {
     throw new Error("No hay planning para esta semana.");
   }
 
-  if (await hasFuturePlannings(args.empresaId, weekStart)) {
+  if (await hasFuturePlannings(args.naveId, weekStart)) {
     throw new Error(
       "No se puede deshacer: hay plannings de semanas posteriores. Elimínalos primero.",
     );
@@ -301,7 +301,7 @@ export async function undoPlanning(args: {
   );
 
   log.info(
-    { empresaId: args.empresaId, year, week, planningId: existing.id },
+    { naveId: args.naveId, year, week, planningId: existing.id },
     "planning undone",
   );
 }

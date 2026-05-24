@@ -27,9 +27,10 @@ export async function generatePlanningAction(input: {
 }) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
   const { weekStart, planFrom } = generateSchema.parse(input);
   const result = await generatePlanning({
-    empresaId: ctx.empresaId,
+    naveId: ctx.naveId,
     weekStart: new Date(weekStart),
     replaceDraft: true,
     planFrom: planFrom as PlanFrom,
@@ -44,7 +45,10 @@ const publishSchema = z.object({ planningId: z.string().min(1) });
 export async function publishPlanningAction(input: { planningId: string }) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
   const { planningId } = publishSchema.parse(input);
+  const planning = await prisma.planning.findUnique({ where: { id: planningId }, select: { naveId: true } });
+  if (!planning || planning.naveId !== ctx.naveId) throw new Error("No autorizado");
   await publishPlanning(planningId);
   revalidatePath("/dashboard", "layout");
   return { ok: true };
@@ -55,9 +59,10 @@ const undoSchema = z.object({ weekStart: z.string().min(8) });
 export async function undoPlanningAction(input: { weekStart: string }) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
   const { weekStart } = undoSchema.parse(input);
   await undoPlanning({
-    empresaId: ctx.empresaId,
+    naveId: ctx.naveId,
     weekStart: new Date(weekStart),
   });
   revalidatePath("/dashboard", "layout");
@@ -70,19 +75,20 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
   isPublished: boolean;
 }> {
   const ctx = await requireDashboardContext();
+  if (!ctx.naveId) return { canUndo: false, hasFuturePlannings: false, isPublished: false };
   const weekStart = getMondayOf(new Date(weekStartIso));
   const { year, week } = isoWeek(weekStart);
 
   const planning = await prisma.planning.findUnique({
     where: {
-      empresaId_year_week: { empresaId: ctx.empresaId, year, week },
+      naveId_year_week: { naveId: ctx.naveId, year, week },
     },
   });
   if (!planning) {
     return { canUndo: false, hasFuturePlannings: false, isPublished: false };
   }
 
-  const future = await hasFuturePlannings(ctx.empresaId, weekStart);
+  const future = await hasFuturePlannings(ctx.naveId, weekStart);
   return {
     canUndo: !future,
     hasFuturePlannings: future,

@@ -26,12 +26,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Link2, Link2Off } from "lucide-react";
 import { toast } from "sonner";
 import { savePerson, deletePerson } from "@/features/people/actions";
 import { PersonScheduleDialog } from "./person-schedule-dialog";
 import { PersonAbsenceDialog } from "./person-absence-dialog";
-import type { Person, PersonSpecialty } from "@/generated/prisma";
+import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 
 interface ProcessDefOption {
@@ -53,12 +53,28 @@ interface AbsenceRow {
   blockEndMinutes: number | null;
 }
 
-type PersonWithSpecs = Person & {
+interface NaveSummary { id: string; codigo: string; nombre: string }
+interface UserSummary { id: string; name: string; email: string; personId: string | null }
+
+interface PersonWithSpecs {
+  id: string;
+  nombre: string;
+  alias: string | null;
+  iniciales: string;
+  color: string;
+  capacityHours: number;
+  hourlyRate: number;
+  overtimeHourlyRate: number;
+  isActive: boolean;
+  naveId: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
   specialties: PersonSpecialty[];
   canHardDelete: boolean;
   workWindows: WorkWindowRow[];
   absences: AbsenceRow[];
-};
+}
 
 type SpecMode = "ninguno" | "responsable" | "apoyo" | "otra";
 
@@ -76,10 +92,14 @@ export function PersonalTeamClient({
   people,
   processDefs,
   canManage,
+  naves = [],
+  users = [],
 }: {
   people: PersonWithSpecs[];
   processDefs: ProcessDefOption[];
   canManage: boolean;
+  naves?: NaveSummary[];
+  users?: UserSummary[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -93,11 +113,19 @@ export function PersonalTeamClient({
   const [overtimeHourlyRate, setOvertimeHourlyRate] = useState("22.13");
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [naveId, setNaveId] = useState<string>("none");
+  const [userId, setUserId] = useState<string>("none");
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
     emptySpecMap(processDefs),
   );
 
+  const [filterNave, setFilterNave] = useState<string>("all");
+
   const activeCount = useMemo(() => people.filter((p) => p.isActive).length, [people]);
+  const displayedPeople = useMemo(
+    () => filterNave === "all" ? people : people.filter((p) => p.naveId === filterNave),
+    [people, filterNave],
+  );
 
   function openCreate() {
     setEditingId(undefined);
@@ -109,6 +137,8 @@ export function PersonalTeamClient({
     setOvertimeHourlyRate("22.13");
     setNotes("");
     setIsActive(true);
+    setNaveId("none");
+    setUserId("none");
     setSpecMap(emptySpecMap(processDefs));
     setOpen(true);
   }
@@ -123,6 +153,9 @@ export function PersonalTeamClient({
     setOvertimeHourlyRate(String(p.overtimeHourlyRate));
     setNotes(p.notes ?? "");
     setIsActive(p.isActive);
+    setNaveId(p.naveId ?? "none");
+    const linked = users.find((u) => u.personId === p.id);
+    setUserId(linked?.id ?? "none");
     const next = emptySpecMap(processDefs);
     for (const s of p.specialties) {
       next[s.process] = modeFromSpecialty(s);
@@ -149,6 +182,14 @@ export function PersonalTeamClient({
           toast.error("Tarifas horarias inválidas");
           return;
         }
+        if (!naveId || naveId === "none") {
+          toast.error("Selecciona una nave");
+          return;
+        }
+        if (!userId || userId === "none") {
+          toast.error("Selecciona un usuario");
+          return;
+        }
         const specialties = processDefs
           .map((d) => {
             const m = specMap[d.code] ?? "ninguno";
@@ -170,6 +211,8 @@ export function PersonalTeamClient({
           overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
           isActive,
+          naveId,
+          userId,
           specialties,
         });
         toast.success(editingId ? "Persona actualizada" : "Persona creada");
@@ -228,8 +271,25 @@ export function PersonalTeamClient({
         }
       />
 
+      {naves.length > 1 && (
+        <div className="flex items-center gap-2 pb-1">
+          <span className="text-xs text-muted-foreground shrink-0">Nave:</span>
+          <Select value={filterNave} onValueChange={(v) => setFilterNave(v ?? "all")}>
+            <SelectTrigger className="h-8 w-52 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las naves</SelectItem>
+              {naves.map((n) => (
+                <SelectItem key={n.id} value={n.id}>{n.codigo} · {n.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {people.map((p) => {
+        {displayedPeople.map((p) => {
           const primary = p.specialties.filter((s) => s.isPrimary);
           const fallback = p.specialties.filter((s) => s.isFallback);
           const others = p.specialties.filter((s) => !s.isPrimary && !s.isFallback);
@@ -305,11 +365,33 @@ export function PersonalTeamClient({
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 py-3">
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-muted-foreground">Capacidad:</span>
                   <Badge variant="outline" className="font-mono">
                     {p.capacityHours}h/día
                   </Badge>
+                  {p.naveId && naves.length > 0 && (() => {
+                    const n = naves.find((n) => n.id === p.naveId);
+                    return n ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {n.codigo} · {n.nombre}
+                      </Badge>
+                    ) : null;
+                  })()}
+                  {(() => {
+                    const linkedUser = users.find((u) => u.personId === p.id);
+                    return linkedUser ? (
+                      <Badge variant="outline" className="text-[10px] gap-1">
+                        <Link2 className="size-2.5" />
+                        {linkedUser.email}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="text-[10px] gap-1">
+                        <Link2Off className="size-2.5" />
+                        Sin usuario
+                      </Badge>
+                    );
+                  })()}
                 </div>
                 {primary.length > 0 && (
                   <div>
@@ -423,6 +505,46 @@ export function PersonalTeamClient({
                 disabled={pending}
               />
             </div>
+            {naves.length > 0 && (
+              <div className="space-y-2">
+                <Label>Nave</Label>
+                <Select value={naveId} onValueChange={(v) => v && setNaveId(v)} disabled={pending}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin asignar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin asignar</SelectItem>
+                    {naves.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>{n.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {canManage && users.length > 0 && (() => {
+              const availableUsers = users.filter((u) => u.personId === null || u.personId === editingId);
+              return (
+                <div className="space-y-2">
+                  <Label>Usuario de acceso <span className="text-destructive">*</span></Label>
+                  <Select
+                    value={userId}
+                    onValueChange={(v) => v && setUserId(v)}
+                    disabled={pending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un usuario…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUsers.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name} — {u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
             {editingId ? (
               <div className="flex items-center gap-2">
                 <Checkbox

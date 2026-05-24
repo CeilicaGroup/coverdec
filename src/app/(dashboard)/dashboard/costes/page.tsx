@@ -7,9 +7,11 @@ import {
   parseWeekParam,
 } from "@/lib/week";
 import {
-  getEmpresaPeople,
+  getNavePersonnel,
+  getHolidaysForRange,
   getPlanningForWeek,
 } from "@/features/planning/queries";
+import { cn } from "@/lib/utils";
 import { Role } from "@/generated/prisma";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
@@ -35,10 +37,22 @@ export default async function CostesPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  const [planning, people] = await Promise.all([
-    getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
-    getEmpresaPeople(),
+  if (!ctx.naveId) {
+    return (
+      <div className="p-6 lg:p-8">
+        <PageHeader title="Costes" description="Selecciona una nave para ver el planning." />
+      </div>
+    );
+  }
+
+  const weekMon = getMondayOf(weekStart);
+  const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
+  const [planning, people, holidays] = await Promise.all([
+    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
+    getNavePersonnel(ctx.naveId),
+    getHolidaysForRange(weekMon, weekFri),
   ]);
+  const workDays = Math.max(1, 5 - holidays.length);
 
   const byProject = new Map<
     string,
@@ -180,18 +194,27 @@ export default async function CostesPage({
                 <TableHead>Operario</TableHead>
                 <TableHead>Horas normales</TableHead>
                 <TableHead>Coste</TableHead>
+                <TableHead>Rendimiento</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {people.map((p) => {
                 const row = byPerson.get(p.id);
-                const total = row?.hours ?? 0;
+                const assignedHours = row?.hours ?? 0;
+                const availableHours = p.capacityHours * workDays;
+                const rendimiento = availableHours > 0 ? (assignedHours / availableHours) * 100 : 0;
+                const rendimientoColor =
+                  rendimiento >= 80 ? "text-emerald-600" :
+                  rendimiento >= 50 ? "text-amber-600" : "text-red-600";
                 return (
                   <TableRow key={p.id}>
                     <TableCell>{p.nombre}</TableCell>
-                    <TableCell className="font-mono">{formatHours(total)}</TableCell>
+                    <TableCell className="font-mono">{formatHours(assignedHours)}</TableCell>
                     <TableCell className="font-mono">
                       {formatEuros(row?.cost ?? 0)}
+                    </TableCell>
+                    <TableCell className={cn("font-mono font-semibold", rendimientoColor)}>
+                      {availableHours > 0 ? `${Math.round(rendimiento)}%` : "—"}
                     </TableCell>
                   </TableRow>
                 );

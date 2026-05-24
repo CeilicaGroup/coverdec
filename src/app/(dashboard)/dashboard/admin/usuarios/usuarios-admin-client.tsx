@@ -1,0 +1,229 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Pencil, UserCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import { createUser, updateUser } from "@/features/admin/users-actions";
+
+interface UserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  nave: { id: string; codigo: string; nombre: string } | null;
+}
+
+interface NaveOption { id: string; codigo: string; nombre: string }
+
+const ROLES = [
+  { value: "ADMIN", label: "Admin" },
+  { value: "JEFE_PRODUCCION", label: "Jefe de producción" },
+  { value: "OPERARIO", label: "Operario" },
+] as const;
+
+type FormState = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  naveId: string;
+};
+
+const emptyForm = (): FormState => ({
+  name: "",
+  email: "",
+  password: "",
+  role: "OPERARIO",
+  naveId: "none",
+});
+
+export function UsuariosAdminClient({
+  users,
+  naves,
+}: {
+  users: UserRow[];
+  naves: NaveOption[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editUserId, setEditUserId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm());
+
+  const openCreate = () => {
+    setForm(emptyForm());
+    setEditUserId(null);
+    setDialogMode("create");
+  };
+
+  const openEdit = (u: UserRow) => {
+    setForm({
+      name: u.name,
+      email: u.email,
+      password: "",
+      role: u.role,
+      naveId: u.nave?.id ?? "none",
+    });
+    setEditUserId(u.id);
+    setDialogMode("edit");
+  };
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const naveId = form.naveId === "none" ? null : form.naveId;
+    startTransition(async () => {
+      try {
+        if (dialogMode === "create") {
+          await createUser({
+            name: form.name,
+            email: form.email,
+            password: form.password,
+            role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
+            naveId,
+          });
+          toast.success("Usuario creado");
+        } else if (editUserId) {
+          await updateUser({
+            userId: editUserId,
+            role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
+            naveId,
+          });
+          toast.success("Usuario actualizado");
+        }
+        setDialogMode(null);
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Error");
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4 mt-6">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{users.length} usuario{users.length !== 1 ? "s" : ""}</p>
+        <Button size="sm" onClick={openCreate}>
+          <Plus className="size-4 mr-1.5" />
+          Nuevo usuario
+        </Button>
+      </div>
+
+      <div className="border rounded-md divide-y">
+        {users.map((u) => (
+          <div key={u.id} className="flex items-start justify-between px-4 py-3 gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <UserCircle2 className="size-8 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <div className="font-medium text-sm truncate">{u.name}</div>
+                <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  <Badge variant="outline" className="text-[10px] font-mono">{u.role}</Badge>
+                  {u.nave && (
+                    <Badge variant="secondary" className="text-[10px]">{u.nave.codigo} · {u.nave.nombre}</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => openEdit(u)}>
+              <Pencil className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <Dialog open={dialogMode != null} onOpenChange={(o) => !o && setDialogMode(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{dialogMode === "create" ? "Nuevo usuario" : "Editar usuario"}</DialogTitle>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={onSubmit}>
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                required
+                disabled={dialogMode === "edit"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                required
+                disabled={dialogMode === "edit"}
+              />
+            </div>
+            {dialogMode === "create" && (
+              <div className="space-y-2">
+                <Label>Contraseña <span className="text-muted-foreground text-xs">(mín. 8 caracteres)</span></Label>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  required
+                  minLength={8}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select value={form.role} onValueChange={(v) => v && setForm((f) => ({ ...f, role: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {naves.length > 0 && (
+              <div className="space-y-2">
+                <Label>Nave asignada</Label>
+                <Select value={form.naveId} onValueChange={(v) => v && setForm((f) => ({ ...f, naveId: v }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin nave</SelectItem>
+                    {naves.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>{n.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={pending}>
+                {dialogMode === "create" ? "Crear" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

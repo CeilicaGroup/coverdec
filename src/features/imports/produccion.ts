@@ -18,7 +18,7 @@ export interface ImportSummary {
 
 const argsSchema = z.object({
   filePath: z.string().min(1),
-  empresaId: z.string().min(1),
+  naveId: z.string().min(1),
 });
 
 const emptySummary = (): ImportSummary => ({
@@ -102,7 +102,7 @@ async function importBastidores(
 
 async function importProyectos(
   wb: ExcelJS.Workbook,
-  empresaId: string,
+  naveId: string,
   summary: ImportSummary,
 ): Promise<void> {
   const sheet = wb.getWorksheet("🗂️ Proyectos");
@@ -143,17 +143,16 @@ async function importProyectos(
 
     const projCode = slug(proyectoName).slice(0, 80) || proyectoName;
     const projExisting = await prisma.project.findUnique({
-      where: { empresaId_code: { empresaId, code: projCode } },
+      where: { code: projCode },
     });
     const project = await prisma.project.upsert({
-      where: { empresaId_code: { empresaId, code: projCode } },
+      where: { code: projCode },
       update: {
         name: proyectoName,
         deliveryDate: fechaEntrega ?? undefined,
         isActive: !(estado?.toLowerCase().includes("terminado") ?? false),
       },
       create: {
-        empresaId,
         code: projCode,
         name: proyectoName,
         deliveryDate: fechaEntrega ?? undefined,
@@ -248,6 +247,7 @@ async function importProyectos(
           pendingHours: pending,
           doneHours: estimated - pending,
           order: taskOrder,
+          naveId,
         },
       });
       summary.tasks.created += 1;
@@ -257,15 +257,15 @@ async function importProyectos(
 
 export async function importProduccion(args: {
   filePath: string;
-  empresaId: string;
+  naveId: string;
 }): Promise<ImportSummary> {
-  const { filePath, empresaId } = argsSchema.parse(args);
-  log.info({ filePath, empresaId }, "produccion import start");
+  const { filePath, naveId } = argsSchema.parse(args);
+  log.info({ filePath, naveId }, "produccion import start");
   const summary = emptySummary();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(filePath);
   await importBastidores(wb, summary);
-  await importProyectos(wb, empresaId, summary);
+  await importProyectos(wb, naveId, summary);
   log.info({ summary }, "produccion import done");
   return summary;
 }

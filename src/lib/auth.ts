@@ -14,8 +14,9 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: { type: "string", input: false, defaultValue: "OPERARIO" },
-      activeEmpresaId: { type: "string", input: false, required: false },
       personId: { type: "string", input: false, required: false },
+      naveId: { type: "string", input: false, required: false },
+      activeNaveId: { type: "string", input: false, required: false },
     },
   },
   session: {

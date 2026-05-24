@@ -22,7 +22,7 @@ export async function updateFactoryItem(input: z.infer<typeof updateSchema>) {
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = updateSchema.parse(input);
   const item = await prisma.factoryItem.findFirstOrThrow({
-    where: { id: data.id, empresaId: ctx.empresaId },
+    where: { id: data.id },
   });
   await prisma.factoryItem.update({
     where: { id: item.id },
@@ -53,7 +53,6 @@ export async function createFactoryItem(input: z.infer<typeof createSchema>) {
   const data = createSchema.parse(input);
   await prisma.factoryItem.create({
     data: {
-      empresaId: ctx.empresaId,
       product: data.product,
       obra: data.obra,
       nave: data.nave,

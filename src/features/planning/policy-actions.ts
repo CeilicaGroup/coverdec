@@ -20,10 +20,12 @@ export async function savePlanningWeightsAction(
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = planningWeightsSchema.parse(input);
 
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
+
   await prisma.planningPolicy.upsert({
-    where: { empresaId: ctx.empresaId },
+    where: { naveId: ctx.naveId },
     create: {
-      empresaId: ctx.empresaId,
+      naveId: ctx.naveId,
       wLate: data.wLate,
       wUnscheduled: data.wUnscheduled,
       wLoadBalance: data.wLoadBalance,
@@ -39,7 +41,7 @@ export async function savePlanningWeightsAction(
     },
   });
 
-  log.info({ empresaId: ctx.empresaId }, "planning weights saved");
+  log.info({ naveId: ctx.naveId }, "planning weights saved");
   revalidatePath("/dashboard", "layout");
   return { ok: true };
 }

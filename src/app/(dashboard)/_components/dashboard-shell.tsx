@@ -5,17 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
-  Factory,
   Gauge,
   LayoutGrid,
   LineChart,
   LogOut,
   Palmtree,
-  Package,
   Settings,
   ShieldCheck,
   Timer,
   Users,
+  Warehouse,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
@@ -31,23 +30,24 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
-interface EmpresaSummary {
+interface NaveSummary {
   id: string;
+  codigo: string;
   nombre: string;
-  marca: string | null;
 }
 
 interface DashboardShellProps {
   user: { id: string; name: string; role: string; email: string };
   person: { iniciales: string; color: string } | null;
-  empresas: EmpresaSummary[];
-  activeEmpresa: EmpresaSummary;
+  naves: NaveSummary[];
+  activeNave: NaveSummary | null;
   children: React.ReactNode;
 }
 
 const NAV_SECTIONS = [
   {
     label: "Planning",
+    naveScoped: true,
     items: [
       { href: "/dashboard", label: "Resumen", icon: LayoutGrid, exact: true },
       { href: "/dashboard/semana", label: "Vista semana", icon: CalendarDays },
@@ -60,14 +60,14 @@ const NAV_SECTIONS = [
   },
   {
     label: "Operativa",
+    naveScoped: false,
     items: [
-      { href: "/dashboard/horas", label: "Mis horas", icon: Timer },
-      { href: "/dashboard/fabrica", label: "Fábrica", icon: Factory },
-      { href: "/dashboard/ordenes", label: "Órdenes producción", icon: Package },
+      { href: "/dashboard/horas", label: "Mis horas", icon: Timer, adminHidden: true },
     ],
   },
   {
     label: "Catálogo",
+    naveScoped: false,
     items: [
       { href: "/dashboard/proyectos", label: "Proyectos", icon: ClipboardList },
       { href: "/dashboard/catalogo", label: "Bastidores", icon: Settings },
@@ -76,8 +76,11 @@ const NAV_SECTIONS = [
   },
   {
     label: "Admin",
+    naveScoped: false,
     items: [
       { href: "/dashboard/costes", label: "Costes", icon: ShieldCheck, restricted: true },
+      { href: "/dashboard/admin/naves", label: "Naves", icon: Warehouse, adminOnly: true },
+      { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
     ],
   },
 ] as const;
@@ -85,17 +88,17 @@ const NAV_SECTIONS = [
 export function DashboardShell({
   user,
   person,
-  empresas,
-  activeEmpresa,
+  naves,
+  activeNave,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const onSwitchEmpresa = async (empresaId: string) => {
-    await fetch("/api/empresa/switch", {
+  const onSwitchNave = async (naveId: string) => {
+    await fetch("/api/nave/switch", {
       method: "POST",
-      body: JSON.stringify({ empresaId }),
+      body: JSON.stringify({ naveId }),
       headers: { "Content-Type": "application/json" },
     });
     router.refresh();
@@ -108,30 +111,59 @@ export function DashboardShell({
   };
 
   const canSeeRestricted = user.role !== "OPERARIO";
+  const isAdmin = user.role === "ADMIN";
 
   return (
     <div className="flex min-h-screen w-full bg-secondary/30">
       <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card sticky top-0 h-screen overflow-y-auto no-print">
         <div className="px-5 py-5 border-b">
           <div className="text-lg font-black tracking-tight">CONTRACT+</div>
-          <div className="text-[10px] font-bold tracking-[0.25em] text-primary uppercase mt-0.5">
-            {activeEmpresa.marca ?? activeEmpresa.nombre}
-          </div>
+          {activeNave && (
+            <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Warehouse className="size-3" />
+              <span className="font-mono font-semibold">{activeNave.codigo}</span>
+              <span className="truncate">{activeNave.nombre}</span>
+            </div>
+          )}
+          {!activeNave && user.role !== "ADMIN" && (
+            <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">
+              Sin nave asignada
+            </div>
+          )}
         </div>
         <nav className="flex-1 px-3 py-4 space-y-5">
           {NAV_SECTIONS.map((section) => {
             const items = section.items.filter((item) => {
-              if ("restricted" in item && item.restricted) {
-                return canSeeRestricted;
-              }
+              if ("adminOnly" in item && item.adminOnly) return isAdmin;
+              if ("adminHidden" in item && item.adminHidden && isAdmin) return false;
+              if ("restricted" in item && item.restricted) return canSeeRestricted;
               return true;
             });
             if (items.length === 0) return null;
             return (
               <div key={section.label}>
-                <div className="px-2 mb-2 text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
+                <div className="px-2 mb-1.5 flex items-center gap-1 text-[10px] font-bold tracking-[0.2em] text-muted-foreground uppercase">
                   {section.label}
+                  {section.naveScoped && <Warehouse className="size-3 opacity-50 ml-0.5" />}
                 </div>
+                {section.naveScoped && naves.length > 0 && (
+                  <div className="px-2 mb-2">
+                    <select
+                      value={activeNave?.id ?? ""}
+                      onChange={(e) => onSwitchNave(e.target.value)}
+                      className="w-full text-[11px] font-mono bg-secondary border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      {canSeeRestricted && (
+                        <option value="">— Todas las naves —</option>
+                      )}
+                      {naves.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.codigo} · {n.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-0.5">
                   {items.map((item) => {
                     const active =
@@ -193,23 +225,31 @@ export function DashboardShell({
                   </Badge>
                 </div>
               </DropdownMenuLabel>
-              {empresas.length > 1 && (
+              {naves.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Empresa activa
+                    Nave activa
                   </DropdownMenuLabel>
-                  {empresas.map((e) => (
-                    <DropdownMenuItem
-                      key={e.id}
-                      onClick={() => onSwitchEmpresa(e.id)}
-                      className={cn(
-                        e.id === activeEmpresa.id && "bg-secondary font-semibold",
-                      )}
-                    >
-                      {e.marca ?? e.nombre}
+                  {isAdmin ? (
+                    naves.map((n) => (
+                      <DropdownMenuItem
+                        key={n.id}
+                        onClick={() => onSwitchNave(n.id)}
+                        className={cn(
+                          n.id === activeNave?.id && "bg-secondary font-semibold",
+                        )}
+                      >
+                        <Warehouse className="size-3.5 mr-1.5 opacity-60" />
+                        {n.nombre}
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled className="opacity-70">
+                      <Warehouse className="size-3.5 mr-1.5 opacity-60" />
+                      {activeNave ? activeNave.nombre : "Sin nave asignada"}
                     </DropdownMenuItem>
-                  ))}
+                  )}
                 </>
               )}
               <DropdownMenuSeparator />

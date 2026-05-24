@@ -2,9 +2,9 @@ import { prisma } from "../src/lib/db";
 import { generatePlanning } from "../src/features/planning/service";
 
 async function main() {
-  const empresa = await prisma.empresa.findFirstOrThrow();
+  const nave = await prisma.nave.findFirstOrThrow({ where: { isActive: true } });
   const result = await generatePlanning({
-    empresaId: empresa.id,
+    naveId: nave.id,
     weekStart: new Date("2026-05-04T00:00:00Z"),
   });
   console.log("planning:", JSON.stringify(result, null, 2).slice(0, 1200));

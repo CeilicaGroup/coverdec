@@ -12,16 +12,16 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function getPlanningForWeek({
-  empresaId,
+  naveId,
   weekStart,
 }: {
-  empresaId: string;
+  naveId: string;
   weekStart: Date;
 }) {
   const monday = getMondayOf(weekStart);
   const { year, week } = isoWeek(monday);
   const planning = await prisma.planning.findUnique({
-    where: { empresaId_year_week: { empresaId, year, week } },
+    where: { naveId_year_week: { naveId, year, week } },
     include: {
       assignments: {
         include: {
@@ -45,7 +45,13 @@ export interface ProcessDefinitionInfo {
   badge: ProcessBadgeStyle;
 }
 
-export async function getEmpresaPeople() {
+export async function getNavePersonnel(naveId: string) {
+  const byNave = await prisma.person.findMany({
+    where: { naveId, isActive: true },
+    include: { specialties: true },
+    orderBy: { iniciales: "asc" },
+  });
+  if (byNave.length > 0) return byNave;
   return prisma.person.findMany({
     where: { isActive: true },
     include: { specialties: true },
@@ -71,11 +77,12 @@ export async function getAbsencesForRange(start: Date, end: Date) {
   });
 }
 
-export async function getActiveProjectsWithLoad(empresaId: string) {
+export async function getActiveProjectsWithLoad(naveId: string) {
   const projects = await prisma.project.findMany({
-    where: { empresaId, isActive: true },
+    where: { isActive: true, tasks: { some: { naveId } } },
     include: {
       tasks: {
+        where: { naveId },
         select: {
           id: true,
           process: true,
@@ -130,10 +137,10 @@ export async function getProcessBadgeStylesByCode(): Promise<
 }
 
 export async function getPlanningWeights(
-  empresaId: string,
+  naveId: string,
 ): Promise<PlanningWeights> {
   const row = await prisma.planningPolicy.findUnique({
-    where: { empresaId },
+    where: { naveId },
   });
   if (!row) {
     return { ...DEFAULT_PLANNING_WEIGHTS };

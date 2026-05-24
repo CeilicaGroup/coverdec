@@ -138,6 +138,8 @@ const savePersonSchema = z
     overtimeHourlyRate: z.number().min(0).default(22.13),
     notes: z.string().optional(),
     isActive: z.boolean().default(true),
+    naveId: z.string().min(1),
+    userId: z.string().min(1),
     specialties: z.array(specialtySchema).default([]),
   })
   .superRefine((data, ctx) => {
@@ -178,6 +180,7 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
+            naveId: data.naveId,
           },
         });
         personId = data.id;
@@ -192,6 +195,7 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
+            naveId: data.naveId,
           },
         });
         personId = created.id;
@@ -207,6 +211,9 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
           })),
         });
       }
+      // Unlink any user currently pointing to this person, then link the chosen user.
+      await tx.user.updateMany({ where: { personId }, data: { personId: null } });
+      await tx.user.update({ where: { id: data.userId }, data: { personId } });
     });
   } catch (e: unknown) {
     log.error(
@@ -293,4 +300,27 @@ export async function savePersonWorkWindows(
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/disponibilidad");
+}
+
+export async function linkPersonToUser(
+  personId: string,
+  userId: string | null,
+): Promise<void> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+
+  if (userId === null) {
+    await prisma.user.updateMany({
+      where: { personId },
+      data: { personId: null },
+    });
+  } else {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.updateMany({ where: { personId }, data: { personId: null } });
+      await tx.user.update({ where: { id: userId }, data: { personId } });
+    });
+  }
+
+  log.info({ personId, userId }, "person-user link updated");
+  revalidatePath("/dashboard/personal");
 }

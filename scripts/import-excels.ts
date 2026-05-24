@@ -4,9 +4,7 @@ import { importProduccion } from "../src/features/imports/produccion";
 import { importFabrica } from "../src/features/imports/fabrica";
 
 async function main() {
-  const empresa = await prisma.empresa.findUniqueOrThrow({
-    where: { razonSocial: "Coverdec Innovación SL" },
-  });
+  const nave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
 
   const produccionPath = path.resolve(
     process.cwd(),
@@ -16,13 +14,12 @@ async function main() {
 
   const produccionSummary = await importProduccion({
     filePath: produccionPath,
-    empresaId: empresa.id,
+    naveId: nave.id,
   });
   console.log("PRODUCCION summary:", produccionSummary);
 
   const fabricaSummary = await importFabrica({
     filePath: fabricaPath,
-    empresaId: empresa.id,
   });
   console.log("FABRICA summary:", fabricaSummary);
 }

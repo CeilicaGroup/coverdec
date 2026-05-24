@@ -14,31 +14,26 @@ export default async function DashboardLayout({
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: {
-      memberships: { include: { empresa: true } },
-      person: true,
-    },
+    include: { person: true },
   });
   if (!user) return redirectToLoginWithStaleSession();
 
-  const empresas = user.memberships.map((m) => m.empresa);
-  const activeEmpresa =
-    empresas.find((e) => e.id === user.activeEmpresaId) ?? empresas[0];
+  const naves = await prisma.nave.findMany({
+    where: { isActive: true },
+    orderBy: { codigo: "asc" },
+    select: { id: true, codigo: true, nombre: true },
+  });
 
-  if (!activeEmpresa) {
-    return (
-      <div className="p-8">
-        Tu usuario no tiene empresa asignada. Contacta con el administrador.
-      </div>
-    );
-  }
+  const activeNaveId =
+    user.role === "ADMIN" ? user.activeNaveId : user.naveId;
+  const activeNave = naves.find((n) => n.id === activeNaveId) ?? null;
 
   return (
     <DashboardShell
       user={{ id: user.id, name: user.name, role: user.role, email: user.email }}
       person={user.person ? { iniciales: user.person.iniciales, color: user.person.color } : null}
-      empresas={empresas.map((e) => ({ id: e.id, nombre: e.nombre, marca: e.marca }))}
-      activeEmpresa={{ id: activeEmpresa.id, nombre: activeEmpresa.nombre, marca: activeEmpresa.marca }}
+      naves={naves}
+      activeNave={activeNave}
     >
       {children}
     </DashboardShell>

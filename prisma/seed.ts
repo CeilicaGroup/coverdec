@@ -5,116 +5,16 @@ import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/per
 const prisma = new PrismaClient();
 
 const PROCESSES = [
-  {
-    code: "CNC",
-    label: "CNC",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#DBEAFE",
-    fgColor: "#1D4ED8",
-    borderColor: "#1D4ED8",
-    sequence: 1,
-  },
-  {
-    code: "ENSAMBLAJE",
-    label: "Ensamblaje",
-    factor: 1,
-    setupHours: 1,
-    waitHours: 0,
-    bgColor: "#DCFCE7",
-    fgColor: "#15803D",
-    borderColor: "#15803D",
-    sequence: 2,
-  },
-  {
-    code: "LIJADO",
-    label: "Lijado/Masillado",
-    factor: 0.7,
-    setupHours: 2,
-    waitHours: 0,
-    bgColor: "#FEF9C3",
-    fgColor: "#A16207",
-    borderColor: "#A16207",
-    sequence: 3,
-  },
-  {
-    code: "IMPRIMACION",
-    label: "Imprimación",
-    factor: 0.55,
-    setupHours: 0,
-    waitHours: 12,
-    bgColor: "#FFEDD5",
-    fgColor: "#C2410C",
-    borderColor: "#C2410C",
-    sequence: 4,
-  },
-  {
-    code: "PINTURA",
-    label: "Pintura",
-    factor: 0.45,
-    setupHours: 0,
-    waitHours: 12,
-    bgColor: "#FEE2E2",
-    fgColor: "#B91C1C",
-    borderColor: "#B91C1C",
-    sequence: 5,
-  },
-  {
-    code: "PERFILES",
-    label: "Perfiles",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#CCFBF1",
-    fgColor: "#0F766E",
-    borderColor: "#0F766E",
-    sequence: 6,
-  },
-  {
-    code: "EMBALAJE",
-    label: "Embalaje",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#D1FAE5",
-    fgColor: "#166534",
-    borderColor: "#166534",
-    sequence: 7,
-  },
-  {
-    code: "PEGADO_ESPEJO",
-    label: "Pegado espejo",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#EDE9FE",
-    fgColor: "#5B21B6",
-    borderColor: "#5B21B6",
-    sequence: 4,
-  },
-  {
-    code: "CORTE_MANUAL",
-    label: "Corte manual",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#F3F4F6",
-    fgColor: "#374151",
-    borderColor: "#374151",
-    sequence: 1,
-  },
-  {
-    code: "LIMPIEZA",
-    label: "Limpieza",
-    factor: 1,
-    setupHours: 0,
-    waitHours: 0,
-    bgColor: "#E0F2FE",
-    fgColor: "#0369A1",
-    borderColor: "#0369A1",
-    sequence: 0,
-  },
+  { code: "CNC",          label: "CNC",              factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#DBEAFE", fgColor: "#1D4ED8", borderColor: "#1D4ED8" },
+  { code: "ENSAMBLAJE",   label: "Ensamblaje",        factor: 1,    setupHours: 1, waitHours: 0,  bgColor: "#DCFCE7", fgColor: "#15803D", borderColor: "#15803D" },
+  { code: "LIJADO",       label: "Lijado/Masillado",  factor: 0.7,  setupHours: 2, waitHours: 0,  bgColor: "#FEF9C3", fgColor: "#A16207", borderColor: "#A16207" },
+  { code: "IMPRIMACION",  label: "Imprimación",       factor: 0.55, setupHours: 0, waitHours: 12, bgColor: "#FFEDD5", fgColor: "#C2410C", borderColor: "#C2410C" },
+  { code: "PINTURA",      label: "Pintura",           factor: 0.45, setupHours: 0, waitHours: 12, bgColor: "#FEE2E2", fgColor: "#B91C1C", borderColor: "#B91C1C" },
+  { code: "PERFILES",     label: "Perfiles",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#CCFBF1", fgColor: "#0F766E", borderColor: "#0F766E" },
+  { code: "EMBALAJE",     label: "Embalaje",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#D1FAE5", fgColor: "#166534", borderColor: "#166534" },
+  { code: "PEGADO_ESPEJO",label: "Pegado espejo",     factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#EDE9FE", fgColor: "#5B21B6", borderColor: "#5B21B6" },
+  { code: "CORTE_MANUAL", label: "Corte manual",      factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
+  { code: "LIMPIEZA",     label: "Limpieza",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#E0F2FE", fgColor: "#0369A1", borderColor: "#0369A1" },
 ];
 
 const PEOPLE = [
@@ -209,12 +109,14 @@ async function main() {
   }
 
   console.log("Seeding people...");
+  const firstNave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
   for (const person of PEOPLE) {
     const { specialties, ...data } = person;
+    const personData = { ...data, naveId: firstNave.id };
     const created = await prisma.person.upsert({
       where: { iniciales: data.iniciales },
-      update: data,
-      create: data,
+      update: personData,
+      create: personData,
     });
     for (const spec of specialties) {
       await prisma.personSpecialty.upsert({
@@ -262,32 +164,17 @@ async function main() {
     });
   }
 
-  console.log("Seeding empresas...");
-  const empresas = [
-    {
-      nombre: "Coverdec Innovación",
-      razonSocial: "Coverdec Innovación SL",
-      marca: "CONTRACT+",
-    },
-    {
-      nombre: "Coverdec Group",
-      razonSocial: "Coverdec Group SL",
-      marca: "Coverdec Group",
-    },
-    {
-      nombre: "Coverdec Decoración",
-      razonSocial: "Coverdec Decoración SL",
-      marca: "Coverdec Decoración",
-    },
+  console.log("Seeding naves...");
+  const navesData = [
+    { codigo: "N1", nombre: "Nave 1" },
+    { codigo: "N2", nombre: "Nave 2" },
   ];
-  const empresaIds: string[] = [];
-  for (const empresa of empresas) {
-    const created = await prisma.empresa.upsert({
-      where: { razonSocial: empresa.razonSocial },
-      update: empresa,
-      create: empresa,
+  for (const nave of navesData) {
+    await prisma.nave.upsert({
+      where: { codigo: nave.codigo },
+      update: nave,
+      create: nave,
     });
-    empresaIds.push(created.id);
   }
 
   console.log("Seeding admin user...");
@@ -307,13 +194,6 @@ async function main() {
       data: {
         role: Role.ADMIN,
         emailVerified: true,
-        activeEmpresaId: empresaIds[0],
-        memberships: {
-          create: empresaIds.map((empresaId) => ({
-            empresaId,
-            role: Role.ADMIN,
-          })),
-        },
       },
     });
   }

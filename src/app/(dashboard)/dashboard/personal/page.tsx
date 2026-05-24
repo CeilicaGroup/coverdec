@@ -18,7 +18,7 @@ export default async function PersonalPage() {
   rangeStart.setUTCHours(0, 0, 0, 0);
   const rangeEnd = new Date(rangeStart.getTime() + 60 * DAY_MS);
 
-  const [peopleRaw, processDefs, usersLinked] = await Promise.all([
+  const [peopleRaw, processDefs, usersLinked, naves, allUsers] = await Promise.all([
     prisma.person.findMany({
       where: peopleWhere,
       include: {
@@ -40,14 +40,25 @@ export default async function PersonalPage() {
       where: { personId: { not: null } },
       select: { personId: true },
     }),
+    prisma.nave.findMany({
+      where: { isActive: true },
+      orderBy: { codigo: "asc" },
+      select: { id: true, codigo: true, nombre: true },
+    }),
+    prisma.user.findMany({
+      select: { id: true, name: true, email: true, personId: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const personIdsWithUser = new Set(
     usersLinked.map((u) => u.personId).filter((id): id is string => id != null),
   );
 
-  const people = peopleRaw.map(({ _count, workWindows, absences, ...p }) => ({
+  const people = peopleRaw.map(({ _count, workWindows, absences, hourlyRate, overtimeHourlyRate, ...p }) => ({
     ...p,
+    hourlyRate: Number(hourlyRate),
+    overtimeHourlyRate: Number(overtimeHourlyRate),
     workWindows,
     absences: absences.map((a) => ({
       date: a.date.toISOString().slice(0, 10),
@@ -61,7 +72,7 @@ export default async function PersonalPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      <PersonalTeamClient people={people} processDefs={processDefs} canManage={canManage} />
+      <PersonalTeamClient people={people} processDefs={processDefs} canManage={canManage} naves={naves} users={allUsers} />
     </div>
   );
 }

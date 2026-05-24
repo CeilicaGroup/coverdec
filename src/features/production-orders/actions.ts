@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import {Role } from "@/generated/prisma";
+import { Role } from "@/generated/prisma";
 
 const log = childLogger({ module: "production-orders.actions" });
 
@@ -24,14 +24,13 @@ export async function createProductionOrder(input: z.infer<typeof createSchema>)
   const data = createSchema.parse(input);
   const year = new Date().getUTCFullYear();
   const last = await prisma.productionOrder.findFirst({
-    where: { empresaId: ctx.empresaId, year },
+    where: { year },
     orderBy: { serial: "desc" },
   });
   const serial = (last?.serial ?? 0) + 1;
   const number = `OP${String(serial).padStart(4, "0")}-${year}`;
   const order = await prisma.productionOrder.create({
     data: {
-      empresaId: ctx.empresaId,
       number,
       year,
       serial,
