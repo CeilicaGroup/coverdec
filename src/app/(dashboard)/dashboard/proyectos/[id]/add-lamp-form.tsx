@@ -31,12 +31,22 @@ interface FrameTypeOption {
   processes: (ProcessBadgeStyle & { process: string })[];
 }
 
+interface NaveSummary {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
+
 export function AddLampForm({
   projectId,
   frameTypes,
+  naves = [],
+  defaultNaveId,
 }: {
   projectId: string;
   frameTypes: FrameTypeOption[];
+  naves?: NaveSummary[];
+  defaultNaveId?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -45,6 +55,7 @@ export function AddLampForm({
   const [surfaceM2, setSurfaceM2] = useState("");
   const [units, setUnits] = useState("1");
   const [frameTypeId, setFrameTypeId] = useState("");
+  const [naveId, setNaveId] = useState(defaultNaveId ?? "");
 
   const selectedFrameType = frameTypes.find((f) => f.id === frameTypeId);
 
@@ -62,6 +73,10 @@ export function AddLampForm({
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!naveId) {
+              toast.error("Selecciona una nave");
+              return;
+            }
             if (!frameTypeId) {
               toast.error("Selecciona un tipo de bastidor");
               return;
@@ -79,12 +94,14 @@ export function AddLampForm({
                   frameTypeId,
                   surfaceM2: medida,
                   units: Number(units) || 1,
+                  naveId,
                 });
                 toast.success("Lámpara y tareas creadas");
                 setOpen(false);
                 setName("");
                 setSurfaceM2("");
                 setFrameTypeId("");
+                setNaveId(defaultNaveId ?? "");
                 router.refresh();
               } catch (err) {
                 toast.error(err instanceof Error ? err.message : "Error");
@@ -96,6 +113,25 @@ export function AddLampForm({
             <Label>Nombre</Label>
             <Input required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
+          {naves.length > 0 && (
+            <div className="space-y-2">
+              <Label>Nave</Label>
+              <Select value={naveId} onValueChange={(v) => setNaveId(v ?? "")} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona nave">
+                    {naveId ? (naves.find((n) => n.id === naveId)?.nombre ?? "") : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {naves.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>
+                      {n.codigo} · {n.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Medida</Label>
@@ -127,7 +163,9 @@ export function AddLampForm({
               required
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecciona bastidor" />
+                <SelectValue placeholder="Selecciona bastidor">
+                  {frameTypeId ? (frameTypes.find((f) => f.id === frameTypeId)?.name ?? "") : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {frameTypes.map((f) => (

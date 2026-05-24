@@ -21,7 +21,6 @@ function minimalInput() {
       {
         id: "t1",
         projectId: "pr1",
-        projectPriority: 1,
         projectDeliveryDate: null,
         lampId: "l1",
         order: 0,

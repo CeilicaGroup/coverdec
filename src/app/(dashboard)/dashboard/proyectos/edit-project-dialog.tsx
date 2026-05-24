@@ -25,7 +25,6 @@ export interface EditableProject {
   client: string | null;
   obra: string | null;
   deliveryDate: Date | null;
-  priority: number;
   isBillable: boolean;
   notes: string | null;
 }
@@ -49,7 +48,6 @@ export function EditProjectDialog({
   const [client, setClient] = useState(project.client ?? "");
   const [obra, setObra] = useState(project.obra ?? "");
   const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
-  const [priority, setPriority] = useState(String(project.priority));
   const [isBillable, setIsBillable] = useState(project.isBillable);
   const [notes, setNotes] = useState(project.notes ?? "");
 
@@ -59,7 +57,6 @@ export function EditProjectDialog({
     setClient(project.client ?? "");
     setObra(project.obra ?? "");
     setDeliveryDate(toDateInputValue(project.deliveryDate));
-    setPriority(String(project.priority));
     setIsBillable(project.isBillable);
     setNotes(project.notes ?? "");
   }, [open, project]);
@@ -95,11 +92,6 @@ export function EditProjectDialog({
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            const parsedPriority = Number(priority);
-            if (!Number.isFinite(parsedPriority) || parsedPriority < 0 || parsedPriority > 100) {
-              toast.error("La prioridad debe estar entre 0 y 100");
-              return;
-            }
             startTransition(async () => {
               try {
                 await updateProject({
@@ -108,7 +100,6 @@ export function EditProjectDialog({
                   client: client || undefined,
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
-                  priority: parsedPriority,
                   isBillable,
                   notes: notes || undefined,
                 });
@@ -135,25 +126,13 @@ export function EditProjectDialog({
               <Input value={obra} onChange={(e) => setObra(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Fecha entrega</Label>
-              <Input
-                type="date"
-                value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Prioridad (0–100)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Fecha entrega</Label>
+            <Input
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label>Notas</Label>

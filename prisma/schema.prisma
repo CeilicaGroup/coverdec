@@ -266,7 +266,6 @@ model Project {
   client      String?
   obra        String?
   deliveryDate DateTime?
-  priority    Int        @default(50)
   isBillable  Boolean    @default(true)
   isActive    Boolean    @default(true)
   notes       String?

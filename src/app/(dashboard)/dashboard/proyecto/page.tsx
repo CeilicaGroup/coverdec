@@ -33,7 +33,7 @@ import {
   daysUntil,
   formatHours,
   formatShortDate,
-  riskFromDelivery,
+  riskFromPlannedEnd,
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 
@@ -63,10 +63,13 @@ export default async function ProyectoPage({
   const assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
 
   const byProject = new Map<string, PlanningAssignmentSlice[]>();
+  const plannedEndByProject = new Map<string, Date>();
   for (const a of assignments) {
     const list = byProject.get(a.task.projectId) ?? [];
     list.push(a);
     byProject.set(a.task.projectId, list);
+    const cur = plannedEndByProject.get(a.task.projectId);
+    if (!cur || a.date > cur) plannedEndByProject.set(a.task.projectId, a.date);
   }
 
   const projectIdsWithAssignments = new Set(byProject.keys());
@@ -74,8 +77,8 @@ export default async function ProyectoPage({
   const projectsWithLoad = projects
     .map((p) => ({
       project: p,
-      risk: riskFromDelivery(p.deliveryDate),
-      pending: p.tasks.reduce((acc, t) => acc + t.pendingHours, 0),
+      risk: riskFromPlannedEnd(p.deliveryDate, plannedEndByProject.get(p.id) ?? null),
+      pending: p.tasks.reduce((acc, t) => acc + Math.max(0, t.estimatedHours - t.doneHours), 0),
       scheduledHours: (byProject.get(p.id) ?? []).reduce((acc, a) => acc + a.hours, 0),
     }))
     .filter(

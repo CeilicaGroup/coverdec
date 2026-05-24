@@ -48,7 +48,6 @@ export function CreateProjectDialog() {
                   client: client || undefined,
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
-                  priority: 50,
                   isBillable,
                 });
                 toast.success("Proyecto creado");

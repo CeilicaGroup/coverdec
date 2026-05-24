@@ -55,7 +55,7 @@ class EnginePerson(BaseModel):
 class EngineTask(BaseModel):
     id: str
     projectId: str
-    projectPriority: int
+    projectPriority: int = 50
     projectDeliveryDate: datetime | None = None
     lampId: str
     order: int

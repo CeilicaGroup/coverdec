@@ -23,7 +23,6 @@ export interface EnginePerson {
 export interface EngineTask {
   id: string;
   projectId: string;
-  projectPriority: number;
   projectDeliveryDate: Date | null;
   lampId: string;
   order: number;

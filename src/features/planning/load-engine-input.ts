@@ -190,7 +190,7 @@ export async function loadSolverInput(args: {
       },
       include: {
         project: {
-          select: { id: true, priority: true, deliveryDate: true },
+          select: { id: true, deliveryDate: true },
         },
       },
     }),
@@ -298,7 +298,6 @@ export async function loadSolverInput(args: {
     .map(({ task: t, pending }) => ({
       id: t.id,
       projectId: t.projectId,
-      projectPriority: t.project.priority,
       projectDeliveryDate: t.project.deliveryDate ?? null,
       lampId: t.lampId,
       order: t.order,

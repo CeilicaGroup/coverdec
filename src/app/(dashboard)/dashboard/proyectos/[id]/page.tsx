@@ -18,6 +18,7 @@ import { AddLampForm } from "./add-lamp-form";
 import { LampTasksPanel } from "./lamp-tasks-panel";
 import { LampNaveAssign } from "./lamp-nave-assign";
 import { DeleteLampButton } from "./delete-lamp-button";
+import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
@@ -79,7 +80,7 @@ export default async function ProjectDetailPage({
   const allTasks = project.lamps.flatMap((l) => l.tasks);
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
-  const totalPending = allTasks.reduce((a, t) => a + t.pendingHours, 0);
+  const totalPending = allTasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -98,7 +99,6 @@ export default async function ProjectDetailPage({
                     client: project.client,
                     obra: project.obra,
                     deliveryDate: project.deliveryDate,
-                    priority: project.priority,
                     isBillable: project.isBillable,
                     notes: project.notes,
                   }}
@@ -143,6 +143,8 @@ export default async function ProjectDetailPage({
                   borderColor: p.definition.borderColor,
                 })),
               }))}
+              naves={naves}
+              defaultNaveId={ctx.naveId ?? undefined}
             />
           ) : null}
         </CardHeader>
@@ -154,12 +156,12 @@ export default async function ProjectDetailPage({
           ) : (
             <div className="divide-y">
               {project.lamps.map((l) => {
-                const lampPending = l.tasks.reduce((a, t) => a + t.pendingHours, 0);
+                const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
                 const lampNaveId = l.tasks.find((t) => t.naveId)?.naveId ?? null;
                 return (
                   <div key={l.id}>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
-                      <div className="font-semibold text-sm min-w-[120px]">{l.name}</div>
+                      <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
                       <div className="text-xs text-muted-foreground">
                         Bastidor: <span className="text-foreground">{l.frameType.name}</span>
                       </div>

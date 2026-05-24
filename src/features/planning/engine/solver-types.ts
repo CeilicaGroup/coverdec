@@ -36,7 +36,6 @@ export type SolveRequestPayload = {
   tasks: {
     id: string;
     projectId: string;
-    projectPriority: number;
     projectDeliveryDate: string | null;
     lampId: string;
     order: number;
@@ -151,7 +150,6 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
     tasks: input.tasks.map((t) => ({
       id: t.id,
       projectId: t.projectId,
-      projectPriority: t.projectPriority,
       projectDeliveryDate: t.projectDeliveryDate
         ? t.projectDeliveryDate.toISOString()
         : null,

@@ -138,7 +138,6 @@ export default async function ProyectosPage() {
                             client: p.client,
                             obra: p.obra,
                             deliveryDate: p.deliveryDate,
-                            priority: p.priority,
                             isBillable: p.isBillable,
                             notes: p.notes,
                             isActive: p.isActive,

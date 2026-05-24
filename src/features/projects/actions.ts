@@ -29,7 +29,6 @@ const projectSchema = z.object({
   client: z.string().optional(),
   obra: z.string().optional(),
   deliveryDate: z.string().optional(),
-  priority: z.number().min(0).max(100).default(50),
   isBillable: z.boolean().default(true),
   notes: z.string().optional(),
 });
@@ -52,7 +51,6 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
       client: data.client,
       obra: data.obra,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
-      priority: data.priority,
       isBillable: data.isBillable,
       notes: data.notes,
     },
@@ -78,7 +76,6 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
       client: data.client || null,
       obra: data.obra || null,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
-      priority: data.priority,
       isBillable: data.isBillable,
       notes: data.notes?.trim() ? data.notes.trim() : null,
     },
@@ -98,12 +95,12 @@ const lampSchema = z.object({
   frameTypeId: z.string().min(1),
   surfaceM2: z.number().positive(),
   units: z.number().int().positive().default(1),
+  naveId: z.string().min(1),
 });
 
 export async function createLamp(input: z.infer<typeof lampSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de crear lámparas.");
   const data = lampSchema.parse(input);
 
   const blueprints = await buildTasksFromFrame(data.frameTypeId, data.surfaceM2);
@@ -132,7 +129,7 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
         estimatedHours: bp.estimatedHours,
         pendingHours: bp.estimatedHours,
         order: bp.order,
-        naveId: ctx.naveId!,
+        naveId: data.naveId,
       })),
     });
 
@@ -142,6 +139,19 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
   log.info({ lampId: lamp.id }, "lamp created with tasks");
   revalidatePath("/dashboard/proyectos");
   return { id: lamp.id };
+}
+
+const renameLampSchema = z.object({
+  lampId: z.string().min(1),
+  name: z.string().min(1).max(120),
+});
+
+export async function renameLamp(input: z.infer<typeof renameLampSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const { lampId, name } = renameLampSchema.parse(input);
+  await prisma.lamp.update({ where: { id: lampId }, data: { name: name.trim() } });
+  revalidatePath("/dashboard/proyectos");
 }
 
 const updateTaskHoursSchema = z.object({
