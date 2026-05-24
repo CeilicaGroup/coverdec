@@ -145,7 +145,6 @@ const updateProcessSchema = z.object({
   code: z.string().min(1),
   waitHours: z.number().min(0).max(168),
   label: z.string().min(1).max(120),
-  sequence: z.number().int().min(0),
   bgColor: z.string().min(1),
   fgColor: z.string().min(1),
   borderColor: z.string().min(1),
@@ -164,7 +163,6 @@ export async function updateProcessDefinition(
     data: {
       waitHours: data.waitHours,
       label: data.label.trim(),
-      sequence: data.sequence,
       bgColor: data.bgColor,
       fgColor: data.fgColor,
       borderColor: data.borderColor,
@@ -198,9 +196,6 @@ export async function createProcessDefinition(
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = createProcessSchema.parse(input);
 
-  const agg = await prisma.processDefinition.aggregate({ _max: { sequence: true } });
-  const sequence = (agg._max.sequence ?? 0) + 1;
-
   await prisma.processDefinition.create({
     data: {
       code: data.code,
@@ -211,7 +206,6 @@ export async function createProcessDefinition(
       bgColor: data.bgColor ?? "#F3F4F6",
       fgColor: data.fgColor ?? "#374151",
       borderColor: data.borderColor ?? "#9CA3AF",
-      sequence,
     },
   });
 

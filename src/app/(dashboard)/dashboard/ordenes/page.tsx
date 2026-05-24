@@ -19,7 +19,7 @@ import { ProcessBadge } from "@/components/process-badge";
 
 export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
-  const [orders, projects] = await Promise.all([
+  const [orders, projects, processDefs] = await Promise.all([
     prisma.productionOrder.findMany({
       where: { empresaId: ctx.empresaId },
       include: { project: true },
@@ -31,6 +31,10 @@ export default async function OrdenesPage() {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.processDefinition.findMany({
+      select: { code: true, label: true },
+      orderBy: { label: "asc" },
+    }),
   ]);
 
   return (
@@ -38,7 +42,7 @@ export default async function OrdenesPage() {
       <PageHeader
         title="Órdenes de producción"
         description={`${orders.length} órdenes registradas`}
-        actions={<CreateOrderDialog projects={projects} />}
+        actions={<CreateOrderDialog projects={projects} processDefs={processDefs} />}
       />
       <Card>
         <CardContent className="p-0">

@@ -1,5 +1,3 @@
-import type { ProcessCode } from "@/generated/prisma";
-
 export const WORKDAY_HOURS = 8;
 export const MORNING_START = 8;
 export const MORNING_END = 14;
@@ -7,18 +5,19 @@ export const AFTERNOON_START = 15;
 export const AFTERNOON_END = 17;
 
 export interface EngineProcessDef {
-  code: ProcessCode;
-  sequence: number;
-  /** Day of week (1=Monday … 5=Friday) after which the process cannot run. */
-  deadlineDay: number | null;
+  code: string;
+  /** Hours the next process must wait after this one finishes (e.g. paint drying). */
+  waitHours: number;
 }
 
 export interface EnginePerson {
   id: string;
   iniciales: string;
-  primary: ProcessCode[];
-  fallback: ProcessCode[];
+  primary: string[];
+  fallback: string[];
   capacityHours: number;
+  hourlyRate: number;
+  overtimeHourlyRate: number;
 }
 
 export interface EngineTask {
@@ -26,8 +25,9 @@ export interface EngineTask {
   projectId: string;
   projectPriority: number;
   projectDeliveryDate: Date | null;
-  lampId: string | null;
-  process: ProcessCode;
+  lampId: string;
+  order: number;
+  process: string;
   pendingHours: number;
 }
 
@@ -35,19 +35,33 @@ export interface EngineAbsence {
   personId: string;
   date: Date;
   hours: number;
+  blockStartMinutes?: number | null;
+  blockEndMinutes?: number | null;
 }
 
 export interface EngineHoliday {
   date: Date;
 }
 
-export interface EngineInput {
-  weekStart: Date;
-  processes: EngineProcessDef[];
-  people: EnginePerson[];
-  tasks: EngineTask[];
-  absences: EngineAbsence[];
-  holidays: EngineHoliday[];
+export interface EngineFixedAssignment {
+  taskId: string;
+  personId: string;
+  date: Date;
+  startSlot: number;
+  endSlot: number;
+  hours: number;
+  process: string;
+}
+
+export interface EngineBookedHours {
+  personId: string;
+  date: Date;
+  hours: number;
+}
+
+export interface EngineWarning {
+  taskId: string;
+  reason: string;
 }
 
 export interface EngineAssignment {
@@ -57,13 +71,17 @@ export interface EngineAssignment {
   startSlot: number;
   endSlot: number;
   hours: number;
-  process: ProcessCode;
+  process: string;
   isAfternoon: boolean;
 }
 
-export interface EngineWarning {
-  taskId: string;
-  reason: string;
+export interface EngineInput {
+  weekStart: Date;
+  processes: EngineProcessDef[];
+  people: EnginePerson[];
+  tasks: EngineTask[];
+  absences: EngineAbsence[];
+  holidays: EngineHoliday[];
 }
 
 export interface EngineResult {

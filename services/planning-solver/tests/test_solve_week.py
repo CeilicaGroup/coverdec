@@ -35,10 +35,10 @@ def _base_request(tasks: list[EngineTask]) -> SolveRequest:
     return SolveRequest(
         weekStart=WEEK_START,
         processes=[
-            EngineProcessDef(code="CNC", sequence=1),
-            EngineProcessDef(code="LIJADO", sequence=3),
-            EngineProcessDef(code="IMPRIMACION", sequence=4),
-            EngineProcessDef(code="PINTURA", sequence=5),
+            EngineProcessDef(code="CNC"),
+            EngineProcessDef(code="LIJADO"),
+            EngineProcessDef(code="IMPRIMACION"),
+            EngineProcessDef(code="PINTURA"),
         ],
         people=[
             EnginePerson(
@@ -155,8 +155,8 @@ def test_lijado_starts_monday_after_ensamblaje_finishes():
         SolveRequest(
             weekStart=WEEK_START,
             processes=[
-                EngineProcessDef(code="ENSAMBLAJE", sequence=2, waitHours=0),
-                EngineProcessDef(code="LIJADO", sequence=3, waitHours=0),
+                EngineProcessDef(code="ENSAMBLAJE", waitHours=0),
+                EngineProcessDef(code="LIJADO", waitHours=0),
             ],
             people=[painter, assembler],
             tasks=[
@@ -238,9 +238,9 @@ def test_accepts_extended_process_codes():
         SolveRequest(
             weekStart=WEEK_START,
             processes=[
-                EngineProcessDef(code="PERFILES", sequence=6),
-                EngineProcessDef(code="EMBALAJE", sequence=7),
-                EngineProcessDef(code="PEGADO_ESPEJO", sequence=8),
+                EngineProcessDef(code="PERFILES"),
+                EngineProcessDef(code="EMBALAJE"),
+                EngineProcessDef(code="PEGADO_ESPEJO"),
             ],
             people=[
                 EnginePerson(
@@ -291,8 +291,8 @@ def test_delivery_date_and_deadline_weight_schedule_full_lamp_chain():
         SolveRequest(
             weekStart=WEEK_START,
             processes=[
-                EngineProcessDef(code="IMPRIMACION", sequence=1, waitHours=0),
-                EngineProcessDef(code="PINTURA", sequence=2, waitHours=0),
+                EngineProcessDef(code="IMPRIMACION", waitHours=0),
+                EngineProcessDef(code="PINTURA", waitHours=0),
             ],
             people=[painter],
             tasks=[
@@ -346,10 +346,8 @@ def test_dry_hours_delay_between_lamp_processes():
         SolveRequest(
             weekStart=WEEK_START,
             processes=[
-                EngineProcessDef(
-                    code="IMPRIMACION", sequence=1, waitHours=12
-                ),
-                EngineProcessDef(code="PINTURA", sequence=2, waitHours=0),
+                EngineProcessDef(code="IMPRIMACION", waitHours=12),
+                EngineProcessDef(code="PINTURA", waitHours=0),
             ],
             people=[painter],
             tasks=[

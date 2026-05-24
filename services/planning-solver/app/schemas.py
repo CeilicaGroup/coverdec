@@ -39,7 +39,6 @@ class PlanningWeights(BaseModel):
 
 class EngineProcessDef(BaseModel):
     code: str
-    sequence: int
     waitHours: float = 0.0
 
 

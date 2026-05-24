@@ -46,7 +46,7 @@ def _request(
 ) -> SolveRequest:
     return SolveRequest(
         weekStart=WEEK_START,
-        processes=[EngineProcessDef(code="CNC", sequence=1)],
+        processes=[EngineProcessDef(code="CNC")],
         people=[_person()],
         tasks=tasks,
         weights=PlanningWeights(
@@ -175,8 +175,8 @@ def test_early_start_schedules_successor_next_day_not_later():
         SolveRequest(
             weekStart=WEEK_START,
             processes=[
-                EngineProcessDef(code="CNC", sequence=1, waitHours=0),
-                EngineProcessDef(code="ENSAMBLAJE", sequence=2, waitHours=0),
+                EngineProcessDef(code="CNC", waitHours=0),
+                EngineProcessDef(code="ENSAMBLAJE", waitHours=0),
             ],
             people=[cnc_worker, ens_worker],
             tasks=[
@@ -243,7 +243,7 @@ def test_afternoon_used_when_morning_full():
     result = run_solve(
         SolveRequest(
             weekStart=WEEK_START,
-            processes=[EngineProcessDef(code="CNC", sequence=1)],
+            processes=[EngineProcessDef(code="CNC")],
             people=[worker],
             tasks=[
                 EngineTask(

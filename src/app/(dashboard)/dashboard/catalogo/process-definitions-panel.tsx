@@ -35,7 +35,6 @@ import { toast } from "sonner";
 export interface ProcessRow {
   code: string;
   label: string;
-  sequence: number;
   waitHours: number;
   bgColor: string;
   fgColor: string;
@@ -70,7 +69,6 @@ export function ProcessDefinitionsPanel({
   const [editing, setEditing] = useState<ProcessRow | null>(null);
   const [eWait, setEWait] = useState("");
   const [eLabel, setELabel] = useState("");
-  const [eSeq, setESeq] = useState("");
   const [eColor, setEColor] = useState("#64748b");
   const [eCanFragment, setECanFragment] = useState(true);
 
@@ -78,7 +76,6 @@ export function ProcessDefinitionsPanel({
     setEditing(row);
     setEWait(String(row.waitHours));
     setELabel(row.label);
-    setESeq(String(row.sequence));
     setEColor(row.fgColor.startsWith("#") && row.fgColor.length === 7 ? row.fgColor : "#64748b");
     setECanFragment(row.canFragment);
   }
@@ -119,17 +116,12 @@ export function ProcessDefinitionsPanel({
   function submitEdit() {
     if (!editing) return;
     const wh = Number(eWait);
-    const seq = Number(eSeq);
     if (Number.isNaN(wh) || wh < 0) {
       toast.error("Horas de espera inválidas");
       return;
     }
     if (!eLabel.trim()) {
       toast.error("Indica etiqueta");
-      return;
-    }
-    if (Number.isNaN(seq) || seq < 0) {
-      toast.error("Secuencia inválida");
       return;
     }
     startTransition(async () => {
@@ -139,7 +131,6 @@ export function ProcessDefinitionsPanel({
           code: editing.code,
           waitHours: wh,
           label: eLabel.trim(),
-          sequence: seq,
           bgColor: colors.bgColor,
           fgColor: colors.fgColor,
           borderColor: colors.borderColor,
@@ -188,7 +179,6 @@ export function ProcessDefinitionsPanel({
           <TableHeader>
             <TableRow>
               <TableHead>Proceso</TableHead>
-              <TableHead className="text-right">Orden</TableHead>
               <TableHead className="text-right">Espera (h)</TableHead>
               {canManage ? <TableHead className="w-28 text-right">Acciones</TableHead> : null}
             </TableRow>
@@ -202,7 +192,6 @@ export function ProcessDefinitionsPanel({
                     <span className="text-[10px] font-mono text-muted-foreground">{p.code}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono text-xs">{p.sequence}</TableCell>
                 <TableCell className="text-right font-mono text-xs">
                   {p.waitHours > 0 ? p.waitHours : "—"}
                 </TableCell>
@@ -283,10 +272,6 @@ export function ProcessDefinitionsPanel({
               <div className="space-y-2">
                 <Label>Etiqueta</Label>
                 <Input value={eLabel} onChange={(e) => setELabel(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Secuencia (orden global)</Label>
-                <Input type="number" min={0} value={eSeq} onChange={(e) => setESeq(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Horas de espera (secado)</Label>

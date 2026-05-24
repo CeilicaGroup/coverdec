@@ -18,11 +18,10 @@ export default async function CatalogoPage() {
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
     }),
     prisma.processDefinition.findMany({
-      orderBy: { sequence: "asc" },
+      orderBy: { label: "asc" },
       select: {
         code: true,
         label: true,
-        sequence: true,
         waitHours: true,
         bgColor: true,
         fgColor: true,

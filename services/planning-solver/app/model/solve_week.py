@@ -236,23 +236,14 @@ def _delivery_target_q(delivery: date | None, week_start: date) -> int | None:
     return minute_to_week_quarter(day_idx, 17 * 60)
 
 
-class _NullProc:
-    sequence = 9999
-
-
-_SENTINEL = _NullProc()
-
-
 def _build_lamp_edges(
     tasks: list[EngineTask],
     process_by_code: dict,
 ) -> list[LampEdge]:
     """
-    For each lamp, sort tasks by their declared order and emit one LampEdge
-    per consecutive pair.  The edge carries the dry-time gap in quarters.
-
-    Process sequence is used as a tiebreaker when tasks share the same order
-    (e.g. all tasks have order=0), ensuring the correct physical build chain.
+    For each lamp, sort tasks by their declared order (set from FrameTypeProcess.sequence
+    at lamp creation) and emit one LampEdge per consecutive pair.
+    The edge carries the dry-time gap in quarters.
     """
     by_lamp: dict[str, list[EngineTask]] = defaultdict(list)
     for t in tasks:
@@ -260,12 +251,7 @@ def _build_lamp_edges(
 
     edges: list[LampEdge] = []
     for group in by_lamp.values():
-        group.sort(
-            key=lambda t: (
-                t.order,
-                process_by_code.get(t.process, _SENTINEL).sequence,
-            )
-        )
+        group.sort(key=lambda t: t.order)
         for pred, succ in zip(group, group[1:]):
             proc = process_by_code.get(pred.process)
             wait_q = (

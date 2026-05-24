@@ -228,7 +228,6 @@ model ProcessDefinition {
   bgColor     String
   fgColor     String
   borderColor String
-  sequence    Int
   canFragment Boolean @default(true)
 
   frameTypeProcesses  FrameTypeProcess[]

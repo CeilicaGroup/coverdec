@@ -309,7 +309,6 @@ export async function loadSolverInput(args: {
 
   const processDefs: EngineProcessDef[] = processes.map((p) => ({
     code: p.code,
-    sequence: p.sequence,
     waitHours: p.waitHours,
   }));
 
