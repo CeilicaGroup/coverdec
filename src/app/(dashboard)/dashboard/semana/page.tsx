@@ -12,14 +12,20 @@ import {
   getEmpresaPeople,
   getHolidaysForRange,
   getPlanningForWeek,
+  getProcessBadgeStylesByCode,
 } from "@/features/planning/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { PersonAvatar } from "@/components/person-avatar";
-import { ProcessBadge, processColor } from "@/components/process-badge";
+import {
+  ProcessBadge,
+  processColor,
+  type ProcessBadgeStyle,
+} from "@/components/process-badge";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
-import { formatHours } from "@/lib/format";
+import { formatDayMonthYear, formatHours } from "@/lib/format";
+import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -33,12 +39,19 @@ export default async function SemanaPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
-  const [planning, people, holidays, absences] = await Promise.all([
+  const [planning, people, holidays, absences, processStyles] = await Promise.all([
     getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
     getEmpresaPeople(),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
+    getProcessBadgeStylesByCode(),
   ]);
+
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    days[0],
+    days[days.length - 1] ?? days[0],
+  );
 
   const grid = buildGrid(planning, people, days);
 
@@ -72,19 +85,15 @@ export default async function SemanaPage({
               Operario
             </div>
             {days.map((d, idx) => {
-              const isHoliday = holidays.some(
-                (h) =>
-                  h.date.toISOString().slice(0, 10) ===
-                  d.toISOString().slice(0, 10),
-              );
+              const isHoliday = holidayDates.has(d.toISOString().slice(0, 10));
               return (
                 <div
                   key={d.toISOString()}
                   className="bg-muted px-3 py-2 text-xs font-semibold text-center border-b border-r last:border-r-0"
                 >
                   {DAY_LABELS[idx]}
-                  <div className="font-mono text-[10px] text-muted-foreground">
-                    {d.getUTCDate()}/{d.getUTCMonth() + 1}
+                  <div className="text-[10px] text-muted-foreground">
+                    {formatDayMonthYear(d)}
                   </div>
                   {isHoliday && (
                     <div className="text-[10px] text-orange-600 font-bold mt-0.5">Festivo</div>
@@ -100,6 +109,7 @@ export default async function SemanaPage({
                 days={days}
                 cells={grid.get(person.id) ?? new Map()}
                 absences={absences.filter((a) => a.personId === person.id)}
+                processStyles={processStyles}
               />
             ))}
           </div>
@@ -114,11 +124,13 @@ function PersonRow({
   days,
   cells,
   absences,
+  processStyles,
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string };
   days: Date[];
   cells: Map<string, ReturnType<typeof toCell>[]>;
   absences: { date: Date; reason: string | null }[];
+  processStyles: Map<string, ProcessBadgeStyle>;
 }) {
   return (
     <>
@@ -149,27 +161,33 @@ function PersonRow({
               </div>
             ) : (
               tasks.map((t) => {
-                const colors = processColor(t.process);
+                const colors = processColor(t.process, processStyles.get(t.process));
                 return (
                   <div
                     key={t.id}
                     className="rounded px-1.5 py-1 border-l-[3px] text-[10px] leading-tight"
-                    style={{ background: colors.bg, borderColor: colors.border }}
+                    style={{
+                      background: colors.bgColor,
+                      borderColor: colors.borderColor,
+                    }}
                   >
                     <div className="font-mono text-[9px] opacity-70">
                       {rangeLabel(t.startSlot, t.endSlot)}
                     </div>
-                    <div className="font-semibold truncate" style={{ color: colors.fg }}>
+                    <div className="font-semibold truncate" style={{ color: colors.fgColor }}>
                       {t.project}
                     </div>
-                    <div className="text-[9px] truncate opacity-80" style={{ color: colors.fg }}>
+                    <div className="text-[9px] truncate opacity-80" style={{ color: colors.fgColor }}>
                       {t.lamp ?? ""}
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
-                      <ProcessBadge code={t.process} />
+                      <ProcessBadge
+                        code={t.process}
+                        definition={processStyles.get(t.process)}
+                      />
                       <span
                         className="font-mono text-[9px] font-bold ml-auto"
-                        style={{ color: colors.fg }}
+                        style={{ color: colors.fgColor }}
                       >
                         {formatHours(t.hours)}
                       </span>
@@ -190,7 +208,7 @@ function toCell(assignment: {
   hours: number;
   startSlot: number;
   endSlot: number;
-  process: import("@/generated/prisma").ProcessCode;
+  process: string;
   task: { project: { name: string }; lamp: { name: string } | null };
 }) {
   return {

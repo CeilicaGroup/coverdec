@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   LineChart,
   LogOut,
+  Palmtree,
   Package,
   Settings,
   ShieldCheck,
@@ -54,6 +55,7 @@ const NAV_SECTIONS = [
       { href: "/dashboard/proyecto", label: "Por proyecto", icon: ClipboardList },
       { href: "/dashboard/gantt", label: "Gantt", icon: LineChart },
       { href: "/dashboard/disponibilidad", label: "Disponibilidad", icon: Gauge },
+      { href: "/dashboard/festivos", label: "Festivos", icon: Palmtree },
     ],
   },
   {

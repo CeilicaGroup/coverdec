@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { ProcessCode, Role } from "@/generated/prisma";
+import {Role } from "@/generated/prisma";
 
 const log = childLogger({ module: "production-orders.actions" });
 
 const createSchema = z.object({
   projectId: z.string().min(1),
   lampLabel: z.string().optional(),
-  process: z.nativeEnum(ProcessCode).optional(),
+  process: z.string().min(1).optional(),
   hours: z.number().positive().optional(),
   scheduledAt: z.string().optional(),
   notes: z.string().optional(),

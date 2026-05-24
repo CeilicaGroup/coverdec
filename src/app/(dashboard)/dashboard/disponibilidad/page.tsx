@@ -26,6 +26,7 @@ import {
 import { PersonAvatar } from "@/components/person-avatar";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 
 export default async function DisponibilidadPage({
   searchParams,
@@ -43,6 +44,12 @@ export default async function DisponibilidadPage({
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
   ]);
+
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    days[0],
+    days[days.length - 1] ?? days[0],
+  );
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -79,9 +86,7 @@ export default async function DisponibilidadPage({
               {people.map((person) => {
                 const personRows = days.map((d) => {
                   const key = d.toISOString().slice(0, 10);
-                  const isHoliday = holidays.some(
-                    (h) => h.date.toISOString().slice(0, 10) === key,
-                  );
+                  const isHoliday = holidayDates.has(key);
                   const absence = absences.find(
                     (a) =>
                       a.personId === person.id &&

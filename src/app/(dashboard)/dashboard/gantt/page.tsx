@@ -1,15 +1,27 @@
 import { requireDashboardContext } from "@/lib/context";
-import { formatWeekRange, parseWeekParam } from "@/lib/week";
-import { getActiveProjectsWithLoad } from "@/features/planning/queries";
-import { PageHeader } from "../../_components/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RiskBadge } from "@/components/risk-badge";
+import { formatDayMonthYear } from "@/lib/format";
 import {
-  daysUntil,
-  formatHours,
-  formatShortDate,
-  riskFromDelivery,
-} from "@/lib/format";
+  formatWeekRange,
+  getMondayOf,
+  isoWeek,
+  parseWeekParam,
+  weekDays,
+} from "@/lib/week";
+import {
+  getActiveProjectsWithLoad,
+  getPlanningForWeek,
+  summarizeAllActiveProjects,
+} from "@/features/planning/queries";
+import { PageHeader } from "../../_components/page-header";
+import { WeekNav } from "../../_components/week-nav";
+import { GanttChart, type GanttMilestone } from "./gantt-chart";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
+
+function addDays(d: Date, n: number): Date {
+  return new Date(d.getTime() + n * DAY_MS);
+}
 
 export default async function GanttPage({
   searchParams,
@@ -19,71 +31,75 @@ export default async function GanttPage({
   const ctx = await requireDashboardContext();
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
-  const projects = await getActiveProjectsWithLoad(ctx.empresaId);
+  const { year, week } = isoWeek(weekStart);
+  const days = weekDays(weekStart);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
 
-  const rows = projects
+  const [projects, planning] = await Promise.all([
+    getActiveProjectsWithLoad(ctx.empresaId),
+    getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
+  ]);
+
+  const portfolio = summarizeAllActiveProjects(projects, planning);
+
+  const ganttProjects = portfolio
+    .filter((p) => p.remainingWorkHours > 0)
     .map((p) => ({
-      project: p,
-      risk: riskFromDelivery(p.deliveryDate),
-      pending: p.tasks.reduce((acc, t) => acc + t.pendingHours, 0),
-      days: daysUntil(p.deliveryDate),
-    }))
-    .filter((r) => r.pending > 0);
+      id: p.projectId,
+      name: p.name,
+      deliveryDate: p.deliveryDate?.toISOString().slice(0, 10) ?? null,
+      expectedCompletion: p.expectedCompletion?.toISOString().slice(0, 10) ?? null,
+      remainingWorkHours: p.remainingWorkHours,
+      risk: p.risk,
+    }));
 
-  const maxDays = Math.max(30, ...rows.map((r) => Math.max(1, r.days ?? 30)));
+  let horizonEnd = addDays(getMondayOf(weekStart), 56);
+  for (const p of ganttProjects) {
+    const endIso = p.deliveryDate ?? p.expectedCompletion;
+    if (endIso) {
+      const end = new Date(`${endIso}T00:00:00.000Z`);
+      if (end.getTime() > horizonEnd.getTime()) horizonEnd = end;
+    }
+  }
+
+  const milestones: GanttMilestone[] = days.map((day, idx) => {
+    const key = day.toISOString().slice(0, 10);
+    const lines: string[] = [];
+    if (planning) {
+      for (const a of planning.assignments) {
+        if (a.date.toISOString().slice(0, 10) !== key) continue;
+        lines.push(
+          `${a.task.project.name} · ${a.process} · ${a.hours}h (${a.person.iniciales})`,
+        );
+      }
+    }
+    return {
+      dateKey: key,
+      dayLabel: `${DAY_LABELS[idx]} ${formatDayMonthYear(day)}`,
+      lines,
+    };
+  });
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
-        title="Vista Gantt"
-        description={`Proyectos activos · referencia ${formatWeekRange(weekStart)}`}
+        title={`Vista Gantt · S${week} · ${year}`}
+        description={formatWeekRange(weekStart)}
+        actions={
+          <WeekNav
+            weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
+            weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
+          />
+        }
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Días restantes hasta entrega</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {rows.length === 0 && (
-            <div className="text-sm text-muted-foreground">Sin proyectos pendientes.</div>
-          )}
-          {rows.map((row) => {
-            const widthPct =
-              row.days != null && row.days > 0 ? (row.days / maxDays) * 100 : 0;
-            const color =
-              row.risk === "RIESGO"
-                ? "#B91C1C"
-                : row.risk === "ATENCION"
-                  ? "#A16207"
-                  : "#15803D";
-            return (
-              <div key={row.project.id} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{row.project.name}</span>
-                    <RiskBadge level={row.risk} />
-                  </div>
-                  <div className="text-muted-foreground flex gap-3">
-                    <span>{formatShortDate(row.project.deliveryDate)}</span>
-                    <span>{row.days != null ? `${row.days} días` : "sin fecha"}</span>
-                    <span className="font-semibold text-foreground">
-                      {formatHours(row.pending)}
-                    </span>
-                  </div>
-                </div>
-                <div className="h-3 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.max(2, widthPct)}%`,
-                      background: color,
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+      <GanttChart
+        weekStartIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
+        horizonEndIso={horizonEnd.toISOString().slice(0, 10)}
+        todayIso={today.toISOString().slice(0, 10)}
+        projects={ganttProjects}
+        milestones={milestones}
+      />
     </div>
   );
 }

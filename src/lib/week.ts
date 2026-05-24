@@ -23,6 +23,10 @@ export function isoWeek(date: Date): { year: number; week: number } {
   return { year: firstThursdayYear, week };
 }
 
+export function isSameUtcDay(a: Date, b: Date): boolean {
+  return toUtcDay(a).getTime() === toUtcDay(b).getTime();
+}
+
 export function weekDays(weekStart: Date): Date[] {
   const monday = getMondayOf(weekStart);
   return Array.from({ length: 5 }, (_, i) => new Date(monday.getTime() + i * DAY_MS));
@@ -43,6 +47,7 @@ export function formatWeekRange(weekStart: Date): string {
   const formatter = new Intl.DateTimeFormat("es-ES", {
     day: "2-digit",
     month: "short",
+    year: "numeric",
   });
   return `${formatter.format(first)} – ${formatter.format(last)}`;
 }

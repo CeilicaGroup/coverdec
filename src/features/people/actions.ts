@@ -4,17 +4,37 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { ProcessCode, Role } from "@/generated/prisma";
+import {Role } from "@/generated/prisma";
 import { childLogger } from "@/lib/logger";
 
 const log = childLogger({ module: "people.actions" });
 
-const absenceSchema = z.object({
-  personId: z.string().min(1),
-  date: z.string().min(8),
-  hours: z.number().min(0).max(24).default(8),
-  reason: z.string().optional(),
-});
+const absenceSchema = z
+  .object({
+    personId: z.string().min(1),
+    date: z.string().min(8),
+    hours: z.number().min(0).max(24).optional(),
+    reason: z.string().optional(),
+    blockStartMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
+    blockEndMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const bs = data.blockStartMinutes;
+    const be = data.blockEndMinutes;
+    if (bs != null && be != null && be <= bs) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La franja debe terminar después del inicio",
+        path: ["blockEndMinutes"],
+      });
+    }
+  });
+
+function isoWeekdayForSchedule(d: Date): number {
+  const wd = d.getUTCDay();
+  if (wd === 0 || wd === 6) return 5;
+  return wd;
+}
 
 export async function setAbsence(input: z.infer<typeof absenceSchema>) {
   const ctx = await requireDashboardContext();
@@ -23,25 +43,87 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
   const date = new Date(data.date);
   date.setUTCHours(0, 0, 0, 0);
 
-  if (data.hours <= 0) {
+  const hasBlock =
+    data.blockStartMinutes != null &&
+    data.blockEndMinutes != null &&
+    data.blockEndMinutes > data.blockStartMinutes;
+
+  const rawHours = data.hours ?? 0;
+
+  if (rawHours <= 0 && !hasBlock) {
     await prisma.absence.deleteMany({ where: { personId: data.personId, date } });
-  } else {
-    await prisma.absence.upsert({
-      where: { personId_date: { personId: data.personId, date } },
-      update: { hours: data.hours, reason: data.reason },
-      create: {
-        personId: data.personId,
-        date,
-        hours: data.hours,
-        reason: data.reason,
-      },
-    });
+    revalidatePath("/dashboard/personal");
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/semana");
+    revalidatePath("/dashboard/persona");
+    revalidatePath("/dashboard/disponibilidad");
+    return;
   }
+
+  let hours = rawHours > 0 ? rawHours : 8;
+  let blockStart: number | null = null;
+  let blockEnd: number | null = null;
+
+  if (hasBlock) {
+    blockStart = data.blockStartMinutes!;
+    blockEnd = data.blockEndMinutes!;
+    const person = await prisma.person.findUnique({
+      where: { id: data.personId },
+      include: { workWindows: true },
+    });
+    if (!person) throw new Error("Persona no encontrada");
+
+    const { getWindowsForDate } = await import(
+      "@/features/planning/engine/slots/person-schedule"
+    );
+    const { minutesBlockedInWindows } = await import("@/features/people/absence-overlap");
+
+    const byDay = new Map<number, { startMinutes: number; endMinutes: number }[]>();
+    for (const w of person.workWindows) {
+      const list = byDay.get(w.dayOfWeek) ?? [];
+      list.push({ startMinutes: w.startMinutes, endMinutes: w.endMinutes });
+      byDay.set(w.dayOfWeek, list);
+    }
+    const weekly = [...byDay.entries()].map(([dayOfWeek, windows]) => ({
+      dayOfWeek,
+      windows: windows.sort((a, b) => a.startMinutes - b.startMinutes),
+    }));
+
+    const dow = isoWeekdayForSchedule(date);
+    const windows = getWindowsForDate(dow, weekly, undefined);
+    const lostMin = minutesBlockedInWindows(windows, blockStart, blockEnd);
+    if (lostMin <= 0) {
+      throw new Error("La franja no intersecta con el horario laboral de ese día");
+    }
+    hours = Math.round((lostMin / 60) * 100) / 100;
+  }
+
+  await prisma.absence.upsert({
+    where: { personId_date: { personId: data.personId, date } },
+    update: {
+      hours,
+      reason: data.reason?.trim() ? data.reason.trim() : null,
+      blockStartMinutes: blockStart,
+      blockEndMinutes: blockEnd,
+    },
+    create: {
+      personId: data.personId,
+      date,
+      hours,
+      reason: data.reason?.trim() ? data.reason.trim() : null,
+      blockStartMinutes: blockStart,
+      blockEndMinutes: blockEnd,
+    },
+  });
   revalidatePath("/dashboard/personal");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
+  revalidatePath("/dashboard/disponibilidad");
 }
 
 const specialtySchema = z.object({
-  process: z.nativeEnum(ProcessCode),
+  process: z.string().min(1),
   mode: z.enum(["responsable", "apoyo", "otra"]),
 });
 
@@ -52,6 +134,8 @@ const savePersonSchema = z
     iniciales: z.string().min(1).max(12),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
     capacityHours: z.number().min(1).max(24).default(8),
+    hourlyRate: z.number().min(0).default(14.75),
+    overtimeHourlyRate: z.number().min(0).default(22.13),
     notes: z.string().optional(),
     isActive: z.boolean().default(true),
     specialties: z.array(specialtySchema).default([]),
@@ -90,6 +174,8 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             iniciales,
             color: data.color,
             capacityHours: data.capacityHours,
+            hourlyRate: data.hourlyRate,
+            overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
           },
@@ -102,6 +188,8 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             iniciales,
             color: data.color,
             capacityHours: data.capacityHours,
+            hourlyRate: data.hourlyRate,
+            overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
           },
@@ -162,4 +250,47 @@ export async function deletePerson(input: z.infer<typeof deletePersonSchema>) {
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard/semana");
   revalidatePath("/dashboard/persona");
+}
+
+const workWindowSchema = z.object({
+  dayOfWeek: z.number().int().min(1).max(5),
+  startMinutes: z.number().int().min(0).max(24 * 60),
+  endMinutes: z.number().int().min(0).max(24 * 60),
+});
+
+const saveWorkWindowsSchema = z.object({
+  personId: z.string().min(1),
+  windows: z.array(workWindowSchema),
+});
+
+export async function savePersonWorkWindows(
+  input: z.infer<typeof saveWorkWindowsSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = saveWorkWindowsSchema.parse(input);
+
+  for (const w of data.windows) {
+    if (w.endMinutes <= w.startMinutes) {
+      throw new Error("Cada franja debe tener fin posterior al inicio.");
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.personWorkWindow.deleteMany({ where: { personId: data.personId } });
+    if (data.windows.length > 0) {
+      await tx.personWorkWindow.createMany({
+        data: data.windows.map((w) => ({
+          personId: data.personId,
+          dayOfWeek: w.dayOfWeek,
+          startMinutes: w.startMinutes,
+          endMinutes: w.endMinutes,
+        })),
+      });
+    }
+  });
+
+  revalidatePath("/dashboard/personal");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/disponibilidad");
 }

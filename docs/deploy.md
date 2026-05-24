@@ -13,12 +13,17 @@
 | `BETTER_AUTH_SECRET` | Secreto largo y aleatorio (producción). |
 | `BETTER_AUTH_URL` | URL pública del sitio, **sin barra final** (ej. `https://coverdec.tudominio.com`). |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | Misma URL que `BETTER_AUTH_URL` para el cliente de auth en el navegador. |
+| `PLANNING_SOLVER_URL` | URL del microservicio OR-Tools (ej. `http://planning-solver:8000` en Compose). |
 
-Opcional: `LOG_LEVEL` (`info` en producción).
+Opcional: `LOG_LEVEL` (`info` en producción), `SOLVER_MAX_SECONDS` (límite CP-SAT, default `60` en el servicio Python).
 
-## Compose de referencia
+## Desarrollo local
 
-El repositorio incluye `docker-compose.yml` con servicios `web` (build local) y `db` (Postgres 16). En Coolify suele definirse el stack equivalente desde la UI; ajusta nombres de servicio y volúmenes según tu plantilla.
+Ver `docker-compose.dev.yml` en la raíz del repositorio (`npm run dev:up`).
+
+## Producción
+
+Despliegue con la imagen Docker del `Dockerfile` (build standalone de Next.js) y Postgres/solver como servicios separados en Coolify o tu orquestador. No hay `docker-compose.yml` de producción en el repo.
 
 ## Migraciones
 

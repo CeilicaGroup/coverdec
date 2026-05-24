@@ -13,21 +13,22 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { startTimer, stopTimer } from "@/features/time-tracking/actions";
-import { ProcessCode } from "@/generated/prisma";
 
 interface ProjectOption {
   id: string;
   name: string;
   lamps: { id: string; name: string }[];
-  tasks: { id: string; process: ProcessCode; lampId: string | null }[];
+  tasks: { id: string; process: string; lampId: string }[];
 }
 
 export function TimerWidget({
   openTimer,
   projects,
+  processLabels = {},
 }: {
   openTimer: { id: string; project: string; startedAt: string } | null;
   projects: ProjectOption[];
+  processLabels?: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState<string>("");
@@ -90,7 +91,7 @@ export function TimerWidget({
             await startTimer({
               projectId,
               lampId: lampId || undefined,
-              process: (process as ProcessCode) || undefined,
+              process: process || undefined,
             });
             toast.success("Timer iniciado");
           } catch (err) {
@@ -138,9 +139,9 @@ export function TimerWidget({
             <SelectValue placeholder="(opcional)" />
           </SelectTrigger>
           <SelectContent>
-            {Object.values(ProcessCode).map((p) => (
+            {[...new Set((project?.tasks ?? []).map((t) => t.process))].map((p) => (
               <SelectItem key={p} value={p}>
-                {p}
+                {processLabels[p] ?? p}
               </SelectItem>
             ))}
           </SelectContent>

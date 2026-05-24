@@ -1,9 +1,11 @@
 import { Suspense } from "react";
+import { redirectIfAuthenticated } from "@/lib/auth-server";
 import { LoginForm } from "./login-form";
-import { RedirectIfAuthed } from "./redirect-if-authed";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  await redirectIfAuthenticated();
+
   return (
     <Card>
       <CardHeader>
@@ -11,7 +13,6 @@ export default function LoginPage() {
       </CardHeader>
       <CardContent>
         <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando…</div>}>
-          <RedirectIfAuthed />
           <LoginForm />
         </Suspense>
       </CardContent>

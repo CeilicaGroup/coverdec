@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth-server";
+import {
+  redirectToLoginWithStaleSession,
+  requireSessionOrRedirect,
+} from "@/lib/auth-server";
 import type { Role } from "@/generated/prisma";
 
 export interface DashboardContext {
@@ -11,12 +14,12 @@ export interface DashboardContext {
 }
 
 export async function requireDashboardContext(): Promise<DashboardContext> {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const user = await prisma.user.findUniqueOrThrow({
+  const session = await requireSessionOrRedirect();
+  const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { memberships: true },
   });
+  if (!user) return redirectToLoginWithStaleSession();
   const empresaId =
     user.activeEmpresaId ?? user.memberships[0]?.empresaId ?? null;
   if (!empresaId) {

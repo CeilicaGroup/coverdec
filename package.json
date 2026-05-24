@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:up": "docker compose -f docker-compose.dev.yml up -d --build",
+    "dev:down": "docker compose -f docker-compose.dev.yml down",
+    "dev:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "dev:seed": "docker compose -f docker-compose.dev.yml exec web npm run db:seed",
     "build": "prisma generate && next build",
     "start": "next start",
     "postinstall": "prisma generate",
@@ -12,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --skip-seed",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:solver": "docker compose -f docker-compose.dev.yml run --rm planning-solver sh -c \"pip install -q -r requirements-dev.txt && python -m pytest -q\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

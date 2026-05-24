@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Archive, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProject, toggleProjectActive } from "@/features/projects/actions";
+import {
+  EditProjectDialog,
+  type EditableProject,
+} from "./edit-project-dialog";
 
 function formatActionError(err: unknown): string {
   if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
@@ -15,16 +19,13 @@ function formatActionError(err: unknown): string {
 }
 
 export function ProjectRowActions({
-  projectId,
-  projectName,
-  isActive,
+  project,
   canHardDelete,
 }: {
-  projectId: string;
-  projectName: string;
-  isActive: boolean;
+  project: EditableProject & { isActive: boolean };
   canHardDelete: boolean;
 }) {
+  const { id: projectId, name: projectName, isActive } = project;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -67,6 +68,7 @@ export function ProjectRowActions({
 
   return (
     <div className="flex justify-end gap-1">
+      <EditProjectDialog project={project} />
       <Button
         type="button"
         variant="ghost"

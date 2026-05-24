@@ -7,15 +7,6 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "../../../_components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ProcessBadge } from "@/components/process-badge";
 import { RiskBadge } from "@/components/risk-badge";
 import {
   daysUntil,
@@ -24,8 +15,10 @@ import {
   riskFromDelivery,
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
-import { AddTaskForm } from "./add-task-form";
+import { LampTasksPanel } from "./lamp-tasks-panel";
+import { DeleteLampButton } from "./delete-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
+import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
 
 export default async function ProjectDetailPage({
@@ -38,8 +31,13 @@ export default async function ProjectDetailPage({
   const project = await prisma.project.findFirst({
     where: { id, empresaId: ctx.empresaId },
     include: {
-      lamps: { include: { frameType: true, tasks: true } },
-      tasks: { include: { lamp: true } },
+      lamps: {
+        include: {
+          frameType: true,
+          tasks: { orderBy: { order: "asc" } },
+        },
+        orderBy: { name: "asc" },
+      },
     },
   });
   if (!project) notFound();
@@ -52,14 +50,30 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const frameTypes = await prisma.frameType.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-  });
+  const [frameTypes, processDefs] = await Promise.all([
+    prisma.frameType.findMany({
+      where: { isActive: true },
+      include: {
+        processes: {
+          include: { definition: true },
+          orderBy: { sequence: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.processDefinition.findMany({
+      select: { code: true, waitHours: true },
+    }),
+  ]);
 
-  const totalEstimated = project.tasks.reduce((a, t) => a + t.estimatedHours, 0);
-  const totalDone = project.tasks.reduce((a, t) => a + t.doneHours, 0);
-  const totalPending = project.tasks.reduce((a, t) => a + t.pendingHours, 0);
+  const waitHoursByProcess = Object.fromEntries(
+    processDefs.map((p) => [p.code, p.waitHours]),
+  ) as Record<string, number>;
+
+  const allTasks = project.lamps.flatMap((l) => l.tasks);
+  const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
+  const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
+  const totalPending = allTasks.reduce((a, t) => a + t.pendingHours, 0);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -69,12 +83,27 @@ export default async function ProjectDetailPage({
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {canManage ? (
-              <ProjectDangerZone
-                projectId={project.id}
-                projectName={project.name}
-                isActive={project.isActive}
-                canHardDelete={canHardDelete}
-              />
+              <>
+                <EditProjectDialog
+                  variant="button"
+                  project={{
+                    id: project.id,
+                    name: project.name,
+                    client: project.client,
+                    obra: project.obra,
+                    deliveryDate: project.deliveryDate,
+                    priority: project.priority,
+                    isBillable: project.isBillable,
+                    notes: project.notes,
+                  }}
+                />
+                <ProjectDangerZone
+                  projectId={project.id}
+                  projectName={project.name}
+                  isActive={project.isActive}
+                  canHardDelete={canHardDelete}
+                />
+              </>
             ) : null}
             <Button variant="outline" render={<Link href="/dashboard/proyectos" />}>
               <ArrowLeft className="size-4 mr-1" />
@@ -86,107 +115,72 @@ export default async function ProjectDetailPage({
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label="Entrega" value={formatShortDate(project.deliveryDate)} sub={`${daysUntil(project.deliveryDate) ?? "—"} días`} />
-        <Kpi label="Estimado" value={formatHours(totalEstimated)} sub={`${project.tasks.length} tareas`} />
+        <Kpi label="Estimado" value={formatHours(totalEstimated)} sub={`${allTasks.length} tareas`} />
         <Kpi label="Hecho" value={formatHours(totalDone)} sub={`${totalEstimated > 0 ? Math.round((totalDone / totalEstimated) * 100) : 0}% avance`} />
         <Kpi label="Pendiente" value={formatHours(totalPending)} sub={<RiskBadge level={riskFromDelivery(project.deliveryDate)} />} />
       </div>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Lámparas</CardTitle>
-          <AddLampForm
-            projectId={project.id}
-            frameTypes={frameTypes.map((f) => ({ id: f.id, name: f.name }))}
-          />
+          <CardTitle>Lámparas y tareas</CardTitle>
+          {canManage ? (
+            <AddLampForm
+              projectId={project.id}
+              frameTypes={frameTypes.map((f) => ({
+                id: f.id,
+                name: f.name,
+                processes: f.processes.map((p) => ({
+                  process: p.process,
+                  label: p.definition.label,
+                  bgColor: p.definition.bgColor,
+                  fgColor: p.definition.fgColor,
+                  borderColor: p.definition.borderColor,
+                })),
+              }))}
+            />
+          ) : null}
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Tipo bastidor</TableHead>
-                <TableHead>Medida</TableHead>
-                <TableHead>Unidades</TableHead>
-                <TableHead className="text-right">Pendiente</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {project.lamps.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                    Aún sin lámparas
-                  </TableCell>
-                </TableRow>
-              ) : (
-                project.lamps.map((l) => {
-                  const lampPending = l.tasks.reduce((a, t) => a + t.pendingHours, 0);
-                  return (
-                    <TableRow key={l.id}>
-                      <TableCell className="font-semibold text-sm">{l.name}</TableCell>
-                      <TableCell className="text-xs">{l.frameType?.name ?? "—"}</TableCell>
-                      <TableCell className="text-xs font-mono">
-                        {l.surfaceM2 ? `${l.surfaceM2}m²` : "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">{l.units}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatHours(lampPending)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Tareas</CardTitle>
-          <AddTaskForm
-            projectId={project.id}
-            lamps={project.lamps.map((l) => ({ id: l.id, name: l.name }))}
-          />
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Lámpara</TableHead>
-                <TableHead>Proceso</TableHead>
-                <TableHead className="text-right">Estimado</TableHead>
-                <TableHead className="text-right">Hecho</TableHead>
-                <TableHead className="text-right">Pendiente</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {project.tasks.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                    Sin tareas
-                  </TableCell>
-                </TableRow>
-              ) : (
-                project.tasks.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="text-xs">{t.lamp?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      <ProcessBadge code={t.process} />
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {formatHours(t.estimatedHours)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {formatHours(t.doneHours)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(t.pendingHours)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          {project.lamps.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">
+              Aún sin lámparas. Añade una con bastidor y medida para generar las tareas.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {project.lamps.map((l) => {
+                const lampPending = l.tasks.reduce((a, t) => a + t.pendingHours, 0);
+                return (
+                  <div key={l.id}>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
+                      <div className="font-semibold text-sm min-w-[120px]">{l.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Bastidor: <span className="text-foreground">{l.frameType.name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Medida: <span className="font-mono text-foreground">{l.surfaceM2 ?? "—"}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Uds: <span className="text-foreground">{l.units}</span>
+                      </div>
+                      <div className="text-xs font-mono ml-auto">
+                        Pendiente: <span className="font-semibold">{formatHours(lampPending)}</span>
+                      </div>
+                      {canManage ? (
+                        <DeleteLampButton lampId={l.id} lampName={l.name} />
+                      ) : null}
+                    </div>
+                    <LampTasksPanel
+                      lampId={l.id}
+                      tasks={l.tasks}
+                      usedProcesses={l.tasks.map((t) => t.process)}
+                      waitHoursByProcess={waitHoursByProcess}
+                      canManage={canManage}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

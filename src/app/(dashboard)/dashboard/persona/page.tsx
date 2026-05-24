@@ -11,7 +11,13 @@ import {
   getAbsencesForRange,
   getEmpresaPeople,
   getPlanningForWeek,
+  getProcessDefinitionsByCode,
 } from "@/features/planning/queries";
+import {
+  buildPlanningTimeline,
+  filterTimelineForPerson,
+  type PlanningAssignmentSlice,
+} from "@/features/planning/planning-timeline";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { PersonAvatar } from "@/components/person-avatar";
@@ -40,11 +46,17 @@ export default async function PersonaPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
-  const [planning, allPeople, absences] = await Promise.all([
+  const [planning, allPeople, absences, processByCode] = await Promise.all([
     getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
     getEmpresaPeople(),
     getAbsencesForRange(days[0], days[4]),
+    getProcessDefinitionsByCode(),
   ]);
+
+  const fullTimeline = buildPlanningTimeline(
+    (planning?.assignments ?? []) as PlanningAssignmentSlice[],
+    processByCode,
+  );
 
   const people =
     ctx.role === Role.OPERARIO && ctx.personId
@@ -79,13 +91,13 @@ export default async function PersonaPage({
 
       <div className="grid lg:grid-cols-2 gap-4 print:grid-cols-1">
         {people.map((p) => {
-          const items = (planning?.assignments ?? [])
-            .filter((a) => a.personId === p.id)
-            .sort(
-              (a, b) =>
-                a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot,
-            );
-          const total = items.reduce((acc, x) => acc + x.hours, 0);
+          const items = filterTimelineForPerson(fullTimeline, p.id).filter(
+            (i) => i.kind === "work",
+          );
+          const total = items.reduce(
+            (acc, x) => acc + (x.kind === "work" ? x.assignment.hours : 0),
+            0,
+          );
           const personAbsences = absences.filter((a) => a.personId === p.id);
 
           return (
@@ -149,29 +161,35 @@ export default async function PersonaPage({
                         </TableCell>
                       </TableRow>
                     ) : (
-                      items.map((a) => (
-                        <TableRow key={a.id}>
-                          <TableCell className="font-mono text-xs">
-                            {formatShortDate(a.date)}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {rangeLabel(a.startSlot, a.endSlot)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-semibold text-xs">
-                              {a.task.project.name}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground">
-                              {a.task.lamp?.name ?? ""}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <ProcessBadge code={a.process} />
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs font-semibold">
-                            {formatHours(a.hours)}
-                          </TableCell>
-                        </TableRow>
+                      items.map((item) => (
+                        <TableRow key={item.assignment.id}>
+                            <TableCell className="font-mono text-xs">
+                              {formatShortDate(item.assignment.date)}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {rangeLabel(
+                                item.assignment.startSlot,
+                                item.assignment.endSlot,
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-semibold text-xs">
+                                {item.assignment.task.project.name}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {item.assignment.task.lamp?.name ?? ""}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <ProcessBadge
+                                code={item.assignment.process}
+                                definition={processByCode.get(item.assignment.process)?.badge}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs font-semibold">
+                              {formatHours(item.assignment.hours)}
+                            </TableCell>
+                          </TableRow>
                       ))
                     )}
                   </TableBody>

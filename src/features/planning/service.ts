@@ -1,24 +1,92 @@
 import { prisma } from "@/lib/db";
 import { childLogger } from "@/lib/logger";
-import { runScheduler } from "./engine/scheduler";
-import type {
-  EngineHoliday,
-  EnginePerson,
-  EngineTask,
-  EngineAbsence,
-} from "./engine/types";
-import { PlanningStatus, type ProcessCode } from "@/generated/prisma";
+import { runPlanningEngine } from "./engine";
+import type { PlanFrom } from "@/features/planning/plan-from";
+import { loadSolverInput } from "./load-engine-input";
+import {
+  PlanningStatus,
+    type Prisma,
+} from "@/generated/prisma";
 import { getMondayOf, isoWeek } from "@/lib/week";
 
 const log = childLogger({ module: "planning.service" });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** DB writes only; CP-SAT solver runs outside the transaction (often 10–60s). */
+const PLANNING_WRITE_TX_MS = 30_000;
+
+function isTaskDoneInFactory(task: {
+  pendingHours: number;
+  doneHours: number;
+  estimatedHours: number;
+}): boolean {
+  return (
+    task.pendingHours <= 0 &&
+    task.estimatedHours > 0 &&
+    task.doneHours >= task.estimatedHours - 1e-6
+  );
+}
+
+async function restoreAssignmentHoursToTasks(
+  tx: Prisma.TransactionClient,
+  planningId: string,
+): Promise<void> {
+  const oldSums = await tx.planningAssignment.groupBy({
+    by: ["taskId"],
+    where: { planningId },
+    _sum: { hours: true },
+  });
+  if (oldSums.length === 0) return;
+
+  const taskIds = oldSums.map((r) => r.taskId);
+  const tasks = await tx.task.findMany({ where: { id: { in: taskIds } } });
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+
+  await Promise.all(
+    oldSums.map(async (row) => {
+      const add = row._sum.hours ?? 0;
+      if (add <= 0) return;
+      const task = taskMap.get(row.taskId);
+      if (!task || isTaskDoneInFactory(task)) return;
+      await tx.task.update({
+        where: { id: row.taskId },
+        data: { pendingHours: task.pendingHours + add },
+      });
+    }),
+  );
+}
+
+async function syncTaskPendingBeforeSolve(empresaId: string): Promise<void> {
+  const tasks = await prisma.task.findMany({
+    where: { project: { empresaId, isActive: true } },
+    select: {
+      id: true,
+      pendingHours: true,
+      doneHours: true,
+      estimatedHours: true,
+    },
+  });
+  for (const task of tasks) {
+    if (isTaskDoneInFactory(task)) continue;
+    const remaining = Math.max(0, task.estimatedHours - task.doneHours);
+    if (task.pendingHours <= 0 && remaining > 0) {
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { pendingHours: remaining },
+      });
+    }
+  }
+}
+
 const ENGINE_HORIZON_DAYS = 5;
 
 export interface GeneratePlanningArgs {
   empresaId: string;
   weekStart: Date;
   replaceDraft?: boolean;
+  planFrom?: PlanFrom;
+  planFromAt?: Date;
 }
 
 export interface GeneratedPlanning {
@@ -31,132 +99,99 @@ export interface GeneratedPlanning {
 export async function generatePlanning(
   args: GeneratePlanningArgs,
 ): Promise<GeneratedPlanning> {
+  const replaceDraft = args.replaceDraft ?? true;
   const weekStart = getMondayOf(args.weekStart);
   const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
   const { year, week } = isoWeek(weekStart);
   log.info({ empresaId: args.empresaId, year, week }, "generate planning start");
 
-  const [processes, peopleRaw, absencesRaw, holidaysRaw] = await Promise.all([
-    prisma.processDefinition.findMany(),
-    prisma.person.findMany({
-      where: { isActive: true },
-      include: { specialties: true },
-    }),
-    prisma.absence.findMany({
-      where: {
-        date: {
-          gte: weekStart,
-          lte: weekEnd,
-        },
-      },
-    }),
-    prisma.holiday.findMany({
-      where: {
-        date: {
-          gte: weekStart,
-          lte: weekEnd,
-        },
-      },
-    }),
-  ]);
+  const existing = await prisma.planning.findUnique({
+    where: {
+      empresaId_year_week: { empresaId: args.empresaId, year, week },
+    },
+  });
 
-  const enginePeople: EnginePerson[] = peopleRaw.map((p) => ({
-    id: p.id,
-    iniciales: p.iniciales,
-    primary: p.specialties.filter((s) => s.isPrimary).map((s) => s.process),
-    fallback: p.specialties
-      .filter((s) => !s.isPrimary)
-      .map((s) => s.process),
-    capacityHours: p.capacityHours,
-  }));
+  if (existing && existing.status === PlanningStatus.PUBLISHED && !replaceDraft) {
+    throw new Error(
+      "El planning de esta semana está publicado. Usa «Deshacer» para eliminarlo o regenera desde el panel.",
+    );
+  }
 
-  const engineAbsences: EngineAbsence[] = absencesRaw.map((a) => ({
-    personId: a.personId,
-    date: a.date,
-    hours: a.hours,
-  }));
+  const previousAssignments = existing
+    ? await prisma.planningAssignment.findMany({
+      where: { planningId: existing.id },
+    })
+    : [];
 
-  const engineHolidays: EngineHoliday[] = holidaysRaw.map((h) => ({
-    date: h.date,
-  }));
-
-  const processDefs = processes.map((p) => ({
-    code: p.code,
-    sequence: p.sequence,
-    deadlineDay: p.deadlineDay,
-  }));
-
-  const { planning, result } = await prisma.$transaction(async (tx) => {
-    const existing = await tx.planning.findUnique({
-      where: {
-        empresaId_year_week: { empresaId: args.empresaId, year, week },
-      },
+  if (existing) {
+    await prisma.$transaction(async (tx) => {
+      await restoreAssignmentHoursToTasks(tx, existing.id);
     });
+  } else {
+    await syncTaskPendingBeforeSolve(args.empresaId);
+  }
 
-    if (existing && existing.status === PlanningStatus.PUBLISHED && !args.replaceDraft) {
-      throw new Error(
-        "Existe un planning publicado para esta semana. Use replaceDraft para sobrescribir.",
-      );
-    }
+  const engineInput = await loadSolverInput({
+    empresaId: args.empresaId,
+    weekStart,
+    weekEnd,
+    planFrom: args.planFrom,
+    planFromAt: args.planFromAt,
+    previousAssignments,
+  });
 
-    if (existing) {
-      const oldSums = await tx.planningAssignment.groupBy({
-        by: ["taskId"],
-        where: { planningId: existing.id },
-        _sum: { hours: true },
-      });
-      for (const row of oldSums) {
-        const add = row._sum.hours ?? 0;
-        if (add <= 0) continue;
-        const task = await tx.task.findUnique({ where: { id: row.taskId } });
-        if (!task) continue;
-        await tx.task.update({
-          where: { id: row.taskId },
-          data: { pendingHours: task.pendingHours + add },
+  if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
+    throw new Error(
+      "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige «Lunes de la semana» o navega a la semana actual o futura.",
+    );
+  }
+
+  if (engineInput.tasks.length === 0) {
+    throw new Error(
+      "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas tengan tareas y horas estimadas.",
+    );
+  }
+
+  const solveStarted = Date.now();
+  const result = await runPlanningEngine(engineInput);
+  log.info(
+    {
+      empresaId: args.empresaId,
+      year,
+      week,
+      taskCount: engineInput.tasks.length,
+      solveMs: Date.now() - solveStarted,
+      assignments: result.assignments.length,
+    },
+    "planning solver done",
+  );
+
+  if (result.assignments.length === 0 && result.unscheduledHours > 0) {
+    const hint = result.warnings[0]?.reason ?? "Revisa capacidad, especialidades y festivos.";
+    throw new Error(
+      `El solver no pudo colocar trabajo (${result.unscheduledHours.toFixed(1)}h sin asignar). ${hint}`,
+    );
+  }
+
+  const planning = await prisma.$transaction(
+    async (tx) => {
+      if (existing) {
+        await tx.planningAssignment.deleteMany({
+          where: { planningId: existing.id },
         });
       }
-      await tx.planningAssignment.deleteMany({
-        where: { planningId: existing.id },
-      });
-    }
 
-    const tasks = await tx.task.findMany({
-      where: {
-        project: { empresaId: args.empresaId, isActive: true },
-        pendingHours: { gt: 0 },
-      },
-      include: {
-        project: {
-          select: { id: true, priority: true, deliveryDate: true },
-        },
-      },
-    });
-
-    const engineTasks: EngineTask[] = tasks.map((t) => ({
-      id: t.id,
-      projectId: t.projectId,
-      projectPriority: t.project.priority,
-      projectDeliveryDate: t.project.deliveryDate ?? null,
-      lampId: t.lampId,
-      process: t.process,
-      pendingHours: t.pendingHours,
-    }));
-
-    const result = runScheduler({
-      weekStart,
-      processes: processDefs,
-      people: enginePeople,
-      tasks: engineTasks,
-      absences: engineAbsences,
-      holidays: engineHolidays,
-    });
-
-    const upserted = existing
-      ? await tx.planning.update({
+      const upserted = existing
+        ? await tx.planning.update({
           where: { id: existing.id },
-          data: { status: PlanningStatus.DRAFT, weekStart, weekEnd, publishedAt: null },
+          data: {
+            status: PlanningStatus.DRAFT,
+            weekStart,
+            weekEnd,
+            publishedAt: null,
+          },
         })
-      : await tx.planning.create({
+        : await tx.planning.create({
           data: {
             empresaId: args.empresaId,
             year,
@@ -166,37 +201,39 @@ export async function generatePlanning(
           },
         });
 
-    if (result.assignments.length > 0) {
-      await tx.planningAssignment.createMany({
-        data: result.assignments.map((a) => ({
-          planningId: upserted.id,
-          taskId: a.taskId,
-          personId: a.personId,
-          date: a.date,
-          startSlot: a.startSlot,
-          endSlot: a.endSlot,
-          hours: a.hours,
-          process: a.process as ProcessCode,
-          isAfternoon: a.isAfternoon,
-        })),
-      });
-    }
+      if (result.assignments.length > 0) {
+        await tx.planningAssignment.createMany({
+          data: result.assignments.map((a) => ({
+            planningId: upserted.id,
+            taskId: a.taskId,
+            personId: a.personId,
+            date: a.date,
+            startSlot: a.startSlot,
+            endSlot: a.endSlot,
+            hours: a.hours,
+            process: a.process,
+            isAfternoon: a.isAfternoon,
+          })),
+        });
+      }
 
-    const newByTask = new Map<string, number>();
-    for (const a of result.assignments) {
-      newByTask.set(a.taskId, (newByTask.get(a.taskId) ?? 0) + a.hours);
-    }
-    for (const [taskId, hours] of newByTask) {
-      const task = await tx.task.findUnique({ where: { id: taskId } });
-      if (!task) continue;
-      await tx.task.update({
-        where: { id: taskId },
-        data: { pendingHours: Math.max(0, task.pendingHours - hours) },
-      });
-    }
+      const newByTask = new Map<string, number>();
+      for (const a of result.assignments) {
+        newByTask.set(a.taskId, (newByTask.get(a.taskId) ?? 0) + a.hours);
+      }
+      for (const [taskId, hours] of newByTask) {
+        const task = await tx.task.findUnique({ where: { id: taskId } });
+        if (!task) continue;
+        await tx.task.update({
+          where: { id: taskId },
+          data: { pendingHours: Math.max(0, task.pendingHours - hours) },
+        });
+      }
 
-    return { planning: upserted, result };
-  });
+      return upserted;
+    },
+    { timeout: PLANNING_WRITE_TX_MS },
+  );
 
   log.info(
     {
@@ -220,6 +257,53 @@ export async function publishPlanning(planningId: string): Promise<void> {
     where: { id: planningId },
     data: { status: PlanningStatus.PUBLISHED, publishedAt: new Date() },
   });
+}
+
+export async function hasFuturePlannings(
+  empresaId: string,
+  weekStart: Date,
+): Promise<boolean> {
+  const monday = getMondayOf(weekStart);
+  const count = await prisma.planning.count({
+    where: { empresaId, weekStart: { gt: monday } },
+  });
+  return count > 0;
+}
+
+export async function undoPlanning(args: {
+  empresaId: string;
+  weekStart: Date;
+}): Promise<void> {
+  const weekStart = getMondayOf(args.weekStart);
+  const { year, week } = isoWeek(weekStart);
+
+  const existing = await prisma.planning.findUnique({
+    where: {
+      empresaId_year_week: { empresaId: args.empresaId, year, week },
+    },
+  });
+  if (!existing) {
+    throw new Error("No hay planning para esta semana.");
+  }
+
+  if (await hasFuturePlannings(args.empresaId, weekStart)) {
+    throw new Error(
+      "No se puede deshacer: hay plannings de semanas posteriores. Elimínalos primero.",
+    );
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      await restoreAssignmentHoursToTasks(tx, existing.id);
+      await tx.planning.delete({ where: { id: existing.id } });
+    },
+    { timeout: PLANNING_WRITE_TX_MS },
+  );
+
+  log.info(
+    { empresaId: args.empresaId, year, week, planningId: existing.id },
+    "planning undone",
+  );
 }
 
 export { getMondayOf, isoWeek };

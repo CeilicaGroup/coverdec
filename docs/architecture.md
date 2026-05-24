@@ -13,17 +13,46 @@ Modelo **compartido**: un mismo equipo productivo atiende varias empresas del gr
 1. **UI** (`src/app`): rutas públicas (`/login`) y área autenticada (`(dashboard)`). Shell con sidebar y navegación por semana.
 2. **Server Actions** (`src/features/*/actions.ts`): mutaciones con `revalidatePath` tras cambios.
 3. **Servicios de dominio** (`src/features/planning/service.ts`, importadores en `src/features/imports/`): orquestan Prisma y el motor de planning.
-4. **Motor de planning** (`src/features/planning/engine/`): scheduler determinista con tests en **Vitest**.
+4. **Motor de planning** (`src/features/planning/engine/`): cliente HTTP al microservicio Python; tests en **Vitest** (greedy) y **pytest** (OR-Tools).
 
-## Motor de planning (greedy, no solver CSP/ILP)
+## Motor de planning (OR-Tools CP-SAT)
 
-El reparto semanal **no** usa un motor de restricciones genérico (no CSP, no programación lineal entera, no OR-Tools). El flujo es:
+El reparto semanal usa un **microservicio Python** ([`services/planning-solver/`](services/planning-solver/)) con **OR-Tools CP-SAT**: intervalos opcionales por tarea/persona/día, sin solapamiento en persona ni lámpara, precedencia por bastidor, **tiempos de secado** (`ProcessDefinition.waitHours`) y objetivo multi-criterio ponderado por [`PlanningPolicy`](prisma/schema.prisma) (panel **Estrategia** en el resumen).
 
-1. [`src/features/planning/service.ts`](src/features/planning/service.ts) carga tareas pendientes, personas con especialidades, definiciones de proceso, ausencias y festivos, y llama a `runScheduler`.
-2. [`src/features/planning/engine/scheduler.ts`](src/features/planning/engine/scheduler.ts) implementa un **planificador voraz determinista**: ordena tareas y, para cada asignación, elige entre candidatos válidos quien lleve **menos horas acumuladas en la semana** (desempate por `personId`), respetando cupo diario, `deadlineDay` por proceso y la regla primario → sustituto (`pickCandidates`).
-3. Los resultados se persisten como `PlanningAssignment`.
+### Objetivos y restricciones (qué mueve el plan)
 
-Reglas principales cubiertas por el motor: orden de tareas (entrega, prioridad, secuencia de proceso), especialidad primaria o apoyo, tope de día laborable por persona, ausencias y festivos, partición de tareas largas en varios días.
+| Concepto | Tipo | Efecto |
+|----------|------|--------|
+| `ProcessDefinition.deadlineDay` | Restricción dura | No planificar ese proceso después del día de la semana (ej. imprimación ≤ miércoles). |
+| `Project.deliveryDate` | Objetivo suave (`wLate`) | Penaliza acabar la lámpara después de la fecha de entrega del proyecto. |
+| Precedencia por lámpara | Restricción dura | La tarea N+1 no empieza hasta que N esté totalmente asignada. |
+| `waitHours` del proceso anterior | Restricción dura | Espera mínima entre procesos consecutivos (ej. 12 h tras imprimación). |
+| `wUnscheduled` | Objetivo suave (tier 0) | Minimizar horas pendientes sin asignar en la semana. |
+| `wLaborCost` | Objetivo suave (tier 2) | Minimizar coste de horas normales y extra. |
+| `wLoadBalance` / `wMove` | Objetivo suave (tier 2) | Equilibrar carga entre operarios / estabilidad vs plan anterior. |
+
+El solver usa **prioridades por tiers** (cobertura ×10⁶, plazos ×10³, coste ×1) para que un peso no pise a otro por accidente. Los floats del panel se traducen en `_coerce_weights` dentro de `solve_week.py`.
+
+Los huecos «Libre» en el grid suelen ser capacidad que **no se puede usar** hasta que termine el proceso anterior de la misma lámpara (u otro operario), no necesariamente holgura ignorada por el optimizador.
+
+La UI expone **Cumplir entregas** vs **Minimizar coste** (0–100), mapeados a pesos en [`policy-schema.ts`](src/features/planning/policy-schema.ts); el modo avanzado edita los pesos del solver directamente.
+
+1. [`src/features/planning/service.ts`](src/features/planning/service.ts) carga datos con `loadSolverInput` y llama a `runPlanningEngine` (HTTP `POST /solve`).
+2. [`services/planning-solver/app/model/solve_week.py`](services/planning-solver/app/model/solve_week.py) devuelve `PlanningAssignment` con `startSlot`/`endSlot` ya resueltos (una sola fase).
+3. La persistencia en PostgreSQL ocurre en una transacción corta en Next.js (el solver corre fuera de la transacción).
+
+Variable de entorno: `PLANNING_SOLVER_URL` (en Docker dev: `http://planning-solver:8000`; en host: `http://localhost:8000`).
+
+El módulo greedy legado ([`scheduler.ts`](src/features/planning/engine/scheduler.ts)) permanece solo para tests de regresión en Node.
+
+Reglas principales cubiertas por el motor: orden de tareas (entrega, prioridad, lámpara, `order` dentro de la lámpara), **precedencia por lámpara** (solo una tarea activa por bastidor; la siguiente empieza cuando la anterior queda totalmente asignada en la pasada), especialidad primaria o apoyo, tope de día laborable por persona, ausencias y festivos, partición de tareas largas en varios días.
+
+## Proyectos, lámparas y tareas
+
+- Cada **lámpara** tiene un **bastidor** (`frameTypeId`) fijado al crearla; no se puede cambiar (hay que borrar la lámpara y crear otra).
+- Las **tareas** pertenecen siempre a una lámpara, en el **orden del bastidor** (`FrameTypeProcess.sequence` → `Task.order`). Se pueden añadir procesos extra al final.
+- Al crear lámpara con bastidor y **Medida** (`surfaceM2`), se generan las tareas automáticamente.
+- El **registro de horas** y el **planning** respetan la precedencia: no se puede imputar ni planificar un proceso si quedan horas pendientes en tareas anteriores de la misma lámpara.
 
 Tests de referencia: [`src/features/planning/engine/__tests__/scheduler.test.ts`](src/features/planning/engine/__tests__/scheduler.test.ts).
 

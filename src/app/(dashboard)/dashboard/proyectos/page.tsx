@@ -79,7 +79,7 @@ export default async function ProyectosPage() {
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
                 <TableHead>Facturable</TableHead>
-                {canManage ? <TableHead className="w-[88px] text-right">Acciones</TableHead> : null}
+                {canManage ? <TableHead className="w-[112px] text-right">Acciones</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -133,9 +133,17 @@ export default async function ProyectosPage() {
                     {canManage ? (
                       <TableCell className="text-right p-1">
                         <ProjectRowActions
-                          projectId={p.id}
-                          projectName={p.name}
-                          isActive={p.isActive}
+                          project={{
+                            id: p.id,
+                            name: p.name,
+                            client: p.client,
+                            obra: p.obra,
+                            deliveryDate: p.deliveryDate,
+                            priority: p.priority,
+                            isBillable: p.isBillable,
+                            notes: p.notes,
+                            isActive: p.isActive,
+                          }}
                           canHardDelete={canHardDelete}
                         />
                       </TableCell>

@@ -1,124 +1,115 @@
-import { PrismaClient, ProcessCode, Role } from "../src/generated/prisma";
+import { PrismaClient, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
+import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 
 const prisma = new PrismaClient();
 
 const PROCESSES = [
   {
-    code: ProcessCode.CNC,
+    code: "CNC",
     label: "CNC",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#DBEAFE",
     fgColor: "#1D4ED8",
     borderColor: "#1D4ED8",
     sequence: 1,
   },
   {
-    code: ProcessCode.ENSAMBLAJE,
+    code: "ENSAMBLAJE",
     label: "Ensamblaje",
     factor: 1,
     setupHours: 1,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#DCFCE7",
     fgColor: "#15803D",
     borderColor: "#15803D",
     sequence: 2,
   },
   {
-    code: ProcessCode.LIJADO,
+    code: "LIJADO",
     label: "Lijado/Masillado",
     factor: 0.7,
     setupHours: 2,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#FEF9C3",
     fgColor: "#A16207",
     borderColor: "#A16207",
     sequence: 3,
   },
   {
-    code: ProcessCode.IMPRIMACION,
+    code: "IMPRIMACION",
     label: "Imprimación",
     factor: 0.55,
     setupHours: 0,
-    dryHours: 12,
-    deadlineDay: 3,
+    waitHours: 12,
     bgColor: "#FFEDD5",
     fgColor: "#C2410C",
     borderColor: "#C2410C",
     sequence: 4,
   },
   {
-    code: ProcessCode.PINTURA,
+    code: "PINTURA",
     label: "Pintura",
     factor: 0.45,
     setupHours: 0,
-    dryHours: 12,
-    deadlineDay: 4,
+    waitHours: 12,
     bgColor: "#FEE2E2",
     fgColor: "#B91C1C",
     borderColor: "#B91C1C",
     sequence: 5,
   },
   {
-    code: ProcessCode.PERFILES,
+    code: "PERFILES",
     label: "Perfiles",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: 5,
+    waitHours: 0,
     bgColor: "#CCFBF1",
     fgColor: "#0F766E",
     borderColor: "#0F766E",
     sequence: 6,
   },
   {
-    code: ProcessCode.EMBALAJE,
+    code: "EMBALAJE",
     label: "Embalaje",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: 5,
+    waitHours: 0,
     bgColor: "#D1FAE5",
     fgColor: "#166534",
     borderColor: "#166534",
     sequence: 7,
   },
   {
-    code: ProcessCode.PEGADO_ESPEJO,
+    code: "PEGADO_ESPEJO",
     label: "Pegado espejo",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#EDE9FE",
     fgColor: "#5B21B6",
     borderColor: "#5B21B6",
     sequence: 4,
   },
   {
-    code: ProcessCode.CORTE_MANUAL,
+    code: "CORTE_MANUAL",
     label: "Corte manual",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#F3F4F6",
     fgColor: "#374151",
     borderColor: "#374151",
     sequence: 1,
   },
   {
-    code: ProcessCode.LIMPIEZA,
+    code: "LIMPIEZA",
     label: "Limpieza",
     factor: 1,
     setupHours: 0,
-    dryHours: 0,
-    deadlineDay: null,
+    waitHours: 0,
     bgColor: "#E0F2FE",
     fgColor: "#0369A1",
     borderColor: "#0369A1",
@@ -133,11 +124,11 @@ const PEOPLE = [
     iniciales: "CP",
     color: "#059669",
     specialties: [
-      { process: ProcessCode.PINTURA, isPrimary: true },
-      { process: ProcessCode.LIJADO, isFallback: true },
-      { process: ProcessCode.ENSAMBLAJE },
-      { process: ProcessCode.PERFILES },
-      { process: ProcessCode.EMBALAJE },
+      { process: "PINTURA", isPrimary: true },
+      { process: "LIJADO", isFallback: true },
+      { process: "ENSAMBLAJE" },
+      { process: "PERFILES" },
+      { process: "EMBALAJE" },
     ],
     notes: "Responsable de nave. Único responsable de Pintura.",
   },
@@ -147,11 +138,11 @@ const PEOPLE = [
     iniciales: "SK",
     color: "#EA580C",
     specialties: [
-      { process: ProcessCode.IMPRIMACION, isPrimary: true },
-      { process: ProcessCode.ENSAMBLAJE, isFallback: true },
-      { process: ProcessCode.PERFILES },
-      { process: ProcessCode.EMBALAJE },
-      { process: ProcessCode.LIMPIEZA },
+      { process: "IMPRIMACION", isPrimary: true },
+      { process: "ENSAMBLAJE", isFallback: true },
+      { process: "PERFILES" },
+      { process: "EMBALAJE" },
+      { process: "LIMPIEZA" },
     ],
     notes: "Único responsable de Imprimación. Selcos metacrilato. Hair perfiles.",
   },
@@ -161,10 +152,10 @@ const PEOPLE = [
     iniciales: "IA",
     color: "#2563EB",
     specialties: [
-      { process: ProcessCode.ENSAMBLAJE, isPrimary: true },
-      { process: ProcessCode.PERFILES, isPrimary: true },
-      { process: ProcessCode.EMBALAJE, isPrimary: true },
-      { process: ProcessCode.PEGADO_ESPEJO, isPrimary: true },
+      { process: "ENSAMBLAJE", isPrimary: true },
+      { process: "PERFILES", isPrimary: true },
+      { process: "EMBALAJE", isPrimary: true },
+      { process: "PEGADO_ESPEJO", isPrimary: true },
     ],
     notes: "Responsable de Pegado espejo Hair.",
   },
@@ -173,7 +164,7 @@ const PEOPLE = [
     alias: "Tetiana",
     iniciales: "TM",
     color: "#7C3AED",
-    specialties: [{ process: ProcessCode.LIJADO, isPrimary: true }],
+    specialties: [{ process: "LIJADO", isPrimary: true }],
     notes: "Especialista lijado y masillado.",
   },
   {
@@ -182,8 +173,8 @@ const PEOPLE = [
     iniciales: "DS",
     color: "#0891B2",
     specialties: [
-      { process: ProcessCode.CNC, isPrimary: true },
-      { process: ProcessCode.ENSAMBLAJE, isFallback: true },
+      { process: "CNC", isPrimary: true },
+      { process: "ENSAMBLAJE", isFallback: true },
     ],
     notes: "Operador CNC principal. John opera CNC solo si Daniil ausente.",
   },
@@ -242,14 +233,32 @@ async function main() {
         },
       });
     }
+    await prisma.personWorkWindow.deleteMany({ where: { personId: created.id } });
+    for (const day of defaultWeeklyTemplate()) {
+      for (const w of day.windows) {
+        await prisma.personWorkWindow.create({
+          data: {
+            personId: created.id,
+            dayOfWeek: day.dayOfWeek,
+            startMinutes: w.startMinutes,
+            endMinutes: w.endMinutes,
+          },
+        });
+      }
+    }
   }
 
   console.log("Seeding holidays...");
+  await prisma.holiday.deleteMany({});
   for (const [iso, name] of HOLIDAYS_2026) {
-    await prisma.holiday.upsert({
-      where: { date: new Date(`${iso}T00:00:00Z`) },
-      update: { name },
-      create: { date: new Date(`${iso}T00:00:00Z`), name },
+    const d = new Date(`${iso}T00:00:00.000Z`);
+    await prisma.holiday.create({
+      data: {
+        startDate: d,
+        endDate: d,
+        name,
+        region: "Silla 46460",
+      },
     });
   }
 

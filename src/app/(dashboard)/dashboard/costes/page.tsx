@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatEuros, formatHours, HOURLY_RATE } from "@/lib/format";
+import { formatEuros, formatHours } from "@/lib/format";
 
 export default async function CostesPage({
   searchParams,
@@ -42,24 +42,39 @@ export default async function CostesPage({
 
   const byProject = new Map<
     string,
-    { name: string; hours: number; isBillable: boolean }
+    { name: string; hours: number; cost: number; isBillable: boolean }
   >();
-  const byPerson = new Map<string, { iniciales: string; nombre: string; hours: number }>();
+  const byPerson = new Map<
+    string,
+    { iniciales: string; nombre: string; hours: number; cost: number; hourlyRate: number }
+  >();
+  let totalCost = 0;
+  let billableCost = 0;
   for (const a of planning?.assignments ?? []) {
+    const rate = Number(a.person.hourlyRate);
+    const lineCost = a.hours * rate;
+    totalCost += lineCost;
+    if (a.task.project.isBillable) billableCost += lineCost;
+
     const proj = byProject.get(a.task.projectId) ?? {
       name: a.task.project.name,
       hours: 0,
+      cost: 0,
       isBillable: a.task.project.isBillable,
     };
     proj.hours += a.hours;
+    proj.cost += lineCost;
     byProject.set(a.task.projectId, proj);
 
     const person = byPerson.get(a.personId) ?? {
       iniciales: a.person.iniciales,
       nombre: a.person.nombre,
       hours: 0,
+      cost: 0,
+      hourlyRate: rate,
     };
     person.hours += a.hours;
+    person.cost += lineCost;
     byPerson.set(a.personId, person);
   }
 
@@ -67,18 +82,16 @@ export default async function CostesPage({
     (acc, a) => acc + a.hours,
     0,
   );
-  const totalCost = totalHours * HOURLY_RATE;
   const billableHours = Array.from(byProject.values())
     .filter((p) => p.isBillable)
     .reduce((acc, p) => acc + p.hours, 0);
-  const billableCost = billableHours * HOURLY_RATE;
   const nonBillableCost = totalCost - billableCost;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Costes · S${week} · ${year}`}
-        description={`${formatWeekRange(weekStart)} · Tarifa ${formatEuros(HOURLY_RATE)}/h`}
+        description={`${formatWeekRange(weekStart)} · Coste según tarifa de cada operario`}
         actions={
           <WeekNav
             weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
@@ -128,7 +141,7 @@ export default async function CostesPage({
                   <TableCell>{value.name}</TableCell>
                   <TableCell className="font-mono">{formatHours(value.hours)}</TableCell>
                   <TableCell className="font-mono">
-                    {formatEuros(value.hours * HOURLY_RATE)}
+                    {formatEuros(value.cost)}
                   </TableCell>
                   <TableCell>
                     {value.isBillable ? (
@@ -171,13 +184,14 @@ export default async function CostesPage({
             </TableHeader>
             <TableBody>
               {people.map((p) => {
-                const total = byPerson.get(p.id)?.hours ?? 0;
+                const row = byPerson.get(p.id);
+                const total = row?.hours ?? 0;
                 return (
                   <TableRow key={p.id}>
                     <TableCell>{p.nombre}</TableCell>
                     <TableCell className="font-mono">{formatHours(total)}</TableCell>
                     <TableCell className="font-mono">
-                      {formatEuros(total * HOURLY_RATE)}
+                      {formatEuros(row?.cost ?? 0)}
                     </TableCell>
                   </TableRow>
                 );

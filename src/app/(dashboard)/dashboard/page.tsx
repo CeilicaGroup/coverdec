@@ -12,24 +12,25 @@ import {
   getMondayOf,
   isoWeek,
   parseWeekParam,
-  toUtcDay,
   weekDays,
 } from "@/lib/week";
-import {
-  daysUntil,
-  formatHours,
-  formatShortDate,
-  riskFromDelivery,
-} from "@/lib/format";
+import { formatHours, formatShortDate } from "@/lib/format";
+import type { ProcessCode } from "@/types/process";
+import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import {
   getAbsencesForRange,
   getActiveProjectsWithLoad,
   getEmpresaPeople,
   getHolidaysForRange,
   getPlanningForWeek,
+  getPlanningWeights,
+  getProcessBadgeStylesByCode,
+  summarizeAllActiveProjects,
   summarizePlanning,
+  summarizeUnassignedProjects,
 } from "@/features/planning/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -42,8 +43,11 @@ import {
 import { PageHeader } from "../_components/page-header";
 import { WeekNav } from "../_components/week-nav";
 import { RiskBadge } from "@/components/risk-badge";
-import { ProcessBadge } from "@/components/process-badge";
+import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
+import Link from "next/link";
 import { GenerateButton } from "./generate-button";
+import { PlanningWeightsPopover } from "./planning-weights-popover";
+import { getPlanningUndoState } from "@/features/planning/actions";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
 
@@ -58,28 +62,41 @@ export default async function ResumenPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
-  const [planning, people, projects, holidays, absences] = await Promise.all([
+  const [planning, people, projects, holidays, absences, planningWeights, processStyles] =
+    await Promise.all([
     getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
     getEmpresaPeople(),
     getActiveProjectsWithLoad(ctx.empresaId),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
+    getPlanningWeights(ctx.empresaId),
+    getProcessBadgeStylesByCode(),
   ]);
 
   const summary = summarizePlanning(planning);
-  const capacity = computeCapacity(days, people, holidays, absences);
+  const undoState = await getPlanningUndoState(
+    getMondayOf(weekStart).toISOString(),
+  );
+  const capacity = computeCapacity(
+    days,
+    people,
+    expandHolidayRangesToIsoDays(holidays, days[0], days[days.length - 1] ?? days[0]),
+    absences,
+  );
 
-  const projectsWithRisk = projects
-    .map((p) => ({
-      project: p,
-      risk: riskFromDelivery(p.deliveryDate),
-      pending: p.tasks.reduce((acc, t) => acc + t.pendingHours, 0),
-      daysLeft: daysUntil(p.deliveryDate),
-    }))
-    .filter((row) => row.pending > 0)
-    .slice(0, 12);
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    days[0],
+    days[days.length - 1] ?? days[0],
+  );
 
-  const atRisk = projectsWithRisk.filter((p) => p.risk === "RIESGO").length;
+  const allProjects = summarizeAllActiveProjects(projects, planning);
+  const unassignedProjects = summarizeUnassignedProjects(projects, planning);
+
+  const unassignedHours = unassignedProjects.reduce(
+    (acc, p) => acc + p.remainingWorkHours,
+    0,
+  );
   const occupation = capacity.totalCapacity > 0
     ? Math.round((summary.totalHours / capacity.totalCapacity) * 100)
     : 0;
@@ -95,10 +112,17 @@ export default async function ResumenPage({
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
               weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
             />
+            <PlanningWeightsPopover
+              initialWeights={planningWeights}
+              role={ctx.role}
+            />
             <GenerateButton
               weekStart={getMondayOf(weekStart).toISOString()}
               planningId={planning?.id ?? null}
               planningStatus={planning?.status ?? null}
+              canUndo={undoState.canUndo}
+              hasFuturePlannings={undoState.hasFuturePlannings}
+              isPublished={undoState.isPublished}
               role={ctx.role}
             />
           </div>
@@ -120,11 +144,11 @@ export default async function ResumenPage({
           highlight={occupation > 95 ? "warn" : occupation > 0 ? "ok" : "muted"}
         />
         <Kpi
-          label="Proyectos en riesgo"
-          value={String(atRisk)}
-          sub="Entrega ≤ 7 días"
+          label="Sin asignar"
+          value={String(unassignedProjects.length)}
+          sub={`${formatHours(unassignedHours)} pendientes`}
           icon={<AlertTriangle className="size-4" />}
-          highlight={atRisk > 0 ? "warn" : "ok"}
+          highlight={unassignedProjects.length > 0 ? "warn" : "ok"}
         />
         <Kpi
           label="Estado planning"
@@ -141,9 +165,7 @@ export default async function ResumenPage({
           const used = summary.byDay.get(dayKey) ?? 0;
           const cap = capacity.byDay.get(dayKey) ?? 0;
           const pct = cap > 0 ? Math.round((used / cap) * 100) : 0;
-          const isHoliday = holidays.some(
-            (h) => h.date.toISOString().slice(0, 10) === dayKey,
-          );
+          const isHoliday = holidayDates.has(dayKey);
           return (
             <Card key={dayKey} className="text-center">
               <CardContent className="py-3">
@@ -183,76 +205,43 @@ export default async function ResumenPage({
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-1">
           <CardTitle className="flex items-center gap-2">
             <CalendarClock className="size-4" />
-            Proyectos activos
+            Proyectos
           </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Progreso global, entregas y fin estimado (orientativo según capacidad del equipo).
+          </p>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Proyecto</TableHead>
-                <TableHead>Riesgo</TableHead>
-                <TableHead>Entrega</TableHead>
-                <TableHead>Días</TableHead>
-                <TableHead>Procesos pendientes</TableHead>
-                <TableHead className="text-right">Horas pend.</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projectsWithRisk.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No hay proyectos activos con horas pendientes
-                  </TableCell>
-                </TableRow>
-              ) : (
-                projectsWithRisk.map((row) => {
-                  const processes = Array.from(
-                    new Set(
-                      row.project.tasks
-                        .filter((t) => t.pendingHours > 0)
-                        .map((t) => t.process),
-                    ),
-                  );
-                  return (
-                    <TableRow key={row.project.id}>
-                      <TableCell className="font-semibold">{row.project.name}</TableCell>
-                      <TableCell>
-                        <RiskBadge level={row.risk} />
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {formatShortDate(row.project.deliveryDate)}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={
-                            row.daysLeft != null && row.daysLeft <= 7
-                              ? "text-destructive font-bold"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          {row.daysLeft != null ? `${row.daysLeft}d` : "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {processes.slice(0, 6).map((p) => (
-                            <ProcessBadge key={p} code={p} />
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatHours(row.pending)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Tabs defaultValue="todos">
+            <TabsList className="m-4 mb-0">
+              <TabsTrigger value="todos">Todos ({allProjects.length})</TabsTrigger>
+              <TabsTrigger value="sin-asignar">
+                Sin asignar ({unassignedProjects.length})
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="todos" className="mt-0">
+              <ProjectsTable
+                rows={allProjects}
+                showAssigned
+                showExpected
+                processStyles={processStyles}
+              />
+            </TabsContent>
+            <TabsContent value="sin-asignar" className="mt-0">
+              <ProjectsTable
+                rows={unassignedProjects}
+                processStyles={processStyles}
+                emptyMessage={
+                  planning
+                    ? "Todos los proyectos con carga pendiente tienen horas en esta semana"
+                    : "No hay proyectos con horas pendientes"
+                }
+              />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -262,6 +251,163 @@ export default async function ResumenPage({
         </div>
       )}
     </div>
+  );
+}
+
+interface ProjectTableRow {
+  projectId: string;
+  name: string;
+  code: string;
+  deliveryDate: Date | null;
+  estimatedHours: number;
+  doneHours: number;
+  pendingHours: number;
+  remainingWorkHours: number;
+  assignedThisWeek?: number;
+  progressPct: number;
+  expectedProgressPct?: number;
+  risk: "OK" | "ATENCION" | "RIESGO" | "SIN_FECHA";
+  daysLeft: number | null;
+  expectedCompletion?: Date | null;
+  pendingProcesses: ProcessCode[];
+}
+
+function ProjectsTable({
+  rows,
+  showAssigned,
+  showExpected,
+  processStyles,
+  emptyMessage = "No hay proyectos",
+}: {
+  rows: ProjectTableRow[];
+  showAssigned?: boolean;
+  showExpected?: boolean;
+  processStyles: Map<string, ProcessBadgeStyle>;
+  emptyMessage?: string;
+}) {
+  const colSpan =
+    9 + (showAssigned ? 1 : 0) + (showExpected ? 1 : 0);
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Proyecto</TableHead>
+          <TableHead>Avance</TableHead>
+          <TableHead>Riesgo</TableHead>
+          <TableHead>Entrega</TableHead>
+          <TableHead>Días</TableHead>
+          {showExpected ? <TableHead>Fin est.</TableHead> : null}
+          {showAssigned ? (
+            <TableHead className="text-right">Asign. sem.</TableHead>
+          ) : null}
+          <TableHead className="text-right">Estimado</TableHead>
+          <TableHead className="text-right">Hecho</TableHead>
+          <TableHead className="text-right">Pendiente</TableHead>
+          <TableHead>Procesos</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={colSpan} className="text-center text-muted-foreground py-8">
+              {emptyMessage}
+            </TableCell>
+          </TableRow>
+        ) : (
+          rows.map((row) => (
+                  <TableRow key={row.projectId}>
+                    <TableCell>
+                      <Link
+                        href={`/dashboard/proyectos/${row.projectId}`}
+                        className="font-semibold text-sm hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                      <div className="text-[10px] text-muted-foreground font-mono">
+                        {row.code}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 min-w-[88px]">
+                          <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                            <div
+                              className="h-full bg-primary"
+                              style={{ width: `${Math.min(100, row.progressPct)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono tabular-nums w-8 text-right">
+                            {row.progressPct}%
+                          </span>
+                        </div>
+                        {row.expectedProgressPct != null &&
+                          row.expectedProgressPct > row.progressPct ? (
+                          <div className="text-[10px] text-emerald-600 font-mono">
+                            → {row.expectedProgressPct}% est.
+                          </div>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <RiskBadge level={row.risk} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {formatShortDate(row.deliveryDate)}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          row.daysLeft != null && row.daysLeft <= 7
+                            ? "text-destructive font-bold"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {row.daysLeft != null ? `${row.daysLeft}d` : "—"}
+                      </span>
+                    </TableCell>
+                    {showExpected ? (
+                      <TableCell className="font-mono text-xs">
+                        {row.expectedCompletion
+                          ? formatShortDate(row.expectedCompletion)
+                          : "—"}
+                      </TableCell>
+                    ) : null}
+                    {showAssigned ? (
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatHours(row.assignedThisWeek ?? 0)}
+                      </TableCell>
+                    ) : null}
+                    <TableCell className="text-right font-mono text-xs">
+                      {formatHours(row.estimatedHours)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs text-emerald-700">
+                      {formatHours(row.doneHours)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">
+                      {formatHours(row.remainingWorkHours)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1 max-w-[140px]">
+                        {row.pendingProcesses.slice(0, 5).map((p) => (
+                          <ProcessBadge
+                            key={p}
+                            code={p}
+                            definition={processStyles.get(p)}
+                          />
+                        ))}
+                        {row.pendingProcesses.length > 5 ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            +{row.pendingProcesses.length - 5}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -299,16 +445,14 @@ function Kpi({ label, value, sub, icon, highlight }: KpiProps) {
 function computeCapacity(
   days: Date[],
   people: Awaited<ReturnType<typeof getEmpresaPeople>>,
-  holidays: Awaited<ReturnType<typeof getHolidaysForRange>>,
+  holidayDates: Set<string>,
   absences: Awaited<ReturnType<typeof getAbsencesForRange>>,
 ): { totalCapacity: number; byDay: Map<string, number> } {
   const byDay = new Map<string, number>();
   let total = 0;
   for (const day of days) {
     const key = day.toISOString().slice(0, 10);
-    const isHoliday = holidays.some(
-      (h) => h.date.toISOString().slice(0, 10) === key,
-    );
+    const isHoliday = holidayDates.has(key);
     let cap = 0;
     if (!isHoliday) {
       for (const person of people) {
@@ -325,5 +469,3 @@ function computeCapacity(
   }
   return { totalCapacity: total, byDay };
 }
-
-void toUtcDay;

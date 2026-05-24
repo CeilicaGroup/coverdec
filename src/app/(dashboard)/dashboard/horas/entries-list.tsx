@@ -16,7 +16,7 @@ import { formatHours } from "@/lib/format";
 import { ProcessBadge } from "@/components/process-badge";
 import { deleteEntry } from "@/features/time-tracking/actions";
 import { toast } from "sonner";
-import type { ProcessCode } from "@/generated/prisma";
+import type { ProcessCode } from "@/types/process";
 
 interface EntryRow {
   id: string;

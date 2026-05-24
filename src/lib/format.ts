@@ -20,6 +20,18 @@ export function formatShortDate(date: Date | string | null | undefined): string 
   return d.toLocaleDateString("es-ES", {
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/** Eje de calendario / grid: día y mes cortos con año (ej. 19 may 2026). */
+export function formatDayMonthYear(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
   });
 }
 
@@ -44,6 +56,20 @@ export function riskFromDelivery(
   const days = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   if (days <= 7) return "RIESGO";
   if (days <= 14) return "ATENCION";
+  return "OK";
+}
+
+export function riskFromPlannedEnd(
+  deliveryDate: Date | null | undefined,
+  lastPlannedDate: Date | null | undefined,
+): "OK" | "ATENCION" | "RIESGO" | "SIN_FECHA" {
+  if (!deliveryDate) return "SIN_FECHA";
+  if (!lastPlannedDate) return riskFromDelivery(deliveryDate);
+  const diffDays = Math.round(
+    (deliveryDate.getTime() - lastPlannedDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays < 0) return "RIESGO";
+  if (diffDays <= 5) return "ATENCION";
   return "OK";
 }
 

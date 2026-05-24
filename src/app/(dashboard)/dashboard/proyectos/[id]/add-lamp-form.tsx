@@ -23,13 +23,20 @@ import {
 import { createLamp } from "@/features/projects/actions";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
+
+interface FrameTypeOption {
+  id: string;
+  name: string;
+  processes: (ProcessBadgeStyle & { process: string })[];
+}
 
 export function AddLampForm({
   projectId,
   frameTypes,
 }: {
   projectId: string;
-  frameTypes: { id: string; name: string }[];
+  frameTypes: FrameTypeOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -38,6 +45,8 @@ export function AddLampForm({
   const [surfaceM2, setSurfaceM2] = useState("");
   const [units, setUnits] = useState("1");
   const [frameTypeId, setFrameTypeId] = useState("");
+
+  const selectedFrameType = frameTypes.find((f) => f.id === frameTypeId);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -53,19 +62,29 @@ export function AddLampForm({
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!frameTypeId) {
+              toast.error("Selecciona un tipo de bastidor");
+              return;
+            }
+            const medida = Number(surfaceM2);
+            if (!medida || medida <= 0) {
+              toast.error("Indica la medida");
+              return;
+            }
             startTransition(async () => {
               try {
                 await createLamp({
                   projectId,
                   name,
-                  frameTypeId: frameTypeId || undefined,
-                  surfaceM2: surfaceM2 ? Number(surfaceM2) : undefined,
+                  frameTypeId,
+                  surfaceM2: medida,
                   units: Number(units) || 1,
                 });
-                toast.success("Lámpara creada");
+                toast.success("Lámpara y tareas creadas");
                 setOpen(false);
                 setName("");
                 setSurfaceM2("");
+                setFrameTypeId("");
                 router.refresh();
               } catch (err) {
                 toast.error(err instanceof Error ? err.message : "Error");
@@ -79,10 +98,12 @@ export function AddLampForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Medida (m²)</Label>
+              <Label>Medida</Label>
               <Input
                 type="number"
                 step={0.01}
+                min={0.01}
+                required
                 value={surfaceM2}
                 onChange={(e) => setSurfaceM2(e.target.value)}
               />
@@ -100,9 +121,13 @@ export function AddLampForm({
           </div>
           <div className="space-y-2">
             <Label>Tipo de bastidor</Label>
-            <Select value={frameTypeId} onValueChange={(v) => setFrameTypeId(v ?? "")}>
+            <Select
+              value={frameTypeId}
+              onValueChange={(v) => setFrameTypeId(v ?? "")}
+              required
+            >
               <SelectTrigger>
-                <SelectValue placeholder="(opcional, genera tareas automáticas)" />
+                <SelectValue placeholder="Selecciona bastidor" />
               </SelectTrigger>
               <SelectContent>
                 {frameTypes.map((f) => (
@@ -112,9 +137,23 @@ export function AddLampForm({
                 ))}
               </SelectContent>
             </Select>
+            {selectedFrameType && selectedFrameType.processes.length > 0 ? (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {selectedFrameType.processes.map((p) => (
+                  <ProcessBadge
+                    key={p.process}
+                    code={p.process}
+                    definition={{ label: p.label, bgColor: p.bgColor, fgColor: p.fgColor, borderColor: p.borderColor }}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <p className="text-[10px] text-muted-foreground">
+              El bastidor no se puede cambiar después; para otro tipo, borra la lámpara y créala de nuevo.
+            </p>
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || frameTypes.length === 0}>
               Añadir
             </Button>
           </DialogFooter>

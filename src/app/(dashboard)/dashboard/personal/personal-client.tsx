@@ -29,14 +29,36 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { savePerson, deletePerson } from "@/features/people/actions";
-import type { Person, PersonSpecialty, ProcessCode } from "@/generated/prisma";
+import { PersonScheduleDialog } from "./person-schedule-dialog";
+import { PersonAbsenceDialog } from "./person-absence-dialog";
+import type { Person, PersonSpecialty } from "@/generated/prisma";
+import type { ProcessCode } from "@/types/process";
 
 interface ProcessDefOption {
   code: ProcessCode;
   label: string;
 }
 
-type PersonWithSpecs = Person & { specialties: PersonSpecialty[]; canHardDelete: boolean };
+interface WorkWindowRow {
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+interface AbsenceRow {
+  date: string;
+  hours: number;
+  reason: string | null;
+  blockStartMinutes: number | null;
+  blockEndMinutes: number | null;
+}
+
+type PersonWithSpecs = Person & {
+  specialties: PersonSpecialty[];
+  canHardDelete: boolean;
+  workWindows: WorkWindowRow[];
+  absences: AbsenceRow[];
+};
 
 type SpecMode = "ninguno" | "responsable" | "apoyo" | "otra";
 
@@ -67,6 +89,8 @@ export function PersonalTeamClient({
   const [iniciales, setIniciales] = useState("");
   const [color, setColor] = useState("#64748b");
   const [capacityHours, setCapacityHours] = useState("8");
+  const [hourlyRate, setHourlyRate] = useState("14.75");
+  const [overtimeHourlyRate, setOvertimeHourlyRate] = useState("22.13");
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
@@ -81,6 +105,8 @@ export function PersonalTeamClient({
     setIniciales("");
     setColor("#64748b");
     setCapacityHours("8");
+    setHourlyRate("14.75");
+    setOvertimeHourlyRate("22.13");
     setNotes("");
     setIsActive(true);
     setSpecMap(emptySpecMap(processDefs));
@@ -93,6 +119,8 @@ export function PersonalTeamClient({
     setIniciales(p.iniciales);
     setColor(p.color);
     setCapacityHours(String(p.capacityHours));
+    setHourlyRate(String(p.hourlyRate));
+    setOvertimeHourlyRate(String(p.overtimeHourlyRate));
     setNotes(p.notes ?? "");
     setIsActive(p.isActive);
     const next = emptySpecMap(processDefs);
@@ -111,8 +139,14 @@ export function PersonalTeamClient({
     startTransition(async () => {
       try {
         const cap = Number(capacityHours);
+        const rate = Number(hourlyRate);
+        const otRate = Number(overtimeHourlyRate);
         if (Number.isNaN(cap) || cap < 1 || cap > 24) {
           toast.error("Capacidad diaria inválida (1–24 h)");
+          return;
+        }
+        if (Number.isNaN(rate) || rate < 0 || Number.isNaN(otRate) || otRate < 0) {
+          toast.error("Tarifas horarias inválidas");
           return;
         }
         const specialties = processDefs
@@ -132,6 +166,8 @@ export function PersonalTeamClient({
           iniciales,
           color,
           capacityHours: cap,
+          hourlyRate: rate,
+          overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
           isActive,
           specialties,
@@ -227,7 +263,17 @@ export function PersonalTeamClient({
                     </div>
                   </div>
                   {canManage ? (
-                    <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                      <PersonScheduleDialog
+                        personId={p.id}
+                        personName={p.nombre}
+                        workWindows={p.workWindows}
+                      />
+                      <PersonAbsenceDialog
+                        personId={p.id}
+                        personName={p.nombre}
+                        absences={p.absences}
+                      />
                       <Button
                         type="button"
                         variant="ghost"
@@ -308,7 +354,7 @@ export function PersonalTeamClient({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar persona" : "Nueva persona"}</DialogTitle>
           </DialogHeader>
@@ -347,6 +393,26 @@ export function PersonalTeamClient({
                 onChange={(e) => setCapacityHours(e.target.value)}
                 disabled={pending}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Sueldo €/h</Label>
+                <Input
+                  inputMode="decimal"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Extra €/h</Label>
+                <Input
+                  inputMode="decimal"
+                  value={overtimeHourlyRate}
+                  onChange={(e) => setOvertimeHourlyRate(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notas</Label>

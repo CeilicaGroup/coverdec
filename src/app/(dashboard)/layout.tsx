@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth-server";
+import {
+  redirectToLoginWithStaleSession,
+  requireSessionOrRedirect,
+} from "@/lib/auth-server";
 import { prisma } from "@/lib/db";
 import { DashboardShell } from "./_components/dashboard-shell";
 
@@ -8,17 +10,16 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await requireSessionOrRedirect();
 
-  const userId = session.user.id;
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: userId },
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
     include: {
       memberships: { include: { empresa: true } },
       person: true,
     },
   });
+  if (!user) return redirectToLoginWithStaleSession();
 
   const empresas = user.memberships.map((m) => m.empresa);
   const activeEmpresa =

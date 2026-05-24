@@ -8,7 +8,12 @@ import {
 import {
   getActiveProjectsWithLoad,
   getPlanningForWeek,
+  getProcessDefinitionsByCode,
 } from "@/features/planning/queries";
+import {
+  buildPlanningTimeline,
+  type PlanningAssignmentSlice,
+} from "@/features/planning/planning-timeline";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ProcessBadge } from "@/components/process-badge";
+import { DryWaitBadge } from "@/components/dry-wait-badge";
 import { PersonAvatar } from "@/components/person-avatar";
 import { RiskBadge } from "@/components/risk-badge";
 import {
@@ -40,25 +46,33 @@ export default async function ProyectoPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  const [planning, projects] = await Promise.all([
+  const [planning, projects, processByCode] = await Promise.all([
     getPlanningForWeek({ empresaId: ctx.empresaId, weekStart }),
     getActiveProjectsWithLoad(ctx.empresaId),
+    getProcessDefinitionsByCode(),
   ]);
 
-  const byProject = new Map<string, typeof planning extends infer P ? P extends { assignments: infer A } ? A : [] : []>();
-  for (const a of planning?.assignments ?? []) {
-    const list = (byProject.get(a.task.projectId) ?? []) as typeof a[];
+  const assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+
+  const byProject = new Map<string, PlanningAssignmentSlice[]>();
+  for (const a of assignments) {
+    const list = byProject.get(a.task.projectId) ?? [];
     list.push(a);
-    byProject.set(a.task.projectId, list as never);
+    byProject.set(a.task.projectId, list);
   }
+
+  const projectIdsWithAssignments = new Set(byProject.keys());
 
   const projectsWithLoad = projects
     .map((p) => ({
       project: p,
       risk: riskFromDelivery(p.deliveryDate),
       pending: p.tasks.reduce((acc, t) => acc + t.pendingHours, 0),
+      scheduledHours: (byProject.get(p.id) ?? []).reduce((acc, a) => acc + a.hours, 0),
     }))
-    .filter((row) => row.pending > 0)
+    .filter(
+      (row) => row.pending > 0 || projectIdsWithAssignments.has(row.project.id),
+    )
     .sort((a, b) => {
       const aDate = a.project.deliveryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
       const bDate = b.project.deliveryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
@@ -78,12 +92,24 @@ export default async function ProyectoPage({
         }
       />
 
+      {!planning && (
+        <p className="text-sm text-muted-foreground">
+          No hay planning para esta semana. Genera un borrador desde Resumen.
+        </p>
+      )}
+
+      {planning && projectsWithLoad.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No hay proyectos con trabajo pendiente ni asignaciones esta semana.
+        </p>
+      )}
+
       <div className="space-y-4">
         {projectsWithLoad.map((row) => {
-          const assignments = (byProject.get(row.project.id) ?? []) as Array<
-            NonNullable<typeof planning>["assignments"][number]
-          >;
-          const scheduledHours = assignments.reduce((acc, a) => acc + a.hours, 0);
+          const projectAssignments = byProject.get(row.project.id) ?? [];
+          const timeline = buildPlanningTimeline(projectAssignments, processByCode);
+          const workHours = projectAssignments.reduce((acc, a) => acc + a.hours, 0);
+
           return (
             <Card key={row.project.id}>
               <CardHeader className="flex flex-row items-center justify-between gap-3 py-3">
@@ -99,7 +125,10 @@ export default async function ProyectoPage({
                     </span>
                   </span>
                   <span>
-                    Días: <span className="font-semibold text-foreground">{daysUntil(row.project.deliveryDate) ?? "—"}</span>
+                    Días:{" "}
+                    <span className="font-semibold text-foreground">
+                      {daysUntil(row.project.deliveryDate) ?? "—"}
+                    </span>
                   </span>
                   <span>
                     Pendiente:{" "}
@@ -110,7 +139,7 @@ export default async function ProyectoPage({
                   <span>
                     Asignado S{week}:{" "}
                     <span className="font-semibold text-foreground">
-                      {formatHours(scheduledHours)}
+                      {formatHours(workHours)}
                     </span>
                   </span>
                 </div>
@@ -128,7 +157,7 @@ export default async function ProyectoPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {assignments.length === 0 ? (
+                    {timeline.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={6}
@@ -138,41 +167,71 @@ export default async function ProyectoPage({
                         </TableCell>
                       </TableRow>
                     ) : (
-                      assignments
-                        .sort(
-                          (a, b) =>
-                            a.date.getTime() - b.date.getTime() ||
-                            a.startSlot - b.startSlot,
-                        )
-                        .map((a) => (
-                          <TableRow key={a.id}>
+                      timeline.map((item) =>
+                        item.kind === "dry-wait" ? (
+                          <TableRow key={item.id} className="bg-amber-50/50">
                             <TableCell className="font-mono text-xs">
-                              {formatShortDate(a.date)}
+                              {formatShortDate(item.date)}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-amber-900">
+                              {item.scheduleLabel}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                            <TableCell className="text-xs">
+                              {item.lampName ?? "—"}
+                            </TableCell>
+                            <TableCell>
+                              <DryWaitBadge
+                                afterProcess={item.afterProcess}
+                                waitHours={item.waitHours}
+                                processDefinition={
+                                  processByCode.get(item.afterProcess)?.badge
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                              —
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          <TableRow key={item.assignment.id}>
+                            <TableCell className="font-mono text-xs">
+                              {formatShortDate(item.assignment.date)}
                             </TableCell>
                             <TableCell className="font-mono text-xs">
-                              {rangeLabel(a.startSlot, a.endSlot)}
+                              {rangeLabel(
+                                item.assignment.startSlot,
+                                item.assignment.endSlot,
+                              )}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <PersonAvatar
-                                  iniciales={a.person.iniciales}
-                                  color={a.person.color}
+                                  iniciales={item.assignment.person.iniciales}
+                                  color={item.assignment.person.color}
                                   size={20}
                                 />
-                                <span className="text-xs">{a.person.alias ?? a.person.nombre}</span>
+                                <span className="text-xs">
+                                  {item.assignment.person.alias ??
+                                    item.assignment.person.nombre}
+                                </span>
                               </div>
                             </TableCell>
                             <TableCell className="text-xs">
-                              {a.task.lamp?.name ?? "—"}
+                              {item.assignment.task.lamp?.name ?? "—"}
                             </TableCell>
                             <TableCell>
-                              <ProcessBadge code={a.process} />
+                              <ProcessBadge
+                                code={item.assignment.process}
+                                definition={processByCode.get(item.assignment.process)?.badge}
+                              />
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs font-semibold">
-                              {formatHours(a.hours)}
+                              {formatHours(item.assignment.hours)}
                             </TableCell>
                           </TableRow>
-                        ))
+                        ),
+                      )
                     )}
                   </TableBody>
                 </Table>

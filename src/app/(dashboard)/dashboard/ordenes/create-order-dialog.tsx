@@ -21,15 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ProcessCode } from "@/generated/prisma";
 import { createProductionOrder } from "@/features/production-orders/actions";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 export function CreateOrderDialog({
   projects,
+  processDefs,
 }: {
   projects: { id: string; name: string }[];
+  processDefs: { code: string; label: string }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -64,7 +65,7 @@ export function CreateOrderDialog({
                 const result = await createProductionOrder({
                   projectId,
                   lampLabel: lampLabel || undefined,
-                  process: (process as ProcessCode) || undefined,
+                  process: process || undefined,
                   hours: hours ? Number(hours) : undefined,
                   scheduledAt: scheduledAt || undefined,
                   notes: notes || undefined,
@@ -117,9 +118,9 @@ export function CreateOrderDialog({
                   <SelectValue placeholder="(opcional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(ProcessCode).map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
+                  {processDefs.map((p) => (
+                    <SelectItem key={p.code} value={p.code}>
+                      {p.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TimerWidget } from "./timer-widget";
 import { ManualEntryForm } from "./manual-entry-form";
 import { EntriesList } from "./entries-list";
+import { filterUnlockedTasks } from "@/features/projects/lamp-tasks";
+import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
 
 export default async function HorasPage() {
   const ctx = await requireDashboardContext();
@@ -13,7 +15,7 @@ export default async function HorasPage() {
   const monday = new Date(today);
   monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
 
-  const [openTimer, entries, projects] = await Promise.all([
+  const [openTimer, entries, projects, processStyles] = await Promise.all([
     prisma.timeEntry.findFirst({
       where: { userId: ctx.userId, endedAt: null },
       include: { project: true, lamp: true },
@@ -32,12 +34,24 @@ export default async function HorasPage() {
         lamps: { select: { id: true, name: true } },
         tasks: {
           where: { pendingHours: { gt: 0 } },
-          select: { id: true, process: true, lampId: true },
+          select: {
+            id: true,
+            process: true,
+            lampId: true,
+            order: true,
+            pendingHours: true,
+          },
+          orderBy: { order: "asc" },
         },
       },
       orderBy: { name: "asc" },
     }),
+    getProcessBadgeStylesByCode(),
   ]);
+
+  const processLabels = Object.fromEntries(
+    [...processStyles.entries()].map(([code, s]) => [code, s.label]),
+  );
 
   const totalWeek = entries.reduce((acc, e) => acc + (e.hours ?? 0), 0);
 
@@ -68,8 +82,9 @@ export default async function HorasPage() {
                 id: p.id,
                 name: p.name,
                 lamps: p.lamps,
-                tasks: p.tasks,
+                tasks: filterUnlockedTasks(p.tasks),
               }))}
+              processLabels={processLabels}
             />
           </CardContent>
         </Card>
@@ -84,8 +99,9 @@ export default async function HorasPage() {
                 id: p.id,
                 name: p.name,
                 lamps: p.lamps,
-                tasks: p.tasks,
+                tasks: filterUnlockedTasks(p.tasks),
               }))}
+              processLabels={processLabels}
             />
           </CardContent>
         </Card>

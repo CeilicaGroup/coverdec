@@ -33,14 +33,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Archive } from "lucide-react";
+import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { deleteFrameType, setFrameTypeActive, upsertFrameType } from "@/features/catalog/actions";
-import type { ProcessCode } from "@/generated/prisma";
+import type { ProcessCode } from "@/types/process";
 
 interface ProcessDefOption {
   code: ProcessCode;
   label: string;
+  bgColor: string;
+  fgColor: string;
+  borderColor: string;
 }
 
 interface FrameProcessRow {
@@ -152,6 +155,19 @@ export function CatalogoCatalogClient({
     setRows((prev) =>
       prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
     );
+  }
+
+  function moveRow(key: string, direction: -1 | 1) {
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.key === key);
+      if (idx < 0) return prev;
+      const next = idx + direction;
+      if (next < 0 || next >= prev.length) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(idx, 1);
+      copy.splice(next, 0, item);
+      return copy;
+    });
   }
 
   function submitDialog() {
@@ -307,7 +323,17 @@ export function CatalogoCatalogClient({
                               key={p.id}
                               className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-[10px]"
                             >
-                              <ProcessBadge code={p.process} />
+                              <ProcessBadge
+                                code={p.process}
+                                definition={
+                                  processDefs.find((d) => d.code === p.process) ?? {
+                                    label: p.process,
+                                    bgColor: "#F3F4F6",
+                                    fgColor: "#374151",
+                                    borderColor: "#9CA3AF",
+                                  }
+                                }
+                              />
                               <span className="font-mono font-semibold">
                                 {formatHours(p.hoursPerUnit)}/m²
                               </span>
@@ -377,7 +403,7 @@ export function CatalogoCatalogClient({
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {mode === "create" ? "Nuevo bastidor" : "Editar bastidor"}
@@ -424,11 +450,35 @@ export function CatalogoCatalogClient({
                 <p className="text-xs text-muted-foreground">Sin filas. Pulsa «Añadir proceso».</p>
               ) : (
                 <div className="space-y-2">
-                  {rows.map((r) => (
+                  {rows.map((r, rowIdx) => (
                     <div
                       key={r.key}
-                      className="grid grid-cols-[1fr_72px_72px_auto] gap-2 items-end border rounded-md p-2"
+                      className="grid grid-cols-[auto_1fr_72px_72px_auto] gap-2 items-end border rounded-md p-2"
                     >
+                      <div className="flex flex-col gap-0.5 pb-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          disabled={pending || rowIdx === 0}
+                          onClick={() => moveRow(r.key, -1)}
+                          aria-label="Subir proceso"
+                        >
+                          <ChevronUp className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          disabled={pending || rowIdx === rows.length - 1}
+                          onClick={() => moveRow(r.key, 1)}
+                          aria-label="Bajar proceso"
+                        >
+                          <ChevronDown className="size-3.5" />
+                        </Button>
+                      </div>
                       <div className="space-y-1">
                         <span className="text-[10px] text-muted-foreground">Proceso</span>
                         <Select

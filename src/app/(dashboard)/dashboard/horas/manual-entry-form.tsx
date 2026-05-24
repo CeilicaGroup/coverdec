@@ -12,19 +12,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ProcessCode } from "@/generated/prisma";
 import { createManualEntry } from "@/features/time-tracking/actions";
 import { toast } from "sonner";
 
 export function ManualEntryForm({
   projects,
+  processLabels = {},
 }: {
   projects: {
     id: string;
     name: string;
     lamps: { id: string; name: string }[];
-    tasks: { id: string; process: ProcessCode; lampId: string | null }[];
+    tasks: { id: string; process: string; lampId: string }[];
   }[];
+  processLabels?: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState("");
@@ -55,7 +56,7 @@ export function ManualEntryForm({
             await createManualEntry({
               projectId,
               lampId: lampId || undefined,
-              process: (process as ProcessCode) || undefined,
+              process: process || undefined,
               startedAt: new Date(date).toISOString(),
               hours: numericHours,
               notes: notes || undefined,
@@ -128,9 +129,9 @@ export function ManualEntryForm({
             <SelectValue placeholder="(opcional)" />
           </SelectTrigger>
           <SelectContent>
-            {Object.values(ProcessCode).map((p) => (
+            {[...new Set((project?.tasks ?? []).map((t) => t.process))].map((p) => (
               <SelectItem key={p} value={p}>
-                {p}
+                {processLabels[p] ?? p}
               </SelectItem>
             ))}
           </SelectContent>
