@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { CatalogoCatalogClient } from "./catalog-client";
+import { ProcessDefinitionsPanel } from "./process-definitions-panel";
 
 export default async function CatalogoPage() {
   const ctx = await requireDashboardContext();
@@ -11,14 +12,23 @@ export default async function CatalogoPage() {
     prisma.frameType.findMany({
       where: {},
       include: {
-        processes: true,
+        processes: { orderBy: { sequence: "asc" } },
         _count: { select: { lamps: true } },
       },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
     }),
     prisma.processDefinition.findMany({
       orderBy: { sequence: "asc" },
-      select: { code: true, label: true },
+      select: {
+        code: true,
+        label: true,
+        sequence: true,
+        waitHours: true,
+        bgColor: true,
+        fgColor: true,
+        borderColor: true,
+        canFragment: true,
+      },
     }),
   ]);
 
@@ -29,9 +39,16 @@ export default async function CatalogoPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
+      <ProcessDefinitionsPanel processes={processDefs} canManage={canManage} />
       <CatalogoCatalogClient
         frames={frames}
-        processDefs={processDefs}
+        processDefs={processDefs.map((p) => ({
+          code: p.code,
+          label: p.label,
+          bgColor: p.bgColor,
+          fgColor: p.fgColor,
+          borderColor: p.borderColor,
+        }))}
         canManage={canManage}
       />
     </div>

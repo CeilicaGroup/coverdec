@@ -219,16 +219,17 @@ model PersonSpecialty {
 }
 
 model ProcessDefinition {
-  id          String @id @default(cuid())
-  code        String @unique
+  id          String  @id @default(cuid())
+  code        String  @unique
   label       String
-  factor      Float  @default(1)
-  setupHours  Float  @default(0)
-  waitHours   Float  @default(0)
+  factor      Float   @default(1)
+  setupHours  Float   @default(0)
+  waitHours   Float   @default(0)
   bgColor     String
   fgColor     String
   borderColor String
   sequence    Int
+  canFragment Boolean @default(true)
 
   frameTypeProcesses  FrameTypeProcess[]
   tasks               Task[]
@@ -327,7 +328,6 @@ model Task {
   doneHours     Float  @default(0)
   order         Int    @default(0)
   isLocked      Boolean @default(false)
-  canFragment   Boolean @default(true)
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

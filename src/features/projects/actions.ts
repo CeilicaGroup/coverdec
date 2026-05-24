@@ -254,39 +254,6 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
   revalidatePath("/dashboard/proyectos");
 }
 
-const reorderTasksSchema = z.object({
-  lampId: z.string().min(1),
-  taskIds: z.array(z.string().min(1)).min(1),
-});
-
-export async function reorderTasks(input: z.infer<typeof reorderTasksSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = reorderTasksSchema.parse(input);
-
-  const lamp = await prisma.lamp.findFirst({
-    where: { id: data.lampId, project: { empresaId: ctx.empresaId } },
-    include: { tasks: { select: { id: true } } },
-  });
-  if (!lamp) throw new Error("Lámpara no encontrada");
-
-  const lampTaskIds = new Set(lamp.tasks.map((t) => t.id));
-  if (
-    data.taskIds.length !== lamp.tasks.length ||
-    !data.taskIds.every((id) => lampTaskIds.has(id))
-  ) {
-    throw new Error("Lista de tareas inválida para esta lámpara.");
-  }
-
-  await prisma.$transaction(
-    data.taskIds.map((taskId, order) =>
-      prisma.task.update({ where: { id: taskId }, data: { order } }),
-    ),
-  );
-
-  revalidatePath("/dashboard/proyectos");
-}
-
 const updateTaskNotesSchema = z.object({
   taskId: z.string().min(1),
   notes: z.string().max(500).nullable(),
@@ -308,31 +275,6 @@ export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchem
   await prisma.task.update({
     where: { id: task.id },
     data: { notes: data.notes?.trim() ? data.notes.trim() : null },
-  });
-
-  revalidatePath("/dashboard/proyectos");
-}
-
-const updateTaskCanFragmentSchema = z.object({
-  taskId: z.string().min(1),
-  canFragment: z.boolean(),
-});
-
-export async function updateTaskCanFragment(
-  input: z.infer<typeof updateTaskCanFragmentSchema>,
-) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = updateTaskCanFragmentSchema.parse(input);
-
-  const task = await prisma.task.findFirst({
-    where: { id: data.taskId, project: { empresaId: ctx.empresaId } },
-  });
-  if (!task) throw new Error("Tarea no encontrada");
-
-  await prisma.task.update({
-    where: { id: task.id },
-    data: { canFragment: data.canFragment },
   });
 
   revalidatePath("/dashboard/proyectos");

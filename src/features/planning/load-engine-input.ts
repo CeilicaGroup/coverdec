@@ -206,6 +206,7 @@ export async function loadSolverInput(args: {
   ]);
 
   const taskById = new Map(tasksRaw.map((t) => [t.id, t]));
+  const processCanFragment = new Map(processes.map((p) => [p.code, p.canFragment]));
   const halfDoneIds = new Set(
     tasksRaw.filter(isTaskHalfDone).map((t) => t.id),
   );
@@ -303,7 +304,7 @@ export async function loadSolverInput(args: {
       order: t.order,
       process: t.process,
       pendingHours: pending,
-      canFragment: t.canFragment ?? true,
+      canFragment: processCanFragment.get(t.process) ?? true,
     }));
 
   const processDefs: EngineProcessDef[] = processes.map((p) => ({

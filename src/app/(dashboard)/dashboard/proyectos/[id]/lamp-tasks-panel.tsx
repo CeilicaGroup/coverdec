@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,8 +27,6 @@ import type { ProcessCode } from "@/types/process";
 import {
   addExtraTask,
   deleteTask,
-  reorderTasks,
-  updateTaskCanFragment,
   updateTaskHours,
   updateTaskNotes,
 } from "@/features/projects/actions";
@@ -42,7 +40,6 @@ interface LampTaskRow {
   pendingHours: number;
   order: number;
   notes: string | null;
-  canFragment: boolean;
 }
 
 export function LampTasksPanel({
@@ -63,7 +60,6 @@ export function LampTasksPanel({
   const [editTask, setEditTask] = useState<LampTaskRow | null>(null);
   const [editHours, setEditHours] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editCanFragment, setEditCanFragment] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [addProcess, setAddProcess] = useState("");
   const [addHours, setAddHours] = useState("");
@@ -128,55 +124,10 @@ export function LampTasksPanel({
                       variant="ghost"
                       size="icon"
                       className="size-7"
-                      disabled={idx === 0 || pending}
-                      onClick={() => {
-                        const ids = sorted.map((x) => x.id);
-                        [ids[idx - 1], ids[idx]] = [ids[idx]!, ids[idx - 1]!];
-                        startTransition(async () => {
-                          try {
-                            await reorderTasks({ lampId, taskIds: ids });
-                            router.refresh();
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : "Error");
-                          }
-                        });
-                      }}
-                      aria-label="Subir orden"
-                    >
-                      <ChevronUp className="size-3" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      disabled={idx === sorted.length - 1 || pending}
-                      onClick={() => {
-                        const ids = sorted.map((x) => x.id);
-                        [ids[idx], ids[idx + 1]] = [ids[idx + 1]!, ids[idx]!];
-                        startTransition(async () => {
-                          try {
-                            await reorderTasks({ lampId, taskIds: ids });
-                            router.refresh();
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : "Error");
-                          }
-                        });
-                      }}
-                      aria-label="Bajar orden"
-                    >
-                      <ChevronDown className="size-3" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
                       onClick={() => {
                         setEditTask(t);
                         setEditHours(String(t.estimatedHours));
                         setEditNotes(t.notes ?? "");
-                        setEditCanFragment(t.canFragment);
                       }}
                       aria-label="Editar tarea"
                     >
@@ -259,10 +210,6 @@ export function LampTasksPanel({
                       taskId: editTask.id,
                       notes: editNotes.trim() || null,
                     });
-                    await updateTaskCanFragment({
-                      taskId: editTask.id,
-                      canFragment: editCanFragment,
-                    });
                     toast.success("Tarea actualizada");
                     setEditTask(null);
                     router.refresh();
@@ -294,20 +241,6 @@ export function LampTasksPanel({
                   rows={2}
                 />
               </div>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={!editCanFragment}
-                  onChange={(e) => setEditCanFragment(!e.target.checked)}
-                />
-                <span className="space-y-0.5">
-                  <span className="text-sm font-medium leading-none">No fragmentar</span>
-                  <span className="block text-xs text-muted-foreground">
-                    La tarea se asigna en un único bloque sin dividir entre días.
-                  </span>
-                </span>
-              </label>
               <DialogFooter>
                 <Button type="submit" disabled={pending}>
                   Guardar
