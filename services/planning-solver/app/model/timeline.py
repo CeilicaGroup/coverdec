@@ -184,9 +184,9 @@ class WorkerDayTimeline:
                 ui_list = ui_list[:cap]
 
         if booked_quarters > 0:
-            cap = max(0, cap - booked_quarters)
-            wq_list = wq_list[:cap]
-            ui_list = ui_list[:cap]
+            wq_list = wq_list[booked_quarters:]
+            ui_list = ui_list[booked_quarters:]
+            cap = len(wq_list)
 
         wq_exp, ui_exp = _build_expanded(wq_list, ui_list)
         return WorkerDayTimeline(
