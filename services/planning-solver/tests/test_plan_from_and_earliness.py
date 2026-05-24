@@ -226,6 +226,79 @@ def test_early_start_schedules_successor_next_day_not_later():
     )
 
 
+def test_afternoon_used_when_morning_full():
+    """When a worker's morning is full, a second task should use the afternoon."""
+    worker = EnginePerson(
+        id="op1",
+        iniciales="OP",
+        primary=["CNC"],
+        fallback=[],
+        capacityHours=8,
+        hourlyRate=14.75,
+        overtimeHourlyRate=22.13,
+    )
+    # Two tasks for the same worker and process, each on their own lamp.
+    # task-A uses 6h (entire morning). task-B (2h) should land in Monday afternoon
+    # rather than being pushed to Tuesday, since the afternoon is available.
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC", sequence=1)],
+            people=[worker],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-a",
+                    order=0,
+                    process="CNC",
+                    pendingHours=6,
+                ),
+                EngineTask(
+                    id="task-b",
+                    projectId="p2",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-b",
+                    order=0,
+                    process="CNC",
+                    pendingHours=2,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=[PersonScheduleInput(personId="op1", weekly=WEEKLY, overrides=[])],
+        ),
+    )
+    assert result.unscheduledHours == 0
+    monday = date(2026, 5, 4)
+    b_on_monday = [a for a in result.assignments if a.taskId == "task-b" and a.date == monday]
+    assert b_on_monday, "task-b should use Monday afternoon when Monday morning is full"
+    assert any(a.isAfternoon for a in b_on_monday), "task-b Monday slot should be in the afternoon"
+
+
+def test_canFragment_false_schedules_single_slot():
+    """A task with canFragment=False must appear on exactly one date."""
+    task = EngineTask(
+        id="t1",
+        projectId="p1",
+        projectPriority=10,
+        projectDeliveryDate=datetime(2026, 6, 1),
+        lampId="l1",
+        order=0,
+        process="CNC",
+        pendingHours=3,
+        canFragment=False,
+    )
+    result = run_solve(_request([task]))
+    assert result.unscheduledHours == 0
+    t1_dates = {a.date for a in result.assignments if a.taskId == "t1"}
+    assert len(t1_dates) == 1, f"canFragment=False task must be on exactly one date; got {t1_dates}"
+
+
 def test_fixed_assignment_preserved_in_output():
     monday = date(2026, 5, 4)
     fixed = FixedAssignment(

@@ -19,19 +19,6 @@ enum Role {
   OPERARIO
 }
 
-enum ProcessCode {
-  CNC
-  ENSAMBLAJE
-  LIJADO
-  IMPRIMACION
-  PINTURA
-  PERFILES
-  EMBALAJE
-  PEGADO_ESPEJO
-  CORTE_MANUAL
-  LIMPIEZA
-}
-
 enum RiskLevel {
   OK
   ATENCION
@@ -70,9 +57,25 @@ model Empresa {
   memberships   Membership[]
   projects      Project[]
   plannings     Planning[]
+  planningPolicy PlanningPolicy?
   productionOrders ProductionOrder[]
   factoryItems  FactoryItem[]
   timeEntries   TimeEntry[]
+}
+
+/// Pesos multi-objetivo del motor CP-SAT (1:1 con empresa).
+model PlanningPolicy {
+  id             String   @id @default(cuid())
+  empresaId      String   @unique
+  wLate          Float    @default(1)
+  wUnscheduled   Float    @default(1)
+  wLoadBalance   Float    @default(1)
+  wMove          Float    @default(1)
+  wLaborCost     Float    @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Auth (better-auth schema) ----------
@@ -149,48 +152,90 @@ model Membership {
 // ---------- Equipo productivo (global) ----------
 
 model Person {
-  id              String   @id @default(cuid())
-  nombre          String
-  alias           String?
-  iniciales       String   @unique
-  color           String
-  capacityHours   Float    @default(8)
-  isActive        Boolean  @default(true)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  nombre             String
+  alias              String?
+  iniciales          String   @unique
+  color              String
+  capacityHours      Float    @default(8)
+  hourlyRate         Decimal  @default(14.75) @db.Decimal(10, 2)
+  overtimeHourlyRate Decimal  @default(22.13) @db.Decimal(10, 2)
+  isActive           Boolean  @default(true)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user            User?
-  specialties     PersonSpecialty[]
-  absences        Absence[]
-  assignments     PlanningAssignment[]
+  user               User?
+  specialties        PersonSpecialty[]
+  absences           Absence[]
+  assignments        PlanningAssignment[]
+  workWindows        PersonWorkWindow[]
+  scheduleOverrides  PersonScheduleOverride[]
+}
+
+/// Plantilla semanal (Lun–Vie). Minutos desde medianoche UTC; endMinutes exclusivo.
+model PersonWorkWindow {
+  id           String @id @default(cuid())
+  personId     String
+  dayOfWeek    Int
+  startMinutes Int
+  endMinutes   Int
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId, dayOfWeek])
+}
+
+model PersonScheduleOverride {
+  id       String   @id @default(cuid())
+  personId String
+  date     DateTime @db.Date
+
+  person  Person                 @relation(fields: [personId], references: [id], onDelete: Cascade)
+  windows PersonOverrideWindow[]
+
+  @@unique([personId, date])
+}
+
+model PersonOverrideWindow {
+  id           String @id @default(cuid())
+  overrideId   String
+  startMinutes Int
+  endMinutes   Int
+
+  override PersonScheduleOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
 }
 
 model PersonSpecialty {
   id        String      @id @default(cuid())
   personId  String
-  process   ProcessCode
+  process   String
   isPrimary Boolean     @default(false)
   isFallback Boolean    @default(false)
   person    Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+  definition ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([personId, process])
 }
 
 model ProcessDefinition {
-  id          String      @id @default(cuid())
-  code        ProcessCode @unique
+  id          String @id @default(cuid())
+  code        String @unique
   label       String
-  factor      Float       @default(1)
-  setupHours  Float       @default(0)
-  dryHours    Float       @default(0)
-  deadlineDay Int?
+  factor      Float  @default(1)
+  setupHours  Float  @default(0)
+  waitHours   Float  @default(0)
   bgColor     String
   fgColor     String
   borderColor String
   sequence    Int
 
-  frameTypeProcesses FrameTypeProcess[]
+  frameTypeProcesses  FrameTypeProcess[]
+  tasks               Task[]
+  personSpecialties   PersonSpecialty[]
+  planningAssignments PlanningAssignment[]
+  timeEntries         TimeEntry[]
+  productionOrders    ProductionOrder[]
 }
 
 // ---------- Catálogo de bastidores ----------
@@ -210,17 +255,19 @@ model FrameType {
 }
 
 model FrameTypeProcess {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   frameTypeId  String
-  process      ProcessCode
+  process      String
+  sequence     Int    @default(0)
   hoursPerUnit Float
-  fixedHours   Float       @default(0)
+  fixedHours   Float  @default(0)
   notes        String?
 
   frameType   FrameType         @relation(fields: [frameTypeId], references: [id], onDelete: Cascade)
-  definition  ProcessDefinition @relation(fields: [process], references: [code])
+  definition  ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([frameTypeId, process])
+  @@index([frameTypeId, sequence])
 }
 
 // ---------- Proyectos y producción ----------
@@ -252,7 +299,7 @@ model Project {
 model Lamp {
   id          String   @id @default(cuid())
   projectId   String
-  frameTypeId String?
+  frameTypeId String
   code        String?
   name        String
   width       Float?
@@ -265,29 +312,31 @@ model Lamp {
   updatedAt   DateTime @updatedAt
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  frameType  FrameType? @relation(fields: [frameTypeId], references: [id])
+  frameType  FrameType @relation(fields: [frameTypeId], references: [id])
   tasks      Task[]
   timeEntries TimeEntry[]
 }
 
 model Task {
-  id            String      @id @default(cuid())
+  id            String @id @default(cuid())
   projectId     String
-  lampId        String?
-  process       ProcessCode
+  lampId        String
+  process       String
   estimatedHours Float
   pendingHours  Float
-  doneHours     Float       @default(0)
-  order         Int         @default(0)
-  isLocked      Boolean     @default(false)
+  doneHours     Float  @default(0)
+  order         Int    @default(0)
+  isLocked      Boolean @default(false)
+  canFragment   Boolean @default(true)
   notes         String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  lamp        Lamp?   @relation(fields: [lampId], references: [id])
-  assignments PlanningAssignment[]
-  timeEntries TimeEntry[]
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lamp               Lamp                @relation(fields: [lampId], references: [id], onDelete: Cascade)
+  processDefinition  ProcessDefinition   @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  assignments        PlanningAssignment[]
+  timeEntries         TimeEntry[]
 }
 
 // ---------- Planning ----------
@@ -320,15 +369,16 @@ model PlanningAssignment {
   startSlot   Float
   endSlot     Float
   hours       Float
-  process     ProcessCode
+  process     String
   isOverride  Boolean  @default(false)
   isAfternoon Boolean  @default(false)
   notes       String?
   createdAt   DateTime @default(now())
 
-  planning Planning @relation(fields: [planningId], references: [id], onDelete: Cascade)
-  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  person   Person   @relation(fields: [personId], references: [id])
+  planning           Planning          @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  task                 Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person               Person            @relation(fields: [personId], references: [id])
+  processDefinition    ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([planningId, personId, date])
 }
@@ -338,6 +388,9 @@ model Absence {
   personId String
   date     DateTime
   hours    Float    @default(8)
+  /// When set with blockEndMinutes, [start, end) minutes are forbidden inside work windows (solver).
+  blockStartMinutes Int?
+  blockEndMinutes   Int?
   reason   String?
 
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -345,11 +398,15 @@ model Absence {
   @@unique([personId, date])
 }
 
+/// Rango inclusive [startDate, endDate] en días UTC (medianoche).
 model Holiday {
-  id      String   @id @default(cuid())
-  date    DateTime @unique
-  name    String
-  region  String   @default("Silla 46460")
+  id        String   @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  name      String
+  region    String   @default("Silla 46460")
+
+  @@index([startDate, endDate])
 }
 
 // ---------- Registro de horas ----------
@@ -361,7 +418,7 @@ model TimeEntry {
   projectId  String?
   lampId     String?
   taskId     String?
-  process    ProcessCode?
+  process    String?
   source     TimeEntrySource  @default(MANUAL)
   startedAt  DateTime
   endedAt    DateTime?
@@ -370,11 +427,12 @@ model TimeEntry {
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
-  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  user    User     @relation(fields: [userId], references: [id])
-  project Project? @relation(fields: [projectId], references: [id])
-  lamp    Lamp?    @relation(fields: [lampId], references: [id])
-  task    Task?    @relation(fields: [taskId], references: [id])
+  empresa            Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  user                 User               @relation(fields: [userId], references: [id])
+  project              Project?           @relation(fields: [projectId], references: [id])
+  lamp                 Lamp?              @relation(fields: [lampId], references: [id])
+  task                 Task?              @relation(fields: [taskId], references: [id])
+  processDefinition    ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([empresaId, userId, startedAt])
 }
@@ -389,14 +447,15 @@ model ProductionOrder {
   serial     Int
   projectId  String
   lampLabel  String?
-  process    ProcessCode?
+  process    String?
   hours      Float?
   scheduledAt DateTime?
   notes      String?
   createdAt  DateTime @default(now())
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id])
+  empresa            Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  project              Project            @relation(fields: [projectId], references: [id])
+  processDefinition    ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([empresaId, year, serial])
 }

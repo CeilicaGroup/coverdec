@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { ProcessCode, Role } from "@/generated/prisma";
+import {Role } from "@/generated/prisma";
+import {
+  adjustPendingOnEstimateChange,
+  buildTasksFromFrame,
+  getNextTaskOrder,
+} from "@/features/projects/lamp-tasks";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -62,11 +67,45 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
   return { id: project.id };
 }
 
+const updateProjectSchema = projectSchema.extend({
+  projectId: z.string().min(1),
+});
+
+export async function updateProject(input: z.infer<typeof updateProjectSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateProjectSchema.parse(input);
+
+  await prisma.project.findFirstOrThrow({
+    where: { id: data.projectId, empresaId: ctx.empresaId },
+  });
+
+  await prisma.project.update({
+    where: { id: data.projectId },
+    data: {
+      name: data.name,
+      client: data.client || null,
+      obra: data.obra || null,
+      deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+      priority: data.priority,
+      isBillable: data.isBillable,
+      notes: data.notes?.trim() ? data.notes.trim() : null,
+    },
+  });
+
+  log.info({ id: data.projectId }, "project updated");
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/proyecto");
+  return { id: data.projectId };
+}
+
 const lampSchema = z.object({
   projectId: z.string().min(1),
   name: z.string().min(1),
-  frameTypeId: z.string().optional(),
-  surfaceM2: z.number().positive().optional(),
+  frameTypeId: z.string().min(1),
+  surfaceM2: z.number().positive(),
   units: z.number().int().positive().default(1),
 });
 
@@ -74,66 +113,263 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = lampSchema.parse(input);
+
   await prisma.project.findFirstOrThrow({
     where: { id: data.projectId, empresaId: ctx.empresaId },
   });
 
-  const lamp = await prisma.lamp.create({
-    data: {
-      projectId: data.projectId,
-      name: data.name,
-      frameTypeId: data.frameTypeId,
-      surfaceM2: data.surfaceM2,
-      units: data.units,
-    },
-  });
-
-  if (data.frameTypeId && data.surfaceM2) {
-    const frameProcesses = await prisma.frameTypeProcess.findMany({
-      where: { frameTypeId: data.frameTypeId },
-    });
-    for (const fp of frameProcesses) {
-      const hours = fp.hoursPerUnit * data.surfaceM2 + fp.fixedHours;
-      if (hours <= 0) continue;
-      await prisma.task.create({
-        data: {
-          projectId: data.projectId,
-          lampId: lamp.id,
-          process: fp.process,
-          estimatedHours: hours,
-          pendingHours: hours,
-        },
-      });
-    }
+  const blueprints = await buildTasksFromFrame(data.frameTypeId, data.surfaceM2);
+  if (blueprints.length === 0) {
+    throw new Error(
+      "El bastidor seleccionado no tiene procesos con horas para esta medida.",
+    );
   }
 
+  const lamp = await prisma.$transaction(async (tx) => {
+    const created = await tx.lamp.create({
+      data: {
+        projectId: data.projectId,
+        name: data.name,
+        frameTypeId: data.frameTypeId,
+        surfaceM2: data.surfaceM2,
+        units: data.units,
+      },
+    });
+
+    await tx.task.createMany({
+      data: blueprints.map((bp) => ({
+        projectId: data.projectId,
+        lampId: created.id,
+        process: bp.process,
+        estimatedHours: bp.estimatedHours,
+        pendingHours: bp.estimatedHours,
+        order: bp.order,
+      })),
+    });
+
+    return created;
+  });
+
+  log.info({ lampId: lamp.id }, "lamp created with tasks");
   revalidatePath("/dashboard/proyectos");
   return { id: lamp.id };
 }
 
-const taskSchema = z.object({
-  projectId: z.string().min(1),
-  lampId: z.string().optional(),
-  process: z.nativeEnum(ProcessCode),
+const updateTaskHoursSchema = z.object({
+  taskId: z.string().min(1),
   estimatedHours: z.number().positive(),
 });
 
-export async function createTask(input: z.infer<typeof taskSchema>) {
+export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = taskSchema.parse(input);
-  await prisma.project.findFirstOrThrow({
-    where: { id: data.projectId, empresaId: ctx.empresaId },
-  });
-  await prisma.task.create({
-    data: {
-      projectId: data.projectId,
-      lampId: data.lampId,
-      process: data.process,
-      estimatedHours: data.estimatedHours,
-      pendingHours: data.estimatedHours,
+  const data = updateTaskHoursSchema.parse(input);
+
+  const task = await prisma.task.findFirst({
+    where: {
+      id: data.taskId,
+      project: { empresaId: ctx.empresaId },
     },
   });
+  if (!task) throw new Error("Tarea no encontrada");
+
+  const pendingHours = adjustPendingOnEstimateChange(
+    data.estimatedHours,
+    task.doneHours,
+    task.pendingHours,
+  );
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { estimatedHours: data.estimatedHours, pendingHours },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const addExtraTaskSchema = z.object({
+  lampId: z.string().min(1),
+  process: z.string().min(1),
+  estimatedHours: z.number().positive(),
+});
+
+export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = addExtraTaskSchema.parse(input);
+
+  const lamp = await prisma.lamp.findFirst({
+    where: { id: data.lampId, project: { empresaId: ctx.empresaId } },
+    include: { tasks: { select: { process: true } } },
+  });
+  if (!lamp) throw new Error("Lámpara no encontrada");
+
+  if (lamp.tasks.some((t) => t.process === data.process)) {
+    throw new Error("Ese proceso ya existe en esta lámpara.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const order = await getNextTaskOrder(tx, lamp.id);
+    await tx.task.create({
+      data: {
+        projectId: lamp.projectId,
+        lampId: lamp.id,
+        process: data.process,
+        estimatedHours: data.estimatedHours,
+        pendingHours: data.estimatedHours,
+        order,
+      },
+    });
+  });
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const deleteTaskSchema = z.object({ taskId: z.string().min(1) });
+
+export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = deleteTaskSchema.parse(input);
+
+  const task = await prisma.task.findFirst({
+    where: {
+      id: data.taskId,
+      project: { empresaId: ctx.empresaId },
+    },
+    include: { _count: { select: { assignments: true, timeEntries: true } } },
+  });
+  if (!task) throw new Error("Tarea no encontrada");
+
+  if (task.doneHours > 0) {
+    throw new Error("No se puede eliminar: la tarea tiene horas registradas.");
+  }
+  if (task._count.assignments > 0 || task._count.timeEntries > 0) {
+    throw new Error(
+      "No se puede eliminar: hay asignaciones de planning o partes de trabajo.",
+    );
+  }
+
+  await prisma.task.delete({ where: { id: task.id } });
+  revalidatePath("/dashboard/proyectos");
+}
+
+const reorderTasksSchema = z.object({
+  lampId: z.string().min(1),
+  taskIds: z.array(z.string().min(1)).min(1),
+});
+
+export async function reorderTasks(input: z.infer<typeof reorderTasksSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = reorderTasksSchema.parse(input);
+
+  const lamp = await prisma.lamp.findFirst({
+    where: { id: data.lampId, project: { empresaId: ctx.empresaId } },
+    include: { tasks: { select: { id: true } } },
+  });
+  if (!lamp) throw new Error("Lámpara no encontrada");
+
+  const lampTaskIds = new Set(lamp.tasks.map((t) => t.id));
+  if (
+    data.taskIds.length !== lamp.tasks.length ||
+    !data.taskIds.every((id) => lampTaskIds.has(id))
+  ) {
+    throw new Error("Lista de tareas inválida para esta lámpara.");
+  }
+
+  await prisma.$transaction(
+    data.taskIds.map((taskId, order) =>
+      prisma.task.update({ where: { id: taskId }, data: { order } }),
+    ),
+  );
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const updateTaskNotesSchema = z.object({
+  taskId: z.string().min(1),
+  notes: z.string().max(500).nullable(),
+});
+
+export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateTaskNotesSchema.parse(input);
+
+  const task = await prisma.task.findFirst({
+    where: {
+      id: data.taskId,
+      project: { empresaId: ctx.empresaId },
+    },
+  });
+  if (!task) throw new Error("Tarea no encontrada");
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { notes: data.notes?.trim() ? data.notes.trim() : null },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const updateTaskCanFragmentSchema = z.object({
+  taskId: z.string().min(1),
+  canFragment: z.boolean(),
+});
+
+export async function updateTaskCanFragment(
+  input: z.infer<typeof updateTaskCanFragmentSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateTaskCanFragmentSchema.parse(input);
+
+  const task = await prisma.task.findFirst({
+    where: { id: data.taskId, project: { empresaId: ctx.empresaId } },
+  });
+  if (!task) throw new Error("Tarea no encontrada");
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { canFragment: data.canFragment },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const deleteLampSchema = z.object({ lampId: z.string().min(1) });
+
+export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = deleteLampSchema.parse(input);
+
+  const lamp = await prisma.lamp.findFirst({
+    where: { id: data.lampId, project: { empresaId: ctx.empresaId } },
+    include: {
+      tasks: {
+        include: {
+          _count: { select: { assignments: true, timeEntries: true } },
+        },
+      },
+    },
+  });
+  if (!lamp) throw new Error("Lámpara no encontrada");
+
+  const hasWork = lamp.tasks.some(
+    (t) =>
+      t.doneHours > 0 ||
+      t._count.assignments > 0 ||
+      t._count.timeEntries > 0,
+  );
+  if (hasWork) {
+    throw new Error(
+      "No se puede eliminar: hay horas o referencias en las tareas de esta lámpara.",
+    );
+  }
+
+  await prisma.lamp.delete({ where: { id: lamp.id } });
   revalidatePath("/dashboard/proyectos");
 }
 
