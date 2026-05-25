@@ -74,6 +74,69 @@ export async function getNavePersonnel(naveId: string | null) {
   });
 }
 
+export interface ActualHourEntry {
+  id: string;
+  /** ISO date string "YYYY-MM-DD" derived from startedAt UTC */
+  date: string;
+  startedAt: Date;
+  hours: number;
+  process: string | null;
+  notes: string | null;
+  personId: string | null;
+  person: { id: string; nombre: string; iniciales: string; color: string } | null;
+  project: { id: string; name: string } | null;
+  lamp: { id: string; name: string } | null;
+}
+
+export async function getActualHoursForWeek({
+  naveId,
+  weekStart,
+}: {
+  naveId: string | null;
+  weekStart: Date;
+}): Promise<ActualHourEntry[]> {
+  const monday = getMondayOf(weekStart);
+  const saturdayStart = new Date(monday.getTime() + 5 * 86_400_000);
+
+  const entries = await prisma.timeEntry.findMany({
+    where: {
+      startedAt: { gte: monday, lt: saturdayStart },
+      hours: { gt: 0 },
+      endedAt: { not: null },
+      user: {
+        personId: { not: null },
+        ...(naveId !== null ? { person: { naveId } } : {}),
+      },
+    },
+    include: {
+      user: { include: { person: true } },
+      project: { select: { id: true, name: true } },
+      lamp: { select: { id: true, name: true } },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+
+  return entries.map((e) => ({
+    id: e.id,
+    date: e.startedAt.toISOString().slice(0, 10),
+    startedAt: e.startedAt,
+    hours: e.hours!,
+    process: e.process,
+    notes: e.notes,
+    personId: e.user.personId,
+    person: e.user.person
+      ? {
+          id: e.user.person.id,
+          nombre: e.user.person.nombre,
+          iniciales: e.user.person.iniciales,
+          color: e.user.person.color,
+        }
+      : null,
+    project: e.project,
+    lamp: e.lamp,
+  }));
+}
+
 /** Festivos cuyo rango intersecta [start, end] (inclusive por día UTC). */
 export async function getHolidaysForRange(start: Date, end: Date) {
   return prisma.holiday.findMany({

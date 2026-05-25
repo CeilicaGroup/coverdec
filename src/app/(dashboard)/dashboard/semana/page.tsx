@@ -9,14 +9,17 @@ import {
 } from "@/lib/week";
 import {
   getAbsencesForRange,
+  getActualHoursForWeek,
   getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
   getProcessBadgeStylesByCode,
+  type ActualHourEntry,
 } from "@/features/planning/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
+import { ViewToggle } from "../../_components/view-toggle";
 import { PersonAvatar } from "@/components/person-avatar";
 import {
   ProcessBadge,
@@ -29,18 +32,42 @@ import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
+interface GridCell {
+  id: string;
+  hours: number;
+  startSlot: number | null;
+  endSlot: number | null;
+  /** Overrides slot-derived label for actual entries: "HH:MM–HH:MM" */
+  timeLabel: string | null;
+  process: string;
+  project: string;
+  lamp: string | null;
+}
+
+function formatTimeRange(startedAt: Date, hours: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const startH = startedAt.getUTCHours();
+  const startM = startedAt.getUTCMinutes();
+  const totalMins = startH * 60 + startM + Math.round(hours * 60);
+  const endH = Math.floor(totalMins / 60) % 24;
+  const endM = totalMins % 60;
+  return `${pad(startH)}:${pad(startM)}–${pad(endH)}:${pad(endM)}`;
+}
+
 export default async function SemanaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; view?: string }>;
 }) {
   const ctx = await requireDashboardContext();
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
-  const [planning, people, holidays, absences, processStyles] = await Promise.all([
-    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
+  const view = params.view === "actual" ? "actual" : "plan";
+  const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
+
+  const [people, holidays, absences, processStyles] = await Promise.all([
     getNavePersonnel(ctx.naveId),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
@@ -53,7 +80,15 @@ export default async function SemanaPage({
     days[days.length - 1] ?? days[0],
   );
 
-  const grid = buildGrid(planning, people, days);
+  let grid: Map<string, Map<string, GridCell[]>>;
+
+  if (view === "actual") {
+    const actualEntries = await getActualHoursForWeek({ naveId: ctx.naveId, weekStart });
+    grid = buildActualGrid(actualEntries, people, days);
+  } else {
+    const planning = await getPlanningForWeek({ naveId: ctx.naveId, weekStart });
+    grid = buildPlanGrid(planning, people, days);
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -61,22 +96,30 @@ export default async function SemanaPage({
         title={`Vista semanal S${week} · ${year}`}
         description={formatWeekRange(weekStart)}
         actions={
-          <WeekNav
-            weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
-            weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
-          />
+          <div className="flex items-center gap-2">
+            <ViewToggle basePath="/dashboard/semana" view={view} week={weekIso} />
+            <WeekNav
+              weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
+              weekIso={weekIso}
+            />
+          </div>
         }
       />
-      {!planning && (
+      {view === "plan" && grid.size === 0 && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           No hay planning generado para esta semana. Vuelve al Resumen y pulsa "Generar planning".
+        </div>
+      )}
+      {view === "actual" && [...grid.values()].every((dm) => [...dm.values()].every((c) => c.length === 0)) && (
+        <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+          No hay registros de horas para esta semana.
         </div>
       )}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="size-4" />
-            Grid semanal · persona × día
+            {view === "actual" ? "Registros reales · persona × día" : "Grid semanal · persona × día"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
@@ -128,7 +171,7 @@ function PersonRow({
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string };
   days: Date[];
-  cells: Map<string, ReturnType<typeof toCell>[]>;
+  cells: Map<string, GridCell[]>;
   absences: { date: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
 }) {
@@ -171,9 +214,11 @@ function PersonRow({
                       borderColor: colors.borderColor,
                     }}
                   >
-                    <div className="font-mono text-[9px] opacity-70">
-                      {rangeLabel(t.startSlot, t.endSlot)}
-                    </div>
+                    {(t.timeLabel ?? (t.startSlot !== null && t.endSlot !== null ? rangeLabel(t.startSlot, t.endSlot) : null)) && (
+                      <div className="font-mono text-[9px] opacity-70">
+                        {t.timeLabel ?? rangeLabel(t.startSlot!, t.endSlot!)}
+                      </div>
+                    )}
                     <div className="font-semibold truncate" style={{ color: colors.fgColor }}>
                       {t.project}
                     </div>
@@ -203,36 +248,15 @@ function PersonRow({
   );
 }
 
-function toCell(assignment: {
-  id: string;
-  hours: number;
-  startSlot: number;
-  endSlot: number;
-  process: string;
-  task: { project: { name: string }; lamp: { name: string } | null };
-}) {
-  return {
-    id: assignment.id,
-    hours: assignment.hours,
-    startSlot: assignment.startSlot,
-    endSlot: assignment.endSlot,
-    process: assignment.process,
-    project: assignment.task.project.name,
-    lamp: assignment.task.lamp?.name ?? null,
-  };
-}
-
-function buildGrid(
+function buildPlanGrid(
   planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
   people: Awaited<ReturnType<typeof getNavePersonnel>>,
   days: Date[],
-) {
-  const grid = new Map<string, Map<string, ReturnType<typeof toCell>[]>>();
+): Map<string, Map<string, GridCell[]>> {
+  const grid = new Map<string, Map<string, GridCell[]>>();
   for (const p of people) {
-    const personMap = new Map<string, ReturnType<typeof toCell>[]>();
-    for (const d of days) {
-      personMap.set(d.toISOString().slice(0, 10), []);
-    }
+    const personMap = new Map<string, GridCell[]>();
+    for (const d of days) personMap.set(d.toISOString().slice(0, 10), []);
     grid.set(p.id, personMap);
   }
   if (!planning) return grid;
@@ -241,8 +265,48 @@ function buildGrid(
     if (!personMap) continue;
     const key = a.date.toISOString().slice(0, 10);
     const cell = personMap.get(key) ?? [];
-    cell.push(toCell(a));
+    cell.push({
+      id: a.id,
+      hours: a.hours,
+      startSlot: a.startSlot,
+      endSlot: a.endSlot,
+      timeLabel: null,
+      process: a.process,
+      project: a.task.project.name,
+      lamp: a.task.lamp?.name ?? null,
+    });
     personMap.set(key, cell);
+  }
+  return grid;
+}
+
+function buildActualGrid(
+  entries: ActualHourEntry[],
+  people: Awaited<ReturnType<typeof getNavePersonnel>>,
+  days: Date[],
+): Map<string, Map<string, GridCell[]>> {
+  const grid = new Map<string, Map<string, GridCell[]>>();
+  for (const p of people) {
+    const personMap = new Map<string, GridCell[]>();
+    for (const d of days) personMap.set(d.toISOString().slice(0, 10), []);
+    grid.set(p.id, personMap);
+  }
+  for (const e of entries) {
+    if (!e.personId) continue;
+    const personMap = grid.get(e.personId);
+    if (!personMap) continue;
+    const cell = personMap.get(e.date) ?? [];
+    cell.push({
+      id: e.id,
+      hours: e.hours,
+      startSlot: null,
+      endSlot: null,
+      timeLabel: formatTimeRange(e.startedAt, e.hours),
+      process: e.process ?? "—",
+      project: e.project?.name ?? "—",
+      lamp: e.lamp?.name ?? null,
+    });
+    personMap.set(e.date, cell);
   }
   return grid;
 }
