@@ -1,0 +1,85 @@
+# Producción — ver docker-compose.dev.yml para desarrollo local.
+#
+# Variables requeridas en .env (o entorno CI/CD):
+#   POSTGRES_PASSWORD=<contraseña segura>
+#   BETTER_AUTH_SECRET=<al menos 32 bytes aleatorios>
+#   BETTER_AUTH_URL=https://tu-dominio.com
+#   NEXT_PUBLIC_BETTER_AUTH_URL=https://tu-dominio.com
+#
+# Opcionales (tienen default):
+#   POSTGRES_USER=coverdec
+#   POSTGRES_DB=coverdec
+#   SOLVER_MAX_SECONDS=60
+#   LOG_LEVEL=info
+#   PORT=3000
+#
+# Arrancar:
+#   docker compose up -d --build
+
+name: coverdec
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-coverdec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-coverdec}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-coverdec} -d ${POSTGRES_DB:-coverdec}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  planning-solver:
+    build:
+      context: ./services/planning-solver
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-60}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: >-
+        postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-coverdec}
+      PLANNING_SOLVER_URL: http://planning-solver:8000
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+      NEXT_PUBLIC_BETTER_AUTH_URL: ${NEXT_PUBLIC_BETTER_AUTH_URL:?NEXT_PUBLIC_BETTER_AUTH_URL is required}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+      planning-solver:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
