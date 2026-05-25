@@ -66,6 +66,11 @@ const ADVANCED_ROWS: {
     label: "Estabilidad del plan",
     hint: "Evita cambiar asignaciones respecto al borrador anterior.",
   },
+  {
+    key: "wPriority",
+    label: "Prioridad por entrega próxima",
+    hint: "Tier 1: prioriza asignar cuartos a proyectos con entrega más cercana. Usa la misma escala que 'Cumplir entregas'.",
+  },
 ];
 
 function StrategyHint({ children }: { children: React.ReactNode }) {

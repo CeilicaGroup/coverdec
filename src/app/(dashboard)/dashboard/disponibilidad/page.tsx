@@ -38,14 +38,6 @@ export default async function DisponibilidadPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
-  if (!ctx.naveId) {
-    return (
-      <div className="p-6 lg:p-8">
-        <PageHeader title="Disponibilidad" description="Selecciona una nave para ver el planning." />
-      </div>
-    );
-  }
-
   const [planning, people, holidays, absences] = await Promise.all([
     getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
     getNavePersonnel(ctx.naveId),

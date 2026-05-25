@@ -15,29 +15,37 @@ export async function getPlanningForWeek({
   naveId,
   weekStart,
 }: {
-  naveId: string;
+  naveId: string | null;
   weekStart: Date;
 }) {
   const monday = getMondayOf(weekStart);
   const { year, week } = isoWeek(monday);
-  const planning = await prisma.planning.findUnique({
-    where: { naveId_year_week: { naveId, year, week } },
-    include: {
-      assignments: {
-        include: {
-          person: true,
-          task: {
-            include: {
-              project: true,
-              lamp: true,
-            },
-          },
-        },
-        orderBy: [{ date: "asc" }, { startSlot: "asc" }],
+  const include = {
+    assignments: {
+      include: {
+        person: true,
+        task: { include: { project: true, lamp: true } },
       },
+      orderBy: [{ date: "asc" as const }, { startSlot: "asc" as const }],
     },
-  });
-  return planning;
+  };
+
+  if (naveId !== null) {
+    return prisma.planning.findUnique({
+      where: { naveId_year_week: { naveId, year, week } },
+      include,
+    });
+  }
+
+  // All naves: merge assignments from every planning this week
+  const plannings = await prisma.planning.findMany({ where: { year, week }, include });
+  if (plannings.length === 0) return null;
+
+  const allAssignments = plannings
+    .flatMap((p) => p.assignments)
+    .sort((a, b) => a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot);
+
+  return { ...plannings[0]!, id: "__all__", naveId: "__all__", assignments: allAssignments };
 }
 
 export interface ProcessDefinitionInfo {
@@ -45,7 +53,14 @@ export interface ProcessDefinitionInfo {
   badge: ProcessBadgeStyle;
 }
 
-export async function getNavePersonnel(naveId: string) {
+export async function getNavePersonnel(naveId: string | null) {
+  if (naveId === null) {
+    return prisma.person.findMany({
+      where: { isActive: true },
+      include: { specialties: true },
+      orderBy: { iniciales: "asc" },
+    });
+  }
   const byNave = await prisma.person.findMany({
     where: { naveId, isActive: true },
     include: { specialties: true },
@@ -77,12 +92,14 @@ export async function getAbsencesForRange(start: Date, end: Date) {
   });
 }
 
-export async function getActiveProjectsWithLoad(naveId: string) {
+export async function getActiveProjectsWithLoad(naveId: string | null) {
   const projects = await prisma.project.findMany({
-    where: { isActive: true, tasks: { some: { naveId } } },
+    where: naveId !== null
+      ? { isActive: true, tasks: { some: { naveId } } }
+      : { isActive: true },
     include: {
       tasks: {
-        where: { naveId },
+        where: naveId !== null ? { naveId } : undefined,
         select: {
           id: true,
           process: true,
@@ -137,14 +154,11 @@ export async function getProcessBadgeStylesByCode(): Promise<
 }
 
 export async function getPlanningWeights(
-  naveId: string,
+  naveId: string | null,
 ): Promise<PlanningWeights> {
-  const row = await prisma.planningPolicy.findUnique({
-    where: { naveId },
-  });
-  if (!row) {
-    return { ...DEFAULT_PLANNING_WEIGHTS };
-  }
+  if (!naveId) return { ...DEFAULT_PLANNING_WEIGHTS };
+  const row = await prisma.planningPolicy.findUnique({ where: { naveId } });
+  if (!row) return { ...DEFAULT_PLANNING_WEIGHTS };
   return normalizePlanningWeights(row);
 }
 

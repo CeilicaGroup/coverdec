@@ -104,7 +104,9 @@ export function TimerWidget({
         <Label>Proyecto</Label>
         <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
           <SelectTrigger>
-            <SelectValue placeholder="Selecciona proyecto" />
+            <SelectValue placeholder="Selecciona proyecto">
+              {projectId ? (projects.find((p) => p.id === projectId)?.name ?? "") : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {projects.map((p) => (
@@ -120,7 +122,9 @@ export function TimerWidget({
           <Label>Lámpara</Label>
           <Select value={lampId} onValueChange={(v) => setLampId(v ?? "")}>
             <SelectTrigger>
-              <SelectValue placeholder="(opcional)" />
+              <SelectValue placeholder="(opcional)">
+                {lampId ? (project.lamps.find((l) => l.id === lampId)?.name ?? "") : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {project.lamps.map((l) => (

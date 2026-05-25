@@ -36,14 +36,6 @@ export default async function GanttPage({
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  if (!ctx.naveId) {
-    return (
-      <div className="p-6 lg:p-8">
-        <PageHeader title="Gantt" description="Selecciona una nave para ver el planning." />
-      </div>
-    );
-  }
-
   const [projects, planning] = await Promise.all([
     getActiveProjectsWithLoad(ctx.naveId),
     getPlanningForWeek({ naveId: ctx.naveId, weekStart }),

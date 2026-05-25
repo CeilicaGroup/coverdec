@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -49,12 +50,12 @@ const NAV_SECTIONS = [
     label: "Planning",
     naveScoped: true,
     items: [
-      { href: "/dashboard", label: "Resumen", icon: LayoutGrid, exact: true },
+      { href: "/dashboard", label: "Resumen", icon: LayoutGrid, exact: true, operarioHidden: true },
       { href: "/dashboard/semana", label: "Vista semana", icon: CalendarDays },
       { href: "/dashboard/persona", label: "Por persona", icon: Users },
       { href: "/dashboard/proyecto", label: "Por proyecto", icon: ClipboardList },
-      { href: "/dashboard/gantt", label: "Gantt", icon: LineChart },
-      { href: "/dashboard/disponibilidad", label: "Disponibilidad", icon: Gauge },
+      { href: "/dashboard/gantt", label: "Gantt", icon: LineChart, operarioHidden: true },
+      { href: "/dashboard/disponibilidad", label: "Disponibilidad", icon: Gauge, operarioHidden: true },
       { href: "/dashboard/festivos", label: "Festivos", icon: Palmtree },
     ],
   },
@@ -69,9 +70,9 @@ const NAV_SECTIONS = [
     label: "Catálogo",
     naveScoped: false,
     items: [
-      { href: "/dashboard/proyectos", label: "Proyectos", icon: ClipboardList },
-      { href: "/dashboard/catalogo", label: "Bastidores", icon: Settings },
-      { href: "/dashboard/personal", label: "Personal", icon: Users },
+      { href: "/dashboard/proyectos", label: "Proyectos", icon: ClipboardList, operarioHidden: true },
+      { href: "/dashboard/catalogo", label: "Bastidores", icon: Settings, operarioHidden: true },
+      { href: "/dashboard/personal", label: "Personal", icon: Users, operarioHidden: true },
     ],
   },
   {
@@ -110,8 +111,9 @@ export function DashboardShell({
     router.refresh();
   };
 
-  const canSeeRestricted = user.role !== "OPERARIO";
-  const isAdmin = user.role === "ADMIN";
+  const isOperario = user.role === "OPERARIO";
+  const canSeeRestricted = !isOperario;
+  const isAdmin = user.role === "ADMIN" || user.role === "JEFE_PRODUCCION";
 
   return (
     <div className="flex min-h-screen w-full bg-secondary/30">
@@ -125,7 +127,7 @@ export function DashboardShell({
               <span className="truncate">{activeNave.nombre}</span>
             </div>
           )}
-          {!activeNave && user.role !== "ADMIN" && (
+          {!activeNave && isAdmin && (
             <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">
               Sin nave asignada
             </div>
@@ -137,6 +139,7 @@ export function DashboardShell({
               if ("adminOnly" in item && item.adminOnly) return isAdmin;
               if ("adminHidden" in item && item.adminHidden && isAdmin) return false;
               if ("restricted" in item && item.restricted) return canSeeRestricted;
+              if ("operarioHidden" in item && item.operarioHidden && isOperario) return false;
               return true;
             });
             if (items.length === 0) return null;
@@ -146,7 +149,7 @@ export function DashboardShell({
                   {section.label}
                   {section.naveScoped && <Warehouse className="size-3 opacity-50 ml-0.5" />}
                 </div>
-                {section.naveScoped && naves.length > 0 && (
+                {section.naveScoped && isAdmin && naves.length > 0 && (
                   <div className="px-2 mb-2">
                     <select
                       value={activeNave?.id ?? ""}
@@ -217,22 +220,24 @@ export function DashboardShell({
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>
-                <div className="space-y-0.5">
-                  <div className="text-sm font-semibold">{user.name}</div>
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    {user.role}
-                  </Badge>
-                </div>
-              </DropdownMenuLabel>
-              {naves.length > 0 && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold">{user.name}</div>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {user.role}
+                    </Badge>
+                  </div>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              {isAdmin && naves.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Nave activa
-                  </DropdownMenuLabel>
-                  {isAdmin ? (
-                    naves.map((n) => (
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Nave activa
+                    </DropdownMenuLabel>
+                    {naves.map((n) => (
                       <DropdownMenuItem
                         key={n.id}
                         onClick={() => onSwitchNave(n.id)}
@@ -243,13 +248,8 @@ export function DashboardShell({
                         <Warehouse className="size-3.5 mr-1.5 opacity-60" />
                         {n.nombre}
                       </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <DropdownMenuItem disabled className="opacity-70">
-                      <Warehouse className="size-3.5 mr-1.5 opacity-60" />
-                      {activeNave ? activeNave.nombre : "Sin nave asignada"}
-                    </DropdownMenuItem>
-                  )}
+                    ))}
+                  </DropdownMenuGroup>
                 </>
               )}
               <DropdownMenuSeparator />

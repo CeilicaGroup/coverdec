@@ -24,8 +24,8 @@ export default async function DashboardLayout({
     select: { id: true, codigo: true, nombre: true },
   });
 
-  const activeNaveId =
-    user.role === "ADMIN" ? user.activeNaveId : user.naveId;
+  const canSwitchNave = user.role === "ADMIN" || user.role === "JEFE_PRODUCCION";
+  const activeNaveId = canSwitchNave ? user.activeNaveId : user.naveId;
   const activeNave = naves.find((n) => n.id === activeNaveId) ?? null;
 
   return (

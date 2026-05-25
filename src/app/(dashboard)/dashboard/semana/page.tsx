@@ -39,14 +39,6 @@ export default async function SemanaPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
-  if (!ctx.naveId) {
-    return (
-      <div className="p-6 lg:p-8">
-        <PageHeader title="Vista semanal" description="Selecciona una nave para ver el planning." />
-      </div>
-    );
-  }
-
   const [planning, people, holidays, absences, processStyles] = await Promise.all([
     getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
     getNavePersonnel(ctx.naveId),

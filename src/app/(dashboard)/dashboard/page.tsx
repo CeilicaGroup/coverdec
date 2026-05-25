@@ -69,29 +69,6 @@ export default async function ResumenPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
-  if (!ctx.naveId) {
-    return (
-      <div className="p-6 lg:p-8">
-        <PageHeader
-          title="Planning"
-          description="Vista global activa — selecciona una nave para ver el planning"
-          actions={
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-                  <Button size="sm" disabled>Generar plan</Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Selecciona una nave específica para generar el planning
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          }
-        />
-      </div>
-    );
-  }
-
   const [planning, people, projects, holidays, absences, planningWeights, processStyles] =
     await Promise.all([
     getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
@@ -142,19 +119,34 @@ export default async function ResumenPage({
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
               weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
             />
-            <PlanningWeightsPopover
-              initialWeights={planningWeights}
-              role={ctx.role}
-            />
-            <GenerateButton
-              weekStart={getMondayOf(weekStart).toISOString()}
-              planningId={planning?.id ?? null}
-              planningStatus={planning?.status ?? null}
-              canUndo={undoState.canUndo}
-              hasFuturePlannings={undoState.hasFuturePlannings}
-              isPublished={undoState.isPublished}
-              role={ctx.role}
-            />
+            {ctx.naveId ? (
+              <>
+                <PlanningWeightsPopover
+                  initialWeights={planningWeights}
+                  role={ctx.role}
+                />
+                <GenerateButton
+                  weekStart={getMondayOf(weekStart).toISOString()}
+                  planningId={planning?.id ?? null}
+                  planningStatus={planning?.status ?? null}
+                  canUndo={undoState.canUndo}
+                  hasFuturePlannings={undoState.hasFuturePlannings}
+                  isPublished={undoState.isPublished}
+                  role={ctx.role}
+                />
+              </>
+            ) : (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
+                    <Button size="sm" disabled>Generar plan</Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Selecciona una nave específica para generar el planning
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
         }
       />

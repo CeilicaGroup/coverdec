@@ -37,14 +37,6 @@ export default async function CostesPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  if (!ctx.naveId) {
-    return (
-      <div className="p-6 lg:p-8">
-        <PageHeader title="Costes" description="Selecciona una nave para ver el planning." />
-      </div>
-    );
-  }
-
   const weekMon = getMondayOf(weekStart);
   const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
   const [planning, people, holidays] = await Promise.all([

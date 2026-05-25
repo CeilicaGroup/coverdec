@@ -35,6 +35,7 @@ class PlanningWeights(BaseModel):
     wLoadBalance: float
     wMove: float
     wLaborCost: float = 1.0
+    wPriority: float = 0.0  # project priority by delivery proximity
 
 
 class EngineProcessDef(BaseModel):

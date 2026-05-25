@@ -489,7 +489,7 @@ def _coerce_weights(
         labor_cost=getattr(lw, "wLaborCost", override.labor_cost),
         load_balance=getattr(lw, "wLoadBalance", override.load_balance),
         stability=getattr(lw, "wMove", override.stability),
-        project_priority=override.project_priority,
+        project_priority=getattr(lw, "wPriority", override.project_priority),
     )
 
 
@@ -827,6 +827,11 @@ def _build_objective(
     if w_gap > 0:
         _add_gap_terms(model, data, mv, w_gap, terms)
 
+    # ── Tier 1: Project priority by delivery proximity ───────────────────────
+    w_prio = _scale(w.project_priority)
+    if w_prio > 0:
+        _add_project_priority_terms(model, data, mv, w_prio, terms)
+
     # ── Tier 2: Early-start nudge ────────────────────────────────────────────
     w_es = _scale(w.early_start)
     if w_es > 0:
@@ -1019,40 +1024,75 @@ def _add_early_start_terms(
     w: int,
     terms: list,
 ) -> None:
-    """Penalise late first-start per task using AddMinEquality over all slots.
+    """Penalise each active slot's start position on the week timeline.
 
-    For each task, compute the minimum wq_start across all *present* slots
-    (absent slots contribute HORIZON_Q+1 so they never win the minimum).
-    This rewards tasks that start earlier without penalising them for having
-    multiple fragments — enabling afternoon→next-morning splits when the
-    afternoon of day N is earlier than the morning of day N+1.
-
-    Avoids the trivially-zero problem of the old task_first_wq ≤ start_wq
-    approach: AddMinEquality forces the variable to the actual minimum, not
-    an unconstrained lower bound.
+    By penalising *every* fragment (not just the task's first start), early_start
+    combines naturally with gap_penalty: the solver prefers fewer, earlier blocks
+    because each extra fragment adds its own wq_start cost.  A task split into
+    slots at quarters 5+20+40 costs 65w; the same task in one block at quarter 5
+    costs 5w — the solver consolidates.
     """
-    horizon = HORIZON_Q + 1
+    for sv in mv.all_slots:
+        wq = sv.slot.timeline.wq_exp
+        if not wq:
+            continue
+        tag = f"{sv.slot.task_id}_{sv.slot.person_id}_{sv.slot.day_index}"
+        start_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eswq_{tag}")
+        model.AddElement(sv.start, list(wq), start_wq)
+        eff_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eseff_{tag}")
+        model.Add(eff_wq == start_wq).OnlyEnforceIf(sv.presence)
+        model.Add(eff_wq == 0).OnlyEnforceIf(sv.presence.Not())
+        terms.append(TIER_COST * w * eff_wq)
+
+
+def _delivery_urgency_score(task: EngineTask, week_start: date) -> int:
+    """Continuous urgency score 0–90 (higher = more urgent).
+
+    Differentiates projects within the 'far deadline' bucket that _urgency()
+    collapses to a single level (e.g. 51d vs 143d are both urgency=1 there).
+
+    Returns:
+        90  for overdue or due today
+        39  for 51 days out  (90-51)
+        0   for ≥90 days out or no deadline
+    """
+    if task.projectDeliveryDate is None:
+        return 0
+    days_left = (task.projectDeliveryDate.date() - week_start).days
+    if days_left <= 0:
+        return 90
+    return max(0, 90 - days_left)
+
+
+def _add_project_priority_terms(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+    w: int,
+    terms: list,
+) -> None:
+    """Tier 1: prefer filling slots for projects with closer delivery dates.
+
+    For each active slot the cost is (90 - urgency_score) × w × effective, so
+    closer-deadline tasks have a lower cost per quarter and the solver naturally
+    fills them before distant-deadline tasks when resources are shared.
+
+    Example with w=2500 (deliveryPriority=50%):
+      DRUNI Splau  (51d)  → inverse=51  → 51×2500 per quarter
+      ARENAL El Rosal (143d) → inverse=90  → 90×2500 per quarter
+    The solver prefers Splau (lower cost), resolving the priority inversion.
+    """
+    task_inverse: dict[str, int] = {}
     for task in data.tasks:
-        slots = mv.by_task.get(task.id, [])
-        if not slots:
-            continue
-        wq_or_h_list: list = []
-        for sv in slots:
-            wq = sv.slot.timeline.wq_exp
-            if not wq:
-                continue
-            tag = f"{task.id}_{sv.slot.person_id}_{sv.slot.day_index}"
-            start_wq = model.NewIntVar(0, horizon, f"twq_{tag}")
-            model.AddElement(sv.start, list(wq), start_wq)
-            wq_or_h = model.NewIntVar(0, horizon, f"eswq_{tag}")
-            model.Add(wq_or_h == start_wq).OnlyEnforceIf(sv.presence)
-            model.Add(wq_or_h == horizon).OnlyEnforceIf(sv.presence.Not())
-            wq_or_h_list.append(wq_or_h)
-        if not wq_or_h_list:
-            continue
-        task_min_wq = model.NewIntVar(0, horizon, f"minwq_{task.id}")
-        model.AddMinEquality(task_min_wq, wq_or_h_list)
-        terms.append(TIER_COST * w * task_min_wq)
+        score = _delivery_urgency_score(task, data.week_start)
+        task_inverse[task.id] = 90 - score  # 0 = most urgent, 90 = no deadline
+
+    for task in data.tasks:
+        inv = task_inverse.get(task.id, 90)
+        if inv <= 0:
+            continue  # overdue/due-today: schedule for free
+        for sv in mv.by_task.get(task.id, []):
+            terms.append(TIER_DEADLINE * w * inv * sv.effective)
 
 
 def _add_no_fragment_constraints(
