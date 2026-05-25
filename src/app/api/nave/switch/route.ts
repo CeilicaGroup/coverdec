@@ -3,11 +3,19 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth-server";
 
-const schema = z.object({ naveId: z.string().min(1) });
+const schema = z.object({ naveId: z.string() });
 
 export async function POST(request: Request) {
   const session = await requireSession();
   const body = schema.parse(await request.json());
+
+  if (!body.naveId) {
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { activeNaveId: null },
+    });
+    return NextResponse.json({ ok: true });
+  }
 
   const nave = await prisma.nave.findUnique({
     where: { id: body.naveId, isActive: true },

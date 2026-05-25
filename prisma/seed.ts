@@ -1,6 +1,7 @@
 import { PrismaClient, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
+import { buildTasksFromFrame } from "../src/features/projects/lamp-tasks";
 
 const prisma = new PrismaClient();
 
@@ -92,6 +93,152 @@ const PEOPLE = [
   },
 ];
 
+const FRAME_TYPES = [
+  {
+    code: "TELA",
+    name: "Panel de tela",
+    description: "Bastidor con tela tensada, proceso completo pintura",
+    processes: [
+      { process: "CNC",         sequence: 0, hoursPerUnit: 0.5,  fixedHours: 1.0 },
+      { process: "ENSAMBLAJE",  sequence: 1, hoursPerUnit: 1.0,  fixedHours: 0   },
+      { process: "LIJADO",      sequence: 2, hoursPerUnit: 0.7,  fixedHours: 0.5 },
+      { process: "IMPRIMACION", sequence: 3, hoursPerUnit: 0.3,  fixedHours: 0   },
+      { process: "PINTURA",     sequence: 4, hoursPerUnit: 0.4,  fixedHours: 0   },
+      { process: "EMBALAJE",    sequence: 5, hoursPerUnit: 0.15, fixedHours: 0   },
+    ],
+  },
+  {
+    code: "ESPUMADO",
+    name: "Panel espumado",
+    description: "Bastidor con espumado, más horas de lijado",
+    processes: [
+      { process: "CNC",         sequence: 0, hoursPerUnit: 0.4,  fixedHours: 0.5 },
+      { process: "ENSAMBLAJE",  sequence: 1, hoursPerUnit: 1.2,  fixedHours: 0   },
+      { process: "LIJADO",      sequence: 2, hoursPerUnit: 1.0,  fixedHours: 1.0 },
+      { process: "IMPRIMACION", sequence: 3, hoursPerUnit: 0.3,  fixedHours: 0   },
+      { process: "PINTURA",     sequence: 4, hoursPerUnit: 0.4,  fixedHours: 0   },
+      { process: "EMBALAJE",    sequence: 5, hoursPerUnit: 0.2,  fixedHours: 0   },
+    ],
+  },
+  {
+    code: "COMPOSITE",
+    name: "Composite / chapa",
+    description: "Panel de composite o chapa, sin pintura",
+    processes: [
+      { process: "CORTE_MANUAL", sequence: 0, hoursPerUnit: 0.3, fixedHours: 0 },
+      { process: "ENSAMBLAJE",   sequence: 1, hoursPerUnit: 0.5, fixedHours: 0 },
+      { process: "EMBALAJE",     sequence: 2, hoursPerUnit: 0.1, fixedHours: 0 },
+    ],
+  },
+  {
+    code: "HAIR",
+    name: "Hair espejo",
+    description: "Elemento Hair con pegado de espejo y perfiles",
+    processes: [
+      { process: "ENSAMBLAJE",    sequence: 0, hoursPerUnit: 1.0, fixedHours: 0 },
+      { process: "PERFILES",      sequence: 1, hoursPerUnit: 0.5, fixedHours: 0 },
+      { process: "PEGADO_ESPEJO", sequence: 2, hoursPerUnit: 0.3, fixedHours: 0 },
+      { process: "EMBALAJE",      sequence: 3, hoursPerUnit: 0.2, fixedHours: 0 },
+    ],
+  },
+  {
+    code: "SOL",
+    name: "Elemento Sol",
+    description: "Elemento decorativo Sol",
+    processes: [
+      { process: "CNC",        sequence: 0, hoursPerUnit: 0.3,  fixedHours: 0.5 },
+      { process: "ENSAMBLAJE", sequence: 1, hoursPerUnit: 0.8,  fixedHours: 0   },
+      { process: "EMBALAJE",   sequence: 2, hoursPerUnit: 0.15, fixedHours: 0   },
+    ],
+  },
+];
+
+const PROJECTS = [
+  {
+    code: "druni-cc-splau",
+    name: "DRUNI CC Splau",
+    client: "DRUNI",
+    deliveryDate: new Date("2026-07-15T00:00:00.000Z"),
+    lamps: [
+      { name: "Panel tela fachada", frameTypeCode: "TELA",      surfaceM2: 4.5, units: 2 },
+      { name: "Composite lateral",  frameTypeCode: "COMPOSITE",  surfaceM2: 2.0, units: 1 },
+      { name: "Hair espejo caja",   frameTypeCode: "HAIR",       surfaceM2: 1.5, units: 1 },
+    ],
+  },
+  {
+    code: "druni-cc-baricentro",
+    name: "DRUNI CC Baricentro",
+    client: "DRUNI",
+    deliveryDate: new Date("2026-08-01T00:00:00.000Z"),
+    lamps: [
+      { name: "Panel espumado frontal", frameTypeCode: "ESPUMADO",  surfaceM2: 5.0, units: 2 },
+      { name: "Composite mostrador",    frameTypeCode: "COMPOSITE",  surfaceM2: 1.8, units: 2 },
+    ],
+  },
+  {
+    code: "druni-cc-mn4",
+    name: "DRUNI CC MN4",
+    client: "DRUNI",
+    deliveryDate: new Date("2026-08-20T00:00:00.000Z"),
+    lamps: [
+      { name: "Tela fachada principal", frameTypeCode: "TELA",      surfaceM2: 6.0, units: 1 },
+      { name: "Hair lateral",           frameTypeCode: "HAIR",       surfaceM2: 2.0, units: 2 },
+    ],
+  },
+  {
+    code: "druni-cc-las-arenas",
+    name: "DRUNI CC Las Arenas",
+    client: "DRUNI",
+    deliveryDate: new Date("2026-09-05T00:00:00.000Z"),
+    lamps: [
+      { name: "Espumado cabecera",    frameTypeCode: "ESPUMADO",  surfaceM2: 4.0, units: 1 },
+      { name: "Composite zócalo",     frameTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 1 },
+      { name: "Sol decorativo",       frameTypeCode: "SOL",        surfaceM2: 1.2, units: 3 },
+    ],
+  },
+  {
+    code: "druni-marbella",
+    name: "DRUNI Marbella",
+    client: "DRUNI",
+    deliveryDate: new Date("2026-09-30T00:00:00.000Z"),
+    lamps: [
+      { name: "Tela fachada",     frameTypeCode: "TELA",      surfaceM2: 5.5, units: 1 },
+      { name: "Hair espejo",      frameTypeCode: "HAIR",       surfaceM2: 1.8, units: 2 },
+    ],
+  },
+  {
+    code: "arenal-cc-el-rosal",
+    name: "ARENAL CC El Rosal",
+    client: "ARENAL",
+    deliveryDate: new Date("2026-10-15T00:00:00.000Z"),
+    lamps: [
+      { name: "Espumado frontal",    frameTypeCode: "ESPUMADO",  surfaceM2: 7.0, units: 1 },
+      { name: "Sol entrada",         frameTypeCode: "SOL",        surfaceM2: 1.5, units: 2 },
+    ],
+  },
+  {
+    code: "byd-barcelona",
+    name: "BYD Barcelona",
+    client: "BYD",
+    deliveryDate: new Date("2026-11-01T00:00:00.000Z"),
+    lamps: [
+      { name: "Espumado showroom",   frameTypeCode: "ESPUMADO",  surfaceM2: 6.0, units: 1 },
+      { name: "Composite columna",   frameTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 2 },
+    ],
+  },
+  {
+    code: "punto-valencia",
+    name: "PUNTO Valencia",
+    client: "PUNTO",
+    deliveryDate: new Date("2026-11-20T00:00:00.000Z"),
+    lamps: [
+      { name: "Tela escaparate",  frameTypeCode: "TELA",      surfaceM2: 3.5, units: 2 },
+      { name: "Hair elemento",    frameTypeCode: "HAIR",       surfaceM2: 1.2, units: 1 },
+      { name: "Sol decorativo",   frameTypeCode: "SOL",        surfaceM2: 0.8, units: 4 },
+    ],
+  },
+];
+
 const HOLIDAYS_2026 = [
   ["2026-01-01", "Año Nuevo"],
   ["2026-01-06", "Reyes"],
@@ -133,6 +280,69 @@ async function main() {
     });
   }
   const firstNave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
+
+  console.log("Seeding frame types...");
+  const frameTypeByCode = new Map<string, { id: string }>();
+  for (const ft of FRAME_TYPES) {
+    const { processes, ...ftData } = ft;
+    const created = await prisma.frameType.upsert({
+      where: { code: ftData.code },
+      update: { name: ftData.name, description: ftData.description },
+      create: ftData,
+    });
+    frameTypeByCode.set(ftData.code, created);
+    for (const fp of processes) {
+      await prisma.frameTypeProcess.upsert({
+        where: { frameTypeId_process: { frameTypeId: created.id, process: fp.process } },
+        update: { hoursPerUnit: fp.hoursPerUnit, fixedHours: fp.fixedHours, sequence: fp.sequence },
+        create: { frameTypeId: created.id, ...fp },
+      });
+    }
+  }
+
+  console.log("Seeding projects...");
+  for (const proj of PROJECTS) {
+    const { lamps, ...projData } = proj;
+    const project = await prisma.project.upsert({
+      where: { code: projData.code },
+      update: { deliveryDate: projData.deliveryDate },
+      create: projData,
+    });
+    for (const lamp of lamps) {
+      const frameType = frameTypeByCode.get(lamp.frameTypeCode);
+      if (!frameType) continue;
+      const exists = await prisma.lamp.findFirst({
+        where: { projectId: project.id, name: lamp.name },
+      });
+      if (exists) continue;
+      const blueprints = await buildTasksFromFrame(frameType.id, lamp.surfaceM2);
+      await prisma.$transaction(async (tx) => {
+        const created = await tx.lamp.create({
+          data: {
+            projectId: project.id,
+            frameTypeId: frameType.id,
+            name: lamp.name,
+            surfaceM2: lamp.surfaceM2,
+            units: lamp.units,
+          },
+        });
+        if (blueprints.length > 0) {
+          await tx.task.createMany({
+            data: blueprints.map((bp) => ({
+              projectId: project.id,
+              lampId: created.id,
+              process: bp.process,
+              estimatedHours: bp.estimatedHours,
+              pendingHours: bp.estimatedHours,
+              order: bp.order,
+              naveId: firstNave.id,
+            })),
+          });
+        }
+      });
+    }
+    console.log(`  ${project.name} (${lamps.length} lámparas)`);
+  }
 
   console.log("Seeding people...");
   for (const person of PEOPLE) {
