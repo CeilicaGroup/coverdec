@@ -679,12 +679,14 @@ export function buildGanttTaskOptions(projects: GanttProjects): GanttTaskOption[
 export function filterGanttAssignments(
   assignments: GanttPlanningAssignment[],
   filters: {
-    personId?: string;
-    taskId?: string;
+    personIds?: string[];
     projectIds?: string[];
   },
 ): GanttPlanningAssignment[] {
   if (filters.projectIds?.length === 1 && filters.projectIds[0] === "__none__") {
+    return [];
+  }
+  if (filters.personIds?.length === 1 && filters.personIds[0] === "__none__") {
     return [];
   }
 
@@ -692,11 +694,14 @@ export function filterGanttAssignments(
     filters.projectIds && filters.projectIds.length > 0
       ? new Set(filters.projectIds)
       : null;
+  const personIdSet =
+    filters.personIds && filters.personIds.length > 0
+      ? new Set(filters.personIds)
+      : null;
 
   return assignments.filter((a) => {
     if (projectIdSet && !projectIdSet.has(a.task.projectId)) return false;
-    if (filters.personId && a.personId !== filters.personId) return false;
-    if (filters.taskId && a.taskId !== filters.taskId) return false;
+    if (personIdSet && !personIdSet.has(a.personId)) return false;
     return true;
   });
 }

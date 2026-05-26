@@ -21,15 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+export type GanttAxisMode = "project" | "worker";
+
 export interface GanttFilterPerson {
   id: string;
   iniciales: string;
   nombre: string;
-}
-
-export interface GanttFilterTaskOption {
-  id: string;
-  label: string;
 }
 
 export interface GanttFilterProjectOption {
@@ -37,20 +34,28 @@ export interface GanttFilterProjectOption {
   name: string;
 }
 
+function parseSelectedIds(ids: string[], allIds: string[]): {
+  noneSelected: boolean;
+  allSelected: boolean;
+} {
+  const noneSelected = ids.length === 1 && ids[0] === "__none__";
+  const allSelected =
+    !noneSelected && (ids.length === 0 || ids.length === allIds.length);
+  return { noneSelected, allSelected };
+}
+
 function GanttFiltersInner({
+  axisMode,
   people,
   projectOptions,
-  taskOptions,
-  selectedPersonId,
-  selectedTaskId,
   selectedProjectIds,
+  selectedPersonIds,
 }: {
+  axisMode: GanttAxisMode;
   people: GanttFilterPerson[];
   projectOptions: GanttFilterProjectOption[];
-  taskOptions: GanttFilterTaskOption[];
-  selectedPersonId?: string;
-  selectedTaskId?: string;
   selectedProjectIds: string[];
+  selectedPersonIds: string[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,8 +70,11 @@ function GanttFiltersInner({
     router.push(search ? `?${search}` : "?");
   };
 
-  const updateParam = (key: "person" | "task", value: string | null) => {
-    updateParams({ [key]: value });
+  const setAxisMode = (nextMode: GanttAxisMode) => {
+    updateParams({
+      axis: nextMode,
+      people: nextMode === "worker" ? (selectedPersonIds.join(",") || null) : null,
+    });
   };
 
   const setProjectIds = (ids: string[]) => {
@@ -75,29 +83,42 @@ function GanttFiltersInner({
     });
   };
 
-  const clearFilters = () => {
-    router.push("?");
+  const setPersonIds = (ids: string[]) => {
+    updateParams({
+      people: ids.length > 0 ? ids.join(",") : null,
+    });
   };
 
-  const noneSelected =
-    selectedProjectIds.length === 1 && selectedProjectIds[0] === "__none__";
-  const allSelected =
-    !noneSelected &&
-    (selectedProjectIds.length === 0 ||
-      selectedProjectIds.length === projectOptions.length);
+  const clearFilters = () => {
+    updateParams({
+      projects: null,
+      people: null,
+    });
+  };
+
+  const { noneSelected: noProjects, allSelected: allProjects } = parseSelectedIds(
+    selectedProjectIds,
+    projectOptions.map((p) => p.id),
+  );
+  const { noneSelected: noPeople, allSelected: allPeople } = parseSelectedIds(
+    selectedPersonIds,
+    people.map((p) => p.id),
+  );
+
   const hasFilters = Boolean(
-    selectedPersonId ||
-      selectedTaskId ||
-      noneSelected ||
+    noProjects ||
       (selectedProjectIds.length > 0 &&
-        selectedProjectIds.length < projectOptions.length),
+        selectedProjectIds.length < projectOptions.length) ||
+      (axisMode === "worker" &&
+        (noPeople ||
+          (selectedPersonIds.length > 0 && selectedPersonIds.length < people.length))),
   );
 
   const toggleProject = (id: string, checked: boolean) => {
     const base =
       selectedProjectIds.length === 0
         ? projectOptions.map((p) => p.id)
-        : [...selectedProjectIds];
+        : selectedProjectIds.filter((p) => p !== "__none__");
     const next = checked
       ? [...new Set([...base, id])]
       : base.filter((x) => x !== id);
@@ -108,26 +129,47 @@ function GanttFiltersInner({
     }
   };
 
-  const selectAllProjects = () => setProjectIds([]);
-  const selectNoProjects = () => {
-    updateParams({ projects: "__none__" });
+  const togglePerson = (id: string, checked: boolean) => {
+    const base =
+      selectedPersonIds.length === 0
+        ? people.map((p) => p.id)
+        : selectedPersonIds.filter((p) => p !== "__none__");
+    const next = checked
+      ? [...new Set([...base, id])]
+      : base.filter((x) => x !== id);
+    if (next.length === 0 || next.length === people.length) {
+      setPersonIds([]);
+    } else {
+      setPersonIds(next);
+    }
   };
 
-  const projectLabel = noneSelected
+  const projectLabel = noProjects
     ? "Ningún proyecto"
     : selectedProjectIds.length === 0
       ? "Todos los proyectos"
-      : selectedProjectIds.length === 1
-        ? (projectOptions.find((p) => p.id === selectedProjectIds[0])?.name ??
-          "1 proyecto")
-        : `${selectedProjectIds.length} proyectos`;
+      : `${selectedProjectIds.length} proyectos`;
+
+  const peopleLabel = noPeople
+    ? "Ningún trabajador"
+    : selectedPersonIds.length === 0
+      ? "Todos los trabajadores"
+      : `${selectedPersonIds.length} trabajadores`;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <Select value={axisMode} onValueChange={(v) => setAxisMode(v as GanttAxisMode)}>
+        <SelectTrigger className="w-[210px] h-8 text-xs">
+          <SelectValue placeholder="Eje" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="project">Proyecto / Tareas</SelectItem>
+          <SelectItem value="worker">Trabajador / Tareas</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Popover>
-        <PopoverTrigger
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
-        >
+        <PopoverTrigger className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
           <Filter className="size-3.5" />
           {projectLabel}
         </PopoverTrigger>
@@ -141,7 +183,7 @@ function GanttFiltersInner({
               variant="outline"
               size="sm"
               className="h-7 text-xs flex-1"
-              onClick={selectAllProjects}
+              onClick={() => setProjectIds([])}
             >
               Todos
             </Button>
@@ -150,16 +192,14 @@ function GanttFiltersInner({
               variant="outline"
               size="sm"
               className="h-7 text-xs flex-1"
-              onClick={selectNoProjects}
+              onClick={() => updateParams({ projects: "__none__" })}
             >
               Ninguno
             </Button>
           </div>
           <div className="max-h-56 overflow-y-auto border-t px-3 py-2 space-y-2">
             {projectOptions.map((p) => {
-              const checked =
-                !noneSelected &&
-                (allSelected || selectedProjectIds.includes(p.id));
+              const checked = !noProjects && (allProjects || selectedProjectIds.includes(p.id));
               return (
                 <div key={p.id} className="flex items-center gap-2">
                   <Checkbox
@@ -180,47 +220,62 @@ function GanttFiltersInner({
         </PopoverContent>
       </Popover>
 
-      <Select
-        value={selectedPersonId ?? "__all__"}
-        onValueChange={(v) => updateParam("person", v === "__all__" ? null : v)}
-      >
-        <SelectTrigger className="w-[140px] h-8 text-xs">
-          <SelectValue placeholder="Persona" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">Todas las personas</SelectItem>
-          {people.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.iniciales} · {p.nombre}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select
-        value={selectedTaskId ?? "__all__"}
-        onValueChange={(v) => updateParam("task", v === "__all__" ? null : v)}
-      >
-        <SelectTrigger className="w-[200px] h-8 text-xs">
-          <SelectValue placeholder="Tarea" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all__">Todas las tareas</SelectItem>
-          {taskOptions.map((t) => (
-            <SelectItem key={t.id} value={t.id}>
-              {t.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {axisMode === "worker" ? (
+        <Popover>
+          <PopoverTrigger className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
+            <Filter className="size-3.5" />
+            {peopleLabel}
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 p-0">
+            <PopoverHeader className="px-3 pt-3">
+              <PopoverTitle className="text-sm">Trabajadores</PopoverTitle>
+            </PopoverHeader>
+            <div className="flex gap-2 px-3 pb-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs flex-1"
+                onClick={() => setPersonIds([])}
+              >
+                Todos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs flex-1"
+                onClick={() => updateParams({ people: "__none__" })}
+              >
+                Ninguno
+              </Button>
+            </div>
+            <div className="max-h-56 overflow-y-auto border-t px-3 py-2 space-y-2">
+              {people.map((p) => {
+                const checked = !noPeople && (allPeople || selectedPersonIds.includes(p.id));
+                return (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`gantt-person-${p.id}`}
+                      checked={checked}
+                      onCheckedChange={(v) => togglePerson(p.id, v === true)}
+                    />
+                    <Label
+                      htmlFor={`gantt-person-${p.id}`}
+                      className="text-xs font-normal cursor-pointer truncate"
+                    >
+                      {p.iniciales} · {p.nombre}
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
+      ) : null}
 
       {hasFilters ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1 text-xs"
-          onClick={clearFilters}
-        >
+        <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs" onClick={clearFilters}>
           <X className="size-3.5" />
           Limpiar
         </Button>
@@ -230,20 +285,18 @@ function GanttFiltersInner({
 }
 
 export function GanttFilters(props: {
+  axisMode: GanttAxisMode;
   people: GanttFilterPerson[];
   projectOptions: GanttFilterProjectOption[];
-  taskOptions: GanttFilterTaskOption[];
-  selectedPersonId?: string;
-  selectedTaskId?: string;
   selectedProjectIds: string[];
+  selectedPersonIds: string[];
 }) {
   return (
     <Suspense
       fallback={
         <div className="flex gap-2 h-8">
-          <div className="w-[160px] rounded-md bg-muted animate-pulse" />
-          <div className="w-[140px] rounded-md bg-muted animate-pulse" />
-          <div className="w-[200px] rounded-md bg-muted animate-pulse" />
+          <div className="w-[210px] rounded-md bg-muted animate-pulse" />
+          <div className="w-[170px] rounded-md bg-muted animate-pulse" />
         </div>
       }
     >
