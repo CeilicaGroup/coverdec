@@ -5,13 +5,32 @@
 #   npm run dev:seed    # primera vez
 #   npm run dev:logs
 #
-# App:     http://localhost:3000
+# App:     http://localhost:${PORT:-3000}  (variable PORT en .env)
 # Solver:  http://localhost:8000/health
 # Postgres: localhost:5432
 
 name: coverdec-dev
 
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-coverdec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-coverdec}
+      POSTGRES_DB: ${POSTGRES_DB:-coverdec}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-coverdec} -d ${POSTGRES_DB:-coverdec}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   planning-solver:
     build:
       context: ./services/planning-solver
@@ -22,7 +41,16 @@ services:
       SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-60}
     volumes:
       - ./services/planning-solver/app:/app/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
     healthcheck:
       test:
         [
@@ -35,3 +63,36 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: >-
+        postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:-coverdec}@db:5432/${POSTGRES_DB:-coverdec}?schema=public
+      PLANNING_SOLVER_URL: http://planning-solver:8000
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-32-bytes-secret}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_BETTER_AUTH_URL: ${NEXT_PUBLIC_BETTER_AUTH_URL:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Mejora el hot-reload cuando el código está montado por volumen
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+    depends_on:
+      db:
+        condition: service_healthy
+      planning-solver:
+        condition: service_healthy
+
+volumes:
+  postgres_dev_data:
+  web_node_modules:
+  web_next_cache:
