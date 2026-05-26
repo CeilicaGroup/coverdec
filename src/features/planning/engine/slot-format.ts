@@ -7,7 +7,9 @@ import {
 
 const MORNING_DURATION = MORNING_END - MORNING_START;
 const AFTERNOON_DURATION = AFTERNOON_END - AFTERNOON_START;
-const FULL_DAY = MORNING_DURATION + AFTERNOON_DURATION;
+/** Slots productivos por jornada (mañana + tarde). */
+export const PRODUCTIVE_SLOTS_PER_DAY = MORNING_DURATION + AFTERNOON_DURATION;
+const FULL_DAY = PRODUCTIVE_SLOTS_PER_DAY;
 
 /**
  * Converts a productive slot used as a START position into wall-clock decimal hour.

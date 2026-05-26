@@ -1,19 +1,14 @@
 import { riskFromPlannedEnd } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
-import type { PriorPlanningAssignmentDetail } from "@/features/planning/prior-week-planning";
+import type { GanttPlanningAssignment } from "@/features/planning/queries";
+import type { getActiveProjectsForGantt } from "@/features/planning/queries";
 import {
-  aggregateWeekProgress,
-  aggregateWeekTaskMetrics,
-  computeWeekProgress,
-  computeWeekTaskMetrics,
-  taskHasRemainingToPlan,
-  taskVisibleInGanttWeek,
-  type WeekProgress,
-} from "@/features/planning/week-progress";
-import type {
-  getActiveProjectsForGantt,
-  getPlanningForWeek,
-} from "@/features/planning/queries";
+  buildContinuousTimeline,
+  buildTaskTimelineBlocks,
+  type GanttTimelineBlock,
+} from "@/features/planning/gantt-timeline";
+
+export type { GanttTimelineBlock } from "@/features/planning/gantt-timeline";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -39,6 +34,14 @@ function nextBusinessDay(iso: string, holidayDates: Set<string>): string {
   return toPlanningDayIso(cursor);
 }
 
+function prevBusinessDay(iso: string, holidayDates: Set<string>): string {
+  let cursor = new Date(parsePlanningDay(iso).getTime() - DAY_MS);
+  while (isWeekend(cursor) || holidayDates.has(toPlanningDayIso(cursor))) {
+    cursor = new Date(cursor.getTime() - DAY_MS);
+  }
+  return toPlanningDayIso(cursor);
+}
+
 export interface GanttOperator {
   id: string;
   iniciales: string;
@@ -56,15 +59,15 @@ export interface GanttTaskRow {
   doneHours: number;
   remainingWorkHours: number;
   pendingHours: number;
-  weekScopeHours: number;
-  priorPlannedHours: number;
-  /** Sin horas pendientes de planificar (completa en semanas anteriores o en obra). */
+  /** Sin horas pendientes de planificar (completa en planificación previa o en obra). */
   isPlanningComplete: boolean;
-  assignedHoursWeek: number;
-  progress: WeekProgress;
+  assignedHours: number;
   isAssigned: boolean;
   estimatedStart: string | null;
   estimatedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
+  timelineBlocks: GanttTimelineBlock[];
   personIds: string[];
   operators: GanttOperator[];
 }
@@ -73,12 +76,13 @@ export interface GanttLampRow {
   id: string;
   name: string | null;
   remainingWorkHours: number;
-  weekScopeHours: number;
-  assignedHoursWeek: number;
-  progress: WeekProgress;
+  assignedHours: number;
   isAssigned: boolean;
   estimatedStart: string | null;
   estimatedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
+  timelineBlocks: GanttTimelineBlock[];
   operators: GanttOperator[];
   tasks: GanttTaskRow[];
 }
@@ -90,10 +94,11 @@ export interface GanttProjectRow {
   expectedCompletion: string | null;
   estimatedStart: string;
   estimatedEnd: string;
+  startSlot: number | null;
+  endSlot: number | null;
+  timelineBlocks: GanttTimelineBlock[];
   remainingWorkHours: number;
-  weekScopeHours: number;
-  assignedHoursWeek: number;
-  progress: WeekProgress;
+  assignedHours: number;
   risk: "RIESGO" | "ATENCION" | "OK" | "SIN_FECHA";
   lamps: GanttLampRow[];
 }
@@ -103,129 +108,22 @@ export interface GanttTaskOption {
   label: string;
 }
 
+export interface GanttProjectOption {
+  id: string;
+  name: string;
+}
+
 type GanttProjects = Awaited<ReturnType<typeof getActiveProjectsForGantt>>;
-type Planning = Awaited<ReturnType<typeof getPlanningForWeek>>;
 type RawTask = GanttProjects[number]["tasks"][number];
 
 interface TaskScheduleInfo {
   plannedStart: string | null;
   plannedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
   personIds: string[];
   assignedHours: number;
   operators: GanttOperator[];
-}
-
-function taskProgressInput(
-  task: RawTask,
-  priorPlannedHours: number,
-  assignedThisWeek: number,
-) {
-  return {
-    estimatedHours: task.estimatedHours,
-    doneHours: task.doneHours,
-    priorPlannedHours,
-    assignedThisWeekHours: assignedThisWeek,
-  };
-}
-
-function buildTaskScheduleFromPrior(
-  priorAssignments: PriorPlanningAssignmentDetail[],
-  taskId: string,
-): TaskScheduleInfo {
-  const forTask = priorAssignments.filter((a) => a.taskId === taskId);
-  if (forTask.length === 0) {
-    return {
-      plannedStart: null,
-      plannedEnd: null,
-      personIds: [],
-      assignedHours: 0,
-      operators: [],
-    };
-  }
-  let min = toUtcDay(forTask[0]!.date);
-  let max = toUtcDay(forTask[0]!.date);
-  let assignedHours = 0;
-  const operatorById = new Map<string, GanttOperator>();
-  const personIds = new Set<string>();
-
-  for (const a of forTask) {
-    const day = toUtcDay(a.date);
-    if (day.getTime() < min.getTime()) min = day;
-    if (day.getTime() > max.getTime()) max = day;
-    assignedHours += a.hours;
-    personIds.add(a.personId);
-    if (!operatorById.has(a.person.id)) {
-      operatorById.set(a.person.id, {
-        id: a.person.id,
-        iniciales: a.person.iniciales,
-        nombre: a.person.nombre,
-        color: a.person.color,
-      });
-    }
-  }
-
-  return {
-    plannedStart: toPlanningDayIso(min),
-    plannedEnd: toPlanningDayIso(max),
-    personIds: [...personIds],
-    assignedHours,
-    operators: [...operatorById.values()].sort((a, b) =>
-      a.iniciales.localeCompare(b.iniciales, "es"),
-    ),
-  };
-}
-
-function buildTaskSchedule(planning: Planning, taskId: string): TaskScheduleInfo {
-  if (!planning) {
-    return {
-      plannedStart: null,
-      plannedEnd: null,
-      personIds: [],
-      assignedHours: 0,
-      operators: [],
-    };
-  }
-  const forTask = planning.assignments.filter((a) => a.taskId === taskId);
-  if (forTask.length === 0) {
-    return {
-      plannedStart: null,
-      plannedEnd: null,
-      personIds: [],
-      assignedHours: 0,
-      operators: [],
-    };
-  }
-  let min = toUtcDay(forTask[0]!.date);
-  let max = toUtcDay(forTask[0]!.date);
-  let assignedHours = 0;
-  const operatorById = new Map<string, GanttOperator>();
-  const personIds = new Set<string>();
-
-  for (const a of forTask) {
-    const day = toUtcDay(a.date);
-    if (day.getTime() < min.getTime()) min = day;
-    if (day.getTime() > max.getTime()) max = day;
-    assignedHours += a.hours;
-    personIds.add(a.personId);
-    if (!operatorById.has(a.person.id)) {
-      operatorById.set(a.person.id, {
-        id: a.person.id,
-        iniciales: a.person.iniciales,
-        nombre: a.person.nombre,
-        color: a.person.color,
-      });
-    }
-  }
-
-  return {
-    plannedStart: toPlanningDayIso(min),
-    plannedEnd: toPlanningDayIso(max),
-    personIds: [...personIds],
-    assignedHours,
-    operators: [...operatorById.values()].sort((a, b) =>
-      a.iniciales.localeCompare(b.iniciales, "es"),
-    ),
-  };
 }
 
 function minIso(a: string, b: string): string {
@@ -248,16 +146,102 @@ function mergeOperators(...groups: GanttOperator[][]): GanttOperator[] {
   );
 }
 
+function taskHasRemainingWork(task: {
+  estimatedHours: number;
+  doneHours: number;
+}): boolean {
+  return Math.max(0, task.estimatedHours - task.doneHours) > 1e-6;
+}
+
+export function buildTaskScheduleFromAssignments(
+  assignments: GanttPlanningAssignment[],
+  taskId: string,
+): TaskScheduleInfo {
+  const forTask = assignments.filter((a) => a.taskId === taskId);
+  if (forTask.length === 0) {
+    return {
+      plannedStart: null,
+      plannedEnd: null,
+      startSlot: null,
+      endSlot: null,
+      personIds: [],
+      assignedHours: 0,
+      operators: [],
+    };
+  }
+
+  const sorted = [...forTask].sort(
+    (a, b) =>
+      a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot,
+  );
+  const first = sorted[0]!;
+  const last = sorted[sorted.length - 1]!;
+
+  let min = toUtcDay(first.date);
+  let max = toUtcDay(last.date);
+  let assignedHours = 0;
+  const operatorById = new Map<string, GanttOperator>();
+  const personIds = new Set<string>();
+
+  for (const a of forTask) {
+    const day = toUtcDay(a.date);
+    if (day.getTime() < min.getTime()) min = day;
+    if (day.getTime() > max.getTime()) max = day;
+    assignedHours += a.hours;
+    personIds.add(a.personId);
+    if (!operatorById.has(a.person.id)) {
+      operatorById.set(a.person.id, {
+        id: a.person.id,
+        iniciales: a.person.iniciales,
+        nombre: a.person.nombre,
+        color: a.person.color,
+      });
+    }
+  }
+
+  return {
+    plannedStart: toPlanningDayIso(min),
+    plannedEnd: toPlanningDayIso(max),
+    startSlot: first.startSlot,
+    endSlot: last.endSlot,
+    personIds: [...personIds],
+    assignedHours,
+    operators: [...operatorById.values()].sort((a, b) =>
+      a.iniciales.localeCompare(b.iniciales, "es"),
+    ),
+  };
+}
+
+function buildPlannedEndByProject(
+  assignments: GanttPlanningAssignment[],
+): Map<string, Date> {
+  const byProject = new Map<string, Date>();
+  for (const a of assignments) {
+    const pid = a.task.projectId;
+    const cur = byProject.get(pid);
+    if (!cur || a.date > cur) byProject.set(pid, a.date);
+  }
+  return byProject;
+}
+
 function buildTaskEstimatedRange(
   schedule: TaskScheduleInfo,
   chainStartIso: string | null,
 ): {
   estimatedStart: string | null;
   estimatedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
   isAssigned: boolean;
 } {
   if (!schedule.plannedStart || !schedule.plannedEnd) {
-    return { estimatedStart: null, estimatedEnd: null, isAssigned: false };
+    return {
+      estimatedStart: null,
+      estimatedEnd: null,
+      startSlot: null,
+      endSlot: null,
+      isAssigned: false,
+    };
   }
 
   let startIso = schedule.plannedStart;
@@ -266,6 +250,8 @@ function buildTaskEstimatedRange(
   return {
     estimatedStart: startIso,
     estimatedEnd: schedule.plannedEnd,
+    startSlot: schedule.startSlot,
+    endSlot: schedule.endSlot,
     isAssigned: true,
   };
 }
@@ -293,10 +279,14 @@ function enforceSequentialTasks(
       prevAssigned?.estimatedEnd &&
       task.estimatedStart <= prevAssigned.estimatedEnd
     ) {
-      task.estimatedStart = nextBusinessDay(prevAssigned.estimatedEnd, holidayDates);
+      task.estimatedStart = nextBusinessDay(
+        prevAssigned.estimatedEnd,
+        holidayDates,
+      );
       if (task.estimatedEnd < task.estimatedStart) {
         task.estimatedEnd = task.estimatedStart;
       }
+      task.startSlot = 0;
     }
     fixed.push(task);
   }
@@ -306,12 +296,11 @@ function enforceSequentialTasks(
 
 function buildTasksWithEstimates(
   tasks: RawTask[],
-  planning: Planning,
+  assignments: GanttPlanningAssignment[],
   holidayDates: Set<string>,
+  waitHoursByProcess: Map<string, number>,
   priorChainStartByTaskId: Map<string, string> = new Map(),
   nextChainAfterPriorTaskByTaskId: Map<string, string> = new Map(),
-  priorAssignmentsDetailed: PriorPlanningAssignmentDetail[] = [],
-  priorPlannedHoursByTask: Map<string, number> = new Map(),
 ): GanttTaskRow[] {
   const byLamp = new Map<string, RawTask[]>();
   for (const t of tasks) {
@@ -330,8 +319,7 @@ function buildTasksWithEstimates(
     const lampRows: GanttTaskRow[] = [];
 
     for (const t of sorted) {
-      const schedule = buildTaskSchedule(planning, t.id);
-      const priorPlannedHours = priorPlannedHoursByTask.get(t.id) ?? 0;
+      const schedule = buildTaskScheduleFromAssignments(assignments, t.id);
       const pendingHours = Math.max(0, t.pendingHours);
       const isPlanningComplete = pendingHours <= 1e-6;
       const priorChain = priorChainStartByTaskId.get(t.id) ?? null;
@@ -342,33 +330,18 @@ function buildTasksWithEstimates(
       if (range.isAssigned && range.estimatedEnd) {
         chainStartIso = nextBusinessDay(range.estimatedEnd, holidayDates);
       } else if (nextChainAfterPriorTaskByTaskId.has(t.id)) {
-        chainStartIso = nextChainAfterPriorTaskByTaskId.get(t.id) ?? chainStartIso;
+        chainStartIso =
+          nextChainAfterPriorTaskByTaskId.get(t.id) ?? chainStartIso;
       }
 
-      const priorSchedule = buildTaskScheduleFromPrior(
-        priorAssignmentsDetailed,
+      const remainingWorkHours = Math.max(0, t.estimatedHours - t.doneHours);
+      const timelineBlocks = buildTaskTimelineBlocks(
+        assignments,
         t.id,
+        waitHoursByProcess.get(t.process) ?? 0,
+        holidayDates,
+        t.process,
       );
-      const operators =
-        range.isAssigned && schedule.operators.length > 0
-          ? schedule.operators
-          : isPlanningComplete
-            ? priorSchedule.operators
-            : schedule.operators;
-      const personIds =
-        range.isAssigned && schedule.personIds.length > 0
-          ? schedule.personIds
-          : isPlanningComplete
-            ? priorSchedule.personIds
-            : schedule.personIds;
-
-      const weekMetrics = computeWeekTaskMetrics({
-        estimatedHours: t.estimatedHours,
-        doneHours: t.doneHours,
-        priorPlannedHours,
-        assignedThisWeekHours: schedule.assignedHours,
-        pendingHours,
-      });
 
       lampRows.push({
         id: t.id,
@@ -378,20 +351,18 @@ function buildTasksWithEstimates(
         order: t.order,
         estimatedHours: t.estimatedHours,
         doneHours: t.doneHours,
-        remainingWorkHours: weekMetrics.remainingWorkHours,
-        pendingHours: weekMetrics.pendingHours,
-        weekScopeHours: weekMetrics.weekScopeHours,
-        priorPlannedHours,
+        remainingWorkHours,
+        pendingHours,
         isPlanningComplete,
-        assignedHoursWeek: schedule.assignedHours,
-        progress: computeWeekProgress(
-          taskProgressInput(t, priorPlannedHours, schedule.assignedHours),
-        ),
+        assignedHours: schedule.assignedHours,
         isAssigned: range.isAssigned,
         estimatedStart: range.estimatedStart,
         estimatedEnd: range.estimatedEnd,
-        personIds,
-        operators,
+        startSlot: range.startSlot,
+        endSlot: range.endSlot,
+        timelineBlocks,
+        personIds: schedule.personIds,
+        operators: schedule.operators,
       });
     }
 
@@ -401,7 +372,65 @@ function buildTasksWithEstimates(
   return rows;
 }
 
-function groupTasksIntoLamps(tasks: GanttTaskRow[]): GanttLampRow[] {
+function aggregateSlotRange(
+  items: {
+    estimatedStart: string | null;
+    estimatedEnd: string | null;
+    startSlot: number | null;
+    endSlot: number | null;
+  }[],
+): {
+  estimatedStart: string | null;
+  estimatedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
+} {
+  if (items.length === 0) {
+    return {
+      estimatedStart: null,
+      estimatedEnd: null,
+      startSlot: null,
+      endSlot: null,
+    };
+  }
+
+  let estimatedStart = items[0]!.estimatedStart!;
+  let estimatedEnd = items[0]!.estimatedEnd!;
+  let startSlot = items[0]!.startSlot;
+  let endSlot = items[0]!.endSlot;
+
+  for (const item of items) {
+    if (!item.estimatedStart || !item.estimatedEnd) continue;
+    if (item.estimatedStart < estimatedStart) {
+      estimatedStart = item.estimatedStart;
+      startSlot = item.startSlot;
+    } else if (
+      item.estimatedStart === estimatedStart &&
+      item.startSlot != null &&
+      (startSlot == null || item.startSlot < startSlot)
+    ) {
+      startSlot = item.startSlot;
+    }
+    if (item.estimatedEnd > estimatedEnd) {
+      estimatedEnd = item.estimatedEnd;
+      endSlot = item.endSlot;
+    } else if (
+      item.estimatedEnd === estimatedEnd &&
+      item.endSlot != null &&
+      (endSlot == null || item.endSlot > endSlot)
+    ) {
+      endSlot = item.endSlot;
+    }
+  }
+
+  return { estimatedStart, estimatedEnd, startSlot, endSlot };
+}
+
+function groupTasksIntoLamps(
+  tasks: GanttTaskRow[],
+  waitHoursByProcess: Map<string, number>,
+  holidayDates: Set<string>,
+): GanttLampRow[] {
   const byLamp = new Map<string, GanttTaskRow[]>();
   for (const t of tasks) {
     const list = byLamp.get(t.lampId) ?? [];
@@ -417,45 +446,29 @@ function groupTasksIntoLamps(tasks: GanttTaskRow[]): GanttLampRow[] {
     const assigned = ordered.filter(
       (t) => t.isAssigned && t.estimatedStart && t.estimatedEnd,
     );
-    let estimatedStart: string | null = null;
-    let estimatedEnd: string | null = null;
-    if (assigned.length > 0) {
-      estimatedStart = assigned[0]!.estimatedStart!;
-      estimatedEnd = assigned[0]!.estimatedEnd!;
-      for (const t of assigned) {
-        estimatedStart = minIso(estimatedStart, t.estimatedStart!);
-        estimatedEnd = maxIso(estimatedEnd, t.estimatedEnd!);
-      }
-    }
-    const lampWeek = aggregateWeekTaskMetrics(
-      ordered.map((t) =>
-        computeWeekTaskMetrics({
-          estimatedHours: t.estimatedHours,
-          doneHours: t.doneHours,
-          priorPlannedHours: t.priorPlannedHours,
-          assignedThisWeekHours: t.assignedHoursWeek,
-          pendingHours: t.pendingHours,
-        }),
-      ),
+    const range = aggregateSlotRange(assigned);
+    const assignedHours = ordered.reduce((a, t) => a + t.assignedHours, 0);
+    const remainingWorkHours = ordered.reduce(
+      (a, t) => a + t.remainingWorkHours,
+      0,
     );
 
     lamps.push({
       id: lampId,
       name: ordered[0]?.lampName ?? null,
-      remainingWorkHours: lampWeek.remainingWorkHours,
-      weekScopeHours: lampWeek.weekScopeHours,
-      assignedHoursWeek: lampWeek.assignedThisWeekHours,
-      progress: aggregateWeekProgress(
-        ordered.map((t) => ({
-          estimatedHours: t.estimatedHours,
-          doneHours: t.doneHours,
-          priorPlannedHours: t.priorPlannedHours,
-          assignedThisWeekHours: t.assignedHoursWeek,
-        })),
-      ),
+      remainingWorkHours,
+      assignedHours,
       isAssigned: assigned.length > 0,
-      estimatedStart,
-      estimatedEnd,
+      estimatedStart: range.estimatedStart,
+      estimatedEnd: range.estimatedEnd,
+      startSlot: range.startSlot,
+      endSlot: range.endSlot,
+      timelineBlocks: buildContinuousTimeline(
+        ordered,
+        waitHoursByProcess,
+        holidayDates,
+        ordered[0]?.lampName ?? "Lámpara",
+      ),
       operators: mergeOperators(...assigned.map((t) => t.operators)),
       tasks: ordered,
     });
@@ -466,51 +479,94 @@ function groupTasksIntoLamps(tasks: GanttTaskRow[]): GanttLampRow[] {
   );
 }
 
-export function buildGanttProjects({
-  projects,
-  planning,
-  personId,
-  taskId,
-  anchorDateIso,
-  holidayDates,
-  priorChainStartByTaskId = new Map<string, string>(),
-  nextChainAfterPriorTaskByTaskId = new Map<string, string>(),
-  priorAssignmentsDetailed = [] as PriorPlanningAssignmentDetail[],
-  priorPlannedHoursByTask = new Map<string, number>(),
-}: {
-  projects: GanttProjects;
-  planning: Planning;
-  personId?: string;
-  taskId?: string;
-  anchorDateIso: string;
-  holidayDates: Set<string>;
-  priorChainStartByTaskId?: Map<string, string>;
-  nextChainAfterPriorTaskByTaskId?: Map<string, string>;
-  priorAssignmentsDetailed?: PriorPlanningAssignmentDetail[];
-  priorPlannedHoursByTask?: Map<string, number>;
-}): GanttProjectRow[] {
-  const plannedEndByProject = new Map<string, Date>();
-  if (planning) {
-    for (const a of planning.assignments) {
-      const pid = a.task.projectId;
-      const cur = plannedEndByProject.get(pid);
-      if (!cur || a.date > cur) plannedEndByProject.set(pid, a.date);
+function collectScheduledDates(
+  projects: GanttProjectRow[],
+): { starts: string[]; ends: string[] } {
+  const starts: string[] = [];
+  const ends: string[] = [];
+
+  for (const p of projects) {
+    if (p.estimatedStart) starts.push(p.estimatedStart);
+    if (p.estimatedEnd) ends.push(p.estimatedEnd);
+    if (p.deliveryDate) ends.push(p.deliveryDate);
+    for (const l of p.lamps) {
+      if (l.estimatedStart) starts.push(l.estimatedStart);
+      if (l.estimatedEnd) ends.push(l.estimatedEnd);
+      for (const t of l.tasks) {
+        if (t.estimatedStart) starts.push(t.estimatedStart);
+        if (t.estimatedEnd) ends.push(t.estimatedEnd);
+      }
     }
   }
 
-  const assignedThisWeekByTask = new Map<string, number>();
-  if (planning) {
-    for (const a of planning.assignments) {
-      assignedThisWeekByTask.set(
-        a.taskId,
-        (assignedThisWeekByTask.get(a.taskId) ?? 0) + a.hours,
-      );
+  return { starts, ends };
+}
+
+/** Rango del eje temporal a partir de los proyectos visibles. */
+export function computeGanttAxisRange(
+  projects: GanttProjectRow[],
+  anchorDateIso: string,
+  holidayDates: Set<string>,
+): { axisStartIso: string; axisEndIso: string } {
+  const { starts, ends } = collectScheduledDates(projects);
+
+  if (starts.length === 0 && ends.length === 0) {
+    let end = anchorDateIso;
+    for (let i = 0; i < 19; i++) {
+      end = nextBusinessDay(end, holidayDates);
     }
+    return { axisStartIso: anchorDateIso, axisEndIso: end };
   }
+
+  const axisStartIso =
+    starts.length > 0
+      ? starts.reduce((a, b) => minIso(a, b))
+      : anchorDateIso;
+  const axisEndIso =
+    ends.length > 0 ? ends.reduce((a, b) => maxIso(a, b)) : anchorDateIso;
+
+  return {
+    axisStartIso: prevBusinessDay(axisStartIso, holidayDates),
+    axisEndIso: nextBusinessDay(axisEndIso, holidayDates),
+  };
+}
+
+export function buildGanttProjects({
+  projects,
+  assignments,
+  personId,
+  taskId,
+  projectIds,
+  anchorDateIso,
+  holidayDates,
+  waitHoursByProcess = new Map<string, number>(),
+  priorChainStartByTaskId = new Map<string, string>(),
+  nextChainAfterPriorTaskByTaskId = new Map<string, string>(),
+}: {
+  projects: GanttProjects;
+  assignments: GanttPlanningAssignment[];
+  personId?: string;
+  taskId?: string;
+  projectIds?: string[];
+  anchorDateIso: string;
+  holidayDates: Set<string>;
+  waitHoursByProcess?: Map<string, number>;
+  priorChainStartByTaskId?: Map<string, string>;
+  nextChainAfterPriorTaskByTaskId?: Map<string, string>;
+}): GanttProjectRow[] {
+  const plannedEndByProject = buildPlannedEndByProject(assignments);
+  if (projectIds?.length === 1 && projectIds[0] === "__none__") {
+    return [];
+  }
+
+  const projectIdSet =
+    projectIds && projectIds.length > 0 ? new Set(projectIds) : null;
 
   const rows: GanttProjectRow[] = [];
 
   for (const p of projects) {
+    if (projectIdSet && !projectIdSet.has(p.id)) continue;
+
     const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
     const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
     const remainingWorkHours = Math.max(0, estimatedHours - doneHours);
@@ -519,32 +575,16 @@ export function buildGanttProjects({
     const lastPlannedDate = plannedEndByProject.get(p.id) ?? null;
     const risk = riskFromPlannedEnd(p.deliveryDate, lastPlannedDate);
 
-    const weekTasks = p.tasks.filter((t) =>
-      taskVisibleInGanttWeek(
-        t,
-        assignedThisWeekByTask.get(t.id) ?? 0,
-      ),
-    );
-    if (weekTasks.length === 0) continue;
-
-    const projectProgress = aggregateWeekProgress(
-      p.tasks.map((t) =>
-        taskProgressInput(
-          t,
-          priorPlannedHoursByTask.get(t.id) ?? 0,
-          assignedThisWeekByTask.get(t.id) ?? 0,
-        ),
-      ),
-    );
+    const visibleTasks = p.tasks.filter(taskHasRemainingWork);
+    if (visibleTasks.length === 0) continue;
 
     let taskRows = buildTasksWithEstimates(
-      weekTasks,
-      planning,
+      visibleTasks,
+      assignments,
       holidayDates,
+      waitHoursByProcess,
       priorChainStartByTaskId,
       nextChainAfterPriorTaskByTaskId,
-      priorAssignmentsDetailed,
-      priorPlannedHoursByTask,
     );
 
     if (personId) {
@@ -556,57 +596,39 @@ export function buildGanttProjects({
       taskRows = taskRows.filter((t) => t.id === taskId);
     }
 
-    const lamps = groupTasksIntoLamps(taskRows);
+    const lamps = groupTasksIntoLamps(
+      taskRows,
+      waitHoursByProcess,
+      holidayDates,
+    );
 
     if (lamps.length === 0 && (personId || taskId)) continue;
 
-    let estimatedStart: string | null = null;
-    let estimatedEnd: string | null = null;
-    let assignedHoursWeek = 0;
     const assignedLamps = lamps.filter(
       (l) => l.isAssigned && l.estimatedStart && l.estimatedEnd,
     );
-    if (assignedLamps.length > 0) {
-      estimatedStart = assignedLamps[0]!.estimatedStart!;
-      estimatedEnd = assignedLamps[0]!.estimatedEnd!;
-      for (const l of assignedLamps) {
-        estimatedStart = minIso(estimatedStart, l.estimatedStart!);
-        estimatedEnd = maxIso(estimatedEnd, l.estimatedEnd!);
-        assignedHoursWeek += l.assignedHoursWeek;
-      }
-    }
+    const range = aggregateSlotRange(assignedLamps);
+    const assignedHours = lamps.reduce((a, l) => a + l.assignedHours, 0);
 
     const deliveryIso = p.deliveryDate?.toISOString().slice(0, 10) ?? null;
-    if (deliveryIso && estimatedEnd) {
-      estimatedEnd = maxIso(estimatedEnd, deliveryIso);
-    } else if (deliveryIso && !estimatedEnd) {
-      estimatedEnd = deliveryIso;
-      estimatedStart = estimatedStart ?? anchorDateIso;
-    }
-
-    const projectWeek = aggregateWeekTaskMetrics(
-      weekTasks.map((t) =>
-        computeWeekTaskMetrics({
-          estimatedHours: t.estimatedHours,
-          doneHours: t.doneHours,
-          priorPlannedHours: priorPlannedHoursByTask.get(t.id) ?? 0,
-          assignedThisWeekHours: assignedThisWeekByTask.get(t.id) ?? 0,
-          pendingHours: t.pendingHours,
-        }),
-      ),
-    );
 
     rows.push({
       id: p.id,
       name: p.name,
       deliveryDate: deliveryIso,
       expectedCompletion: lastPlannedDate?.toISOString().slice(0, 10) ?? null,
-      estimatedStart: estimatedStart ?? anchorDateIso,
-      estimatedEnd: estimatedEnd ?? anchorDateIso,
+      estimatedStart: range.estimatedStart ?? anchorDateIso,
+      estimatedEnd: range.estimatedEnd ?? anchorDateIso,
+      startSlot: range.startSlot,
+      endSlot: range.endSlot,
+      timelineBlocks: buildContinuousTimeline(
+        lamps.flatMap((l) => l.tasks),
+        waitHoursByProcess,
+        holidayDates,
+        p.name,
+      ),
       remainingWorkHours,
-      weekScopeHours: projectWeek.weekScopeHours,
-      assignedHoursWeek,
-      progress: projectProgress,
+      assignedHours,
       risk,
       lamps,
     });
@@ -626,21 +648,24 @@ export function buildGanttProjects({
   return rows;
 }
 
-export function buildGanttTaskOptions(
+export function buildGanttProjectOptions(
   projects: GanttProjects,
-  assignedThisWeekByTask: Map<string, number> = new Map(),
-): GanttTaskOption[] {
+): GanttProjectOption[] {
+  return projects
+    .filter((p) => {
+      const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
+      const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
+      return Math.max(0, estimatedHours - doneHours) > 1e-6;
+    })
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
+export function buildGanttTaskOptions(projects: GanttProjects): GanttTaskOption[] {
   const options: GanttTaskOption[] = [];
   for (const p of projects) {
     for (const t of p.tasks) {
-      if (
-        !taskVisibleInGanttWeek(
-          t,
-          assignedThisWeekByTask.get(t.id) ?? 0,
-        )
-      ) {
-        continue;
-      }
+      if (!taskHasRemainingWork(t)) continue;
       const lampLabel = t.lamp.name ?? "—";
       options.push({
         id: t.id,
@@ -651,16 +676,75 @@ export function buildGanttTaskOptions(
   return options.sort((a, b) => a.label.localeCompare(b.label, "es"));
 }
 
-export function filterPlanningAssignments(
-  planning: Planning,
-  filters: { personId?: string; taskId?: string },
-) {
-  if (!planning) return [];
-  return planning.assignments.filter((a) => {
+export function filterGanttAssignments(
+  assignments: GanttPlanningAssignment[],
+  filters: {
+    personId?: string;
+    taskId?: string;
+    projectIds?: string[];
+  },
+): GanttPlanningAssignment[] {
+  if (filters.projectIds?.length === 1 && filters.projectIds[0] === "__none__") {
+    return [];
+  }
+
+  const projectIdSet =
+    filters.projectIds && filters.projectIds.length > 0
+      ? new Set(filters.projectIds)
+      : null;
+
+  return assignments.filter((a) => {
+    if (projectIdSet && !projectIdSet.has(a.task.projectId)) return false;
     if (filters.personId && a.personId !== filters.personId) return false;
     if (filters.taskId && a.taskId !== filters.taskId) return false;
     return true;
   });
+}
+
+export function buildGanttMilestones(
+  assignments: GanttPlanningAssignment[],
+  axisStartIso: string,
+  axisEndIso: string,
+): { dateKey: string; dayLabel: string; lines: string[] }[] {
+  const byDay = new Map<string, string[]>();
+
+  for (const a of assignments) {
+    const key = toPlanningDayIso(a.date);
+    const lines = byDay.get(key) ?? [];
+    lines.push(
+      `${a.task.project.name} · ${a.process} · ${a.hours}h (${a.person.iniciales})`,
+    );
+    byDay.set(key, lines);
+  }
+
+  const axisDays: string[] = [];
+  let cursor = parsePlanningDay(axisStartIso);
+  const end = parsePlanningDay(axisEndIso);
+  while (cursor.getTime() <= end.getTime()) {
+    if (!isWeekend(cursor)) {
+      axisDays.push(toPlanningDayIso(cursor));
+    }
+    cursor = new Date(cursor.getTime() + DAY_MS);
+  }
+
+  const milestoneDays =
+    axisDays.length > 30
+      ? axisDays.filter((d) => (byDay.get(d)?.length ?? 0) > 0)
+      : axisDays;
+
+  return milestoneDays.map((dateKey) => ({
+    dateKey,
+    dayLabel: formatDayLabel(dateKey),
+    lines: byDay.get(dateKey) ?? [],
+  }));
+}
+
+function formatDayLabel(iso: string): string {
+  const d = parsePlanningDay(iso);
+  const dow = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"][d.getUTCDay()]!;
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dow} ${day}/${month}`;
 }
 
 export function findGanttExpandTargets(

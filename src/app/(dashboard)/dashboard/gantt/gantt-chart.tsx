@@ -6,16 +6,26 @@ import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { ProcessBadge } from "@/components/process-badge";
 import { PersonAvatar } from "@/components/person-avatar";
 import { RiskBadge } from "@/components/risk-badge";
-import { WeekProgressBar } from "@/components/week-progress-bar";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   toPlanningDayIso,
   type GanttLampRow,
   type GanttOperator,
   type GanttProjectRow,
   type GanttTaskRow,
+  type GanttTimelineBlock,
 } from "@/features/planning/gantt-data";
-import { formatDayMonthYear, formatHours, formatShortDate } from "@/lib/format";
+import {
+  resolveBlockRange,
+  timelineHoverSummary,
+} from "@/features/planning/gantt-timeline";
+import { formatDayMonthYear, formatShortDate } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 
@@ -30,8 +40,8 @@ export interface GanttMilestone {
 }
 
 interface GanttChartProps {
-  weekStartIso: string;
-  horizonEndIso: string;
+  axisStartIso: string;
+  axisEndIso: string;
   todayIso: string;
   projects: GanttProjectRow[];
   milestones: GanttMilestone[];
@@ -39,6 +49,10 @@ interface GanttChartProps {
   autoExpandLampId?: string;
   processStyles: Record<string, ProcessBadgeStyle>;
 }
+
+const WAIT_BAR_COLOR = "rgba(245, 158, 11, 0.55)";
+const WAIT_BAR_PATTERN =
+  "repeating-linear-gradient(135deg, rgba(245,158,11,0.35) 0, rgba(245,158,11,0.35) 4px, rgba(251,191,36,0.2) 4px, rgba(251,191,36,0.2) 8px)";
 
 function parseUtc(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
@@ -66,50 +80,6 @@ function dayIndex(keys: string[], iso: string): number {
   return keys.indexOf(iso);
 }
 
-function firstAxisOnOrAfter(axis: string[], ms: number): number {
-  for (let i = 0; i < axis.length; i++) {
-    if (parseUtc(axis[i]!).getTime() >= ms) return i;
-  }
-  return axis.length - 1;
-}
-
-function lastAxisOnOrBefore(axis: string[], ms: number): number {
-  for (let i = axis.length - 1; i >= 0; i--) {
-    if (parseUtc(axis[i]!).getTime() <= ms) return i;
-  }
-  return 0;
-}
-
-function resolveBarIndices(
-  axis: string[],
-  estimatedStart: string,
-  estimatedEnd: string,
-): { startIdx: number; endIdx: number } | null {
-  if (!estimatedStart || !estimatedEnd || axis.length === 0) return null;
-
-  const startMs = parseUtc(estimatedStart).getTime();
-  const endMs = parseUtc(estimatedEnd).getTime();
-  const axisStartMs = parseUtc(axis[0]!).getTime();
-  const axisEndMs = parseUtc(axis[axis.length - 1]!).getTime();
-
-  if (endMs < axisStartMs || startMs > axisEndMs) return null;
-
-  let startIdx = dayIndex(axis, estimatedStart);
-  let endIdx = dayIndex(axis, estimatedEnd);
-
-  if (startIdx < 0) {
-    startIdx = startMs < axisStartMs ? 0 : firstAxisOnOrAfter(axis, startMs);
-  }
-  if (endIdx < 0) {
-    endIdx = endMs > axisEndMs ? axis.length - 1 : lastAxisOnOrBefore(axis, endMs);
-  }
-
-  return {
-    startIdx: Math.min(startIdx, endIdx),
-    endIdx: Math.max(startIdx, endIdx),
-  };
-}
-
 function riskColor(risk: GanttProjectRow["risk"]): string {
   if (risk === "RIESGO") return "#B91C1C";
   if (risk === "ATENCION") return "#A16207";
@@ -124,20 +94,6 @@ const LABEL_COL = "minmax(220px, 260px)";
 
 function gridCols(axisLen: number): string {
   return `${LABEL_COL} repeat(${axisLen}, minmax(48px, 1fr))`;
-}
-
-function GanttWeekHoursLine({
-  weekScopeHours,
-  pendingHours,
-}: {
-  weekScopeHours: number;
-  pendingHours: number;
-}) {
-  return (
-    <span className="text-[10px] text-muted-foreground font-mono">
-      {formatHours(weekScopeHours)} est. sem. · {formatHours(pendingHours)} pend.
-    </span>
-  );
 }
 
 function GanttOperators({ operators }: { operators: GanttOperator[] }) {
@@ -169,7 +125,7 @@ function GanttPlanningStatus({
   if (isPlanningComplete && !isAssigned) {
     return (
       <span className="text-[10px] text-emerald-700 dark:text-emerald-400">
-        Terminado (sem. ant.)
+        Planificado
         {operators.length > 0 ? (
           <span className="ml-1.5 inline-flex align-middle">
             <GanttOperators operators={operators} />
@@ -194,43 +150,75 @@ function GanttUnassignedTrack() {
   );
 }
 
+function GanttDayGrid({ total }: { total: number }) {
+  if (total <= 1) return null;
+  return (
+    <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden rounded-full">
+      {Array.from({ length: total - 1 }, (_, i) => (
+        <div
+          key={i}
+          className="absolute top-0 bottom-0 w-px bg-border/70"
+          style={{ left: `${((i + 1) / total) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function GanttBarContent({
   isPlanningComplete,
   isAssigned,
   estimatedStart,
   estimatedEnd,
+  timelineBlocks,
   axis,
   total,
   color,
-  title,
 }: {
   isPlanningComplete: boolean;
   isAssigned: boolean;
   estimatedStart: string | null;
   estimatedEnd: string | null;
+  timelineBlocks?: GanttTimelineBlock[];
   axis: string[];
   total: number;
   color: string;
-  title?: string;
 }) {
   if (isPlanningComplete && !isAssigned) {
     return (
-      <span className="absolute inset-0 flex items-center px-2 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
-        Terminado
+      <span className="absolute inset-0 z-[1] flex items-center px-2 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+        Planificado
       </span>
     );
   }
   if (!isAssigned || !estimatedStart || !estimatedEnd) {
     return <GanttUnassignedTrack />;
   }
+  if (timelineBlocks && timelineBlocks.length > 0) {
+    return (
+      <TimelineBars
+        blocks={timelineBlocks}
+        axis={axis}
+        total={total}
+        workColor={color}
+      />
+    );
+  }
   return (
-    <PlannedBar
-      estimatedStart={estimatedStart}
-      estimatedEnd={estimatedEnd}
+    <TimelineBars
+      blocks={[
+        {
+          kind: "work",
+          startDayIso: estimatedStart,
+          startSlot: 0,
+          endDayIso: estimatedEnd,
+          endSlot: 8,
+          label: `Planificado ${formatShortDate(parseUtc(estimatedStart))} – ${formatShortDate(parseUtc(estimatedEnd))}`,
+        },
+      ]}
       axis={axis}
       total={total}
-      color={color}
-      title={title}
+      workColor={color}
     />
   );
 }
@@ -253,14 +241,15 @@ function GanttBarTrack({
       className="relative h-8 mx-2"
       style={{ gridColumn: `2 / span ${axis.length}` }}
     >
+      <GanttDayGrid total={total} />
       {showTodayMarker && todayIdx >= 0 ? (
         <div
           className="absolute top-0 bottom-0 w-px bg-primary z-10"
           style={{ left: `${((todayIdx + 0.5) / total) * 100}%` }}
         />
       ) : null}
-      <div className="absolute inset-0 bg-secondary/50 rounded-full" />
-      {children}
+      <div className="absolute inset-0 bg-secondary/50 rounded-full z-0" />
+      <div className="absolute inset-0 z-[1]">{children}</div>
     </div>
   );
 }
@@ -293,38 +282,90 @@ function ExpandButton({
   );
 }
 
-function PlannedBar({
-  estimatedStart,
-  estimatedEnd,
+function TimelineBars({
+  blocks,
   axis,
   total,
-  color,
-  title,
+  workColor,
 }: {
-  estimatedStart: string;
-  estimatedEnd: string;
+  blocks: GanttTimelineBlock[];
   axis: string[];
   total: number;
-  color: string;
-  title?: string;
+  workColor: string;
 }) {
-  const resolved = resolveBarIndices(axis, estimatedStart, estimatedEnd);
-  if (!resolved) return null;
+  return (
+    <>
+      {blocks.map((block, i) => {
+        const range = resolveBlockRange(axis, block);
+        if (!range) return null;
 
-  const { startIdx, endIdx } = resolved;
-  const barLeft = (startIdx / total) * 100;
-  const barWidth = ((endIdx - startIdx + 1) / total) * 100;
+        const barLeft = (range.startFrac / total) * 100;
+        const barWidth = ((range.endFrac - range.startFrac) / total) * 100;
+        const isWait = block.kind === "wait";
+
+        return (
+          <Tooltip key={`${block.kind}-${block.startDayIso}-${block.startSlot}-${i}`}>
+            <TooltipTrigger
+              render={
+                <div
+                  className={cn(
+                    "absolute top-1.5 bottom-1.5 rounded-sm opacity-90 cursor-default",
+                    isWait && "opacity-100",
+                  )}
+                  style={{
+                    left: `${barLeft}%`,
+                    width: `${barWidth}%`,
+                    background: isWait ? WAIT_BAR_COLOR : workColor,
+                    backgroundImage: isWait ? WAIT_BAR_PATTERN : undefined,
+                  }}
+                />
+              }
+            />
+            <TooltipContent side="top" className="max-w-xs whitespace-pre-line">
+              {block.label}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </>
+  );
+}
+
+function DeliveryDiamond({
+  deliveryDate,
+  axis,
+  total,
+}: {
+  deliveryDate: string;
+  axis: string[];
+  total: number;
+}) {
+  const delivIdx = dayIndex(axis, deliveryDate);
+  if (delivIdx < 0) return null;
 
   return (
     <div
-      className="absolute top-1.5 bottom-1.5 rounded-full opacity-90"
-      style={{
-        left: `${barLeft}%`,
-        width: `${Math.max(2, barWidth)}%`,
-        background: color,
-      }}
-      title={title}
-    />
+      className="absolute top-0 bottom-0 z-20 flex items-center pointer-events-none"
+      style={{ left: `${((delivIdx + 1) / total) * 100}%` }}
+      title={`Entrega ${formatShortDate(parseUtc(deliveryDate))}`}
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 10 10"
+        className="absolute text-foreground pointer-events-auto"
+        style={{ transform: "translate(-50%, -50%)", top: "50%" }}
+      >
+        <rect
+          x="1.5"
+          y="1.5"
+          width="7"
+          height="7"
+          transform="rotate(45 5 5)"
+          fill="currentColor"
+        />
+      </svg>
+    </div>
   );
 }
 
@@ -345,17 +386,12 @@ function ProjectGanttRow({
   onToggle: () => void;
   hasLamps: boolean;
 }) {
-  const delivIdx = p.deliveryDate ? dayIndex(axis, p.deliveryDate) : -1;
   const color = riskColor(p.risk);
-  const isAssigned = p.assignedHoursWeek > 0;
-  const rangeTitle =
-    isAssigned && p.estimatedStart && p.estimatedEnd
-      ? `Planificado ${formatShortDate(parseUtc(p.estimatedStart))} – ${formatShortDate(parseUtc(p.estimatedEnd))}`
-      : undefined;
+  const isAssigned = p.assignedHours > 0;
 
   return (
     <div
-      className="grid border-t items-center min-h-[52px]"
+      className="grid border-t items-center min-h-[44px]"
       style={{ gridTemplateColumns: gridCols(axis.length) }}
     >
       <div className="p-2 space-y-1">
@@ -373,18 +409,6 @@ function ProjectGanttRow({
         </div>
         <div className="flex items-center gap-1 flex-wrap pl-7">
           <RiskBadge level={p.risk} />
-          <WeekProgressBar
-            basePct={p.progress.progressBasePct}
-            endPct={p.progress.progressEndPct}
-          />
-          <GanttWeekHoursLine
-            weekScopeHours={p.weekScopeHours}
-            pendingHours={
-              p.weekScopeHours - p.assignedHoursWeek > 0
-                ? p.weekScopeHours - p.assignedHoursWeek
-                : 0
-            }
-          />
           {!isAssigned ? (
             <GanttPlanningStatus
               isPlanningComplete={false}
@@ -398,44 +422,24 @@ function ProjectGanttRow({
         axis={axis}
         total={total}
         todayIdx={todayIdx}
-        showTodayMarker={!expanded}
+        showTodayMarker
       >
-        {!expanded ? (
-          <GanttBarContent
-            isPlanningComplete={false}
-            isAssigned={isAssigned}
-            estimatedStart={p.estimatedStart}
-            estimatedEnd={p.estimatedEnd}
+        <GanttBarContent
+          isPlanningComplete={false}
+          isAssigned={isAssigned}
+          estimatedStart={p.estimatedStart}
+          estimatedEnd={p.estimatedEnd}
+          timelineBlocks={p.timelineBlocks}
+          axis={axis}
+          total={total}
+          color={color}
+        />
+        {p.deliveryDate ? (
+          <DeliveryDiamond
+            deliveryDate={p.deliveryDate}
             axis={axis}
             total={total}
-            color={color}
-            title={rangeTitle}
           />
-        ) : null}
-        {!expanded && delivIdx >= 0 && p.deliveryDate ? (
-          <div
-            className="absolute top-0 bottom-0 z-20 flex items-center"
-            style={{ left: `${((delivIdx + 1) / total) * 100}%` }}
-            title={`Entrega ${formatShortDate(parseUtc(p.deliveryDate))}`}
-          >
-            <div className="absolute top-0 bottom-0 w-0.5 bg-foreground/80" />
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              className="absolute text-foreground"
-              style={{ transform: "translate(-50%, -50%)", top: "50%" }}
-            >
-              <rect
-                x="1.5"
-                y="1.5"
-                width="7"
-                height="7"
-                transform="rotate(45 5 5)"
-                fill="currentColor"
-              />
-            </svg>
-          </div>
         ) : null}
       </GanttBarTrack>
     </div>
@@ -458,14 +462,10 @@ function LampGanttRow({
   onToggle: () => void;
 }) {
   const hasTasks = lamp.tasks.length > 0;
-  const rangeTitle =
-    lamp.isAssigned && lamp.estimatedStart && lamp.estimatedEnd
-      ? `Planificado ${formatShortDate(parseUtc(lamp.estimatedStart))} – ${formatShortDate(parseUtc(lamp.estimatedEnd))}`
-      : undefined;
 
   return (
     <div
-      className="grid border-t items-center min-h-[44px] bg-muted/15"
+      className="grid border-t items-center min-h-[40px] bg-muted/15"
       style={{ gridTemplateColumns: gridCols(axis.length) }}
     >
       <div className="p-2 pl-6 space-y-1">
@@ -483,15 +483,7 @@ function LampGanttRow({
             {lamp.name ?? "Lámpara sin nombre"}
           </div>
         </div>
-        <div className="space-y-0.5 pl-7">
-          <WeekProgressBar
-            basePct={lamp.progress.progressBasePct}
-            endPct={lamp.progress.progressEndPct}
-          />
-          <GanttWeekHoursLine
-            weekScopeHours={lamp.weekScopeHours}
-            pendingHours={lamp.tasks.reduce((a, t) => a + t.pendingHours, 0)}
-          />
+        <div className="pl-7">
           <GanttPlanningStatus
             isPlanningComplete={false}
             isAssigned={lamp.isAssigned}
@@ -500,18 +492,16 @@ function LampGanttRow({
         </div>
       </div>
       <GanttBarTrack axis={axis} total={total} todayIdx={todayIdx}>
-        {!expanded ? (
-          <GanttBarContent
-            isPlanningComplete={false}
-            isAssigned={lamp.isAssigned}
-            estimatedStart={lamp.estimatedStart}
-            estimatedEnd={lamp.estimatedEnd}
-            axis={axis}
-            total={total}
-            color="#64748B"
-            title={rangeTitle}
-          />
-        ) : null}
+        <GanttBarContent
+          isPlanningComplete={false}
+          isAssigned={lamp.isAssigned}
+          estimatedStart={lamp.estimatedStart}
+          estimatedEnd={lamp.estimatedEnd}
+          timelineBlocks={lamp.timelineBlocks}
+          axis={axis}
+          total={total}
+          color="#64748B"
+        />
       </GanttBarTrack>
     </div>
   );
@@ -532,28 +522,27 @@ function TaskGanttRow({
 }) {
   const processStyle = processStyles[task.process];
   const barColor = processStyle?.borderColor ?? "#6B7280";
-  const rangeTitle =
-    task.isAssigned && task.estimatedStart && task.estimatedEnd
-      ? `Planificado ${formatShortDate(parseUtc(task.estimatedStart))} – ${formatShortDate(parseUtc(task.estimatedEnd))}`
-      : undefined;
 
   return (
     <div
-      className="grid border-t items-center min-h-[40px] bg-muted/25"
+      className="grid border-t items-center min-h-[36px] bg-muted/25"
       style={{ gridTemplateColumns: gridCols(axis.length) }}
     >
       <div className="p-2 pl-12 space-y-1">
-        <div className="flex items-center gap-1 flex-wrap">
-          <ProcessBadge code={task.process} definition={processStyle} />
-        </div>
-        <WeekProgressBar
-          basePct={task.progress.progressBasePct}
-          endPct={task.progress.progressEndPct}
-        />
-        <GanttWeekHoursLine
-          weekScopeHours={task.weekScopeHours}
-          pendingHours={task.pendingHours}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <div className="flex items-center gap-1 flex-wrap cursor-default">
+                <ProcessBadge code={task.process} definition={processStyle} />
+              </div>
+            }
+          />
+          <TooltipContent side="right" className="max-w-xs whitespace-pre-line">
+            {task.isAssigned && task.timelineBlocks.length > 0
+              ? timelineHoverSummary(task.timelineBlocks)
+              : "Sin planificación"}
+          </TooltipContent>
+        </Tooltip>
         <GanttPlanningStatus
           isPlanningComplete={task.isPlanningComplete}
           isAssigned={task.isAssigned}
@@ -566,10 +555,10 @@ function TaskGanttRow({
           isAssigned={task.isAssigned}
           estimatedStart={task.estimatedStart}
           estimatedEnd={task.estimatedEnd}
+          timelineBlocks={task.timelineBlocks}
           axis={axis}
           total={total}
           color={barColor}
-          title={rangeTitle}
         />
       </GanttBarTrack>
     </div>
@@ -577,8 +566,8 @@ function TaskGanttRow({
 }
 
 export function GanttChart({
-  weekStartIso,
-  horizonEndIso,
+  axisStartIso,
+  axisEndIso,
   todayIso,
   projects,
   milestones,
@@ -587,8 +576,8 @@ export function GanttChart({
   processStyles,
 }: GanttChartProps) {
   const axis = useMemo(
-    () => listBusinessDays(weekStartIso, horizonEndIso),
-    [weekStartIso, horizonEndIso],
+    () => listBusinessDays(axisStartIso, axisEndIso),
+    [axisStartIso, axisEndIso],
   );
 
   const total = Math.max(1, axis.length);
@@ -635,6 +624,7 @@ export function GanttChart({
   };
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       <div className="rounded-lg border overflow-x-auto">
         <div className="min-w-[720px] relative">
@@ -711,33 +701,40 @@ export function GanttChart({
       </div>
 
       <div className="rounded-lg border">
-        <div className="px-4 py-3 border-b font-semibold text-sm">Hitos diarios (planning)</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 p-3">
-          {milestones.map((m) => (
-            <div
-              key={m.dateKey}
-              className={cn(
-                "rounded-md border p-2 text-[10px] leading-relaxed",
-                m.lines.length === 0 && "opacity-50",
-              )}
-            >
-              <div className="font-bold mb-1">{m.dayLabel}</div>
-              {m.lines.length === 0 ? (
-                <span className="text-muted-foreground">Sin asignaciones</span>
-              ) : (
-                <ul className="space-y-0.5">
-                  {m.lines.slice(0, 8).map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                  {m.lines.length > 8 ? (
-                    <li className="text-muted-foreground">+{m.lines.length - 8} más</li>
-                  ) : null}
-                </ul>
-              )}
-            </div>
-          ))}
+        <div className="px-4 py-3 border-b font-semibold text-sm">
+          Hitos diarios (planning)
+        </div>
+        <div className="overflow-x-auto p-3">
+          <div className="flex gap-2 min-w-min">
+            {milestones.map((m) => (
+              <div
+                key={m.dateKey}
+                className={cn(
+                  "rounded-md border p-2 text-[10px] leading-relaxed shrink-0 w-[140px]",
+                  m.lines.length === 0 && "opacity-50",
+                )}
+              >
+                <div className="font-bold mb-1">{m.dayLabel}</div>
+                {m.lines.length === 0 ? (
+                  <span className="text-muted-foreground">Sin asignaciones</span>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {m.lines.slice(0, 8).map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                    {m.lines.length > 8 ? (
+                      <li className="text-muted-foreground">
+                        +{m.lines.length - 8} más
+                      </li>
+                    ) : null}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

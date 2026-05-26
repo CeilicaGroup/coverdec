@@ -3,8 +3,10 @@
 // Planning y PlanningPolicy son por nave. El resto es global.
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  // Host Debian + imagen node:alpine en Docker (dev y prod)
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

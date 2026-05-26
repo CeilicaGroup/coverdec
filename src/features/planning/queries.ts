@@ -185,6 +185,44 @@ export async function getActiveProjectsWithLoad(naveId: string | null) {
   return projects;
 }
 
+/** Asignaciones de planning de proyectos activos (todas las semanas) para el Gantt global. */
+export async function getGanttPlanningAssignments(naveId: string | null) {
+  return prisma.planningAssignment.findMany({
+    where: {
+      task: {
+        project: { isActive: true },
+        ...(naveId !== null ? { naveId } : {}),
+      },
+      ...(naveId !== null ? { planning: { naveId } } : {}),
+    },
+    select: {
+      taskId: true,
+      personId: true,
+      date: true,
+      startSlot: true,
+      endSlot: true,
+      hours: true,
+      process: true,
+      person: {
+        select: { id: true, iniciales: true, nombre: true, color: true },
+      },
+      task: {
+        select: {
+          id: true,
+          projectId: true,
+          project: { select: { id: true, name: true } },
+          lamp: { select: { id: true, name: true } },
+        },
+      },
+    },
+    orderBy: [{ date: "asc" }, { startSlot: "asc" }],
+  });
+}
+
+export type GanttPlanningAssignment = Awaited<
+  ReturnType<typeof getGanttPlanningAssignments>
+>[number];
+
 /** Proyectos activos con tareas y lámpara para la vista Gantt. */
 export async function getActiveProjectsForGantt(naveId: string | null) {
   return prisma.project.findMany({
