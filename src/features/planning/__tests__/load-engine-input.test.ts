@@ -34,4 +34,22 @@ describe("effectivePendingHours", () => {
       effectivePendingHours({ pendingHours: 8, doneHours: 0, estimatedHours: 8 }),
     ).toBe(8);
   });
+
+  it("ignores hours already planned in prior weeks when pending was reset by mistake", () => {
+    expect(
+      effectivePendingHours(
+        { pendingHours: 8, doneHours: 0, estimatedHours: 8 },
+        { priorPlannedHours: 8 },
+      ),
+    ).toBe(0);
+  });
+
+  it("returns only unplanned remainder when partially planned in prior weeks", () => {
+    expect(
+      effectivePendingHours(
+        { pendingHours: 8, doneHours: 0, estimatedHours: 8 },
+        { priorPlannedHours: 5 },
+      ),
+    ).toBe(3);
+  });
 });

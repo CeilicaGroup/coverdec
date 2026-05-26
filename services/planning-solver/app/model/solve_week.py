@@ -658,6 +658,7 @@ def _add_constraints(
 
     # ── 4. Lamp ordering with optional dry time ──────────────────────────────
     _add_lamp_ordering(model, data, mv)
+    _add_min_week_quarter(model, data.tasks, mv)
 
     # ── 5. canFragment=False: at most one active slot per task ───────────────
     _add_no_fragment_constraints(model, data, mv)
@@ -769,6 +770,23 @@ def _add_lamp_ordering(
             model.Add(wqs >= earliest).OnlyEnforceIf(sv.presence)
             # If pred not done, succ can't be scheduled at all
             model.Add(sv.presence == 0).OnlyEnforceIf(pred_done.Not())
+
+
+def _add_min_week_quarter(
+    model: cp_model.CpModel,
+    tasks: list[EngineTask],
+    mv: ModelVars,
+) -> None:
+    """Earliest start from predecessors planned in prior weeks (minWeekQuarter)."""
+    for task in tasks:
+        min_wq = task.minWeekQuarter or 0
+        if min_wq <= 0:
+            continue
+        for sv in mv.by_task.get(task.id, []):
+            wqs = _wq_start(
+                model, sv, f"mn_{sv.slot.task_id}_{sv.slot.day_index}"
+            )
+            model.Add(wqs >= min_wq).OnlyEnforceIf(sv.presence)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,10 @@ import { runPlanningEngine } from "./engine";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import { loadSolverInput } from "./load-engine-input";
 import {
+  getPriorPlanningAssignments,
+  sumPriorPlannedHoursByTaskId,
+} from "./prior-week-planning";
+import {
   PlanningStatus,
     type Prisma,
 } from "@/generated/prisma";
@@ -57,29 +61,41 @@ async function restoreAssignmentHoursToTasks(
   );
 }
 
-async function syncTaskPendingBeforeSolve(naveId: string): Promise<void> {
-  const tasks = await prisma.task.findMany({
-    where: { naveId, project: { isActive: true } },
-    select: {
-      id: true,
-      pendingHours: true,
-      doneHours: true,
-      estimatedHours: true,
-    },
-  });
+/** Alinea pendingHours con obra restante menos lo ya planificado en semanas anteriores. */
+async function reconcileTaskPendingBeforeSolve(
+  naveId: string,
+  beforeWeekStart: Date,
+): Promise<void> {
+  const [tasks, priorByTask] = await Promise.all([
+    prisma.task.findMany({
+      where: { naveId, project: { isActive: true } },
+      select: {
+        id: true,
+        pendingHours: true,
+        doneHours: true,
+        estimatedHours: true,
+      },
+    }),
+    sumPriorPlannedHoursByTaskId({ naveId, beforeWeekStart }),
+  ]);
+
   for (const task of tasks) {
     if (isTaskDoneInFactory(task)) continue;
     const remaining = Math.max(0, task.estimatedHours - task.doneHours);
-    if (task.pendingHours <= 0 && remaining > 0) {
+    const priorPlanned = priorByTask.get(task.id) ?? 0;
+    const expectedPending = Math.max(0, remaining - priorPlanned);
+    if (Math.abs(task.pendingHours - expectedPending) > 1e-6) {
       await prisma.task.update({
         where: { id: task.id },
-        data: { pendingHours: remaining },
+        data: { pendingHours: expectedPending },
       });
     }
   }
 }
 
 const ENGINE_HORIZON_DAYS = 5;
+/** Por debajo de 15 min de hueco sin colocar no bloqueamos el guardado del borrador. */
+const UNSCHEDULED_FAIL_THRESHOLD_HOURS = 0.25;
 
 export interface GeneratePlanningArgs {
   naveId: string;
@@ -127,9 +143,14 @@ export async function generatePlanning(
     await prisma.$transaction(async (tx) => {
       await restoreAssignmentHoursToTasks(tx, existing.id);
     });
-  } else {
-    await syncTaskPendingBeforeSolve(args.naveId);
   }
+
+  await reconcileTaskPendingBeforeSolve(args.naveId, weekStart);
+
+  const priorWeekAssignments = await getPriorPlanningAssignments({
+    naveId: args.naveId,
+    beforeWeekStart: weekStart,
+  });
 
   const engineInput = await loadSolverInput({
     naveId: args.naveId,
@@ -138,6 +159,7 @@ export async function generatePlanning(
     planFrom: args.planFrom,
     planFromAt: args.planFromAt,
     previousAssignments,
+    priorWeekAssignments,
   });
 
   if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
@@ -146,7 +168,17 @@ export async function generatePlanning(
     );
   }
 
+  const deferredHours = (engineInput.deferredTasks ?? []).reduce(
+    (a, t) => a + t.hours,
+    0,
+  );
+
   if (engineInput.tasks.length === 0) {
+    if (deferredHours > 0) {
+      throw new Error(
+        `Hay ${deferredHours.toFixed(1)}h pendientes que no pueden empezar en esta semana (tiempos de secado o cadena de procesos). Planifica una semana posterior o revisa el orden de las tareas.`,
+      );
+    }
     throw new Error(
       "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas tengan tareas y horas estimadas.",
     );
@@ -166,10 +198,18 @@ export async function generatePlanning(
     "planning solver done",
   );
 
-  if (result.assignments.length === 0 && result.unscheduledHours > 0) {
-    const hint = result.warnings[0]?.reason ?? "Revisa capacidad, especialidades y festivos.";
+  const totalUnplaced = result.unscheduledHours + deferredHours;
+  if (
+    result.assignments.length === 0 &&
+    totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
+  ) {
+    const hint =
+      result.warnings[0]?.reason ??
+      (deferredHours > 0
+        ? `${deferredHours.toFixed(1)}h aplazadas por secado o cadena.`
+        : "Revisa capacidad, especialidades y festivos.");
     throw new Error(
-      `El solver no pudo colocar trabajo (${result.unscheduledHours.toFixed(1)}h sin asignar). ${hint}`,
+      `El solver no pudo colocar trabajo (${totalUnplaced.toFixed(1)}h sin asignar). ${hint}`,
     );
   }
 
@@ -244,10 +284,18 @@ export async function generatePlanning(
     "generate planning done",
   );
 
+  const deferredWarnings = (engineInput.deferredTasks ?? []).map(
+    (t) =>
+      `Tarea ${t.taskId}: ${t.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado/cadena).`,
+  );
+
   return {
     planningId: planning.id,
-    warnings: result.warnings.map((w) => `Tarea ${w.taskId}: ${w.reason}`),
-    unscheduledHours: result.unscheduledHours,
+    warnings: [
+      ...deferredWarnings,
+      ...result.warnings.map((w) => `Tarea ${w.taskId}: ${w.reason}`),
+    ],
+    unscheduledHours: result.unscheduledHours + deferredHours,
     assignmentsCount: result.assignments.length,
   };
 }

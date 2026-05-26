@@ -28,6 +28,8 @@ export interface EngineTask {
   order: number;
   process: string;
   pendingHours: number;
+  /** Earliest week-quarter index (from prior-week planning on the same lamp). */
+  minWeekQuarter?: number;
 }
 
 export interface EngineAbsence {

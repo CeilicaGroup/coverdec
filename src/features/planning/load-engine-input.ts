@@ -6,6 +6,12 @@ import {
   computePlanFromBounds,
   type PlanFrom,
 } from "@/features/planning/plan-from";
+import {
+  buildLastAssignmentEndByTaskId,
+  buildPriorPlannedHoursByTaskId,
+  computeMinWeekQuarterByTaskId,
+  type PriorPlanningAssignment,
+} from "@/features/planning/prior-week-planning";
 import { isSameUtcDay, toUtcDay } from "@/lib/week";
 import type {
   PersonScheduleDayInput,
@@ -66,17 +72,27 @@ function isTaskHalfDone(task: {
   return task.doneHours > 0 && task.pendingHours > 0;
 }
 
-/** Horas que el solver debe cubrir para esta tarea. */
-export function effectivePendingHours(task: {
-  pendingHours: number;
-  doneHours: number;
-  estimatedHours: number;
-}): number {
+/** Horas que el solver debe cubrir (pendingHours ya viene reconciliado por semana). */
+export function effectivePendingHours(
+  task: {
+    pendingHours: number;
+    doneHours: number;
+    estimatedHours: number;
+  },
+  options?: { priorPlannedHours?: number },
+): number {
   if (isTaskDone(task)) return 0;
-  // Nunca programar más horas de las que quedan físicamente en la tarea,
-  // por si alguien ya trabajó parte de lo que aún está pendiente de planificar.
   const remaining = Math.max(0, task.estimatedHours - task.doneHours);
-  return Math.min(task.pendingHours, remaining);
+  let cap = remaining;
+  if (options?.priorPlannedHours != null) {
+    cap = Math.min(cap, Math.max(0, remaining - options.priorPlannedHours));
+  }
+  return Math.min(Math.max(0, task.pendingHours), cap);
+}
+
+export function roundUpToPlanningQuarterHours(hours: number): number {
+  if (hours <= 1e-6) return 0;
+  return Math.ceil(hours * 4 - 1e-9) / 4;
 }
 
 export function buildPreviousHoursFromAssignments(
@@ -146,6 +162,8 @@ export async function loadSolverInput(args: {
     hours: number;
     process: string;
   }[];
+  /** Asignaciones de plannings con weekStart anterior a esta semana. */
+  priorWeekAssignments?: PriorPlanningAssignment[];
 }): Promise<SolverInput> {
   const weekStart = toUtcDay(args.weekStart);
   const planFromAt = args.planFromAt ?? new Date();
@@ -178,7 +196,11 @@ export async function loadSolverInput(args: {
       where: {
         AND: [
           { startDate: { lte: args.weekEnd } },
-          { endDate: { gte: weekStart } },
+          {
+            endDate: {
+              gte: new Date(weekStart.getTime() - 14 * DAY_MS),
+            },
+          },
         ],
       },
     }),
@@ -289,10 +311,16 @@ export async function loadSolverInput(args: {
     overtimeHourlyRate: Number(p.overtimeHourlyRate),
   }));
 
-  const engineTasks: EngineTask[] = tasksRaw
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
+    args.priorWeekAssignments ?? [],
+  );
+
+  const engineTasksBase = tasksRaw
     .map((t) => ({
       task: t,
-      pending: effectivePendingHours(t),
+      pending: effectivePendingHours(t, {
+        priorPlannedHours: priorPlannedHoursByTask.get(t.id) ?? 0,
+      }),
     }))
     .filter(({ pending }) => pending > 0)
     .map(({ task: t, pending }) => ({
@@ -305,6 +333,42 @@ export async function loadSolverInput(args: {
       pendingHours: pending,
       canFragment: processCanFragment.get(t.process) ?? true,
     }));
+
+  const holidayDates = new Set<string>();
+  for (const h of holidaysRaw) {
+    let t = utcDayStart(h.startDate).getTime();
+    const endT = utcDayStart(h.endDate).getTime();
+    while (t <= endT) {
+      holidayDates.add(new Date(t).toISOString().slice(0, 10));
+      t += DAY_MS;
+    }
+  }
+
+  const engineTaskIds = new Set(engineTasksBase.map((t) => t.id));
+  const priorEnds = buildLastAssignmentEndByTaskId(
+    args.priorWeekAssignments ?? [],
+  );
+  const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
+    computeMinWeekQuarterByTaskId({
+      weekStart,
+      tasks: tasksRaw,
+      engineTaskIds,
+      priorEnds,
+      waitHoursByProcess: new Map(
+        processes.map((p) => [p.code, p.waitHours]),
+      ),
+      holidayDates,
+    });
+
+  const engineTasks: EngineTask[] = engineTasksBase
+    .filter((t) => !deferredPastHorizon.has(t.id))
+    .map((t) => {
+      const minWeekQuarter = minWeekQuarterByTask.get(t.id);
+      const pendingHours = roundUpToPlanningQuarterHours(t.pendingHours);
+      return minWeekQuarter !== undefined
+        ? { ...t, pendingHours, minWeekQuarter }
+        : { ...t, pendingHours };
+    });
 
   const processDefs: EngineProcessDef[] = processes.map((p) => ({
     code: p.code,
@@ -338,6 +402,10 @@ export async function loadSolverInput(args: {
     }
   }
 
+  const deferredTasks = engineTasksBase
+    .filter((t) => deferredPastHorizon.has(t.id))
+    .map((t) => ({ taskId: t.id, hours: t.pendingHours }));
+
   const input: SolverInput = {
     weekStart,
     processes: processDefs,
@@ -352,6 +420,7 @@ export async function loadSolverInput(args: {
     firstSchedulableWeekQuarter,
     fixedAssignments,
     bookedHours,
+    deferredTasks,
   };
 
   if (args.previousAssignments && args.previousAssignments.length > 0) {

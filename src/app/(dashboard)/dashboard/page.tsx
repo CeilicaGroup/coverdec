@@ -55,6 +55,12 @@ import Link from "next/link";
 import { GenerateButton } from "./generate-button";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
 import { getPlanningUndoState } from "@/features/planning/actions";
+import {
+  buildPriorPlannedHoursByProjectId,
+  buildPriorPlannedHoursByTaskId,
+  getPriorPlanningAssignments,
+} from "@/features/planning/prior-week-planning";
+import { WeekProgressBar } from "@/components/week-progress-bar";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
 
@@ -69,7 +75,7 @@ export default async function ResumenPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
-  const [planning, people, projects, holidays, absences, planningWeights, processStyles] =
+  const [planning, people, projects, holidays, absences, planningWeights, processStyles, priorAssignments] =
     await Promise.all([
     getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
     getNavePersonnel(ctx.naveId),
@@ -78,7 +84,19 @@ export default async function ResumenPage({
     getAbsencesForRange(days[0], days[4]),
     getPlanningWeights(ctx.naveId),
     getProcessBadgeStylesByCode(),
+    ctx.naveId
+      ? getPriorPlanningAssignments({
+          naveId: ctx.naveId,
+          beforeWeekStart: weekStart,
+        })
+      : Promise.resolve([]),
   ]);
+
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(priorAssignments);
+  const priorPlannedHoursByProject = buildPriorPlannedHoursByProjectId(
+    projects,
+    priorPlannedHoursByTask,
+  );
 
   const summary = summarizePlanning(planning);
   const undoState = await getPlanningUndoState(
@@ -97,8 +115,16 @@ export default async function ResumenPage({
     days[days.length - 1] ?? days[0],
   );
 
-  const allProjects = summarizeAllActiveProjects(projects, planning);
-  const unassignedProjects = summarizeUnassignedProjects(projects, planning);
+  const allProjects = summarizeAllActiveProjects(
+    projects,
+    planning,
+    priorPlannedHoursByProject,
+  );
+  const unassignedProjects = summarizeUnassignedProjects(
+    projects,
+    planning,
+    priorPlannedHoursByProject,
+  );
 
   const unassignedHours = unassignedProjects.reduce(
     (acc, p) => acc + p.remainingWorkHours,
@@ -285,6 +311,7 @@ interface ProjectTableRow {
   doneHours: number;
   pendingHours: number;
   remainingWorkHours: number;
+  weekScopeHours: number;
   assignedThisWeek?: number;
   progressPct: number;
   expectedProgressPct?: number;
@@ -323,9 +350,13 @@ function ProjectsTable({
           {showAssigned ? (
             <TableHead className="text-right">Asign. sem.</TableHead>
           ) : null}
-          <TableHead className="text-right">Estimado</TableHead>
+          <TableHead className="text-right" title="Horas de planificación de esta semana">
+            Est. sem.
+          </TableHead>
           <TableHead className="text-right">Hecho</TableHead>
-          <TableHead className="text-right">Pendiente</TableHead>
+          <TableHead className="text-right" title="Horas aún por planificar">
+            Pend. planif.
+          </TableHead>
           <TableHead>Procesos</TableHead>
         </TableRow>
       </TableHeader>
@@ -351,25 +382,10 @@ function ProjectsTable({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 min-w-[88px]">
-                          <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                            <div
-                              className="h-full bg-primary"
-                              style={{ width: `${Math.min(100, row.progressPct)}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-mono tabular-nums w-8 text-right">
-                            {row.progressPct}%
-                          </span>
-                        </div>
-                        {row.expectedProgressPct != null &&
-                          row.expectedProgressPct > row.progressPct ? (
-                          <div className="text-[10px] text-emerald-600 font-mono">
-                            → {row.expectedProgressPct}% est.
-                          </div>
-                        ) : null}
-                      </div>
+                      <WeekProgressBar
+                        basePct={row.progressPct}
+                        endPct={row.expectedProgressPct ?? row.progressPct}
+                      />
                     </TableCell>
                     <TableCell>
                       <RiskBadge level={row.risk} />
@@ -401,13 +417,13 @@ function ProjectsTable({
                       </TableCell>
                     ) : null}
                     <TableCell className="text-right font-mono text-xs">
-                      {formatHours(row.estimatedHours)}
+                      {formatHours(row.weekScopeHours)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs text-emerald-700">
                       {formatHours(row.doneHours)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(row.remainingWorkHours)}
+                      {formatHours(row.pendingHours)}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1 max-w-[140px]">

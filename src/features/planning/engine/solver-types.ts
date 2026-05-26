@@ -12,6 +12,11 @@ import type {
   PersonScheduleOverrideInput,
 } from "./slots/person-schedule";
 
+export interface DeferredPlanningTask {
+  taskId: string;
+  hours: number;
+}
+
 export interface SolverInput extends EngineInput {
   weights: PlanningWeights;
   weeklyByPerson: Map<string, PersonScheduleDayInput[]>;
@@ -22,6 +27,8 @@ export interface SolverInput extends EngineInput {
   fixedAssignments: EngineFixedAssignment[];
   bookedHours: EngineBookedHours[];
   planFrom?: PlanFrom;
+  /** Tareas que no pueden empezar en esta semana (secado / cadena). */
+  deferredTasks?: DeferredPlanningTask[];
 }
 
 const processCodeSchema = z.string();
@@ -157,6 +164,7 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       order: t.order,
       process: t.process,
       pendingHours: t.pendingHours,
+      minWeekQuarter: t.minWeekQuarter ?? 0,
     })),
     absences: input.absences.map((a) => ({
       personId: a.personId,

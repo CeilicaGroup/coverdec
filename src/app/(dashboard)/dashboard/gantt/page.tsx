@@ -1,5 +1,6 @@
 import { requireDashboardContext } from "@/lib/context";
 import { formatDayMonthYear } from "@/lib/format";
+import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import {
   formatWeekRange,
   getMondayOf,
@@ -8,13 +9,31 @@ import {
   weekDays,
 } from "@/lib/week";
 import {
-  getActiveProjectsWithLoad,
+  getActiveProjectsForGantt,
+  getHolidaysForRange,
+  getNavePersonnel,
   getPlanningForWeek,
-  summarizeAllActiveProjects,
+  getProcessBadgeStylesByCode,
+  getProcessDefinitionsByCode,
 } from "@/features/planning/queries";
+import {
+  buildLastAssignmentEndByTaskId,
+  buildNextChainAfterPriorTaskByTaskId,
+  buildPriorChainStartIsoByTaskId,
+  buildPriorPlannedHoursByTaskId,
+  getPriorPlanningAssignmentsDetailed,
+} from "@/features/planning/prior-week-planning";
+import {
+  buildGanttProjects,
+  buildGanttTaskOptions,
+  filterPlanningAssignments,
+  findGanttExpandTargets,
+  toPlanningDayIso,
+} from "@/features/planning/gantt-data";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { GanttChart, type GanttMilestone } from "./gantt-chart";
+import { GanttFilters } from "./gantt-filters";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
@@ -26,7 +45,7 @@ function addDays(d: Date, n: number): Date {
 export default async function GanttPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; person?: string; task?: string }>;
 }) {
   const ctx = await requireDashboardContext();
   const params = await searchParams;
@@ -35,44 +54,101 @@ export default async function GanttPage({
   const days = weekDays(weekStart);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+  const todayIso = today.toISOString().slice(0, 10);
+  const monday = getMondayOf(weekStart);
 
-  const [projects, planning] = await Promise.all([
-    getActiveProjectsWithLoad(ctx.naveId),
-    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
-  ]);
+  const personId = params.person || undefined;
+  const taskId = params.task || undefined;
 
-  const portfolio = summarizeAllActiveProjects(projects, planning);
+  const [projects, planning, people, processStyles, holidays, priorAssignments, processDefs] =
+    await Promise.all([
+      getActiveProjectsForGantt(ctx.naveId),
+      getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
+      getNavePersonnel(ctx.naveId),
+      getProcessBadgeStylesByCode(),
+      getHolidaysForRange(monday, addDays(monday, 56)),
+      ctx.naveId
+        ? getPriorPlanningAssignmentsDetailed({
+            naveId: ctx.naveId,
+            beforeWeekStart: weekStart,
+          })
+        : Promise.resolve([]),
+      getProcessDefinitionsByCode(),
+    ]);
 
-  const ganttProjects = portfolio
-    .filter((p) => p.remainingWorkHours > 0)
-    .map((p) => ({
-      id: p.projectId,
-      name: p.name,
-      deliveryDate: p.deliveryDate?.toISOString().slice(0, 10) ?? null,
-      expectedCompletion: p.expectedCompletion?.toISOString().slice(0, 10) ?? null,
-      remainingWorkHours: p.remainingWorkHours,
-      risk: p.risk,
-    }));
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    monday,
+    addDays(monday, 56),
+  );
 
-  let horizonEnd = addDays(getMondayOf(weekStart), 56);
+  const allGanttTasks = projects.flatMap((p) => p.tasks);
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(priorAssignments);
+  const priorEnds = buildLastAssignmentEndByTaskId(priorAssignments);
+  const waitHoursByProcess = new Map(
+    [...processDefs.entries()].map(([code, d]) => [code, d.waitHours]),
+  );
+  const priorChainContext = {
+    tasks: allGanttTasks,
+    priorEnds,
+    waitHoursByProcess,
+    holidayDates,
+  };
+  const priorChainStartByTaskId = buildPriorChainStartIsoByTaskId(priorChainContext);
+  const nextChainAfterPriorTaskByTaskId =
+    buildNextChainAfterPriorTaskByTaskId(priorChainContext);
+
+  const ganttProjects = buildGanttProjects({
+    projects,
+    planning,
+    personId,
+    taskId,
+    anchorDateIso: todayIso,
+    holidayDates,
+    priorChainStartByTaskId,
+    nextChainAfterPriorTaskByTaskId,
+    priorAssignmentsDetailed: priorAssignments,
+    priorPlannedHoursByTask,
+  });
+
+  const assignedThisWeekByTask = new Map<string, number>();
+  if (planning) {
+    for (const a of planning.assignments) {
+      assignedThisWeekByTask.set(
+        a.taskId,
+        (assignedThisWeekByTask.get(a.taskId) ?? 0) + a.hours,
+      );
+    }
+  }
+
+  const taskOptions = buildGanttTaskOptions(projects, assignedThisWeekByTask);
+
+  const filteredAssignments = filterPlanningAssignments(planning, {
+    personId,
+    taskId,
+  });
+
+  let horizonEnd = addDays(monday, 56);
   for (const p of ganttProjects) {
-    const endIso = p.deliveryDate ?? p.expectedCompletion;
-    if (endIso) {
-      const end = new Date(`${endIso}T00:00:00.000Z`);
+    for (const iso of [p.estimatedEnd, p.deliveryDate, p.expectedCompletion]) {
+      if (!iso) continue;
+      const end = new Date(`${iso}T00:00:00.000Z`);
+      if (end.getTime() > horizonEnd.getTime()) horizonEnd = end;
+    }
+    for (const l of p.lamps) {
+      const end = new Date(`${l.estimatedEnd}T00:00:00.000Z`);
       if (end.getTime() > horizonEnd.getTime()) horizonEnd = end;
     }
   }
 
   const milestones: GanttMilestone[] = days.map((day, idx) => {
-    const key = day.toISOString().slice(0, 10);
+    const key = toPlanningDayIso(day);
     const lines: string[] = [];
-    if (planning) {
-      for (const a of planning.assignments) {
-        if (a.date.toISOString().slice(0, 10) !== key) continue;
-        lines.push(
-          `${a.task.project.name} · ${a.process} · ${a.hours}h (${a.person.iniciales})`,
-        );
-      }
+    for (const a of filteredAssignments) {
+      if (toPlanningDayIso(a.date) !== key) continue;
+      lines.push(
+        `${a.task.project.name} · ${a.process} · ${a.hours}h (${a.person.iniciales})`,
+      );
     }
     return {
       dateKey: key,
@@ -81,24 +157,42 @@ export default async function GanttPage({
     };
   });
 
+  const processStylesRecord = Object.fromEntries(processStyles);
+  const expandTargets = findGanttExpandTargets(ganttProjects, taskId);
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Vista Gantt · S${week} · ${year}`}
         description={formatWeekRange(weekStart)}
         actions={
-          <WeekNav
-            weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
-            weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <GanttFilters
+              people={people.map((p) => ({
+                id: p.id,
+                iniciales: p.iniciales,
+                nombre: p.nombre,
+              }))}
+              taskOptions={taskOptions}
+              selectedPersonId={personId}
+              selectedTaskId={taskId}
+            />
+            <WeekNav
+              weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
+              weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
+            />
+          </div>
         }
       />
       <GanttChart
         weekStartIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
         horizonEndIso={horizonEnd.toISOString().slice(0, 10)}
-        todayIso={today.toISOString().slice(0, 10)}
+        todayIso={todayIso}
         projects={ganttProjects}
         milestones={milestones}
+        autoExpandProjectId={expandTargets.projectId}
+        autoExpandLampId={expandTargets.lampId}
+        processStyles={processStylesRecord}
       />
     </div>
   );

@@ -63,6 +63,7 @@ class EngineTask(BaseModel):
     process: str
     pendingHours: float
     canFragment: bool = True
+    minWeekQuarter: int = 0
 
 
 class EngineAbsence(BaseModel):
