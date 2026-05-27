@@ -1,4 +1,4 @@
-import { PrismaClient, Role } from "../src/generated/prisma";
+import { PrismaClient, Role, TimeEntrySource } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 import { buildTasksFromFrame } from "../src/features/projects/lamp-tasks";
@@ -256,6 +256,16 @@ const HOLIDAYS_2026 = [
   ["2026-12-08", "Inmaculada"],
   ["2026-12-25", "Navidad"],
 ] as const;
+const SEEDED_TIME_ENTRY_PREFIX = "[seed] time-entry";
+
+function seededProgress(projectCode: string, lampName: string, process: string) {
+  const input = `${projectCode}:${lampName}:${process}`;
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return (hash % 76) / 100; // 0.00 .. 0.75
+}
 
 async function main() {
   console.log("Seeding processes...");
@@ -329,11 +339,23 @@ async function main() {
         if (blueprints.length > 0) {
           await tx.task.createMany({
             data: blueprints.map((bp) => ({
+              // Seed deterministic progress so dashboard metrics are meaningful.
+              // Keep some pending work in every task by capping completion at 75%.
+              ...(() => {
+                const progress = seededProgress(project.code, lamp.name, bp.process);
+                const doneHours = Number((bp.estimatedHours * progress).toFixed(2));
+                const pendingHours = Number(
+                  Math.max(0, bp.estimatedHours - doneHours).toFixed(2),
+                );
+                return {
+                  estimatedHours: bp.estimatedHours,
+                  doneHours,
+                  pendingHours,
+                };
+              })(),
               projectId: project.id,
               lampId: created.id,
               process: bp.process,
-              estimatedHours: bp.estimatedHours,
-              pendingHours: bp.estimatedHours,
               order: bp.order,
               naveId: firstNave.id,
             })),
@@ -345,6 +367,9 @@ async function main() {
   }
 
   console.log("Seeding people...");
+  const userIdByEmail = new Map<string, string>();
+  const fallbackOperatorEmails: string[] = [];
+  const operatorEmailsByProcess = new Map<string, string[]>();
   for (const person of PEOPLE) {
     const { specialties, email, role, name, ...personData } = person;
     const created = await prisma.person.upsert({
@@ -407,6 +432,21 @@ async function main() {
       where: { email },
       data: { role, emailVerified: true, personId: created.id },
     });
+    const seededUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (seededUser) {
+      userIdByEmail.set(email, seededUser.id);
+    }
+    if (role === Role.OPERARIO || role === Role.JEFE_PRODUCCION) {
+      fallbackOperatorEmails.push(email);
+    }
+    for (const spec of specialties) {
+      const byProcess = operatorEmailsByProcess.get(spec.process) ?? [];
+      if (!byProcess.includes(email)) byProcess.push(email);
+      operatorEmailsByProcess.set(spec.process, byProcess);
+    }
     console.log(`  ${personData.iniciales} → ${email} (${role})`);
   }
 
@@ -441,6 +481,59 @@ async function main() {
     where: { email: "admin@coverdec.local" },
     data: { role: Role.ADMIN, emailVerified: true },
   });
+
+  console.log("Seeding time entries...");
+  await prisma.timeEntry.deleteMany({
+    where: { notes: { startsWith: SEEDED_TIME_ENTRY_PREFIX } },
+  });
+  const candidateTasks = await prisma.task.findMany({
+    where: {
+      pendingHours: { gt: 0 },
+    },
+    include: {
+      project: { select: { code: true, name: true } },
+      lamp: { select: { name: true } },
+    },
+    orderBy: [{ createdAt: "asc" }, { order: "asc" }],
+    take: 10,
+  });
+  const processRoundRobin = new Map<string, number>();
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  for (let i = 0; i < candidateTasks.length; i += 1) {
+    const task = candidateTasks[i];
+    const processEmails = operatorEmailsByProcess.get(task.process);
+    const eligibleEmails =
+      processEmails && processEmails.length > 0
+        ? processEmails
+        : fallbackOperatorEmails;
+    if (eligibleEmails.length === 0) continue;
+    const rr = processRoundRobin.get(task.process) ?? 0;
+    const email = eligibleEmails[rr % eligibleEmails.length];
+    processRoundRobin.set(task.process, rr + 1);
+    const userId = userIdByEmail.get(email);
+    if (!userId) continue;
+    const hours = Number(Math.min(task.pendingHours, 2 + (i % 2)).toFixed(2));
+    const dayOffset = i % 4;
+    const startedAt = new Date(todayUtc);
+    startedAt.setUTCDate(todayUtc.getUTCDate() - dayOffset);
+    startedAt.setUTCHours(8 + ((i % 3) * 3), 0, 0, 0);
+    const endedAt = new Date(startedAt.getTime() + hours * 3600000);
+    await prisma.timeEntry.create({
+      data: {
+        userId,
+        projectId: task.projectId,
+        lampId: task.lampId,
+        taskId: task.id,
+        process: task.process,
+        source: TimeEntrySource.MANUAL,
+        startedAt,
+        endedAt,
+        hours,
+        notes: `${SEEDED_TIME_ENTRY_PREFIX} ${task.project.code} · ${task.lamp.name} · ${task.process}`,
+      },
+    });
+  }
 
   console.log("Done.");
   console.log("");
