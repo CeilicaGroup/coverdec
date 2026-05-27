@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "PlanningPolicy" ADD COLUMN "wLaborCost" DOUBLE PRECISION NOT NULL DEFAULT 1;

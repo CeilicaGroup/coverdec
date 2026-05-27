@@ -93,6 +93,28 @@ export default async function CostesPage({
     .filter((p) => p.isBillable)
     .reduce((acc, p) => acc + p.hours, 0);
   const nonBillableCost = totalCost - billableCost;
+  const peopleByPerformance = people
+    .map((p) => {
+      const row = byPerson.get(p.id);
+      const assignedHours = row?.hours ?? 0;
+      const availableHours = p.capacityHours * workDays;
+      const rendimiento =
+        availableHours > 0 ? (assignedHours / availableHours) * 100 : 0;
+
+      return {
+        ...p,
+        row,
+        assignedHours,
+        availableHours,
+        rendimiento,
+      };
+    })
+    .sort((a, b) => {
+      if (b.rendimiento !== a.rendimiento) {
+        return b.rendimiento - a.rendimiento;
+      }
+      return a.nombre.localeCompare(b.nombre, "es");
+    });
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -191,23 +213,25 @@ export default async function CostesPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {people.map((p) => {
-                const row = byPerson.get(p.id);
-                const assignedHours = row?.hours ?? 0;
-                const availableHours = p.capacityHours * workDays;
-                const rendimiento = availableHours > 0 ? (assignedHours / availableHours) * 100 : 0;
+              {peopleByPerformance.map((p) => {
+                const rendimiento =
+                  p.availableHours > 0
+                    ? (p.assignedHours / p.availableHours) * 100
+                    : 0;
                 const rendimientoColor =
                   rendimiento >= 80 ? "text-emerald-600" :
                   rendimiento >= 50 ? "text-amber-600" : "text-red-600";
                 return (
                   <TableRow key={p.id}>
                     <TableCell>{p.nombre}</TableCell>
-                    <TableCell className="font-mono">{formatHours(assignedHours)}</TableCell>
                     <TableCell className="font-mono">
-                      {formatEuros(row?.cost ?? 0)}
+                      {formatHours(p.assignedHours)}
+                    </TableCell>
+                    <TableCell className="font-mono">
+                      {formatEuros(p.row?.cost ?? 0)}
                     </TableCell>
                     <TableCell className={cn("font-mono font-semibold", rendimientoColor)}>
-                      {availableHours > 0 ? `${Math.round(rendimiento)}%` : "—"}
+                      {p.availableHours > 0 ? `${Math.round(rendimiento)}%` : "—"}
                     </TableCell>
                   </TableRow>
                 );

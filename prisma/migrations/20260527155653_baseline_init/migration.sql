@@ -2,9 +2,6 @@
 CREATE TYPE "Role" AS ENUM ('ADMIN', 'JEFE_PRODUCCION', 'OPERARIO');
 
 -- CreateEnum
-CREATE TYPE "ProcessCode" AS ENUM ('CNC', 'ENSAMBLAJE', 'LIJADO', 'IMPRIMACION', 'PINTURA', 'PERFILES', 'EMBALAJE', 'PEGADO_ESPEJO', 'CORTE_MANUAL', 'LIMPIEZA');
-
--- CreateEnum
 CREATE TYPE "RiskLevel" AS ENUM ('OK', 'ATENCION', 'RIESGO');
 
 -- CreateEnum
@@ -17,16 +14,28 @@ CREATE TYPE "TimeEntrySource" AS ENUM ('TIMER', 'MANUAL');
 CREATE TYPE "FactoryStatus" AS ENUM ('DOSSIER', 'PRODUCCION', 'CONTROL_CALIDAD', 'EMBALAJE', 'ENVIADO');
 
 -- CreateTable
-CREATE TABLE "Empresa" (
+CREATE TABLE "Nave" (
     "id" TEXT NOT NULL,
+    "codigo" TEXT NOT NULL,
     "nombre" TEXT NOT NULL,
-    "razonSocial" TEXT NOT NULL,
-    "marca" TEXT,
-    "logoUrl" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "Nave_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PlanningPolicy" (
+    "id" TEXT NOT NULL,
+    "naveId" TEXT NOT NULL,
+    "wLate" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "wUnscheduled" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "wLoadBalance" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "wMove" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "wLaborCost" DOUBLE PRECISION NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "Empresa_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "PlanningPolicy_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -37,8 +46,8 @@ CREATE TABLE "User" (
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
     "image" TEXT,
     "role" "Role" NOT NULL DEFAULT 'OPERARIO',
-    "activeEmpresaId" TEXT,
     "personId" TEXT,
+    "activeNaveId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -91,24 +100,13 @@ CREATE TABLE "Verification" (
 );
 
 -- CreateTable
-CREATE TABLE "Membership" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
-    "role" "Role" NOT NULL DEFAULT 'OPERARIO',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Membership_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "Person" (
     "id" TEXT NOT NULL,
-    "nombre" TEXT NOT NULL,
     "alias" TEXT,
     "iniciales" TEXT NOT NULL,
     "color" TEXT NOT NULL,
-    "capacityHours" DOUBLE PRECISION NOT NULL DEFAULT 8,
+    "hourlyRate" DECIMAL(10,2) NOT NULL DEFAULT 14.75,
+    "overtimeHourlyRate" DECIMAL(10,2) NOT NULL DEFAULT 22.13,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,10 +116,48 @@ CREATE TABLE "Person" (
 );
 
 -- CreateTable
+CREATE TABLE "PersonNave" (
+    "personId" TEXT NOT NULL,
+    "naveId" TEXT NOT NULL,
+
+    CONSTRAINT "PersonNave_pkey" PRIMARY KEY ("personId","naveId")
+);
+
+-- CreateTable
+CREATE TABLE "PersonWorkWindow" (
+    "id" TEXT NOT NULL,
+    "personId" TEXT NOT NULL,
+    "dayOfWeek" INTEGER NOT NULL,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+
+    CONSTRAINT "PersonWorkWindow_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PersonScheduleOverride" (
+    "id" TEXT NOT NULL,
+    "personId" TEXT NOT NULL,
+    "date" DATE NOT NULL,
+
+    CONSTRAINT "PersonScheduleOverride_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PersonOverrideWindow" (
+    "id" TEXT NOT NULL,
+    "overrideId" TEXT NOT NULL,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+
+    CONSTRAINT "PersonOverrideWindow_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "PersonSpecialty" (
     "id" TEXT NOT NULL,
     "personId" TEXT NOT NULL,
-    "process" "ProcessCode" NOT NULL,
+    "process" TEXT NOT NULL,
     "isPrimary" BOOLEAN NOT NULL DEFAULT false,
     "isFallback" BOOLEAN NOT NULL DEFAULT false,
 
@@ -131,16 +167,15 @@ CREATE TABLE "PersonSpecialty" (
 -- CreateTable
 CREATE TABLE "ProcessDefinition" (
     "id" TEXT NOT NULL,
-    "code" "ProcessCode" NOT NULL,
+    "code" TEXT NOT NULL,
     "label" TEXT NOT NULL,
     "factor" DOUBLE PRECISION NOT NULL DEFAULT 1,
     "setupHours" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "dryHours" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "deadlineDay" INTEGER,
+    "waitHours" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "bgColor" TEXT NOT NULL,
     "fgColor" TEXT NOT NULL,
     "borderColor" TEXT NOT NULL,
-    "sequence" INTEGER NOT NULL,
+    "canFragment" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "ProcessDefinition_pkey" PRIMARY KEY ("id")
 );
@@ -163,7 +198,8 @@ CREATE TABLE "FrameType" (
 CREATE TABLE "FrameTypeProcess" (
     "id" TEXT NOT NULL,
     "frameTypeId" TEXT NOT NULL,
-    "process" "ProcessCode" NOT NULL,
+    "process" TEXT NOT NULL,
+    "sequence" INTEGER NOT NULL DEFAULT 0,
     "hoursPerUnit" DOUBLE PRECISION NOT NULL,
     "fixedHours" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "notes" TEXT,
@@ -174,13 +210,11 @@ CREATE TABLE "FrameTypeProcess" (
 -- CreateTable
 CREATE TABLE "Project" (
     "id" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "client" TEXT,
     "obra" TEXT,
     "deliveryDate" TIMESTAMP(3),
-    "priority" INTEGER NOT NULL DEFAULT 50,
     "isBillable" BOOLEAN NOT NULL DEFAULT true,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "notes" TEXT,
@@ -194,7 +228,7 @@ CREATE TABLE "Project" (
 CREATE TABLE "Lamp" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
-    "frameTypeId" TEXT,
+    "frameTypeId" TEXT NOT NULL,
     "code" TEXT,
     "name" TEXT NOT NULL,
     "width" DOUBLE PRECISION,
@@ -210,16 +244,32 @@ CREATE TABLE "Lamp" (
 );
 
 -- CreateTable
+CREATE TABLE "LampFrame" (
+    "id" TEXT NOT NULL,
+    "lampId" TEXT NOT NULL,
+    "frameTypeId" TEXT NOT NULL,
+    "label" TEXT,
+    "surfaceM2" DOUBLE PRECISION,
+    "units" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LampFrame_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Task" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
-    "lampId" TEXT,
-    "process" "ProcessCode" NOT NULL,
+    "lampId" TEXT NOT NULL,
+    "lampFrameId" TEXT,
+    "process" TEXT NOT NULL,
     "estimatedHours" DOUBLE PRECISION NOT NULL,
     "pendingHours" DOUBLE PRECISION NOT NULL,
     "doneHours" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "order" INTEGER NOT NULL DEFAULT 0,
     "isLocked" BOOLEAN NOT NULL DEFAULT false,
+    "naveId" TEXT NOT NULL,
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -230,7 +280,7 @@ CREATE TABLE "Task" (
 -- CreateTable
 CREATE TABLE "Planning" (
     "id" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
+    "naveId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
     "week" INTEGER NOT NULL,
     "weekStart" TIMESTAMP(3) NOT NULL,
@@ -254,7 +304,7 @@ CREATE TABLE "PlanningAssignment" (
     "startSlot" DOUBLE PRECISION NOT NULL,
     "endSlot" DOUBLE PRECISION NOT NULL,
     "hours" DOUBLE PRECISION NOT NULL,
-    "process" "ProcessCode" NOT NULL,
+    "process" TEXT NOT NULL,
     "isOverride" BOOLEAN NOT NULL DEFAULT false,
     "isAfternoon" BOOLEAN NOT NULL DEFAULT false,
     "notes" TEXT,
@@ -269,6 +319,8 @@ CREATE TABLE "Absence" (
     "personId" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL,
     "hours" DOUBLE PRECISION NOT NULL DEFAULT 8,
+    "blockStartMinutes" INTEGER,
+    "blockEndMinutes" INTEGER,
     "reason" TEXT,
 
     CONSTRAINT "Absence_pkey" PRIMARY KEY ("id")
@@ -277,7 +329,8 @@ CREATE TABLE "Absence" (
 -- CreateTable
 CREATE TABLE "Holiday" (
     "id" TEXT NOT NULL,
-    "date" TIMESTAMP(3) NOT NULL,
+    "startDate" TIMESTAMP(3) NOT NULL,
+    "endDate" TIMESTAMP(3) NOT NULL,
     "name" TEXT NOT NULL,
     "region" TEXT NOT NULL DEFAULT 'Silla 46460',
 
@@ -287,12 +340,11 @@ CREATE TABLE "Holiday" (
 -- CreateTable
 CREATE TABLE "TimeEntry" (
     "id" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "projectId" TEXT,
     "lampId" TEXT,
     "taskId" TEXT,
-    "process" "ProcessCode",
+    "process" TEXT,
     "source" "TimeEntrySource" NOT NULL DEFAULT 'MANUAL',
     "startedAt" TIMESTAMP(3) NOT NULL,
     "endedAt" TIMESTAMP(3),
@@ -307,13 +359,12 @@ CREATE TABLE "TimeEntry" (
 -- CreateTable
 CREATE TABLE "ProductionOrder" (
     "id" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
     "number" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
     "serial" INTEGER NOT NULL,
     "projectId" TEXT NOT NULL,
     "lampLabel" TEXT,
-    "process" "ProcessCode",
+    "process" TEXT,
     "hours" DOUBLE PRECISION,
     "scheduledAt" TIMESTAMP(3),
     "notes" TEXT,
@@ -325,7 +376,6 @@ CREATE TABLE "ProductionOrder" (
 -- CreateTable
 CREATE TABLE "FactoryItem" (
     "id" TEXT NOT NULL,
-    "empresaId" TEXT NOT NULL,
     "code" TEXT,
     "product" TEXT NOT NULL,
     "client" TEXT,
@@ -342,10 +392,10 @@ CREATE TABLE "FactoryItem" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Empresa_nombre_key" ON "Empresa"("nombre");
+CREATE UNIQUE INDEX "Nave_codigo_key" ON "Nave"("codigo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Empresa_razonSocial_key" ON "Empresa"("razonSocial");
+CREATE UNIQUE INDEX "PlanningPolicy_naveId_key" ON "PlanningPolicy"("naveId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
@@ -357,10 +407,16 @@ CREATE UNIQUE INDEX "User_personId_key" ON "User"("personId");
 CREATE UNIQUE INDEX "Session_token_key" ON "Session"("token");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Membership_userId_empresaId_key" ON "Membership"("userId", "empresaId");
+CREATE UNIQUE INDEX "Person_iniciales_key" ON "Person"("iniciales");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Person_iniciales_key" ON "Person"("iniciales");
+CREATE INDEX "PersonNave_naveId_idx" ON "PersonNave"("naveId");
+
+-- CreateIndex
+CREATE INDEX "PersonWorkWindow_personId_dayOfWeek_idx" ON "PersonWorkWindow"("personId", "dayOfWeek");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PersonScheduleOverride_personId_date_key" ON "PersonScheduleOverride"("personId", "date");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PersonSpecialty_personId_process_key" ON "PersonSpecialty"("personId", "process");
@@ -372,13 +428,28 @@ CREATE UNIQUE INDEX "ProcessDefinition_code_key" ON "ProcessDefinition"("code");
 CREATE UNIQUE INDEX "FrameType_code_key" ON "FrameType"("code");
 
 -- CreateIndex
+CREATE INDEX "FrameTypeProcess_frameTypeId_sequence_idx" ON "FrameTypeProcess"("frameTypeId", "sequence");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "FrameTypeProcess_frameTypeId_process_key" ON "FrameTypeProcess"("frameTypeId", "process");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Project_empresaId_code_key" ON "Project"("empresaId", "code");
+CREATE UNIQUE INDEX "Project_code_key" ON "Project"("code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Planning_empresaId_year_week_key" ON "Planning"("empresaId", "year", "week");
+CREATE INDEX "LampFrame_lampId_idx" ON "LampFrame"("lampId");
+
+-- CreateIndex
+CREATE INDEX "LampFrame_frameTypeId_idx" ON "LampFrame"("frameTypeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LampFrame_lampId_frameTypeId_label_key" ON "LampFrame"("lampId", "frameTypeId", "label");
+
+-- CreateIndex
+CREATE INDEX "Task_lampFrameId_idx" ON "Task"("lampFrameId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Planning_naveId_year_week_key" ON "Planning"("naveId", "year", "week");
 
 -- CreateIndex
 CREATE INDEX "PlanningAssignment_planningId_personId_date_idx" ON "PlanningAssignment"("planningId", "personId", "date");
@@ -387,22 +458,28 @@ CREATE INDEX "PlanningAssignment_planningId_personId_date_idx" ON "PlanningAssig
 CREATE UNIQUE INDEX "Absence_personId_date_key" ON "Absence"("personId", "date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Holiday_date_key" ON "Holiday"("date");
+CREATE INDEX "Holiday_startDate_endDate_idx" ON "Holiday"("startDate", "endDate");
 
 -- CreateIndex
-CREATE INDEX "TimeEntry_empresaId_userId_startedAt_idx" ON "TimeEntry"("empresaId", "userId", "startedAt");
+CREATE INDEX "TimeEntry_userId_startedAt_idx" ON "TimeEntry"("userId", "startedAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ProductionOrder_number_key" ON "ProductionOrder"("number");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ProductionOrder_empresaId_year_serial_key" ON "ProductionOrder"("empresaId", "year", "serial");
+CREATE UNIQUE INDEX "ProductionOrder_year_serial_key" ON "ProductionOrder"("year", "serial");
 
 -- CreateIndex
-CREATE INDEX "FactoryItem_empresaId_status_idx" ON "FactoryItem"("empresaId", "status");
+CREATE INDEX "FactoryItem_status_idx" ON "FactoryItem"("status");
+
+-- AddForeignKey
+ALTER TABLE "PlanningPolicy" ADD CONSTRAINT "PlanningPolicy_naveId_fkey" FOREIGN KEY ("naveId") REFERENCES "Nave"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_activeNaveId_fkey" FOREIGN KEY ("activeNaveId") REFERENCES "Nave"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -411,13 +488,25 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Membership" ADD CONSTRAINT "Membership_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PersonNave" ADD CONSTRAINT "PersonNave_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Membership" ADD CONSTRAINT "Membership_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PersonNave" ADD CONSTRAINT "PersonNave_naveId_fkey" FOREIGN KEY ("naveId") REFERENCES "Nave"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PersonWorkWindow" ADD CONSTRAINT "PersonWorkWindow_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PersonScheduleOverride" ADD CONSTRAINT "PersonScheduleOverride_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PersonOverrideWindow" ADD CONSTRAINT "PersonOverrideWindow_overrideId_fkey" FOREIGN KEY ("overrideId") REFERENCES "PersonScheduleOverride"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PersonSpecialty" ADD CONSTRAINT "PersonSpecialty_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PersonSpecialty" ADD CONSTRAINT "PersonSpecialty_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "FrameTypeProcess" ADD CONSTRAINT "FrameTypeProcess_frameTypeId_fkey" FOREIGN KEY ("frameTypeId") REFERENCES "FrameType"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -426,22 +515,34 @@ ALTER TABLE "FrameTypeProcess" ADD CONSTRAINT "FrameTypeProcess_frameTypeId_fkey
 ALTER TABLE "FrameTypeProcess" ADD CONSTRAINT "FrameTypeProcess_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Project" ADD CONSTRAINT "Project_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Lamp" ADD CONSTRAINT "Lamp_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Lamp" ADD CONSTRAINT "Lamp_frameTypeId_fkey" FOREIGN KEY ("frameTypeId") REFERENCES "FrameType"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Lamp" ADD CONSTRAINT "Lamp_frameTypeId_fkey" FOREIGN KEY ("frameTypeId") REFERENCES "FrameType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LampFrame" ADD CONSTRAINT "LampFrame_lampId_fkey" FOREIGN KEY ("lampId") REFERENCES "Lamp"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LampFrame" ADD CONSTRAINT "LampFrame_frameTypeId_fkey" FOREIGN KEY ("frameTypeId") REFERENCES "FrameType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Task" ADD CONSTRAINT "Task_lampId_fkey" FOREIGN KEY ("lampId") REFERENCES "Lamp"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_lampId_fkey" FOREIGN KEY ("lampId") REFERENCES "Lamp"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Planning" ADD CONSTRAINT "Planning_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_lampFrameId_fkey" FOREIGN KEY ("lampFrameId") REFERENCES "LampFrame"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Task" ADD CONSTRAINT "Task_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Task" ADD CONSTRAINT "Task_naveId_fkey" FOREIGN KEY ("naveId") REFERENCES "Nave"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Planning" ADD CONSTRAINT "Planning_naveId_fkey" FOREIGN KEY ("naveId") REFERENCES "Nave"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PlanningAssignment" ADD CONSTRAINT "PlanningAssignment_planningId_fkey" FOREIGN KEY ("planningId") REFERENCES "Planning"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -453,10 +554,10 @@ ALTER TABLE "PlanningAssignment" ADD CONSTRAINT "PlanningAssignment_taskId_fkey"
 ALTER TABLE "PlanningAssignment" ADD CONSTRAINT "PlanningAssignment_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Absence" ADD CONSTRAINT "Absence_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PlanningAssignment" ADD CONSTRAINT "PlanningAssignment_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TimeEntry" ADD CONSTRAINT "TimeEntry_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Absence" ADD CONSTRAINT "Absence_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TimeEntry" ADD CONSTRAINT "TimeEntry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -471,10 +572,10 @@ ALTER TABLE "TimeEntry" ADD CONSTRAINT "TimeEntry_lampId_fkey" FOREIGN KEY ("lam
 ALTER TABLE "TimeEntry" ADD CONSTRAINT "TimeEntry_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ProductionOrder" ADD CONSTRAINT "ProductionOrder_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TimeEntry" ADD CONSTRAINT "TimeEntry_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ProductionOrder" ADD CONSTRAINT "ProductionOrder_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "FactoryItem" ADD CONSTRAINT "FactoryItem_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "Empresa"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProductionOrder" ADD CONSTRAINT "ProductionOrder_process_fkey" FOREIGN KEY ("process") REFERENCES "ProcessDefinition"("code") ON DELETE SET NULL ON UPDATE CASCADE;
