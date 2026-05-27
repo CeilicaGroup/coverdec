@@ -41,6 +41,8 @@ import { PrintToolbar } from "./print-toolbar";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
+import { computeTaskProgress } from "@/features/planning/task-progress";
+import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 
 function formatTimeRange(startedAt: Date, hours: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -78,28 +80,26 @@ export default async function PersonaPage({
       ? allPeople.filter((p) => p.id === ctx.personId)
       : allPeople;
 
-  // Fetch data for the selected view
-  let planningAssignments: PlanningAssignmentSlice[] = [];
-  let actualEntries: ActualHourEntry[] = [];
-
-  if (view === "actual") {
-    const raw = await getActualHoursForWeek({
-      naveScope: naveScopeFromContext(ctx),
-      weekStart,
-    });
-    actualEntries =
-      ctx.role === Role.OPERARIO && ctx.personId
-        ? raw.filter((e) => e.personId === ctx.personId)
-        : raw;
-  } else {
-    const planning = await getPlanningForWeek({
+  const [planning, rawActualEntries] = await Promise.all([
+    getPlanningForWeek({
       naveScope,
       weekStart,
       viewMode,
-    });
-    planningAssignments = (planning?.assignments ??
-      []) as unknown as PlanningAssignmentSlice[];
-  }
+    }),
+    getActualHoursForWeek({
+      naveScope,
+      weekStart,
+    }),
+  ]);
+  const planningAssignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+  const actualEntries =
+    ctx.role === Role.OPERARIO && ctx.personId
+      ? rawActualEntries.filter((e) => e.personId === ctx.personId)
+      : rawActualEntries;
+  const plannedByTask = buildHoursByTaskFromPlan(planningAssignments);
+  const actualByTask = buildHoursByTaskFromActual(actualEntries);
+  const plannedItemsByTask = buildItemsByTaskFromPlan(planningAssignments);
+  const actualItemsByTask = buildItemsByTaskFromActual(actualEntries);
 
   const planningMeta =
     view === "plan"
@@ -178,12 +178,13 @@ export default async function PersonaPage({
                       <TableHead>Proyecto</TableHead>
                       <TableHead>Proceso</TableHead>
                       <TableHead className="text-right">h</TableHead>
+                      <TableHead>Progreso</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {entries.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                           Sin registros
                         </TableCell>
                       </TableRow>
@@ -217,6 +218,26 @@ export default async function PersonaPage({
                           <TableCell className="text-right font-mono text-xs font-semibold">
                             {formatHours(e.hours)}
                           </TableCell>
+                          <TableCell>
+                            {e.taskId ? (
+                              <TaskProgressInline
+                                progress={computeTaskProgress({
+                                  isCompleted: false,
+                                  plannedHours: plannedByTask.get(e.taskId) ?? 0,
+                                  actualHours: actualByTask.get(e.taskId) ?? 0,
+                                  hasRunning: entries.some(
+                                    (x) => x.taskId === e.taskId && x.isRunning,
+                                  ),
+                                })}
+                                stripes={[
+                                  ...(plannedItemsByTask.get(e.taskId) ?? []),
+                                  ...(actualItemsByTask.get(e.taskId) ?? []),
+                                ]}
+                              />
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">Sin tarea</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -244,12 +265,13 @@ export default async function PersonaPage({
                     <TableHead>Proyecto</TableHead>
                     <TableHead>Proceso</TableHead>
                     <TableHead className="text-right">h</TableHead>
+                    <TableHead>Progreso</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                         Sin asignaciones
                       </TableCell>
                     </TableRow>
@@ -279,6 +301,22 @@ export default async function PersonaPage({
                         <TableCell className="text-right font-mono text-xs font-semibold">
                           {formatHours(item.assignment.hours)}
                         </TableCell>
+                        <TableCell>
+                          <TaskProgressInline
+                            progress={computeTaskProgress({
+                              isCompleted: false,
+                              plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                              actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
+                              hasRunning: actualEntries.some(
+                                (x) => x.taskId === item.assignment.task.id && x.isRunning,
+                              ),
+                            })}
+                            stripes={[
+                              ...(plannedItemsByTask.get(item.assignment.task.id) ?? []),
+                              ...(actualItemsByTask.get(item.assignment.task.id) ?? []),
+                            ]}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -290,6 +328,59 @@ export default async function PersonaPage({
       </div>
     </div>
   );
+}
+
+function buildHoursByTaskFromPlan(assignments: PlanningAssignmentSlice[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const assignment of assignments) {
+    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
+  }
+  return map;
+}
+
+function buildHoursByTaskFromActual(entries: ActualHourEntry[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.taskId) continue;
+    map.set(entry.taskId, (map.get(entry.taskId) ?? 0) + entry.hours);
+  }
+  return map;
+}
+
+function buildItemsByTaskFromPlan(assignments: PlanningAssignmentSlice[]): Map<string, ProgressStripe[]> {
+  const map = new Map<string, ProgressStripe[]>();
+  for (const assignment of assignments) {
+    const list = map.get(assignment.task.id) ?? [];
+    list.push({
+      id: assignment.id,
+      label: `${formatShortDate(assignment.date)} · ${rangeLabel(
+        assignment.startSlot,
+        assignment.endSlot,
+      )} · ${formatHours(assignment.hours)}`,
+      kind: "plan",
+    });
+    map.set(assignment.task.id, list);
+  }
+  return map;
+}
+
+function buildItemsByTaskFromActual(entries: ActualHourEntry[]): Map<string, ProgressStripe[]> {
+  const map = new Map<string, ProgressStripe[]>();
+  for (const entry of entries) {
+    if (!entry.taskId) continue;
+    const list = map.get(entry.taskId) ?? [];
+    list.push({
+      id: entry.id,
+      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRange(
+        entry.startedAt,
+        entry.hours,
+      )} · ${formatHours(entry.hours)}`,
+      kind: "actual",
+      isRunning: entry.isRunning,
+    });
+    map.set(entry.taskId, list);
+  }
+  return map;
 }
 
 function PersonCard({

@@ -43,6 +43,8 @@ import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
+import { computeTaskProgress } from "@/features/planning/task-progress";
+import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 
 function formatTimeRange(startedAt: Date, hours: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -69,28 +71,22 @@ export default async function ProyectoPage({
   const naveScope = naveScopeFromContext(ctx);
 
   const [projects, processByCode] = await Promise.all([
-    getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
+    getActiveProjectsWithLoad(naveScope),
     getProcessDefinitionsByCode(),
   ]);
 
-  // Fetch the selected view data
-  let assignments: PlanningAssignmentSlice[] = [];
-  let actualEntries: ActualHourEntry[] = [];
-
-  if (view === "actual") {
-    actualEntries = await getActualHoursForWeek({
-      naveScope: naveScopeFromContext(ctx),
-      weekStart,
-    });
-  } else {
-    const planning = await getPlanningForWeek({
+  const [planning, actualEntries] = await Promise.all([
+    getPlanningForWeek({
       naveScope,
       weekStart,
       viewMode,
-    });
-    assignments = (planning?.assignments ??
-      []) as unknown as PlanningAssignmentSlice[];
-  }
+    }),
+    getActualHoursForWeek({
+      naveScope,
+      weekStart,
+    }),
+  ]);
+  const assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
 
   const planningMeta =
     view === "plan"
@@ -130,6 +126,10 @@ export default async function ProyectoPage({
     ...byProject.keys(),
     ...actualByProject.keys(),
   ]);
+  const plannedByTask = buildPlannedHoursByTask(assignments);
+  const actualByTask = buildActualHoursByTask(actualEntries);
+  const plannedItemsByTask = buildPlanItemsByTask(assignments);
+  const actualItemsByTask = buildActualItemsByTask(actualEntries);
 
   const projectsWithLoad = projects
     .map((p) => ({
@@ -211,6 +211,9 @@ export default async function ProyectoPage({
                       {formatHours(workHours)}
                     </span>
                   </span>
+                  <span className="font-mono text-xs">
+                    {view === "plan" ? `Registro: ${formatHours(row.actualHours)}` : `Plan: ${formatHours(row.scheduledHours)}`}
+                  </span>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -218,6 +221,9 @@ export default async function ProyectoPage({
                   <ActualProjectTable
                     entries={actualByProject.get(row.project.id) ?? []}
                     processByCode={processByCode}
+                    plannedByTask={plannedByTask}
+                    plannedItemsByTask={plannedItemsByTask}
+                    actualByTask={actualByTask}
                   />
                 ) : (
                   <PlanProjectTable
@@ -226,6 +232,9 @@ export default async function ProyectoPage({
                       processByCode,
                     )}
                     processByCode={processByCode}
+                    actualByTask={actualByTask}
+                    actualItemsByTask={actualItemsByTask}
+                    plannedByTask={plannedByTask}
                   />
                 )}
               </CardContent>
@@ -240,9 +249,15 @@ export default async function ProyectoPage({
 function ActualProjectTable({
   entries,
   processByCode,
+  plannedByTask,
+  actualByTask,
+  plannedItemsByTask,
 }: {
   entries: ActualHourEntry[];
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
+  plannedByTask: Map<string, number>;
+  actualByTask: Map<string, number>;
+  plannedItemsByTask: Map<string, ProgressStripe[]>;
 }) {
   return (
     <Table>
@@ -254,12 +269,13 @@ function ActualProjectTable({
           <TableHead>Lámpara</TableHead>
           <TableHead>Proceso</TableHead>
           <TableHead className="text-right">h</TableHead>
+          <TableHead>Progreso</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {entries.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground py-4">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-4">
               Sin registros esta semana
             </TableCell>
           </TableRow>
@@ -300,6 +316,24 @@ function ActualProjectTable({
               <TableCell className="text-right font-mono text-xs font-semibold">
                 {formatHours(e.hours)}
               </TableCell>
+              <TableCell>
+                {e.taskId ? (
+                  <TaskProgressInline
+                    progress={computeTaskProgress({
+                      isCompleted: false,
+                      plannedHours: plannedByTask.get(e.taskId) ?? 0,
+                      actualHours: actualByTask.get(e.taskId) ?? 0,
+                      hasRunning: entries.some((x) => x.taskId === e.taskId && x.isRunning),
+                    })}
+                    stripes={[
+                      ...(plannedItemsByTask.get(e.taskId) ?? []),
+                      ...(buildActualItemsByTask(entries).get(e.taskId) ?? []),
+                    ]}
+                  />
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">Sin tarea</span>
+                )}
+              </TableCell>
             </TableRow>
           ))
         )}
@@ -311,9 +345,15 @@ function ActualProjectTable({
 function PlanProjectTable({
   timeline,
   processByCode,
+  plannedByTask,
+  actualByTask,
+  actualItemsByTask,
 }: {
   timeline: ReturnType<typeof buildPlanningTimeline>;
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
+  plannedByTask: Map<string, number>;
+  actualByTask: Map<string, number>;
+  actualItemsByTask: Map<string, ProgressStripe[]>;
 }) {
   return (
     <Table>
@@ -325,12 +365,13 @@ function PlanProjectTable({
           <TableHead>Lámpara</TableHead>
           <TableHead>Proceso</TableHead>
           <TableHead className="text-right">h</TableHead>
+          <TableHead>Progreso</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {timeline.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground py-4">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-4">
               Sin asignaciones esta semana
             </TableCell>
           </TableRow>
@@ -350,6 +391,7 @@ function PlanProjectTable({
                   />
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
+                <TableCell className="text-xs text-muted-foreground">—</TableCell>
               </TableRow>
             ) : (
               <TableRow key={item.assignment.id}>
@@ -379,6 +421,20 @@ function PlanProjectTable({
                 <TableCell className="text-right font-mono text-xs font-semibold">
                   {formatHours(item.assignment.hours)}
                 </TableCell>
+                <TableCell>
+                  <TaskProgressInline
+                    progress={computeTaskProgress({
+                      isCompleted: false,
+                      plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                      actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
+                      hasRunning: actualItemsByTask.get(item.assignment.task.id)?.some((x) => x.isRunning) ?? false,
+                    })}
+                    stripes={[
+                      ...(buildPlanItemsByTaskFromTimelineRow(item).map((x) => x)),
+                      ...(actualItemsByTask.get(item.assignment.task.id) ?? []),
+                    ]}
+                  />
+                </TableCell>
               </TableRow>
             ),
           )
@@ -386,4 +442,73 @@ function PlanProjectTable({
       </TableBody>
     </Table>
   );
+}
+
+function buildPlannedHoursByTask(assignments: PlanningAssignmentSlice[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const assignment of assignments) {
+    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
+  }
+  return map;
+}
+
+function buildActualHoursByTask(entries: ActualHourEntry[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.taskId) continue;
+    map.set(entry.taskId, (map.get(entry.taskId) ?? 0) + entry.hours);
+  }
+  return map;
+}
+
+function buildPlanItemsByTask(assignments: PlanningAssignmentSlice[]): Map<string, ProgressStripe[]> {
+  const map = new Map<string, ProgressStripe[]>();
+  for (const assignment of assignments) {
+    const list = map.get(assignment.task.id) ?? [];
+    list.push({
+      id: assignment.id,
+      label: `${formatShortDate(assignment.date)} · ${rangeLabel(
+        assignment.startSlot,
+        assignment.endSlot,
+      )} · ${formatHours(assignment.hours)}`,
+      kind: "plan",
+    });
+    map.set(assignment.task.id, list);
+  }
+  return map;
+}
+
+function buildActualItemsByTask(entries: ActualHourEntry[]): Map<string, ProgressStripe[]> {
+  const map = new Map<string, ProgressStripe[]>();
+  for (const entry of entries) {
+    if (!entry.taskId) continue;
+    const list = map.get(entry.taskId) ?? [];
+    list.push({
+      id: entry.id,
+      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRange(
+        entry.startedAt,
+        entry.hours,
+      )} · ${formatHours(entry.hours)}`,
+      kind: "actual",
+      isRunning: entry.isRunning,
+    });
+    map.set(entry.taskId, list);
+  }
+  return map;
+}
+
+// (helper removed: was an accidental duplicate wrapper)
+
+function buildPlanItemsByTaskFromTimelineRow(item: ReturnType<typeof buildPlanningTimeline>[number]): ProgressStripe[] {
+  if (item.kind !== "work") return [];
+  return [
+    {
+      id: item.assignment.id,
+      kind: "plan",
+      label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
+        item.assignment.startSlot,
+        item.assignment.endSlot,
+      )} · ${formatHours(item.assignment.hours)}`,
+    },
+  ];
 }

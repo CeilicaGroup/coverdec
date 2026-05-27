@@ -5,14 +5,21 @@ export function ViewToggle({
   basePath,
   view = "plan",
   week,
+  extraParams,
 }: {
   basePath: string;
   view?: string;
   week?: string;
+  extraParams?: Record<string, string | undefined>;
 }) {
   const href = (v: string) => {
     const p = new URLSearchParams({ view: v });
     if (week) p.set("week", week);
+    if (extraParams) {
+      for (const [key, value] of Object.entries(extraParams)) {
+        if (value) p.set(key, value);
+      }
+    }
     return `${basePath}?${p}`;
   };
 

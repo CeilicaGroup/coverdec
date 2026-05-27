@@ -34,6 +34,7 @@ export function ManualEntryForm({
     lampId: string;
     taskId: string;
     process: string;
+    ranges?: { startedAt: string; endedAt: string }[];
   } | null;
   lockTaskSelection?: boolean;
 }) {
@@ -43,15 +44,21 @@ export function ManualEntryForm({
   const [taskId, setTaskId] = useState(preset?.taskId ?? "");
   const [notes, setNotes] = useState("");
   const [markCompleted, setMarkCompleted] = useState(true);
-  const [ranges, setRanges] = useState(() => [
-    {
-      startedAt: new Date().toISOString().slice(0, 16),
-      endedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
-    },
-  ]);
+  const [ranges, setRanges] = useState(() => {
+    if (preset?.ranges && preset.ranges.length > 0) {
+      return preset.ranges;
+    }
+    return [
+      {
+        startedAt: new Date().toISOString().slice(0, 16),
+        endedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
+      },
+    ];
+  });
 
   const project = projects.find((p) => p.id === projectId);
-  const availableTasks = project?.tasks.filter((t) => (lampId ? t.lampId === lampId : true)) ?? [];
+  const availableTasks =
+    project?.tasks.filter((t) => (lampId ? t.lampId === lampId : true)) ?? [];
   const selectedTask = availableTasks.find((t) => t.id === taskId) ?? null;
 
   useEffect(() => {
@@ -59,6 +66,9 @@ export function ManualEntryForm({
     setProjectId(preset.projectId);
     setLampId(preset.lampId);
     setTaskId(preset.taskId);
+    if (preset.ranges && preset.ranges.length > 0) {
+      setRanges(preset.ranges);
+    }
   }, [preset?.projectId, preset?.lampId, preset?.taskId, preset]);
 
   return (
@@ -103,7 +113,14 @@ export function ManualEntryForm({
     >
       <div className="space-y-2">
         <Label>Proyecto</Label>
-        <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
+        <Select
+          value={projectId}
+          onValueChange={(v) => {
+            setProjectId(v ?? "");
+            setLampId("");
+            setTaskId("");
+          }}
+        >
           <SelectTrigger disabled={lockTaskSelection}>
             <SelectValue placeholder="Selecciona proyecto">
               {projectId ? (projects.find((p) => p.id === projectId)?.name ?? "") : undefined}
@@ -121,7 +138,13 @@ export function ManualEntryForm({
       {project && project.lamps.length > 0 && (
         <div className="space-y-2">
           <Label>Lámpara</Label>
-          <Select value={lampId} onValueChange={(v) => setLampId(v ?? "")}>
+          <Select
+            value={lampId}
+            onValueChange={(v) => {
+              setLampId(v ?? "");
+              setTaskId("");
+            }}
+          >
             <SelectTrigger disabled={lockTaskSelection}>
               <SelectValue placeholder="(opcional)">
                 {lampId ? (project.lamps.find((l) => l.id === lampId)?.name ?? "") : undefined}

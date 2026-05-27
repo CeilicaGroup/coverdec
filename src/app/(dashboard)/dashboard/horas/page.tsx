@@ -9,6 +9,7 @@ import { EntriesList } from "./entries-list";
 import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
 import { TaskQueuePanel } from "./task-queue-panel";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
+import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 
 function weekdayLabel(date: Date): string {
   return new Intl.DateTimeFormat("es-ES", {
@@ -17,6 +18,14 @@ function weekdayLabel(date: Date): string {
   })
     .format(date)
     .replace(".", "");
+}
+
+function toDatetimeLocal(date: Date, hourDecimal: number): string {
+  const base = new Date(date);
+  const h = Math.floor(hourDecimal);
+  const m = Math.round((hourDecimal - h) * 60);
+  base.setUTCHours(h, m, 0, 0);
+  return base.toISOString().slice(0, 16);
 }
 
 export default async function HorasPage() {
@@ -80,6 +89,7 @@ export default async function HorasPage() {
   );
 
   const taskRanges = new Map<string, string[]>();
+  const taskDateRanges = new Map<string, { startedAt: string; endedAt: string }[]>();
   const taskSortKey = new Map<string, number>();
   let orderCursor = 0;
   for (const planning of weekPlanning) {
@@ -91,6 +101,12 @@ export default async function HorasPage() {
       const existing = taskRanges.get(assignment.taskId) ?? [];
       existing.push(label);
       taskRanges.set(assignment.taskId, existing);
+      const dateRanges = taskDateRanges.get(assignment.taskId) ?? [];
+      dateRanges.push({
+        startedAt: toDatetimeLocal(assignment.date, slotToHour(assignment.startSlot)),
+        endedAt: toDatetimeLocal(assignment.date, slotEndToHour(assignment.endSlot)),
+      });
+      taskDateRanges.set(assignment.taskId, dateRanges);
       if (!taskSortKey.has(assignment.taskId)) {
         taskSortKey.set(assignment.taskId, orderCursor++);
       }
@@ -129,6 +145,7 @@ export default async function HorasPage() {
       process: t.process,
       order: t.order,
       plannedRanges: taskRanges.get(t.id) ?? [],
+      plannedDateRanges: taskDateRanges.get(t.id) ?? [],
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 

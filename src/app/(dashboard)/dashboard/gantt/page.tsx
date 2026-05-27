@@ -1,9 +1,9 @@
 import { requireDashboardContext } from "@/lib/context";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
-import { rangeLabel } from "@/features/planning/engine/slot-format";
 import {
   getActiveProjectsForGantt,
+  getGanttActualAssignments,
   getGanttPlanningAssignments,
   getHolidaysForRange,
   getNavePersonnel,
@@ -34,6 +34,11 @@ import { GanttChart } from "./gantt-chart";
 import { GanttFilters, type GanttAxisMode } from "./gantt-filters";
 import { GanttWorkerChart, type GanttWorkerRow } from "./gantt-worker-chart";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { ViewToggle } from "../../_components/view-toggle";
+import { formatHours } from "@/lib/format";
+import { rangeLabel } from "@/features/planning/engine/slot-format";
+import type { ProgressStripe } from "@/components/task-progress";
+import { computeTaskProgress } from "@/features/planning/task-progress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -176,6 +181,7 @@ export default async function GanttPage({
     axis?: string;
     projects?: string;
     people?: string;
+    view?: string;
   }>;
 }) {
   const ctx = await requireDashboardContext();
@@ -185,18 +191,22 @@ export default async function GanttPage({
   const todayIso = today.toISOString().slice(0, 10);
 
   const axisMode: GanttAxisMode = params.axis === "worker" ? "worker" : "project";
+  const view = params.view === "actual" ? "actual" : "plan";
   const projectIds = parseSelectedIds(params.projects);
   const personIds = parseSelectedIds(params.people);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
-  const [projects, assignments, people, processStyles, processDefs] = await Promise.all([
-    getActiveProjectsForGantt(naveScope),
-    getGanttPlanningAssignments(naveScope, viewMode),
-    getNavePersonnel(naveScopeFromContext(ctx)),
-    getProcessBadgeStylesByCode(),
-    getProcessDefinitionsByCode(),
-  ]);
+  const [projects, planningAssignments, actualAssignments, people, processStyles, processDefs] =
+    await Promise.all([
+      getActiveProjectsForGantt(naveScope),
+      getGanttPlanningAssignments(naveScope, viewMode),
+      getGanttActualAssignments(naveScope),
+      getNavePersonnel(naveScope),
+      getProcessBadgeStylesByCode(),
+      getProcessDefinitionsByCode(),
+    ]);
+  const assignments = view === "actual" ? actualAssignments : planningAssignments;
 
   const allGanttTasks = projects.flatMap((p) => p.tasks);
   const priorEnds = buildLastAssignmentEndByTaskId(
@@ -280,6 +290,54 @@ export default async function GanttPage({
     })),
   );
   const workerRows = axisMode === "worker" ? buildWorkerRows(filteredAssignments) : [];
+  const planningByTask = new Map<string, number>();
+  for (const assignment of planningAssignments) {
+    planningByTask.set(
+      assignment.taskId,
+      (planningByTask.get(assignment.taskId) ?? 0) + assignment.hours,
+    );
+  }
+  const actualByTask = new Map<string, number>();
+  for (const assignment of actualAssignments) {
+    actualByTask.set(
+      assignment.taskId,
+      (actualByTask.get(assignment.taskId) ?? 0) + assignment.hours,
+    );
+  }
+  const plannedItemsByTask = new Map<string, ProgressStripe[]>();
+  for (const assignment of planningAssignments) {
+    const list = plannedItemsByTask.get(assignment.taskId) ?? [];
+    list.push({
+      id: `${assignment.taskId}-${assignment.date.toISOString()}-${assignment.startSlot}`,
+      label: `${assignment.date.toISOString().slice(0, 10)} · ${rangeLabel(
+        assignment.startSlot,
+        assignment.endSlot,
+      )} · ${formatHours(assignment.hours)}`,
+      kind: "plan",
+    });
+    plannedItemsByTask.set(assignment.taskId, list);
+  }
+  const actualItemsByTask = new Map<string, ProgressStripe[]>();
+  for (const assignment of actualAssignments) {
+    const list = actualItemsByTask.get(assignment.taskId) ?? [];
+    list.push({
+      id: `${assignment.taskId}-${assignment.date.toISOString()}-${assignment.startSlot}`,
+      label: `${assignment.date.toISOString().slice(0, 10)} · ${rangeLabel(
+        assignment.startSlot,
+        assignment.endSlot,
+      )} · ${formatHours(assignment.hours)}`,
+      kind: "actual",
+    });
+    actualItemsByTask.set(assignment.taskId, list);
+  }
+  const runningByTask = new Map<string, boolean>();
+  for (const a of actualAssignments) {
+    // Heurística: si la asignación real termina “hoy” y es la última del task,
+    // la franja abierta ya se ha normalizado con end = now en queries.
+    // (Para marcar running de forma exacta necesitaríamos exponer endedAt/isRunning en Gantt actual.)
+    // En esta iteración: no marcamos running en Gantt con precisión.
+    runningByTask.set(a.taskId, runningByTask.get(a.taskId) ?? false);
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -287,17 +345,28 @@ export default async function GanttPage({
         title="Vista Gantt"
         description="Planificación de proyectos activos"
         actions={
-          <GanttFilters
-            axisMode={axisMode}
-            people={people.map((p) => ({
-              id: p.id,
-              iniciales: p.iniciales,
-              nombre: p.nombre,
-            }))}
-            projectOptions={projectOptions}
-            selectedProjectIds={projectIds ?? []}
-            selectedPersonIds={personIds ?? []}
-          />
+          <div className="flex items-center gap-2">
+            <ViewToggle
+              basePath="/dashboard/gantt"
+              view={view}
+              extraParams={{
+                axis: params.axis,
+                projects: params.projects,
+                people: params.people,
+              }}
+            />
+            <GanttFilters
+              axisMode={axisMode}
+              people={people.map((p) => ({
+                id: p.id,
+                iniciales: p.iniciales,
+                nombre: p.nombre,
+              }))}
+              projectOptions={projectOptions}
+              selectedProjectIds={projectIds ?? []}
+              selectedPersonIds={personIds ?? []}
+            />
+          </div>
         }
       />
 
@@ -308,6 +377,9 @@ export default async function GanttPage({
           workWindows={workWindows}
           workers={workerRows}
           processStyles={processStylesRecord}
+          plannedItemsByTask={plannedItemsByTask}
+          actualItemsByTask={actualItemsByTask}
+          mode={view}
         />
       ) : (
         <GanttChart
@@ -318,6 +390,9 @@ export default async function GanttPage({
           projects={ganttProjects}
           milestones={milestones}
           processStyles={processStylesRecord}
+          mode={view}
+          plannedItemsByTask={plannedItemsByTask}
+          actualItemsByTask={actualItemsByTask}
         />
       )}
     </div>

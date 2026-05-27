@@ -9,6 +9,12 @@ import {
 import { daysUntil, riskFromDelivery, riskFromPlannedEnd } from "@/lib/format";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import {
+  AFTERNOON_END,
+  AFTERNOON_START,
+  MORNING_END,
+  MORNING_START,
+} from "@/features/planning/engine/types";
+import {
   DEFAULT_PLANNING_WEIGHTS,
   normalizePlanningWeights,
   type PlanningWeights,
@@ -192,11 +198,15 @@ export interface ActualHourEntry {
   /** ISO date string "YYYY-MM-DD" derived from startedAt UTC */
   date: string;
   startedAt: Date;
+  endedAt: Date | null;
   hours: number;
+  isRunning: boolean;
   process: string | null;
   notes: string | null;
   personId: string | null;
   person: { id: string; nombre: string; iniciales: string; color: string } | null;
+  taskId: string | null;
+  task: { id: string; process: string; projectId: string; lampId: string } | null;
   project: { id: string; name: string } | null;
   lamp: { id: string; name: string } | null;
 }
@@ -216,8 +226,10 @@ export async function getActualHoursForWeek({
   const entries = await prisma.timeEntry.findMany({
     where: {
       startedAt: { gte: monday, lt: saturdayStart },
-      hours: { gt: 0 },
-      endedAt: { not: null },
+      OR: [
+        { endedAt: { not: null }, hours: { gt: 0 } },
+        { endedAt: null },
+      ],
       user: {
         personId: { not: null },
         ...(naveScope !== null
@@ -229,15 +241,28 @@ export async function getActualHoursForWeek({
       user: { include: { person: { include: { user: { select: { name: true } } } } } },
       project: { select: { id: true, name: true } },
       lamp: { select: { id: true, name: true } },
+      task: { select: { id: true, process: true, projectId: true, lampId: true } },
     },
     orderBy: { startedAt: "asc" },
   });
 
-  return entries.map((e) => ({
+  return entries.map((e) => {
+    const endedAt = e.endedAt ?? null;
+    const isRunning = endedAt == null;
+    const hours = (() => {
+      if (typeof e.hours === "number" && e.hours > 0) return e.hours;
+      if (!endedAt) {
+        return Math.max(0, (Date.now() - e.startedAt.getTime()) / 3600000);
+      }
+      return Math.max(0, (endedAt.getTime() - e.startedAt.getTime()) / 3600000);
+    })();
+    return {
     id: e.id,
     date: e.startedAt.toISOString().slice(0, 10),
     startedAt: e.startedAt,
-    hours: e.hours!,
+    endedAt,
+    hours,
+    isRunning,
     process: e.process,
     notes: e.notes,
     personId: e.user.personId,
@@ -249,9 +274,38 @@ export async function getActualHoursForWeek({
           color: e.user.person.color,
         }
       : null,
+    taskId: e.taskId,
+    task: e.task
+      ? {
+          id: e.task.id,
+          process: e.task.process,
+          projectId: e.task.projectId,
+          lampId: e.task.lampId,
+        }
+      : null,
     project: e.project,
     lamp: e.lamp,
-  }));
+    };
+  });
+}
+
+function timeToProductiveSlot(
+  hour: number,
+  minute: number,
+  asEnd: boolean,
+): number {
+  const decimal = hour + minute / 60;
+  const h = Math.max(MORNING_START, Math.min(AFTERNOON_END, decimal));
+  if (h <= MORNING_END) {
+    return Math.max(0, Math.min(MORNING_END - MORNING_START, h - MORNING_START));
+  }
+  if (h < AFTERNOON_START) {
+    return asEnd ? MORNING_END - MORNING_START : MORNING_END - MORNING_START;
+  }
+  return (
+    MORNING_END - MORNING_START +
+    Math.max(0, Math.min(AFTERNOON_END - AFTERNOON_START, h - AFTERNOON_START))
+  );
 }
 
 /** Festivos cuyo rango intersecta [start, end] (inclusive por día UTC). */
@@ -342,6 +396,8 @@ export async function getGanttPlanningAssignments(
       task: {
         select: {
           id: true,
+          process: true,
+          isCompleted: true,
           projectId: true,
           project: { select: { id: true, name: true } },
           lamp: {
@@ -374,6 +430,110 @@ export async function getGanttPlanningAssignments(
   }));
 }
 
+/** Registros reales normalizados al shape de asignaciones para reutilizar renderer Gantt. */
+export async function getGanttActualAssignments(
+  naveScope: string[] | null,
+): Promise<Awaited<ReturnType<typeof getGanttPlanningAssignments>>> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const naveIn = naveScope !== null ? { in: naveScope } : undefined;
+  const rows = await prisma.timeEntry.findMany({
+    where: {
+      taskId: { not: null },
+      task: {
+        project: { isActive: true },
+        ...(naveIn ? { naveId: naveIn } : {}),
+      },
+      OR: [
+        { endedAt: { not: null }, hours: { gt: 0 } },
+        { endedAt: null },
+      ],
+      user: {
+        personId: { not: null },
+        ...(naveIn
+          ? { person: { personNaves: { some: { naveId: { in: naveScope! } } } } }
+          : {}),
+      },
+    },
+    select: {
+      taskId: true,
+      startedAt: true,
+      endedAt: true,
+      hours: true,
+      process: true,
+      user: {
+        select: {
+          person: {
+            select: {
+              id: true,
+              iniciales: true,
+              color: true,
+              user: { select: { name: true } },
+            },
+          },
+        },
+      },
+      task: {
+        select: {
+          id: true,
+          process: true,
+          isCompleted: true,
+          projectId: true,
+          project: { select: { id: true, name: true } },
+          lamp: {
+            select: {
+              id: true,
+              name: true,
+              frameType: { select: { name: true } },
+            },
+          },
+          lampFrame: {
+            select: {
+              id: true,
+              label: true,
+              frameType: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ startedAt: "asc" }],
+  });
+
+  return rows
+    .filter((e) => e.taskId && e.user.person && e.task)
+    .map((e) => {
+      const start = e.startedAt;
+      const end = e.endedAt ?? new Date();
+      const day = new Date(
+        Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+      );
+      const hours =
+        typeof e.hours === "number" && e.hours > 0
+          ? e.hours
+          : Math.max(0, (end.getTime() - start.getTime()) / 3600000);
+      return {
+        taskId: e.taskId!,
+        personId: e.user.person!.id,
+        date: day,
+        startSlot: timeToProductiveSlot(
+          start.getUTCHours(),
+          start.getUTCMinutes(),
+          false,
+        ),
+        endSlot: timeToProductiveSlot(end.getUTCHours(), end.getUTCMinutes(), true),
+        hours,
+        process: e.process ?? e.task!.process,
+        person: {
+          id: e.user.person!.id,
+          iniciales: e.user.person!.iniciales,
+          color: e.user.person!.color,
+          nombre: e.user.person!.user?.name ?? e.user.person!.iniciales,
+        },
+        task: e.task!,
+      };
+    });
+}
+
 export type GanttPlanningAssignment = Awaited<
   ReturnType<typeof getGanttPlanningAssignments>
 >[number];
@@ -399,6 +559,7 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
           estimatedHours: true,
           pendingHours: true,
           doneHours: true,
+          isCompleted: true,
           lamp: {
             select: {
               id: true,

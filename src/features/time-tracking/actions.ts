@@ -126,9 +126,9 @@ async function assertNoOpenTimer(ctxUserId: string) {
 
 async function assertTaskAccessible(
   ctx: Awaited<ReturnType<typeof requireDashboardContext>>,
-  taskId: string | undefined,
+  taskId: string,
 ) {
-  if (!taskId || ctx.role === Role.ADMIN) return;
+  if (ctx.role === Role.ADMIN) return;
   const task = await prisma.task.findFirst({
     where: { id: taskId },
     select: { naveId: true },
@@ -139,10 +139,32 @@ async function assertTaskAccessible(
   }
 }
 
+async function assertTaskMatchesSelection(params: {
+  taskId: string;
+  projectId: string;
+  lampId?: string;
+  process?: string;
+}) {
+  const task = await prisma.task.findFirst({
+    where: { id: params.taskId },
+    select: { projectId: true, lampId: true, process: true },
+  });
+  if (!task) throw new Error("Tarea no encontrada.");
+  if (task.projectId !== params.projectId) {
+    throw new Error("La tarea no pertenece al proyecto seleccionado.");
+  }
+  if (params.lampId && task.lampId !== params.lampId) {
+    throw new Error("La tarea no pertenece a la lámpara seleccionada.");
+  }
+  if (params.process && task.process !== params.process) {
+    throw new Error("La tarea no coincide con el proceso seleccionado.");
+  }
+}
+
 const startSchema = z.object({
   projectId: z.string().min(1),
   lampId: z.string().min(1).optional(),
-  taskId: z.string().min(1).optional(),
+  taskId: z.string().min(1),
   process: z.string().min(1).optional(),
   notes: z.string().max(500).optional(),
 });
@@ -156,14 +178,13 @@ export async function startTimer(input: z.infer<typeof startSchema>) {
   if (open) {
     throw new Error("Ya tienes un timer activo. Detenlo primero.");
   }
-  if (data.taskId) {
-    await assertTaskAccessible(ctx, data.taskId);
-    const unlocked = await isTaskUnlocked(data.taskId);
-    if (!unlocked) {
-      throw new Error(
-        "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
-      );
-    }
+  await assertTaskAccessible(ctx, data.taskId);
+  await assertTaskMatchesSelection(data);
+  const unlocked = await isTaskUnlocked(data.taskId);
+  if (!unlocked) {
+    throw new Error(
+      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+    );
   }
   await prisma.timeEntry.create({
     data: {
@@ -232,7 +253,7 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
 const manualSchema = z.object({
   projectId: z.string().min(1),
   lampId: z.string().min(1).optional(),
-  taskId: z.string().min(1).optional(),
+  taskId: z.string().min(1),
   process: z.string().min(1).optional(),
   startedAt: z.string().min(8),
   hours: z.number().positive().max(24),
@@ -242,14 +263,13 @@ const manualSchema = z.object({
 export async function createManualEntry(input: z.infer<typeof manualSchema>) {
   const ctx = await requireDashboardContext();
   const data = manualSchema.parse(input);
-  if (data.taskId) {
-    await assertTaskAccessible(ctx, data.taskId);
-    const unlocked = await isTaskUnlocked(data.taskId);
-    if (!unlocked) {
-      throw new Error(
-        "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
-      );
-    }
+  await assertTaskAccessible(ctx, data.taskId);
+  await assertTaskMatchesSelection(data);
+  const unlocked = await isTaskUnlocked(data.taskId);
+  if (!unlocked) {
+    throw new Error(
+      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+    );
   }
   const startedAt = new Date(data.startedAt);
   const endedAt = new Date(startedAt.getTime() + data.hours * 3600000);

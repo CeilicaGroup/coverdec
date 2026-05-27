@@ -17,6 +17,8 @@ import { resolveBlockRange, timelineHoverSummary } from "@/features/planning/gan
 import { formatDayMonthYear } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
+import { computeTaskProgress } from "@/features/planning/task-progress";
+import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LABEL_COL = "minmax(220px, 260px)";
@@ -157,12 +159,18 @@ export function GanttWorkerChart({
   workWindows,
   workers,
   processStyles,
+  mode,
+  plannedItemsByTask,
+  actualItemsByTask,
 }: {
   axisStartIso: string;
   axisEndIso: string;
   workWindows: WorkWindowRow[];
   workers: GanttWorkerRow[];
   processStyles: Record<string, ProcessBadgeStyle>;
+  mode: "plan" | "actual";
+  plannedItemsByTask: Map<string, ProgressStripe[]>;
+  actualItemsByTask: Map<string, ProgressStripe[]>;
 }) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -247,6 +255,23 @@ export function GanttWorkerChart({
                             {task.timelineBlocks.length > 0 ? timelineHoverSummary(task.timelineBlocks) : "Sin planificación"}
                           </TooltipContent>
                         </Tooltip>
+                        {(() => {
+                          const taskId = task.id.split(":")[1];
+                          return (
+                            <TaskProgressInline
+                              progress={computeTaskProgress({
+                                isCompleted: false,
+                                plannedHours: 0,
+                                actualHours: 0,
+                                hasRunning: (actualItemsByTask.get(taskId) ?? []).some((s) => s.isRunning),
+                              })}
+                              stripes={[
+                                ...(plannedItemsByTask.get(taskId) ?? []),
+                                ...(actualItemsByTask.get(taskId) ?? []),
+                              ]}
+                            />
+                          );
+                        })()}
                       </div>
                       <div className="relative h-8 mx-2" style={{ gridColumn: `2 / span ${axis.length}` }}>
                         <GanttDayGrid

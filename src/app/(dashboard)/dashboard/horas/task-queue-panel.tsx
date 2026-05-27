@@ -18,6 +18,7 @@ export interface WorkerQueueTask {
   process: string;
   order: number;
   plannedRanges: string[];
+  plannedDateRanges: { startedAt: string; endedAt: string }[];
 }
 
 export interface OpenTimerInfo {
@@ -198,6 +199,7 @@ export function TaskQueuePanel({
                       lampId: nextTask.lampId,
                       taskId: nextTask.id,
                       process: nextTask.process,
+                      ranges: nextTask.plannedDateRanges,
                     }}
                   />
                 </div>

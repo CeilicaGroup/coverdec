@@ -36,6 +36,8 @@ import {
 import { formatDayMonthYear, formatShortDate } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
+import { computeTaskProgress } from "@/features/planning/task-progress";
+import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -57,6 +59,9 @@ interface GanttChartProps {
   autoExpandProjectId?: string;
   autoExpandLampId?: string;
   processStyles: Record<string, ProcessBadgeStyle>;
+  mode: "plan" | "actual";
+  plannedItemsByTask: Map<string, ProgressStripe[]>;
+  actualItemsByTask: Map<string, ProgressStripe[]>;
 }
 
 function formatMinutesClock(minutes: number): string {
@@ -564,6 +569,9 @@ function TaskGanttRow({
   todayIdx,
   timeAxis,
   processStyles,
+  mode,
+  plannedItemsByTask,
+  actualItemsByTask,
 }: {
   task: GanttTaskRow;
   axis: string[];
@@ -571,6 +579,9 @@ function TaskGanttRow({
   todayIdx: number;
   timeAxis: GanttTimeAxisContext;
   processStyles: Record<string, ProcessBadgeStyle>;
+  mode: "plan" | "actual";
+  plannedItemsByTask: Map<string, ProgressStripe[]>;
+  actualItemsByTask: Map<string, ProgressStripe[]>;
 }) {
   const processStyle = processStyles[task.process];
   const barColor = processStyle?.borderColor ?? "#6B7280";
@@ -600,6 +611,19 @@ function TaskGanttRow({
             Bastidor: <span className="text-foreground">{task.lampFrameLabel}</span>
           </div>
         ) : null}
+        <TaskProgressInline
+          progress={computeTaskProgress({
+            isCompleted: task.isPlanningComplete,
+            plannedHours: (plannedItemsByTask.get(task.id) ?? []).length,
+            actualHours: (actualItemsByTask.get(task.id) ?? []).length,
+            hasRunning: (actualItemsByTask.get(task.id) ?? []).some((s) => s.isRunning),
+          })}
+          stripes={[
+            ...(plannedItemsByTask.get(task.id) ?? []),
+            ...(actualItemsByTask.get(task.id) ?? []),
+          ]}
+          className="block"
+        />
         <GanttPlanningStatus
           isPlanningComplete={task.isPlanningComplete}
           isAssigned={task.isAssigned}
@@ -639,6 +663,9 @@ export function GanttChart({
   autoExpandProjectId,
   autoExpandLampId,
   processStyles,
+  mode,
+  plannedItemsByTask,
+  actualItemsByTask,
 }: GanttChartProps) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -767,6 +794,9 @@ export function GanttChart({
                                     todayIdx={todayIdx}
                                     timeAxis={timeAxis}
                                     processStyles={processStyles}
+                                    mode={mode}
+                                    plannedItemsByTask={plannedItemsByTask}
+                                    actualItemsByTask={actualItemsByTask}
                                   />
                                 ))
                               : null}

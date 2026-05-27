@@ -33,16 +33,20 @@ import { formatDayMonthYear, formatHours } from "@/lib/format";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
+import { computeTaskProgress } from "@/features/planning/task-progress";
+import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
 interface GridCell {
   id: string;
+  taskId: string | null;
   hours: number;
   startSlot: number | null;
   endSlot: number | null;
   /** Overrides slot-derived label for actual entries: "HH:MM–HH:MM" */
   timeLabel: string | null;
+  isRunning: boolean;
   process: string;
   project: string;
   lamp: string | null;
@@ -73,11 +77,21 @@ export default async function SemanaPage({
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
-  const [people, holidays, absences, processStyles] = await Promise.all([
-    getNavePersonnel(naveScopeFromContext(ctx)),
+  const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta] = await Promise.all([
+    getNavePersonnel(naveScope),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
     getProcessBadgeStylesByCode(),
+    getPlanningForWeek({
+      naveScope,
+      weekStart,
+      viewMode,
+    }),
+    getActualHoursForWeek({
+      naveScope,
+      weekStart,
+    }),
+    getPlanningWeekMeta({ naveScope, weekStart }),
   ]);
 
   const holidayDates = expandHolidayRangesToIsoDays(
@@ -86,28 +100,28 @@ export default async function SemanaPage({
     days[days.length - 1] ?? days[0],
   );
 
-  let grid: Map<string, Map<string, GridCell[]>>;
-  let hiddenDraft = false;
-  let noPublished = false;
-
-  if (view === "actual") {
-    const actualEntries = await getActualHoursForWeek({
-      naveScope,
-      weekStart,
-    });
-    grid = buildActualGrid(actualEntries, people, days);
-  } else {
-    const [planning, planningMeta] = await Promise.all([
-      getPlanningForWeek({ naveScope, weekStart, viewMode }),
-      getPlanningWeekMeta({ naveScope, weekStart }),
-    ]);
-    grid = buildPlanGrid(planning, people, days);
-    hiddenDraft =
-      viewMode === "published_only" &&
-      planningMeta?.status === "DRAFT" &&
-      !planning;
-    noPublished = viewMode === "published_only" && !planningMeta && !planning;
+  const planGrid = buildPlanGrid(planning, people, days);
+  const actualGrid = buildActualGrid(actualEntries, people, days);
+  const grid = view === "actual" ? actualGrid : planGrid;
+  const planTask = buildPersonTaskSummary(planGrid);
+  const actualTask = buildPersonTaskSummary(actualGrid);
+  const actualRunningByTask =
+    view === "actual" ? new Map<string, boolean>() : new Map<string, boolean>();
+  for (const [personId, runningByTask] of actualTask.runningByPersonTask) {
+    for (const [taskId, isRunning] of runningByTask) {
+      if (isRunning) actualRunningByTask.set(taskId, true);
+    }
   }
+  const hiddenDraft =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    planningMeta?.status === "DRAFT" &&
+    !planning;
+  const noPublished =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    !planningMeta &&
+    !planning;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -171,8 +185,14 @@ export default async function SemanaPage({
               <PersonRow
                 key={person.id}
                 person={person}
+                view={view}
                 days={days}
                 cells={grid.get(person.id) ?? new Map()}
+                plannedHoursByTask={planTask.hoursByPersonTask.get(person.id) ?? new Map()}
+                actualHoursByTask={actualTask.hoursByPersonTask.get(person.id) ?? new Map()}
+                plannedItemsByTask={planTask.itemsByPersonTask.get(person.id) ?? new Map()}
+                actualItemsByTask={actualTask.itemsByPersonTask.get(person.id) ?? new Map()}
+                actualRunningByTask={actualTask.runningByPersonTask.get(person.id) ?? new Map()}
                 absences={absences.filter((a) => a.personId === person.id)}
                 processStyles={processStyles}
               />
@@ -186,14 +206,26 @@ export default async function SemanaPage({
 
 function PersonRow({
   person,
+  view,
   days,
   cells,
+  plannedHoursByTask,
+  actualHoursByTask,
+  plannedItemsByTask,
+  actualItemsByTask,
+  actualRunningByTask,
   absences,
   processStyles,
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string };
+  view: "plan" | "actual";
   days: Date[];
   cells: Map<string, GridCell[]>;
+  plannedHoursByTask: Map<string, number>;
+  actualHoursByTask: Map<string, number>;
+  plannedItemsByTask: Map<string, { id: string; label: string }[]>;
+  actualItemsByTask: Map<string, { id: string; label: string }[]>;
+  actualRunningByTask: Map<string, boolean>;
   absences: { date: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
 }) {
@@ -227,6 +259,25 @@ function PersonRow({
             ) : (
               tasks.map((t) => {
                 const colors = processColor(t.process, processStyles.get(t.process));
+                const planned = t.taskId ? (plannedHoursByTask.get(t.taskId) ?? 0) : 0;
+                const actual = t.taskId ? (actualHoursByTask.get(t.taskId) ?? 0) : 0;
+                const stripes: ProgressStripe[] = t.taskId
+                  ? [
+                      ...(plannedItemsByTask.get(t.taskId) ?? []).map((x) => ({
+                        id: `plan-${x.id}`,
+                        label: x.label,
+                        kind: "plan" as const,
+                      })),
+                      ...(actualItemsByTask.get(t.taskId) ?? []).map((x) => ({
+                        id: `actual-${x.id}`,
+                        label: x.label,
+                        kind: "actual" as const,
+                      })),
+                    ]
+                  : [];
+                const hasRunning = t.taskId
+                  ? (actualRunningByTask.get(t.taskId) ?? false)
+                  : false;
                 return (
                   <div
                     key={t.id}
@@ -259,6 +310,18 @@ function PersonRow({
                         {formatHours(t.hours)}
                       </span>
                     </div>
+                    {t.taskId ? (
+                      <TaskProgressInline
+                        progress={computeTaskProgress({
+                          isCompleted: false,
+                          plannedHours: planned,
+                          actualHours: actual,
+                          hasRunning,
+                        })}
+                        stripes={stripes}
+                        className="mt-0.5 block"
+                      />
+                    ) : null}
                   </div>
                 );
               })
@@ -289,10 +352,12 @@ function buildPlanGrid(
     const cell = personMap.get(key) ?? [];
     cell.push({
       id: a.id,
+      taskId: a.taskId,
       hours: a.hours,
       startSlot: a.startSlot,
       endSlot: a.endSlot,
       timeLabel: null,
+      isRunning: false,
       process: a.process,
       project: a.task.project.name,
       lamp: a.task.lamp?.name ?? null,
@@ -320,10 +385,12 @@ function buildActualGrid(
     const cell = personMap.get(e.date) ?? [];
     cell.push({
       id: e.id,
+      taskId: e.taskId,
       hours: e.hours,
       startSlot: null,
       endSlot: null,
       timeLabel: formatTimeRange(e.startedAt, e.hours),
+      isRunning: e.isRunning,
       process: e.process ?? "—",
       project: e.project?.name ?? "—",
       lamp: e.lamp?.name ?? null,
@@ -331,4 +398,37 @@ function buildActualGrid(
     personMap.set(e.date, cell);
   }
   return grid;
+}
+
+function buildPersonTaskSummary(grid: Map<string, Map<string, GridCell[]>>) {
+  const hoursByPersonTask = new Map<string, Map<string, number>>();
+  const itemsByPersonTask = new Map<string, Map<string, { id: string; label: string }[]>>();
+  const runningByPersonTask = new Map<string, Map<string, boolean>>();
+  for (const [personId, dayMap] of grid) {
+    const hours = new Map<string, number>();
+    const items = new Map<string, { id: string; label: string }[]>();
+    const running = new Map<string, boolean>();
+    for (const [date, dayCells] of dayMap) {
+      for (const cell of dayCells) {
+        if (!cell.taskId) continue;
+        hours.set(cell.taskId, (hours.get(cell.taskId) ?? 0) + cell.hours);
+        const list = items.get(cell.taskId) ?? [];
+        const when =
+          cell.timeLabel ??
+          (cell.startSlot != null && cell.endSlot != null
+            ? rangeLabel(cell.startSlot, cell.endSlot)
+            : "sin hora");
+        list.push({
+          id: cell.id,
+          label: `${date} · ${when} · ${formatHours(cell.hours)} · ${cell.process}`,
+        });
+        items.set(cell.taskId, list);
+        if (cell.isRunning) running.set(cell.taskId, true);
+      }
+    }
+    hoursByPersonTask.set(personId, hours);
+    itemsByPersonTask.set(personId, items);
+    runningByPersonTask.set(personId, running);
+  }
+  return { hoursByPersonTask, itemsByPersonTask, runningByPersonTask };
 }

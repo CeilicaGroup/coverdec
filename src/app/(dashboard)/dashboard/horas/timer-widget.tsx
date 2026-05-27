@@ -34,6 +34,7 @@ export function TimerWidget({
   const [projectId, setProjectId] = useState<string>("");
   const [lampId, setLampId] = useState<string>("");
   const [process, setProcess] = useState<string>("");
+  const [taskId, setTaskId] = useState<string>("");
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -76,6 +77,11 @@ export function TimerWidget({
   }
 
   const project = projects.find((p) => p.id === projectId);
+  const taskOptions = (project?.tasks ?? []).filter((t) => {
+    if (lampId && t.lampId !== lampId) return false;
+    if (process && t.process !== process) return false;
+    return true;
+  });
 
   return (
     <form
@@ -86,11 +92,16 @@ export function TimerWidget({
           toast.error("Selecciona proyecto");
           return;
         }
+        if (!taskId) {
+          toast.error("Selecciona tarea");
+          return;
+        }
         startTransition(async () => {
           try {
             await startTimer({
               projectId,
               lampId: lampId || undefined,
+              taskId,
               process: process || undefined,
             });
             toast.success("Timer iniciado");
@@ -102,7 +113,15 @@ export function TimerWidget({
     >
       <div className="space-y-2">
         <Label>Proyecto</Label>
-        <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
+        <Select
+          value={projectId}
+          onValueChange={(v) => {
+            setProjectId(v ?? "");
+            setLampId("");
+            setProcess("");
+            setTaskId("");
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Selecciona proyecto">
               {projectId ? (projects.find((p) => p.id === projectId)?.name ?? "") : undefined}
@@ -120,7 +139,13 @@ export function TimerWidget({
       {project && project.lamps.length > 0 && (
         <div className="space-y-2">
           <Label>Lámpara</Label>
-          <Select value={lampId} onValueChange={(v) => setLampId(v ?? "")}>
+          <Select
+            value={lampId}
+            onValueChange={(v) => {
+              setLampId(v ?? "");
+              setTaskId("");
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder="(opcional)">
                 {lampId ? (project.lamps.find((l) => l.id === lampId)?.name ?? "") : undefined}
@@ -138,7 +163,13 @@ export function TimerWidget({
       )}
       <div className="space-y-2">
         <Label>Proceso</Label>
-        <Select value={process} onValueChange={(v) => setProcess(v ?? "")}>
+        <Select
+          value={process}
+          onValueChange={(v) => {
+            setProcess(v ?? "");
+            setTaskId("");
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="(opcional)" />
           </SelectTrigger>
@@ -146,6 +177,21 @@ export function TimerWidget({
             {[...new Set((project?.tasks ?? []).map((t) => t.process))].map((p) => (
               <SelectItem key={p} value={p}>
                 {processLabels[p] ?? p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Tarea</Label>
+        <Select value={taskId} onValueChange={(v) => setTaskId(v ?? "")}>
+          <SelectTrigger>
+            <SelectValue placeholder="Selecciona tarea" />
+          </SelectTrigger>
+          <SelectContent>
+            {taskOptions.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {processLabels[t.process] ?? t.process}
               </SelectItem>
             ))}
           </SelectContent>
