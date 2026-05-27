@@ -10,6 +10,10 @@ import { TimeEntrySource } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
 import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
 import { Role } from "@/generated/prisma";
+import {
+  assertNoInternalOverlaps,
+  computeTotalHours,
+} from "@/features/time-tracking/manual-ranges";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -60,6 +64,16 @@ async function reverseWorkOnTask(
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard", "layout");
+}
+
+async function assertNoOpenTimer(ctxUserId: string) {
+  const open = await prisma.timeEntry.findFirst({
+    where: { userId: ctxUserId, endedAt: null },
+    select: { id: true, taskId: true },
+  });
+  if (open) {
+    throw new Error("Tienes un timer activo. Páralo antes de completar tareas.");
+  }
 }
 
 async function assertTaskAccessible(
@@ -142,6 +156,31 @@ export async function stopTimer(input: z.infer<typeof stopSchema>) {
   revalidateHorasAndLoad();
 }
 
+const completeTaskSchema = z.object({ taskId: z.string().min(1) });
+
+export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  const data = completeTaskSchema.parse(input);
+  await assertTaskAccessible(ctx, data.taskId);
+  await assertNoOpenTimer(ctx.userId);
+
+  await prisma.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: { id: data.taskId },
+      select: { id: true, isCompleted: true },
+    });
+    if (!task) throw new Error("Tarea no encontrada.");
+    if (task.isCompleted) return;
+    await tx.task.update({
+      where: { id: task.id },
+      data: { isCompleted: true },
+    });
+  });
+
+  log.info({ userId: ctx.userId, taskId: data.taskId }, "task completed");
+  revalidateHorasAndLoad();
+}
+
 const manualSchema = z.object({
   projectId: z.string().min(1),
   lampId: z.string().min(1).optional(),
@@ -184,6 +223,85 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
     });
     await creditWorkOnTask(tx, { taskId: data.taskId, hours: data.hours });
   });
+  revalidateHorasAndLoad();
+}
+
+const manualRangesSchema = z.object({
+  projectId: z.string().min(1),
+  lampId: z.string().min(1).optional(),
+  taskId: z.string().min(1),
+  process: z.string().min(1),
+  notes: z.string().max(500).optional(),
+  markCompleted: z.boolean().optional(),
+  ranges: z
+    .array(
+      z.object({
+        startedAt: z.string().min(8),
+        endedAt: z.string().min(8),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+export async function createManualEntriesFromRanges(
+  input: z.infer<typeof manualRangesSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  const data = manualRangesSchema.parse(input);
+
+  await assertTaskAccessible(ctx, data.taskId);
+  const unlocked = await isTaskUnlocked(data.taskId);
+  if (!unlocked) {
+    throw new Error(
+      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+    );
+  }
+
+  const parsedRanges = data.ranges.map((r) => ({
+    startedAt: new Date(r.startedAt),
+    endedAt: new Date(r.endedAt),
+  }));
+
+  assertNoInternalOverlaps(parsedRanges);
+
+  for (const r of parsedRanges) {
+    await assertNoTimeOverlap(ctx.userId, r.startedAt, r.endedAt);
+  }
+
+  const totalHours = computeTotalHours(parsedRanges);
+
+  await prisma.$transaction(async (tx) => {
+    for (const r of parsedRanges) {
+      const hours = (r.endedAt.getTime() - r.startedAt.getTime()) / 3600000;
+      await tx.timeEntry.create({
+        data: {
+          userId: ctx.userId,
+          projectId: data.projectId,
+          lampId: data.lampId,
+          taskId: data.taskId,
+          process: data.process,
+          source: TimeEntrySource.MANUAL,
+          startedAt: r.startedAt,
+          endedAt: r.endedAt,
+          hours,
+          notes: data.notes,
+        },
+      });
+    }
+    await creditWorkOnTask(tx, { taskId: data.taskId, hours: totalHours });
+    if (data.markCompleted) {
+      await tx.task.update({
+        where: { id: data.taskId },
+        data: { isCompleted: true },
+      });
+    }
+  });
+
+  log.info(
+    { userId: ctx.userId, taskId: data.taskId, ranges: data.ranges.length, totalHours },
+    "manual ranges created",
+  );
   revalidateHorasAndLoad();
 }
 

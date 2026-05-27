@@ -336,6 +336,7 @@ model Task {
   estimatedHours Float
   pendingHours   Float
   doneHours      Float    @default(0)
+  isCompleted    Boolean  @default(false)
   order          Int      @default(0)
   isLocked       Boolean  @default(false)
   naveId         String

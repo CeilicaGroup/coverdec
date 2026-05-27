@@ -84,7 +84,7 @@ export async function getNextTaskOrder(
 }
 
 export function filterUnlockedTasks<
-  T extends { id: string; lampId: string; order: number; pendingHours: number },
+  T extends { id: string; lampId: string; order: number; pendingHours: number; isCompleted?: boolean },
 >(tasks: T[]): T[] {
   const byLamp = new Map<string, T[]>();
   for (const t of tasks) {
@@ -99,6 +99,10 @@ export function filterUnlockedTasks<
     const lampTasks = byLamp.get(task.lampId) ?? [];
     for (const prev of lampTasks) {
       if (prev.order >= task.order) break;
+      if (typeof prev.isCompleted === "boolean") {
+        if (!prev.isCompleted) return false;
+        continue;
+      }
       if (prev.pendingHours > 0) return false;
     }
     return true;
@@ -111,15 +115,16 @@ export async function isTaskUnlocked(
 ): Promise<boolean> {
   const task = await tx.task.findUnique({
     where: { id: taskId },
-    select: { lampId: true, order: true },
+    select: { lampId: true, order: true, isCompleted: true },
   });
   if (!task) return false;
+  if (task.isCompleted) return false;
 
   const blockers = await tx.task.count({
     where: {
       lampId: task.lampId,
       order: { lt: task.order },
-      pendingHours: { gt: 0 },
+      isCompleted: false,
     },
   });
   return blockers === 0;
