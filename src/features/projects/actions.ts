@@ -99,7 +99,7 @@ const lampFrameInputSchema = z.object({
 const lampSchema = z.object({
   projectId: z.string().min(1),
   name: z.string().min(1),
-  naveId: z.string().min(1),
+  naveId: z.string().min(1).optional(),
   frames: z.array(lampFrameInputSchema).min(1),
 });
 
@@ -107,6 +107,16 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = lampSchema.parse(input);
+  const fallbackNave = data.naveId
+    ?? ctx.naveId
+    ?? (await prisma.nave.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+      orderBy: { codigo: "asc" },
+    }))?.id;
+  if (!fallbackNave) {
+    throw new Error("No hay naves activas para asignar las tareas.");
+  }
 
   const frameTypeIds = [...new Set(data.frames.map((f) => f.frameTypeId))];
   const frameTypes = await prisma.frameType.findMany({
@@ -182,7 +192,7 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
             estimatedHours: bp.estimatedHours,
             pendingHours: bp.estimatedHours,
             order: bp.order + physicalFrameIndex * 1000,
-            naveId: data.naveId,
+            naveId: fallbackNave,
           });
         }
 
@@ -346,6 +356,49 @@ export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchem
   await prisma.task.update({
     where: { id: task.id },
     data: { notes: data.notes?.trim() ? data.notes.trim() : null },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+}
+
+const reorderTaskSchema = z.object({
+  taskId: z.string().min(1),
+  direction: z.enum(["up", "down"]),
+});
+
+export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = reorderTaskSchema.parse(input);
+
+  await prisma.$transaction(async (tx) => {
+    const task = await tx.task.findUnique({
+      where: { id: data.taskId },
+      select: { id: true, lampId: true, order: true },
+    });
+    if (!task) throw new Error("Tarea no encontrada");
+
+    const sibling = await tx.task.findFirst({
+      where: {
+        lampId: task.lampId,
+        order:
+          data.direction === "up"
+            ? { lt: task.order }
+            : { gt: task.order },
+      },
+      orderBy: { order: data.direction === "up" ? "desc" : "asc" },
+      select: { id: true, order: true },
+    });
+    if (!sibling) return;
+
+    await tx.task.update({
+      where: { id: task.id },
+      data: { order: sibling.order },
+    });
+    await tx.task.update({
+      where: { id: sibling.id },
+      data: { order: task.order },
+    });
   });
 
   revalidatePath("/dashboard/proyectos");

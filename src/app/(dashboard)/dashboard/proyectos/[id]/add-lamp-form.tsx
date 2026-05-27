@@ -37,12 +37,6 @@ interface FrameTypeOption {
   processes: (ProcessBadgeStyle & FrameProcessInput)[];
 }
 
-interface NaveSummary {
-  id: string;
-  codigo: string;
-  nombre: string;
-}
-
 interface DraftFrame {
   clientId: string;
   frameTypeId: string;
@@ -76,19 +70,14 @@ function processDefinition(
 export function AddLampForm({
   projectId,
   frameTypes,
-  naves = [],
-  defaultNaveId,
 }: {
   projectId: string;
   frameTypes: FrameTypeOption[];
-  naves?: NaveSummary[];
-  defaultNaveId?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
-  const [naveId, setNaveId] = useState(defaultNaveId ?? "");
   const [draftFrames, setDraftFrames] = useState<DraftFrame[]>([newDraftFrame()]);
 
   const frameTypeById = useMemo(
@@ -98,7 +87,6 @@ export function AddLampForm({
 
   const resetForm = () => {
     setName("");
-    setNaveId(defaultNaveId ?? "");
     setDraftFrames([newDraftFrame()]);
   };
 
@@ -159,10 +147,6 @@ export function AddLampForm({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!naveId) {
-              toast.error("Selecciona una nave");
-              return;
-            }
             if (!canSubmit) {
               toast.error("Completa todos los bastidores con medida y tareas válidas");
               return;
@@ -172,7 +156,6 @@ export function AddLampForm({
                 await createLamp({
                   projectId,
                   name,
-                  naveId,
                   frames: parsedFrames.map(({ row, medida, units }) => ({
                     frameTypeId: row.frameTypeId,
                     surfaceM2: medida,
@@ -193,26 +176,6 @@ export function AddLampForm({
             <Label>Nombre de la lámpara</Label>
             <Input required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-
-          {naves.length > 0 && (
-            <div className="space-y-2">
-              <Label>Nave</Label>
-              <Select value={naveId} onValueChange={(v) => setNaveId(v ?? "")} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona nave">
-                    {naveId ? (naves.find((n) => n.id === naveId)?.nombre ?? "") : undefined}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {naves.map((n) => (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.codigo} · {n.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">

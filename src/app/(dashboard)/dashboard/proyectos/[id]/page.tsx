@@ -162,8 +162,6 @@ export default async function ProjectDetailPage({
                   borderColor: p.definition.borderColor,
                 })),
               }))}
-              naves={naves}
-              defaultNaveId={ctx.naveId ?? undefined}
             />
           ) : null}
         </CardHeader>

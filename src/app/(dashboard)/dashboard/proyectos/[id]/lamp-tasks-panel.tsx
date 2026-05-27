@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +27,7 @@ import type { ProcessCode } from "@/types/process";
 import {
   addExtraTask,
   deleteTask,
+  reorderTask,
   updateTaskHours,
   updateTaskNotes,
 } from "@/features/projects/actions";
@@ -152,6 +153,50 @@ export function LampTasksPanel({
               {canManage ? (
                 <td className="py-1.5 px-2 text-right">
                   <div className="flex justify-end gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      disabled={idx === 0}
+                      onClick={() => {
+                        startTransition(async () => {
+                          try {
+                            await reorderTask({ taskId: t.id, direction: "up" });
+                            router.refresh();
+                          } catch (err) {
+                            toast.error(
+                              err instanceof Error ? err.message : "Error",
+                            );
+                          }
+                        });
+                      }}
+                      aria-label="Subir tarea"
+                    >
+                      <ArrowUp className="size-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      disabled={idx === sorted.length - 1}
+                      onClick={() => {
+                        startTransition(async () => {
+                          try {
+                            await reorderTask({ taskId: t.id, direction: "down" });
+                            router.refresh();
+                          } catch (err) {
+                            toast.error(
+                              err instanceof Error ? err.message : "Error",
+                            );
+                          }
+                        });
+                      }}
+                      aria-label="Bajar tarea"
+                    >
+                      <ArrowDown className="size-3" />
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
