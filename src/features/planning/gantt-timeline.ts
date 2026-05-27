@@ -8,6 +8,7 @@ import {
 import type { GanttTimeAxisContext } from "@/features/planning/gantt-time-axis";
 import { minuteToDayFraction } from "@/features/planning/gantt-time-axis";
 import type { GanttPlanningAssignment } from "@/features/planning/queries";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 import { toUtcDay } from "@/lib/week";
 
 function toPlanningDayIso(d: Date): string {
@@ -329,11 +330,7 @@ export function buildTaskTimelineBlocks(
 
   if (forTask.length === 0) return [];
 
-  const frameLabel =
-    forTask[0]!.task.lampFrame?.label ??
-    forTask[0]!.task.lampFrame?.frameType?.name ??
-    forTask[0]!.task.lamp.frameType?.name ??
-    null;
+  const frameLabel = getTaskLampFrameLabel(forTask[0]!.task);
 
   const work: GanttTimelineBlock[] = forTask.map((a) => {
     const dayIso = toPlanningDayIso(a.date);

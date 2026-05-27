@@ -44,6 +44,8 @@ import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
@@ -198,9 +200,14 @@ export default async function PersonaPage({
                             <div className="font-semibold text-xs">
                               {e.project?.name ?? "—"}
                             </div>
-                            <div className="text-[10px] text-muted-foreground">
-                              {e.lamp?.name ?? ""}
-                            </div>
+                            {e.lamp?.name ? (
+                              <div className="text-[10px] text-muted-foreground">
+                                {e.lamp.name}
+                              </div>
+                            ) : null}
+                            <TaskLampBastidor
+                              label={e.task ? getTaskLampFrameLabel(e.task) : null}
+                            />
                           </TableCell>
                           <TableCell>
                             {e.process ? (
@@ -356,9 +363,14 @@ export default async function PersonaPage({
                           <div className="font-semibold text-xs">
                             {item.assignment.task.project.name}
                           </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {item.assignment.task.lamp?.name ?? ""}
-                          </div>
+                          {item.assignment.task.lamp?.name ? (
+                            <div className="text-[10px] text-muted-foreground">
+                              {item.assignment.task.lamp.name}
+                            </div>
+                          ) : null}
+                          <TaskLampBastidor
+                            label={getTaskLampFrameLabel(item.assignment.task)}
+                          />
                         </TableCell>
                         <TableCell>
                           <ProcessBadge

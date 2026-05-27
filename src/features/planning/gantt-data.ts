@@ -8,6 +8,7 @@ import {
   slotToStartMinutes,
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-timeline";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 
 export type { GanttTimelineBlock } from "@/features/planning/gantt-timeline";
 
@@ -318,17 +319,6 @@ function buildTasksWithEstimates(
     const sorted = [...lampTasks].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );
-    const distinctFrameLabels = new Set(
-      sorted
-        .map((t) => {
-          if (t.lampFrame?.label) return t.lampFrame.label;
-          if (t.lampFrame?.frameType?.name) return t.lampFrame.frameType.name;
-          if (t.lamp?.frameType?.name) return t.lamp.frameType.name;
-          return null;
-        })
-        .filter((x): x is string => Boolean(x)),
-    );
-    const showFrameLabel = distinctFrameLabels.size > 1;
     let chainStartIso: string | null = null;
     const lampRows: GanttTaskRow[] = [];
 
@@ -402,12 +392,7 @@ function buildTasksWithEstimates(
         endSlot: range.endSlot,
         timelineBlocks,
         personIds: schedule.personIds,
-        lampFrameLabel: showFrameLabel
-          ? t.lampFrame?.label ??
-            t.lampFrame?.frameType?.name ??
-            t.lamp?.frameType?.name ??
-            null
-          : null,
+        lampFrameLabel: getTaskLampFrameLabel(t),
         operators: schedule.operators,
       });
     }

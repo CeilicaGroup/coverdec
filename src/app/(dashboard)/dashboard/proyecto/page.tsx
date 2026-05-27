@@ -46,6 +46,8 @@ import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 import { Role } from "@/generated/prisma";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
@@ -314,7 +316,10 @@ function ActualProjectTable({
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
               </TableCell>
-              <TableCell className="text-xs">{e.lamp?.name ?? "—"}</TableCell>
+              <TableCell>
+                <div className="text-xs">{e.lamp?.name ?? "—"}</div>
+                <TaskLampBastidor label={e.task ? getTaskLampFrameLabel(e.task) : null} />
+              </TableCell>
               <TableCell>
                 {e.process ? (
                   <ProcessBadge
@@ -503,7 +508,10 @@ function PlanProjectTable({
                     </span>
                   </div>
                 </TableCell>
-                <TableCell className="text-xs">{item.assignment.task.lamp?.name ?? "—"}</TableCell>
+                <TableCell>
+                  <div className="text-xs">{item.assignment.task.lamp?.name ?? "—"}</div>
+                  <TaskLampBastidor label={getTaskLampFrameLabel(item.assignment.task)} />
+                </TableCell>
                 <TableCell>
                   <ProcessBadge
                     code={item.assignment.process}

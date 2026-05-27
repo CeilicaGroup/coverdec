@@ -36,6 +36,8 @@ import { getPlanningViewModeForContext } from "@/features/planning/planning-visi
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 import { Role } from "@/generated/prisma";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
@@ -59,6 +61,7 @@ interface GridCell {
   process: string;
   project: string;
   lamp: string | null;
+  bastidor: string | null;
   startedAt: string | null;
   endedAt: string | null;
   notes: string | null;
@@ -346,9 +349,15 @@ function PersonRow({
                     <div className="font-semibold truncate" style={{ color: colors.fgColor }}>
                       {t.project}
                     </div>
-                    <div className="text-[9px] truncate opacity-80" style={{ color: colors.fgColor }}>
-                      {t.lamp ?? ""}
-                    </div>
+                    {t.lamp ? (
+                      <div className="text-[9px] truncate opacity-80" style={{ color: colors.fgColor }}>
+                        {t.lamp}
+                      </div>
+                    ) : null}
+                    <TaskLampBastidor
+                      label={t.bastidor}
+                      className="text-[9px] opacity-80"
+                    />
                     <div className="flex items-center gap-1 mt-0.5">
                       <ProcessBadge
                         code={t.process}
@@ -483,6 +492,7 @@ function buildPlanGrid(
       process: a.process,
       project: a.task.project.name,
       lamp: a.task.lamp?.name ?? null,
+      bastidor: getTaskLampFrameLabel(a.task),
       startedAt: null,
       endedAt: null,
       notes: null,
@@ -524,6 +534,7 @@ function buildActualGrid(
       process: e.process ?? "—",
       project: e.project?.name ?? "—",
       lamp: e.lamp?.name ?? null,
+      bastidor: e.task ? getTaskLampFrameLabel(e.task) : null,
       startedAt: e.startedAt.toISOString(),
       endedAt: e.endedAt?.toISOString() ?? null,
       notes: e.notes,

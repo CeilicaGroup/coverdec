@@ -24,7 +24,8 @@ export interface PlanningAssignmentSlice {
     isCompleted: boolean;
     projectId: string;
     lampId: string;
-    lamp: { name: string | null } | null;
+    lamp: { name: string | null; frameType?: { name: string } | null } | null;
+    lampFrame?: { label: string | null; frameType?: { name: string } | null } | null;
     project: { name: string };
   };
 }

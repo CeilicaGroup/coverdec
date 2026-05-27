@@ -38,6 +38,7 @@ import { ViewToggle } from "../../_components/view-toggle";
 import { formatHours } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import type { ProgressStripe } from "@/components/task-progress";
+import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -98,11 +99,7 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         endMinutes: slotToEndMinutes(a.endSlot),
         hours: a.hours,
         label: (() => {
-          const frameLabel =
-            a.task.lampFrame?.label ??
-            a.task.lampFrame?.frameType?.name ??
-            a.task.lamp.frameType?.name ??
-            null;
+          const frameLabel = getTaskLampFrameLabel(a.task);
           const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
           return `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h${bastidor}`;
         })(),
@@ -126,11 +123,7 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
           taskId,
           personId: workerId,
           label: (() => {
-            const frameLabel =
-              first.task.lampFrame?.label ??
-              first.task.lampFrame?.frameType?.name ??
-              first.task.lamp.frameType?.name ??
-              null;
+            const frameLabel = getTaskLampFrameLabel(first.task);
             const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
             return `${first.task.project.name} · ${first.task.lamp.name ?? "Lámpara"}${bastidor}`;
           })(),
@@ -148,11 +141,7 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
             endMinutes: slotToEndMinutes(a.endSlot),
             hours: a.hours,
             label: (() => {
-              const frameLabel =
-                a.task.lampFrame?.label ??
-                a.task.lampFrame?.frameType?.name ??
-                a.task.lamp.frameType?.name ??
-                null;
+              const frameLabel = getTaskLampFrameLabel(a.task);
               const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
               return `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h${bastidor}`;
             })(),

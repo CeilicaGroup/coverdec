@@ -93,7 +93,13 @@ export async function getPlanningForWeek({
     assignments: {
       include: {
         person: { include: { user: { select: { name: true } } } },
-        task: { include: { project: true, lamp: true } },
+        task: {
+          include: {
+            project: true,
+            lamp: { include: { frameType: { select: { name: true } } } },
+            lampFrame: { include: { frameType: { select: { name: true } } } },
+          },
+        },
       },
       orderBy: [{ date: "asc" as const }, { startSlot: "asc" as const }],
     },
@@ -213,6 +219,8 @@ export interface ActualHourEntry {
     projectId: string;
     lampId: string;
     isCompleted: boolean;
+    lampFrame?: { label: string | null; frameType?: { name: string } | null } | null;
+    lamp?: { frameType?: { name: string } | null } | null;
   } | null;
   project: { id: string; name: string } | null;
   lamp: { id: string; name: string } | null;
@@ -248,7 +256,19 @@ export async function getActualHoursForWeek({
       user: { include: { person: { include: { user: { select: { name: true } } } } } },
       project: { select: { id: true, name: true } },
       lamp: { select: { id: true, name: true } },
-      task: { select: { id: true, process: true, projectId: true, lampId: true, isCompleted: true } },
+      task: {
+        select: {
+          id: true,
+          process: true,
+          projectId: true,
+          lampId: true,
+          isCompleted: true,
+          lampFrame: {
+            select: { label: true, frameType: { select: { name: true } } },
+          },
+          lamp: { select: { frameType: { select: { name: true } } } },
+        },
+      },
     },
     orderBy: { startedAt: "asc" },
   });
@@ -290,6 +310,8 @@ export async function getActualHoursForWeek({
           projectId: e.task.projectId,
           lampId: e.task.lampId,
           isCompleted: e.task.isCompleted,
+          lampFrame: e.task.lampFrame,
+          lamp: e.task.lamp,
         }
       : null,
     project: e.project,
