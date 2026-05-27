@@ -38,6 +38,7 @@ import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { TaskCompletionAction } from "@/features/time-tracking/task-progress-actions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -62,6 +63,8 @@ interface GanttChartProps {
   mode: "plan" | "actual";
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
+  plannedDueByTask: Map<string, number>;
+  canManageTasks?: boolean;
 }
 
 function formatMinutesClock(minutes: number): string {
@@ -572,6 +575,8 @@ function TaskGanttRow({
   mode,
   plannedItemsByTask,
   actualItemsByTask,
+  plannedDueByTask,
+  canManageTasks = false,
 }: {
   task: GanttTaskRow;
   axis: string[];
@@ -582,6 +587,8 @@ function TaskGanttRow({
   mode: "plan" | "actual";
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
+  plannedDueByTask: Map<string, number>;
+  canManageTasks?: boolean;
 }) {
   const processStyle = processStyles[task.process];
   const barColor = processStyle?.borderColor ?? "#6B7280";
@@ -615,13 +622,22 @@ function TaskGanttRow({
           progress={computeTaskProgress({
             isCompleted: task.isPlanningComplete,
             plannedHours: (plannedItemsByTask.get(task.id) ?? []).length,
+            plannedDueHours: plannedDueByTask.get(task.id) ?? 0,
             actualHours: (actualItemsByTask.get(task.id) ?? []).length,
             hasRunning: (actualItemsByTask.get(task.id) ?? []).some((s) => s.isRunning),
           })}
-          stripes={[
-            ...(plannedItemsByTask.get(task.id) ?? []),
-            ...(actualItemsByTask.get(task.id) ?? []),
-          ]}
+          stripes={
+            mode === "actual"
+              ? (plannedItemsByTask.get(task.id) ?? [])
+              : (actualItemsByTask.get(task.id) ?? [])
+          }
+          actions={
+            <TaskCompletionAction
+              taskId={task.id}
+              isCompleted={task.isPlanningComplete}
+              canManage={canManageTasks}
+            />
+          }
           className="block"
         />
         <GanttPlanningStatus
@@ -666,6 +682,8 @@ export function GanttChart({
   mode,
   plannedItemsByTask,
   actualItemsByTask,
+  plannedDueByTask,
+  canManageTasks = false,
 }: GanttChartProps) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -797,6 +815,8 @@ export function GanttChart({
                                     mode={mode}
                                     plannedItemsByTask={plannedItemsByTask}
                                     actualItemsByTask={actualItemsByTask}
+                                    plannedDueByTask={plannedDueByTask}
+                                    canManageTasks={canManageTasks}
                                   />
                                 ))
                               : null}

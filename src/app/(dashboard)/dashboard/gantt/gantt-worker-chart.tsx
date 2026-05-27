@@ -19,6 +19,9 @@ import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
+import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
+import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LABEL_COL = "minmax(220px, 260px)";
@@ -28,6 +31,8 @@ const WAIT_BAR_PATTERN =
 
 export interface GanttWorkerTaskRow {
   id: string;
+  taskId: string;
+  personId: string;
   label: string;
   process: string;
   estimatedStart: string | null;
@@ -162,6 +167,12 @@ export function GanttWorkerChart({
   mode,
   plannedItemsByTask,
   actualItemsByTask,
+  plannedDueByTask,
+  plannedHoursByTask,
+  actualHoursByTask,
+  completedByTask,
+  taskMetaById,
+  isAdmin,
 }: {
   axisStartIso: string;
   axisEndIso: string;
@@ -171,6 +182,12 @@ export function GanttWorkerChart({
   mode: "plan" | "actual";
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
+  plannedDueByTask: Map<string, number>;
+  plannedHoursByTask: Map<string, number>;
+  actualHoursByTask: Map<string, number>;
+  completedByTask: Map<string, boolean>;
+  taskMetaById: Map<string, { projectId: string; lampId: string | null; process: string }>;
+  isAdmin: boolean;
 }) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -256,19 +273,60 @@ export function GanttWorkerChart({
                           </TooltipContent>
                         </Tooltip>
                         {(() => {
-                          const taskId = task.id.split(":")[1];
+                          const taskId = task.taskId;
+                          const meta = taskMetaById.get(taskId);
+                          const workBlock = task.timelineBlocks.find((b) => b.kind === "work");
+                          const dayIso =
+                            workBlock?.startDayIso ??
+                            task.estimatedStart ??
+                            axis[0] ??
+                            new Date().toISOString().slice(0, 10);
+                          const planStartedAt = workBlock
+                            ? toIsoUtcFromDateAndHour(parseUtc(dayIso), slotToHour(workBlock.startSlot))
+                            : `${dayIso}T08:00:00.000Z`;
+                          const planEndedAt = workBlock
+                            ? toIsoUtcFromDateAndHour(
+                                parseUtc(workBlock.endDayIso ?? dayIso),
+                                slotEndToHour(workBlock.endSlot),
+                              )
+                            : `${dayIso}T09:00:00.000Z`;
                           return (
                             <TaskProgressInline
                               progress={computeTaskProgress({
-                                isCompleted: false,
-                                plannedHours: 0,
-                                actualHours: 0,
+                                isCompleted: completedByTask.get(taskId) ?? false,
+                                plannedHours: plannedHoursByTask.get(taskId) ?? 0,
+                                plannedDueHours: plannedDueByTask.get(taskId) ?? 0,
+                                actualHours: actualHoursByTask.get(taskId) ?? 0,
                                 hasRunning: (actualItemsByTask.get(taskId) ?? []).some((s) => s.isRunning),
                               })}
-                              stripes={[
-                                ...(plannedItemsByTask.get(taskId) ?? []),
-                                ...(actualItemsByTask.get(taskId) ?? []),
-                              ]}
+                              stripes={
+                                mode === "actual"
+                                  ? (plannedItemsByTask.get(taskId) ?? [])
+                                  : (plannedItemsByTask.get(taskId) ?? [])
+                              }
+                              actions={
+                                meta ? (
+                                  <TaskProgressActionsPanel
+                                    taskId={taskId}
+                                    isCompleted={completedByTask.get(taskId) ?? false}
+                                    canManageCompletion={isAdmin}
+                                    timeEntry={{
+                                      personId: task.personId,
+                                      projectId: meta.projectId,
+                                      lampId: meta.lampId ?? undefined,
+                                      taskId,
+                                      process: meta.process,
+                                      startedAt: planStartedAt,
+                                      endedAt: planEndedAt,
+                                      defaultStartedAt: planStartedAt,
+                                      defaultEndedAt: planEndedAt,
+                                      canEdit: isAdmin,
+                                      canCreate: isAdmin,
+                                      canDelete: isAdmin,
+                                    }}
+                                  />
+                                ) : null
+                              }
                             />
                           );
                         })()}

@@ -4,6 +4,43 @@ export function formatHours(hours: number | null | undefined): string {
   return `${rounded.toFixed(rounded % 1 === 0 ? 0 : 2)}h`;
 }
 
+const DEFAULT_DISPLAY_TIME_ZONE = "Europe/Madrid";
+
+function formatTimeOfDayInZone(
+  date: Date,
+  timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
+): string {
+  return new Intl.DateTimeFormat("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone,
+  }).format(date);
+}
+
+export function formatDayTimeInZone(
+  date: Date,
+  timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
+): string {
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone,
+  }).format(date);
+}
+
+export function formatTimeRangeFromStartAndHours(
+  startedAt: Date,
+  hours: number,
+  timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
+): string {
+  const endedAt = new Date(startedAt.getTime() + hours * 3_600_000);
+  return `${formatTimeOfDayInZone(startedAt, timeZone)}–${formatTimeOfDayInZone(endedAt, timeZone)}`;
+}
+
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;

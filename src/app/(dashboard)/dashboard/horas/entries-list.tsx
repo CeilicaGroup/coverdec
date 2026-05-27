@@ -1,7 +1,5 @@
 "use client";
 
-import { useTransition } from "react";
-import { Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -10,28 +8,35 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatHours } from "@/lib/format";
+import { formatDayTimeInZone, formatHours } from "@/lib/format";
 import { ProcessBadge } from "@/components/process-badge";
-import { deleteEntry } from "@/features/time-tracking/actions";
-import { toast } from "sonner";
 import type { ProcessCode } from "@/types/process";
+import { TimeEntryInlineActions } from "@/features/time-tracking/time-entry-inline-actions";
 
 interface EntryRow {
   id: string;
+  userId: string;
+  projectId: string | null;
+  lampId: string | null;
+  taskId: string | null;
   project: string;
   lamp: string | null;
   process: ProcessCode | null;
   startedAt: string;
   endedAt: string | null;
   hours: number | null;
+  notes: string | null;
   source: "TIMER" | "MANUAL";
 }
 
-export function EntriesList({ entries }: { entries: EntryRow[] }) {
-  const [pending, startTransition] = useTransition();
-
+export function EntriesList({
+  entries,
+  canEditAll = false,
+}: {
+  entries: EntryRow[];
+  canEditAll?: boolean;
+}) {
   return (
     <Table>
       <TableHeader>
@@ -55,12 +60,7 @@ export function EntriesList({ entries }: { entries: EntryRow[] }) {
           entries.map((e) => (
             <TableRow key={e.id}>
               <TableCell className="font-mono text-xs">
-                {new Date(e.startedAt).toLocaleString("es-ES", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {formatDayTimeInZone(new Date(e.startedAt))}
               </TableCell>
               <TableCell>
                 <div className="text-xs font-semibold">{e.project}</div>
@@ -81,23 +81,20 @@ export function EntriesList({ entries }: { entries: EntryRow[] }) {
                 )}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={pending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      try {
-                        await deleteEntry({ entryId: e.id });
-                        toast.success("Eliminado");
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
-                      }
-                    })
-                  }
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <TimeEntryInlineActions
+                  entryId={e.id}
+                  userId={e.userId}
+                  projectId={e.projectId ?? ""}
+                  lampId={e.lampId}
+                  taskId={e.taskId}
+                  process={e.process}
+                  startedAt={e.startedAt}
+                  endedAt={e.endedAt}
+                  notes={e.notes}
+                  canEdit={canEditAll || Boolean(e.endedAt)}
+                  canCreate={canEditAll}
+                  canDelete
+                />
               </TableCell>
             </TableRow>
           ))

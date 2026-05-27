@@ -36,23 +36,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
-import { formatHours, formatShortDate } from "@/lib/format";
+import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
+import { formatHours, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
 import { PrintToolbar } from "./print-toolbar";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
-
-function formatTimeRange(startedAt: Date, hours: number): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const startH = startedAt.getUTCHours();
-  const startM = startedAt.getUTCMinutes();
-  const totalMins = startH * 60 + startM + Math.round(hours * 60);
-  const endH = Math.floor(totalMins / 60) % 24;
-  const endM = totalMins % 60;
-  return `${pad(startH)}:${pad(startM)}–${pad(endH)}:${pad(endM)}`;
-}
+import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
+import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
+import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 
 export default async function PersonaPage({
   searchParams,
@@ -68,6 +62,7 @@ export default async function PersonaPage({
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const [allPeople, absences, processByCode] = await Promise.all([
     getNavePersonnel(naveScopeFromContext(ctx)),
@@ -97,7 +92,9 @@ export default async function PersonaPage({
       ? rawActualEntries.filter((e) => e.personId === ctx.personId)
       : rawActualEntries;
   const plannedByTask = buildHoursByTaskFromPlan(planningAssignments);
+  const plannedDueByTask = buildDueHoursByTaskFromPlan(planningAssignments, todayIso);
   const actualByTask = buildHoursByTaskFromActual(actualEntries);
+  const completedByTask = buildCompletedByTask(planningAssignments, actualEntries);
   const plannedItemsByTask = buildItemsByTaskFromPlan(planningAssignments);
   const actualItemsByTask = buildItemsByTaskFromActual(actualEntries);
 
@@ -195,7 +192,7 @@ export default async function PersonaPage({
                             {formatShortDate(new Date(e.date + "T00:00:00Z"))}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
-                            {formatTimeRange(e.startedAt, e.hours)}
+                            {formatTimeRangeFromStartAndHours(e.startedAt, e.hours)}
                           </TableCell>
                           <TableCell>
                             <div className="font-semibold text-xs">
@@ -222,17 +219,54 @@ export default async function PersonaPage({
                             {e.taskId ? (
                               <TaskProgressInline
                                 progress={computeTaskProgress({
-                                  isCompleted: false,
+                                  isCompleted: completedByTask.get(e.taskId) ?? false,
                                   plannedHours: plannedByTask.get(e.taskId) ?? 0,
+                                  plannedDueHours: plannedDueByTask.get(e.taskId) ?? 0,
                                   actualHours: actualByTask.get(e.taskId) ?? 0,
                                   hasRunning: entries.some(
                                     (x) => x.taskId === e.taskId && x.isRunning,
                                   ),
                                 })}
-                                stripes={[
-                                  ...(plannedItemsByTask.get(e.taskId) ?? []),
-                                  ...(actualItemsByTask.get(e.taskId) ?? []),
-                                ]}
+                                stripes={plannedItemsByTask.get(e.taskId) ?? []}
+                                actions={
+                                  <TaskProgressActionsPanel
+                                    taskId={e.taskId}
+                                    isCompleted={completedByTask.get(e.taskId) ?? false}
+                                    canManageCompletion={ctx.role === Role.ADMIN}
+                                    timeEntry={{
+                                      entries: e.endedAt
+                                        ? [
+                                            {
+                                              id: e.id,
+                                              startedAt: e.startedAt.toISOString(),
+                                              endedAt: e.endedAt.toISOString(),
+                                              notes: e.notes,
+                                              summaryLabel: formatActualEntrySummaryLabel(
+                                                e.date,
+                                                e.hours,
+                                                e.process ?? e.task?.process,
+                                              ),
+                                              dateIso: e.date,
+                                              hours: e.hours,
+                                              process: e.process ?? e.task?.process ?? null,
+                                              isRunning: e.isRunning,
+                                            },
+                                          ]
+                                        : [],
+                                      userId: e.userId,
+                                      projectId: e.project?.id ?? e.task?.projectId ?? "",
+                                      lampId: e.lamp?.id ?? e.task?.lampId ?? undefined,
+                                      taskId: e.taskId,
+                                      process: e.process ?? e.task?.process ?? undefined,
+                                      startedAt: e.startedAt.toISOString(),
+                                      endedAt: e.endedAt?.toISOString() ?? null,
+                                      notes: e.notes,
+                                      canEdit: Boolean(e.endedAt),
+                                      canCreate: ctx.role === Role.ADMIN,
+                                      canDelete: true,
+                                    }}
+                                  />
+                                }
                               />
                             ) : (
                               <span className="text-[10px] text-muted-foreground">Sin tarea</span>
@@ -276,7 +310,41 @@ export default async function PersonaPage({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    items.map((item) => (
+                    items.map((item) => {
+                      const planStartedAt = toIsoUtcFromDateAndHour(
+                        item.assignment.date,
+                        slotToHour(item.assignment.startSlot),
+                      );
+                      const planEndedAt = toIsoUtcFromDateAndHour(
+                        item.assignment.date,
+                        slotEndToHour(item.assignment.endSlot),
+                      );
+                      const assignmentDateIso = item.assignment.date.toISOString().slice(0, 10);
+                      const planStripe = {
+                        id: item.assignment.id,
+                        label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
+                          item.assignment.startSlot,
+                          item.assignment.endSlot,
+                        )} · ${formatHours(item.assignment.hours)} · ${item.assignment.process}`,
+                        kind: "plan" as const,
+                      };
+                      const taskEntries = actualEntries
+                        .filter(
+                          (entry) =>
+                            entry.taskId === item.assignment.task.id &&
+                            entry.date === assignmentDateIso &&
+                            entry.endedAt,
+                        )
+                        .map((entry) => ({
+                          id: entry.id,
+                          startedAt: entry.startedAt.toISOString(),
+                          endedAt: entry.endedAt!.toISOString(),
+                          notes: entry.notes,
+                          dateIso: entry.date,
+                          hours: entry.hours,
+                          process: entry.process ?? entry.task?.process ?? null,
+                        }));
+                      return (
                       <TableRow key={item.assignment.id}>
                         <TableCell className="font-mono text-xs">
                           {formatShortDate(item.assignment.date)}
@@ -304,21 +372,42 @@ export default async function PersonaPage({
                         <TableCell>
                           <TaskProgressInline
                             progress={computeTaskProgress({
-                              isCompleted: false,
+                              isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
                               plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                              plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
                               actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
                               hasRunning: actualEntries.some(
                                 (x) => x.taskId === item.assignment.task.id && x.isRunning,
                               ),
                             })}
-                            stripes={[
-                              ...(plannedItemsByTask.get(item.assignment.task.id) ?? []),
-                              ...(actualItemsByTask.get(item.assignment.task.id) ?? []),
-                            ]}
+                            stripes={[planStripe]}
+                            actions={
+                              <TaskProgressActionsPanel
+                                taskId={item.assignment.task.id}
+                                isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
+                                canManageCompletion={ctx.role === Role.ADMIN}
+                                timeEntry={{
+                                  entries: taskEntries,
+                                  personId: item.assignment.personId,
+                                  projectId: item.assignment.task.projectId,
+                                  lampId: item.assignment.task.lampId,
+                                  taskId: item.assignment.task.id,
+                                  process: item.assignment.process,
+                                  startedAt: planStartedAt,
+                                  endedAt: planEndedAt,
+                                  defaultStartedAt: planStartedAt,
+                                  defaultEndedAt: planEndedAt,
+                                  canEdit: ctx.role === Role.ADMIN,
+                                  canCreate: ctx.role === Role.ADMIN,
+                                  canDelete: ctx.role === Role.ADMIN,
+                                }}
+                              />
+                            }
                           />
                         </TableCell>
                       </TableRow>
-                    ))
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -333,6 +422,18 @@ export default async function PersonaPage({
 function buildHoursByTaskFromPlan(assignments: PlanningAssignmentSlice[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const assignment of assignments) {
+    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
+  }
+  return map;
+}
+
+function buildDueHoursByTaskFromPlan(
+  assignments: PlanningAssignmentSlice[],
+  cutoffIso: string,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const assignment of assignments) {
+    if (assignment.date.toISOString().slice(0, 10) > cutoffIso) continue;
     map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
   }
   return map;
@@ -371,7 +472,7 @@ function buildItemsByTaskFromActual(entries: ActualHourEntry[]): Map<string, Pro
     const list = map.get(entry.taskId) ?? [];
     list.push({
       id: entry.id,
-      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRange(
+      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRangeFromStartAndHours(
         entry.startedAt,
         entry.hours,
       )} · ${formatHours(entry.hours)}`,
@@ -379,6 +480,22 @@ function buildItemsByTaskFromActual(entries: ActualHourEntry[]): Map<string, Pro
       isRunning: entry.isRunning,
     });
     map.set(entry.taskId, list);
+  }
+  return map;
+}
+
+function buildCompletedByTask(
+  assignments: PlanningAssignmentSlice[],
+  entries: ActualHourEntry[],
+): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  for (const assignment of assignments) {
+    map.set(assignment.task.id, assignment.task.isCompleted);
+  }
+  for (const entry of entries) {
+    if (!entry.taskId) continue;
+    if (!entry.task) continue;
+    map.set(entry.taskId, entry.task.isCompleted);
   }
   return map;
 }

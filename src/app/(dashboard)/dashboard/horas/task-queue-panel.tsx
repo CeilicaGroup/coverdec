@@ -19,6 +19,7 @@ export interface WorkerQueueTask {
   order: number;
   plannedRanges: string[];
   plannedDateRanges: { startedAt: string; endedAt: string }[];
+  blockedReason: string | null;
 }
 
 export interface OpenTimerInfo {
@@ -67,6 +68,7 @@ export function TaskQueuePanel({
   const isTimerOnCurrentTask = Boolean(
     openTimer && nextTask && openTimer.taskId && openTimer.taskId === nextTask.id,
   );
+  const isNextTaskBlocked = Boolean(nextTask?.blockedReason);
 
   const timerText = useMemo(() => {
     if (!openTimer) return null;
@@ -96,6 +98,11 @@ export function TaskQueuePanel({
                 <div className="text-sm text-muted-foreground">
                   {processLabels[nextTask.process] ?? nextTask.process} · No completada
                 </div>
+                {nextTask.blockedReason ? (
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    {nextTask.blockedReason}
+                  </div>
+                ) : null}
                 <div className="text-xs text-muted-foreground">
                   Horario planificado:{" "}
                   {nextTask.plannedRanges.length > 0
@@ -115,7 +122,7 @@ export function TaskQueuePanel({
 
               <div className="grid sm:grid-cols-4 gap-2">
                 <Button
-                  disabled={pending || !!openTimer}
+                  disabled={pending || !!openTimer || isNextTaskBlocked}
                   className="gap-2"
                   onClick={() => {
                     if (!nextTask) return;
@@ -160,7 +167,7 @@ export function TaskQueuePanel({
 
                 <Button
                   variant="secondary"
-                  disabled={pending || !nextTask || !!openTimer}
+                  disabled={pending || !nextTask || !!openTimer || isNextTaskBlocked}
                   className={cn("gap-2")}
                   onClick={() => {
                     if (!nextTask) return;
@@ -241,8 +248,15 @@ export function TaskQueuePanel({
                           ? t.plannedRanges.join(" · ")
                           : "Sin franja planificada"}
                       </div>
+                      {t.blockedReason ? (
+                        <div className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
+                          {t.blockedReason}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="font-mono text-xs tabular-nums">No completada</div>
+                    <div className="font-mono text-xs tabular-nums">
+                      {t.blockedReason ? "Bloqueada" : "Libre"}
+                    </div>
                   </li>
                 );
               })}

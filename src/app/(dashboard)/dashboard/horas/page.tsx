@@ -1,4 +1,4 @@
-import { PlanningStatus } from "@/generated/prisma";
+import { PlanningStatus, Role } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
@@ -114,6 +114,7 @@ export default async function HorasPage() {
   }
 
   const assignedTaskIds = [...taskRanges.keys()];
+  const now = new Date();
   const assignedTasks =
     assignedTaskIds.length === 0
       ? []
@@ -135,6 +136,60 @@ export default async function HorasPage() {
           },
         });
 
+  const assignedLampIds = [...new Set(assignedTasks.map((t) => t.lampId))];
+  const [lampTasks, processDefs, lastEndedByTaskRaw] = await Promise.all([
+    assignedLampIds.length === 0
+      ? []
+      : prisma.task.findMany({
+          where: { lampId: { in: assignedLampIds } },
+          select: { id: true, lampId: true, order: true, process: true, isCompleted: true },
+          orderBy: [{ lampId: "asc" }, { order: "asc" }],
+        }),
+    prisma.processDefinition.findMany({
+      select: { code: true, waitHours: true },
+    }),
+    assignedLampIds.length === 0
+      ? []
+      : prisma.timeEntry.groupBy({
+          by: ["taskId"],
+          where: {
+            taskId: { not: null },
+            endedAt: { not: null },
+          },
+          _max: { endedAt: true },
+        }),
+  ]);
+  const waitHoursByProcess = new Map(processDefs.map((p) => [p.code, p.waitHours]));
+  const lastEndedByTask = new Map(
+    lastEndedByTaskRaw
+      .filter((x) => x.taskId && x._max.endedAt)
+      .map((x) => [x.taskId!, x._max.endedAt!]),
+  );
+  const tasksByLamp = new Map<string, typeof lampTasks>();
+  for (const task of lampTasks) {
+    const list = tasksByLamp.get(task.lampId) ?? [];
+    list.push(task);
+    tasksByLamp.set(task.lampId, list);
+  }
+
+  function blockedReasonForTask(task: (typeof assignedTasks)[number]): string | null {
+    const lampList = (tasksByLamp.get(task.lampId) ?? []).sort((a, b) => a.order - b.order);
+    const prev = [...lampList].reverse().find((x) => x.order < task.order);
+    if (!prev) return null;
+    if (!prev.isCompleted) {
+      return `Bloqueada: aún no se ha completado ${processLabels[prev.process] ?? prev.process}.`;
+    }
+    const waitHours = waitHoursByProcess.get(prev.process) ?? 0;
+    if (waitHours <= 0) return null;
+    const prevEnded = lastEndedByTask.get(prev.id);
+    if (!prevEnded) return null;
+    const unlockAt = new Date(prevEnded.getTime() + waitHours * 3600000);
+    if (unlockAt > now) {
+      return `En espera por secado hasta ${unlockAt.toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}.`;
+    }
+    return null;
+  }
+
   const workerQueue = assignedTasks
     .map((t) => ({
       id: t.id,
@@ -146,6 +201,7 @@ export default async function HorasPage() {
       order: t.order,
       plannedRanges: taskRanges.get(t.id) ?? [],
       plannedDateRanges: taskDateRanges.get(t.id) ?? [],
+      blockedReason: blockedReasonForTask(t),
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 
@@ -180,7 +236,7 @@ export default async function HorasPage() {
     tasks: p.tasks,
   }));
 
-  const nextTask = workerQueue[0] ?? null;
+  const nextTask = workerQueue.find((t) => !t.blockedReason) ?? workerQueue[0] ?? null;
 
   const totalWeek = entries.reduce((acc, e) => acc + (e.hours ?? 0), 0);
 
@@ -219,14 +275,20 @@ export default async function HorasPage() {
         </CardHeader>
         <CardContent className="p-0">
           <EntriesList
+            canEditAll={ctx.role === Role.ADMIN}
             entries={entries.map((e) => ({
               id: e.id,
+              userId: e.userId,
+              projectId: e.projectId,
+              lampId: e.lampId,
+              taskId: e.taskId,
               project: e.project?.name ?? "—",
               lamp: e.lamp?.name ?? null,
               process: e.process,
               startedAt: e.startedAt.toISOString(),
               endedAt: e.endedAt?.toISOString() ?? null,
               hours: e.hours,
+              notes: e.notes,
               source: e.source,
             }))}
           />

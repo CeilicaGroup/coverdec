@@ -30,6 +30,7 @@ function slice(
     process: overrides.process ?? "IMPRIMACION",
     personId: "p1",
     person: {
+      id: "person-1",
       iniciales: "AB",
       color: "#000",
       alias: null,
@@ -38,6 +39,7 @@ function slice(
     task: {
       id: taskId,
       order: overrides.order ?? 0,
+      isCompleted: false,
       projectId: "pr1",
       lampId: overrides.lampId ?? "l1",
       lamp: { name: "L1" },

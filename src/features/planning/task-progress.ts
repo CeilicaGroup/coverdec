@@ -10,6 +10,8 @@ export interface TaskProgress {
   actualHours: number;
   /** Horas planificadas acumuladas (si aplica al contexto). */
   plannedHours: number;
+  /** Horas planificadas que tocan hasta hoy. */
+  plannedDueHours: number;
 }
 
 const EPS = 0.01;
@@ -17,13 +19,15 @@ const EPS = 0.01;
 export function computeTaskProgress(input: {
   isCompleted: boolean;
   plannedHours: number;
+  plannedDueHours?: number;
   actualHours: number;
   hasRunning: boolean;
 }): TaskProgress {
   const planned = Math.max(0, input.plannedHours);
+  const plannedDue = Math.max(0, input.plannedDueHours ?? input.plannedHours);
   const actual = Math.max(0, input.actualHours);
   const hasRunning = input.hasRunning;
-  const isDelayed = !input.isCompleted && planned > EPS && actual + EPS < planned;
+  const isDelayed = !input.isCompleted && plannedDue > EPS && actual + EPS < plannedDue;
 
   if (input.isCompleted) {
     return {
@@ -31,6 +35,7 @@ export function computeTaskProgress(input: {
       hasRunning,
       isDelayed,
       plannedHours: planned,
+      plannedDueHours: plannedDue,
       actualHours: actual,
     };
   }
@@ -40,6 +45,7 @@ export function computeTaskProgress(input: {
       hasRunning,
       isDelayed,
       plannedHours: planned,
+      plannedDueHours: plannedDue,
       actualHours: actual,
     };
   }
@@ -48,6 +54,7 @@ export function computeTaskProgress(input: {
     hasRunning,
     isDelayed,
     plannedHours: planned,
+    plannedDueHours: plannedDue,
     actualHours: actual,
   };
 }

@@ -195,6 +195,7 @@ export async function getNavePersonnel(naveScope: string[] | null) {
 
 export interface ActualHourEntry {
   id: string;
+  userId: string;
   /** ISO date string "YYYY-MM-DD" derived from startedAt UTC */
   date: string;
   startedAt: Date;
@@ -206,7 +207,13 @@ export interface ActualHourEntry {
   personId: string | null;
   person: { id: string; nombre: string; iniciales: string; color: string } | null;
   taskId: string | null;
-  task: { id: string; process: string; projectId: string; lampId: string } | null;
+  task: {
+    id: string;
+    process: string;
+    projectId: string;
+    lampId: string;
+    isCompleted: boolean;
+  } | null;
   project: { id: string; name: string } | null;
   lamp: { id: string; name: string } | null;
 }
@@ -241,7 +248,7 @@ export async function getActualHoursForWeek({
       user: { include: { person: { include: { user: { select: { name: true } } } } } },
       project: { select: { id: true, name: true } },
       lamp: { select: { id: true, name: true } },
-      task: { select: { id: true, process: true, projectId: true, lampId: true } },
+      task: { select: { id: true, process: true, projectId: true, lampId: true, isCompleted: true } },
     },
     orderBy: { startedAt: "asc" },
   });
@@ -258,6 +265,7 @@ export async function getActualHoursForWeek({
     })();
     return {
     id: e.id,
+    userId: e.userId,
     date: e.startedAt.toISOString().slice(0, 10),
     startedAt: e.startedAt,
     endedAt,
@@ -281,6 +289,7 @@ export async function getActualHoursForWeek({
           process: e.task.process,
           projectId: e.task.projectId,
           lampId: e.task.lampId,
+          isCompleted: e.task.isCompleted,
         }
       : null,
     project: e.project,

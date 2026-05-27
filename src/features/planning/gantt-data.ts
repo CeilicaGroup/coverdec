@@ -336,7 +336,7 @@ function buildTasksWithEstimates(
       const t = sorted[ti]!;
       const schedule = buildTaskScheduleFromAssignments(assignments, t.id);
       const pendingHours = Math.max(0, t.pendingHours);
-      const isPlanningComplete = pendingHours <= 1e-6;
+      const isPlanningComplete = t.isCompleted;
       const priorChain = priorChainStartByTaskId.get(t.id) ?? null;
       const range = buildTaskEstimatedRange(
         schedule,

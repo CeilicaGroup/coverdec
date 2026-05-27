@@ -12,6 +12,7 @@ export interface PlanningAssignmentSlice {
   process: ProcessCode;
   personId: string;
   person: {
+    id: string;
     iniciales: string;
     color: string;
     alias: string | null;
@@ -20,6 +21,7 @@ export interface PlanningAssignmentSlice {
   task: {
     id: string;
     order: number;
+    isCompleted: boolean;
     projectId: string;
     lampId: string;
     lamp: { name: string | null } | null;

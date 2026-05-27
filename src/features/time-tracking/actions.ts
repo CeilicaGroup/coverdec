@@ -111,7 +111,18 @@ async function reverseWorkOnTask(
 
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
+  revalidatePath("/dashboard/proyecto");
+  revalidatePath("/dashboard/gantt");
   revalidatePath("/dashboard", "layout");
+}
+
+function assertCanEditEntry(ctx: Awaited<ReturnType<typeof requireDashboardContext>>, entryUserId: string) {
+  if (ctx.role === Role.ADMIN) return;
+  if (ctx.userId !== entryUserId) {
+    throw new Error("No tienes permisos para modificar este registro.");
+  }
 }
 
 async function assertNoOpenTimer(ctxUserId: string) {
@@ -250,6 +261,18 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
   revalidateHorasAndLoad();
 }
 
+export async function uncompleteTask(input: z.infer<typeof completeTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  const data = completeTaskSchema.parse(input);
+  await assertTaskAccessible(ctx, data.taskId);
+  await prisma.task.update({
+    where: { id: data.taskId },
+    data: { isCompleted: false },
+  });
+  log.info({ userId: ctx.userId, taskId: data.taskId }, "task uncompleted");
+  revalidateHorasAndLoad();
+}
+
 const manualSchema = z.object({
   projectId: z.string().min(1),
   lampId: z.string().min(1).optional(),
@@ -379,16 +402,152 @@ export async function deleteEntry(input: z.infer<typeof deleteSchema>) {
   const ctx = await requireDashboardContext();
   const data = deleteSchema.parse(input);
   const entry = await prisma.timeEntry.findFirst({
-    where: { id: data.entryId, userId: ctx.userId },
-    select: { id: true, taskId: true, hours: true, endedAt: true },
+    where: { id: data.entryId },
+    select: { id: true, userId: true, taskId: true, hours: true, endedAt: true },
   });
   if (!entry) return;
+  assertCanEditEntry(ctx, entry.userId);
   const hours = entry.hours ?? 0;
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.delete({ where: { id: entry.id } });
     if (entry.endedAt && hours > 0) {
       await reverseWorkOnTask(tx, { taskId: entry.taskId, hours });
+      if (entry.taskId) {
+        const task = await tx.task.findFirst({
+          where: { id: entry.taskId },
+          select: { id: true, isCompleted: true, doneHours: true, estimatedHours: true },
+        });
+        if (task?.isCompleted && task.doneHours + 0.01 < task.estimatedHours) {
+          await tx.task.update({
+            where: { id: task.id },
+            data: { isCompleted: false },
+          });
+        }
+      }
     }
+  });
+  revalidateHorasAndLoad();
+}
+
+const updateEntrySchema = z.object({
+  entryId: z.string().min(1),
+  startedAt: z.string().min(8),
+  endedAt: z.string().min(8),
+  notes: z.string().max(500).optional(),
+});
+
+export async function updateEntry(input: z.infer<typeof updateEntrySchema>) {
+  const ctx = await requireDashboardContext();
+  const data = updateEntrySchema.parse(input);
+  const startedAt = new Date(data.startedAt);
+  const endedAt = new Date(data.endedAt);
+  if (!(endedAt > startedAt)) {
+    throw new Error("Rango inválido: el fin debe ser posterior al inicio.");
+  }
+
+  const entry = await prisma.timeEntry.findFirst({
+    where: { id: data.entryId },
+    select: {
+      id: true,
+      userId: true,
+      taskId: true,
+      hours: true,
+      startedAt: true,
+      endedAt: true,
+    },
+  });
+  if (!entry) throw new Error("Registro no encontrado.");
+  assertCanEditEntry(ctx, entry.userId);
+
+  await assertNoTimeOverlap(entry.userId, startedAt, endedAt, entry.id);
+  const newHours = (endedAt.getTime() - startedAt.getTime()) / 3600000;
+  const prevHours = entry.endedAt ? (entry.hours ?? 0) : 0;
+  const delta = newHours - prevHours;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.timeEntry.update({
+      where: { id: entry.id },
+      data: {
+        startedAt,
+        endedAt,
+        hours: newHours,
+        notes: data.notes,
+      },
+    });
+    if (entry.taskId && Math.abs(delta) > 0.0001) {
+      if (delta > 0) {
+        await creditWorkOnTask(tx, { taskId: entry.taskId, hours: delta });
+      } else {
+        await reverseWorkOnTask(tx, { taskId: entry.taskId, hours: -delta });
+      }
+      const task = await tx.task.findFirst({
+        where: { id: entry.taskId },
+        select: { id: true, isCompleted: true, doneHours: true, estimatedHours: true },
+      });
+      if (task?.isCompleted && task.doneHours + 0.01 < task.estimatedHours) {
+        await tx.task.update({
+          where: { id: task.id },
+          data: { isCompleted: false },
+        });
+      }
+    }
+  });
+  revalidateHorasAndLoad();
+}
+
+const createForTaskSchema = z.object({
+  userId: z.string().min(1).optional(),
+  personId: z.string().min(1).optional(),
+  projectId: z.string().min(1),
+  lampId: z.string().min(1).optional(),
+  taskId: z.string().min(1),
+  process: z.string().min(1),
+  startedAt: z.string().min(8),
+  endedAt: z.string().min(8),
+  notes: z.string().max(500).optional(),
+});
+
+export async function createManualEntryForTask(input: z.infer<typeof createForTaskSchema>) {
+  const ctx = await requireDashboardContext();
+  const data = createForTaskSchema.parse(input);
+  const targetUserId = await (async () => {
+    if (data.userId) return data.userId;
+    if (!data.personId) throw new Error("Falta usuario destino para el registro.");
+    const user = await prisma.user.findFirst({
+      where: { personId: data.personId },
+      select: { id: true },
+    });
+    if (!user?.id) throw new Error("La persona seleccionada no tiene usuario.");
+    return user.id;
+  })();
+  if (ctx.role !== Role.ADMIN && targetUserId !== ctx.userId) {
+    throw new Error("No tienes permisos para crear registros para este usuario.");
+  }
+  await assertTaskAccessible(ctx, data.taskId);
+  await assertTaskMatchesSelection(data);
+  const startedAt = new Date(data.startedAt);
+  const endedAt = new Date(data.endedAt);
+  if (!(endedAt > startedAt)) {
+    throw new Error("Rango inválido: el fin debe ser posterior al inicio.");
+  }
+  await assertNoTimeOverlap(targetUserId, startedAt, endedAt);
+  const hours = (endedAt.getTime() - startedAt.getTime()) / 3600000;
+  await prisma.$transaction(async (tx) => {
+    await tx.timeEntry.create({
+      data: {
+        userId: targetUserId,
+        projectId: data.projectId,
+        lampId: data.lampId,
+        taskId: data.taskId,
+        process: data.process,
+        source: TimeEntrySource.MANUAL,
+        startedAt,
+        endedAt,
+        hours,
+        notes: data.notes,
+      },
+    });
+    await creditWorkOnTask(tx, { taskId: data.taskId, hours });
   });
   revalidateHorasAndLoad();
 }

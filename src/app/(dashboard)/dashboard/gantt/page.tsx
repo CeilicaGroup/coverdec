@@ -38,7 +38,6 @@ import { ViewToggle } from "../../_components/view-toggle";
 import { formatHours } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import type { ProgressStripe } from "@/components/task-progress";
-import { computeTaskProgress } from "@/features/planning/task-progress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -124,6 +123,8 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         const last = taskSorted[taskSorted.length - 1]!;
         return {
           id: `${workerId}:${taskId}`,
+          taskId,
+          personId: workerId,
           label: (() => {
             const frameLabel =
               first.task.lampFrame?.label ??
@@ -297,12 +298,27 @@ export default async function GanttPage({
       (planningByTask.get(assignment.taskId) ?? 0) + assignment.hours,
     );
   }
+  const plannedDueByTask = new Map<string, number>();
+  for (const assignment of planningAssignments) {
+    if (assignment.date.toISOString().slice(0, 10) > todayIso) continue;
+    plannedDueByTask.set(
+      assignment.taskId,
+      (plannedDueByTask.get(assignment.taskId) ?? 0) + assignment.hours,
+    );
+  }
   const actualByTask = new Map<string, number>();
   for (const assignment of actualAssignments) {
     actualByTask.set(
       assignment.taskId,
       (actualByTask.get(assignment.taskId) ?? 0) + assignment.hours,
     );
+  }
+  const completedByTask = new Map<string, boolean>();
+  for (const assignment of planningAssignments) {
+    completedByTask.set(assignment.taskId, assignment.task.isCompleted);
+  }
+  for (const assignment of actualAssignments) {
+    completedByTask.set(assignment.taskId, assignment.task.isCompleted);
   }
   const plannedItemsByTask = new Map<string, ProgressStripe[]>();
   for (const assignment of planningAssignments) {
@@ -337,6 +353,21 @@ export default async function GanttPage({
     // (Para marcar running de forma exacta necesitaríamos exponer endedAt/isRunning en Gantt actual.)
     // En esta iteración: no marcamos running en Gantt con precisión.
     runningByTask.set(a.taskId, runningByTask.get(a.taskId) ?? false);
+  }
+  const taskMetaById = new Map<string, { projectId: string; lampId: string | null; process: string }>();
+  for (const assignment of planningAssignments) {
+    taskMetaById.set(assignment.taskId, {
+      projectId: assignment.task.projectId,
+      lampId: assignment.task.lamp?.id ?? null,
+      process: assignment.process,
+    });
+  }
+  for (const assignment of actualAssignments) {
+    taskMetaById.set(assignment.taskId, {
+      projectId: assignment.task.projectId,
+      lampId: assignment.task.lamp?.id ?? null,
+      process: assignment.process,
+    });
   }
 
   return (
@@ -379,6 +410,12 @@ export default async function GanttPage({
           processStyles={processStylesRecord}
           plannedItemsByTask={plannedItemsByTask}
           actualItemsByTask={actualItemsByTask}
+          plannedDueByTask={plannedDueByTask}
+          plannedHoursByTask={planningByTask}
+          actualHoursByTask={actualByTask}
+          completedByTask={completedByTask}
+          taskMetaById={taskMetaById}
+          isAdmin={ctx.role === "ADMIN"}
           mode={view}
         />
       ) : (
@@ -393,6 +430,8 @@ export default async function GanttPage({
           mode={view}
           plannedItemsByTask={plannedItemsByTask}
           actualItemsByTask={actualItemsByTask}
+          plannedDueByTask={plannedDueByTask}
+          canManageTasks={ctx.role === "ADMIN"}
         />
       )}
     </div>

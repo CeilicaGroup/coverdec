@@ -37,6 +37,7 @@ import {
   daysUntil,
   formatHours,
   formatShortDate,
+  formatTimeRangeFromStartAndHours,
   riskFromPlannedEnd,
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
@@ -45,16 +46,11 @@ import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
-
-function formatTimeRange(startedAt: Date, hours: number): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const startH = startedAt.getUTCHours();
-  const startM = startedAt.getUTCMinutes();
-  const totalMins = startH * 60 + startM + Math.round(hours * 60);
-  const endH = Math.floor(totalMins / 60) % 24;
-  const endM = totalMins % 60;
-  return `${pad(startH)}:${pad(startM)}–${pad(endH)}:${pad(endM)}`;
-}
+import { Role } from "@/generated/prisma";
+import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
+import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
+import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
+import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 
 export default async function ProyectoPage({
   searchParams,
@@ -69,6 +65,7 @@ export default async function ProyectoPage({
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const [projects, processByCode] = await Promise.all([
     getActiveProjectsWithLoad(naveScope),
@@ -127,7 +124,9 @@ export default async function ProyectoPage({
     ...actualByProject.keys(),
   ]);
   const plannedByTask = buildPlannedHoursByTask(assignments);
+  const plannedDueByTask = buildPlannedDueHoursByTask(assignments, todayIso);
   const actualByTask = buildActualHoursByTask(actualEntries);
+  const completedByTask = buildCompletedByTask(assignments, actualEntries);
   const plannedItemsByTask = buildPlanItemsByTask(assignments);
   const actualItemsByTask = buildActualItemsByTask(actualEntries);
 
@@ -219,22 +218,29 @@ export default async function ProyectoPage({
               <CardContent className="p-0">
                 {view === "actual" ? (
                   <ActualProjectTable
+                    isAdmin={ctx.role === Role.ADMIN}
                     entries={actualByProject.get(row.project.id) ?? []}
                     processByCode={processByCode}
                     plannedByTask={plannedByTask}
                     plannedItemsByTask={plannedItemsByTask}
                     actualByTask={actualByTask}
+                    plannedDueByTask={plannedDueByTask}
+                    completedByTask={completedByTask}
                   />
                 ) : (
                   <PlanProjectTable
+                    isAdmin={ctx.role === Role.ADMIN}
                     timeline={buildPlanningTimeline(
                       byProject.get(row.project.id) ?? [],
                       processByCode,
                     )}
+                    actualEntries={actualByProject.get(row.project.id) ?? []}
                     processByCode={processByCode}
                     actualByTask={actualByTask}
                     actualItemsByTask={actualItemsByTask}
                     plannedByTask={plannedByTask}
+                    plannedDueByTask={plannedDueByTask}
+                    completedByTask={completedByTask}
                   />
                 )}
               </CardContent>
@@ -247,17 +253,23 @@ export default async function ProyectoPage({
 }
 
 function ActualProjectTable({
+  isAdmin,
   entries,
   processByCode,
   plannedByTask,
   actualByTask,
   plannedItemsByTask,
+  plannedDueByTask,
+  completedByTask,
 }: {
+  isAdmin: boolean;
   entries: ActualHourEntry[];
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
   plannedByTask: Map<string, number>;
   actualByTask: Map<string, number>;
   plannedItemsByTask: Map<string, ProgressStripe[]>;
+  plannedDueByTask: Map<string, number>;
+  completedByTask: Map<string, boolean>;
 }) {
   return (
     <Table>
@@ -286,7 +298,7 @@ function ActualProjectTable({
                 {formatShortDate(new Date(e.date + "T00:00:00Z"))}
               </TableCell>
               <TableCell className="font-mono text-xs">
-                {formatTimeRange(e.startedAt, e.hours)}
+                {formatTimeRangeFromStartAndHours(e.startedAt, e.hours)}
               </TableCell>
               <TableCell>
                 {e.person ? (
@@ -320,15 +332,52 @@ function ActualProjectTable({
                 {e.taskId ? (
                   <TaskProgressInline
                     progress={computeTaskProgress({
-                      isCompleted: false,
+                      isCompleted: completedByTask.get(e.taskId) ?? false,
                       plannedHours: plannedByTask.get(e.taskId) ?? 0,
+                      plannedDueHours: plannedDueByTask.get(e.taskId) ?? 0,
                       actualHours: actualByTask.get(e.taskId) ?? 0,
                       hasRunning: entries.some((x) => x.taskId === e.taskId && x.isRunning),
                     })}
-                    stripes={[
-                      ...(plannedItemsByTask.get(e.taskId) ?? []),
-                      ...(buildActualItemsByTask(entries).get(e.taskId) ?? []),
-                    ]}
+                    stripes={plannedItemsByTask.get(e.taskId) ?? []}
+                    actions={
+                      <TaskProgressActionsPanel
+                        taskId={e.taskId}
+                        isCompleted={completedByTask.get(e.taskId) ?? false}
+                        canManageCompletion={isAdmin}
+                        timeEntry={{
+                          entries: e.endedAt
+                            ? [
+                                {
+                                  id: e.id,
+                                  startedAt: e.startedAt.toISOString(),
+                                  endedAt: e.endedAt.toISOString(),
+                                  notes: e.notes,
+                                  summaryLabel: formatActualEntrySummaryLabel(
+                                    e.date,
+                                    e.hours,
+                                    e.process ?? e.task?.process,
+                                  ),
+                                  dateIso: e.date,
+                                  hours: e.hours,
+                                  process: e.process ?? e.task?.process ?? null,
+                                  isRunning: e.isRunning,
+                                },
+                              ]
+                            : [],
+                          userId: e.userId,
+                          projectId: e.project?.id ?? e.task?.projectId ?? "",
+                          lampId: e.lamp?.id ?? e.task?.lampId ?? undefined,
+                          taskId: e.taskId,
+                          process: e.process ?? e.task?.process ?? undefined,
+                          startedAt: e.startedAt.toISOString(),
+                          endedAt: e.endedAt?.toISOString() ?? null,
+                          notes: e.notes,
+                          canEdit: isAdmin && Boolean(e.endedAt),
+                          canCreate: isAdmin,
+                          canDelete: isAdmin,
+                        }}
+                      />
+                    }
                   />
                 ) : (
                   <span className="text-[10px] text-muted-foreground">Sin tarea</span>
@@ -343,17 +392,25 @@ function ActualProjectTable({
 }
 
 function PlanProjectTable({
+  isAdmin,
   timeline,
+  actualEntries,
   processByCode,
   plannedByTask,
+  plannedDueByTask,
   actualByTask,
   actualItemsByTask,
+  completedByTask,
 }: {
+  isAdmin: boolean;
   timeline: ReturnType<typeof buildPlanningTimeline>;
+  actualEntries: ActualHourEntry[];
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
   plannedByTask: Map<string, number>;
+  plannedDueByTask: Map<string, number>;
   actualByTask: Map<string, number>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
+  completedByTask: Map<string, boolean>;
 }) {
   return (
     <Table>
@@ -392,8 +449,43 @@ function PlanProjectTable({
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
                 <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                <TableCell />
               </TableRow>
-            ) : (
+            ) : (() => {
+              const planStartedAt = toIsoUtcFromDateAndHour(
+                item.assignment.date,
+                slotToHour(item.assignment.startSlot),
+              );
+              const planEndedAt = toIsoUtcFromDateAndHour(
+                item.assignment.date,
+                slotEndToHour(item.assignment.endSlot),
+              );
+              const assignmentDateIso = item.assignment.date.toISOString().slice(0, 10);
+              const planStripe = {
+                id: item.assignment.id,
+                label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
+                  item.assignment.startSlot,
+                  item.assignment.endSlot,
+                )} · ${formatHours(item.assignment.hours)} · ${item.assignment.process}`,
+                kind: "plan" as const,
+              };
+              const taskEntries = actualEntries
+                .filter(
+                  (entry) =>
+                    entry.taskId === item.assignment.task.id &&
+                    entry.date === assignmentDateIso &&
+                    entry.endedAt,
+                )
+                .map((entry) => ({
+                  id: entry.id,
+                  startedAt: entry.startedAt.toISOString(),
+                  endedAt: entry.endedAt!.toISOString(),
+                  notes: entry.notes,
+                  dateIso: entry.date,
+                  hours: entry.hours,
+                  process: entry.process ?? entry.task?.process ?? null,
+                }));
+              return (
               <TableRow key={item.assignment.id}>
                 <TableCell className="font-mono text-xs">{formatShortDate(item.assignment.date)}</TableCell>
                 <TableCell className="font-mono text-xs">
@@ -424,19 +516,40 @@ function PlanProjectTable({
                 <TableCell>
                   <TaskProgressInline
                     progress={computeTaskProgress({
-                      isCompleted: false,
+                      isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
                       plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                      plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
                       actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
                       hasRunning: actualItemsByTask.get(item.assignment.task.id)?.some((x) => x.isRunning) ?? false,
                     })}
-                    stripes={[
-                      ...(buildPlanItemsByTaskFromTimelineRow(item).map((x) => x)),
-                      ...(actualItemsByTask.get(item.assignment.task.id) ?? []),
-                    ]}
+                    stripes={[planStripe]}
+                    actions={
+                      <TaskProgressActionsPanel
+                        taskId={item.assignment.task.id}
+                        isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
+                        canManageCompletion={isAdmin}
+                        timeEntry={{
+                          entries: taskEntries,
+                          personId: item.assignment.person.id,
+                          projectId: item.assignment.task.projectId,
+                          lampId: item.assignment.task.lampId,
+                          taskId: item.assignment.task.id,
+                          process: item.assignment.process,
+                          startedAt: planStartedAt,
+                          endedAt: planEndedAt,
+                          defaultStartedAt: planStartedAt,
+                          defaultEndedAt: planEndedAt,
+                          canEdit: isAdmin,
+                          canCreate: isAdmin,
+                          canDelete: isAdmin,
+                        }}
+                      />
+                    }
                   />
                 </TableCell>
               </TableRow>
-            ),
+              );
+            })(),
           )
         )}
       </TableBody>
@@ -447,6 +560,18 @@ function PlanProjectTable({
 function buildPlannedHoursByTask(assignments: PlanningAssignmentSlice[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const assignment of assignments) {
+    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
+  }
+  return map;
+}
+
+function buildPlannedDueHoursByTask(
+  assignments: PlanningAssignmentSlice[],
+  cutoffIso: string,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const assignment of assignments) {
+    if (assignment.date.toISOString().slice(0, 10) > cutoffIso) continue;
     map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
   }
   return map;
@@ -485,7 +610,7 @@ function buildActualItemsByTask(entries: ActualHourEntry[]): Map<string, Progres
     const list = map.get(entry.taskId) ?? [];
     list.push({
       id: entry.id,
-      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRange(
+      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRangeFromStartAndHours(
         entry.startedAt,
         entry.hours,
       )} · ${formatHours(entry.hours)}`,
@@ -493,6 +618,21 @@ function buildActualItemsByTask(entries: ActualHourEntry[]): Map<string, Progres
       isRunning: entry.isRunning,
     });
     map.set(entry.taskId, list);
+  }
+  return map;
+}
+
+function buildCompletedByTask(
+  assignments: PlanningAssignmentSlice[],
+  entries: ActualHourEntry[],
+): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  for (const assignment of assignments) {
+    map.set(assignment.task.id, assignment.task.isCompleted);
+  }
+  for (const entry of entries) {
+    if (!entry.taskId || !entry.task) continue;
+    map.set(entry.taskId, entry.task.isCompleted);
   }
   return map;
 }
