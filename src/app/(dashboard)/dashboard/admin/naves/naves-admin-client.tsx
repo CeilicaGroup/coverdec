@@ -33,7 +33,7 @@ interface NaveRow {
   nombre: string;
   isActive: boolean;
   personNaves: { person: { user: { id: string; name: string; email: string; role: string } | null } }[];
-  tasks: { id: string; process: string; pendingHours: number; project: { name: string; code: string } }[];
+  tasks: { id: string; lamp: { id: string; name: string } | null }[];
 }
 
 export function NavesAdminClient({
@@ -102,6 +102,15 @@ export function NavesAdminClient({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {naves.map((nave) => (
+          (() => {
+            const lamps = Array.from(
+              new Map(
+                nave.tasks
+                  .filter((t) => t.lamp != null)
+                  .map((t) => [t.lamp!.id, t.lamp!]),
+              ).values(),
+            );
+            return (
           <Card key={nave.id} className={!nave.isActive ? "opacity-60" : undefined}>
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between gap-2">
@@ -139,20 +148,20 @@ export function NavesAdminClient({
             <CardContent className="space-y-3">
               <div>
                 <div className="text-xs font-medium text-muted-foreground mb-1.5">
-                  Tareas asignadas ({nave.tasks.length})
+                  Lámparas asignadas ({lamps.length})
                 </div>
-                {nave.tasks.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">Sin tareas</p>
+                {lamps.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">Sin lámparas</p>
                 ) : (
                   <div className="flex flex-wrap gap-1">
-                    {nave.tasks.slice(0, 6).map((t) => (
-                      <Badge key={t.id} variant="secondary" className="text-[10px] font-mono">
-                        {t.project.code} · {t.process} · {t.pendingHours}h
+                    {lamps.slice(0, 6).map((lamp) => (
+                      <Badge key={lamp.id} variant="secondary" className="text-[10px] font-mono">
+                        {lamp.name}
                       </Badge>
                     ))}
-                    {nave.tasks.length > 6 && (
+                    {lamps.length > 6 && (
                       <Badge variant="outline" className="text-[10px]">
-                        +{nave.tasks.length - 6} más
+                        +{lamps.length - 6} más
                       </Badge>
                     )}
                   </div>
@@ -188,6 +197,8 @@ export function NavesAdminClient({
               </div>
             </CardContent>
           </Card>
+            );
+          })()
         ))}
       </div>
 

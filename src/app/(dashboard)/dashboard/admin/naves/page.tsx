@@ -25,9 +25,7 @@ export default async function NavesAdminPage() {
       tasks: {
         select: {
           id: true,
-          process: true,
-          pendingHours: true,
-          project: { select: { name: true, code: true } },
+          lamp: { select: { id: true, name: true } },
         },
       },
     },
