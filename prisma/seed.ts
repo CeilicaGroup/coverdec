@@ -1,6 +1,10 @@
 import { PrismaClient, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
+import {
+  buildTasksFromFrame,
+  formatLampFrameUnitLabel,
+} from "../src/features/projects/lamp-tasks";
 
 const prisma = new PrismaClient();
 
@@ -256,6 +260,86 @@ const HOLIDAYS_2026 = [
   ["2026-12-25", "Navidad"],
 ] as const;
 
+type SeedLampInput = {
+  name: string;
+  frameTypeCode: string;
+  surfaceM2: number;
+  units: number;
+};
+
+async function seedLampWithTasks(
+  projectId: string,
+  lamp: SeedLampInput,
+  frameType: { id: string; name: string },
+  naveId: string,
+  existingLampId?: string,
+) {
+  const blueprints = await buildTasksFromFrame(frameType.id, lamp.surfaceM2);
+  if (blueprints.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    const created = existingLampId
+      ? await tx.lamp.findUniqueOrThrow({ where: { id: existingLampId } })
+      : await tx.lamp.create({
+          data: {
+            projectId,
+            frameTypeId: frameType.id,
+            name: lamp.name,
+            surfaceM2: lamp.surfaceM2,
+            units: lamp.units,
+          },
+        });
+
+    let physicalFrameIndex = 0;
+
+    for (let unitIndex = 1; unitIndex <= lamp.units; unitIndex += 1) {
+      const label = formatLampFrameUnitLabel(
+        frameType.name,
+        unitIndex,
+        lamp.units,
+      );
+
+      let lampFrame = await tx.lampFrame.findFirst({
+        where: { lampId: created.id, frameTypeId: frameType.id, label },
+      });
+      if (!lampFrame) {
+        lampFrame = await tx.lampFrame.create({
+          data: {
+            lampId: created.id,
+            frameTypeId: frameType.id,
+            label,
+            surfaceM2: lamp.surfaceM2,
+            units: 1,
+          },
+        });
+      }
+
+      const existingTaskCount = await tx.task.count({
+        where: { lampFrameId: lampFrame.id },
+      });
+      if (existingTaskCount > 0) {
+        physicalFrameIndex += 1;
+        continue;
+      }
+
+      await tx.task.createMany({
+        data: blueprints.map((bp) => ({
+          projectId,
+          lampId: created.id,
+          lampFrameId: lampFrame.id,
+          process: bp.process,
+          estimatedHours: bp.estimatedHours,
+          pendingHours: bp.estimatedHours,
+          order: bp.order + physicalFrameIndex * 1000,
+          naveId,
+        })),
+      });
+
+      physicalFrameIndex += 1;
+    }
+  });
+}
+
 async function main() {
   console.log("Seeding processes...");
   for (const proc of PROCESSES) {
@@ -281,7 +365,7 @@ async function main() {
   const firstNave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
 
   console.log("Seeding frame types...");
-  const frameTypeByCode = new Map<string, { id: string }>();
+  const frameTypeByCode = new Map<string, { id: string; name: string }>();
   for (const ft of FRAME_TYPES) {
     const { processes, ...ftData } = ft;
     const created = await prisma.frameType.upsert({
@@ -313,16 +397,19 @@ async function main() {
       const exists = await prisma.lamp.findFirst({
         where: { projectId: project.id, name: lamp.name },
       });
-      if (exists) continue;
-      await prisma.lamp.create({
-        data: {
-          projectId: project.id,
-          frameTypeId: frameType.id,
-          name: lamp.name,
-          surfaceM2: lamp.surfaceM2,
-          units: lamp.units,
-        },
-      });
+      if (exists) {
+        const taskCount = await prisma.task.count({ where: { lampId: exists.id } });
+        if (taskCount > 0) continue;
+        await seedLampWithTasks(
+          project.id,
+          lamp,
+          frameType,
+          firstNave.id,
+          exists.id,
+        );
+        continue;
+      }
+      await seedLampWithTasks(project.id, lamp, frameType, firstNave.id);
     }
     console.log(`  ${project.name} (${lamps.length} lámparas)`);
   }
