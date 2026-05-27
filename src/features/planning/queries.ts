@@ -156,6 +156,7 @@ export interface ProcessDefinitionInfo {
 const personInclude = {
   specialties: true,
   workWindows: true,
+  scheduleOverrides: { include: { windows: true } },
   user: { select: { name: true } },
   personNaves: { include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
 } as const;

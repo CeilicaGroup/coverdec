@@ -26,6 +26,10 @@ import { formatHours, formatShortDate } from "@/lib/format";
 import type { ProcessCode } from "@/types/process";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import {
+  computePersonDayCapacityHours,
+  personScheduleContextFromPerson,
+} from "@/features/planning/person-day-capacity";
+import {
   getAbsencesForRange,
   getActiveProjectsWithLoad,
   getNavePersonnel,
@@ -559,15 +563,20 @@ function computeCapacity(
     const key = day.toISOString().slice(0, 10);
     const isHoliday = holidayDates.has(key);
     let cap = 0;
-    if (!isHoliday) {
-      for (const person of people) {
-        const absence = absences.find(
-          (a) =>
-            a.personId === person.id &&
-            a.date.toISOString().slice(0, 10) === key,
-        );
-        cap += Math.max(0, person.capacityHours - (absence?.hours ?? 0));
-      }
+    for (const person of people) {
+      const schedule = personScheduleContextFromPerson(person);
+      const absence = absences.find(
+        (a) =>
+          a.personId === person.id &&
+          a.date.toISOString().slice(0, 10) === key,
+      );
+      cap += computePersonDayCapacityHours({
+        day,
+        weekly: schedule.weekly,
+        overrides: schedule.overrides,
+        absenceHours: absence?.hours ?? 0,
+        isHoliday,
+      });
     }
     byDay.set(key, cap);
     total += cap;
