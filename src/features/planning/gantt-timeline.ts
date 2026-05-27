@@ -1,9 +1,12 @@
 import {
-  PRODUCTIVE_SLOTS_PER_DAY,
   slotEndLabel,
+  slotEndToHour,
+  slotToHour,
   slotToLabel,
   rangeLabel,
 } from "@/features/planning/engine/slot-format";
+import type { GanttTimeAxisContext } from "@/features/planning/gantt-time-axis";
+import { minuteToDayFraction } from "@/features/planning/gantt-time-axis";
 import type { GanttPlanningAssignment } from "@/features/planning/queries";
 import { toUtcDay } from "@/lib/week";
 
@@ -11,15 +14,15 @@ function toPlanningDayIso(d: Date): string {
   return toUtcDay(d).toISOString().slice(0, 10);
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const SLOT_EPS = 1e-6;
-
 export interface GanttTimelineBlock {
   kind: "work" | "wait";
   startDayIso: string;
   startSlot: number;
   endDayIso: string;
   endSlot: number;
+  /** Wall-clock minutes from midnight (Gantt horizontal position). */
+  startMinutes: number;
+  endMinutes: number;
   hours?: number;
   label: string;
 }
@@ -27,69 +30,67 @@ export interface GanttTimelineBlock {
 export interface PlanningInstant {
   dayIso: string;
   slot: number;
+  minutes: number;
 }
 
 function parsePlanningDay(iso: string): Date {
   return toUtcDay(new Date(`${iso}T00:00:00.000Z`));
 }
 
-function isWeekend(d: Date): boolean {
-  const dow = d.getUTCDay();
-  return dow === 0 || dow === 6;
+export function slotToStartMinutes(slot: number): number {
+  return Math.round(slotToHour(slot) * 60);
 }
 
-function nextBusinessDayIso(iso: string, holidayDates: Set<string>): string {
-  let cursor = new Date(parsePlanningDay(iso).getTime() + DAY_MS);
-  while (isWeekend(cursor) || holidayDates.has(toPlanningDayIso(cursor))) {
-    cursor = new Date(cursor.getTime() + DAY_MS);
-  }
-  return toPlanningDayIso(cursor);
+export function slotToEndMinutes(slot: number): number {
+  return Math.round(slotEndToHour(slot) * 60);
 }
 
-function comparePlanningInstant(a: PlanningInstant, b: PlanningInstant): number {
-  if (a.dayIso !== b.dayIso) return a.dayIso.localeCompare(b.dayIso);
-  return a.slot - b.slot;
+function dateAtMinutes(dayIso: string, minutes: number): Date {
+  const d = parsePlanningDay(dayIso);
+  d.setUTCHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return d;
 }
 
-/** Advance wait time on the productive slot axis (8h/day, skips weekends/holidays). */
-export function addProductiveWait(
-  startDayIso: string,
-  startSlot: number,
+function instantFromDate(d: Date, slotHint: number): PlanningInstant {
+  return {
+    dayIso: toPlanningDayIso(d),
+    minutes: d.getUTCHours() * 60 + d.getUTCMinutes(),
+    slot: slotHint,
+  };
+}
+
+function compareByMinutes(a: PlanningInstant, b: PlanningInstant): number {
+  const dayCmp = a.dayIso.localeCompare(b.dayIso);
+  if (dayCmp !== 0) return dayCmp;
+  return a.minutes - b.minutes;
+}
+
+/** Wall-clock wait from the end of a work block (calendar hours). */
+export function addWallClockWait(
+  endDayIso: string,
+  endSlot: number,
   waitHours: number,
-  holidayDates: Set<string>,
 ): PlanningInstant {
-  let dayIso = startDayIso;
-  let slot = Math.max(0, Math.min(PRODUCTIVE_SLOTS_PER_DAY, startSlot));
-  let remainingQuarters = Math.max(0, Math.round(waitHours * 4));
-
-  while (remainingQuarters > 0) {
-    const slotsLeftToday = PRODUCTIVE_SLOTS_PER_DAY - slot;
-    const use = Math.min(remainingQuarters, slotsLeftToday);
-    remainingQuarters -= use;
-    slot += use;
-    if (remainingQuarters > 0) {
-      dayIso = nextBusinessDayIso(dayIso, holidayDates);
-      slot = 0;
-    }
-  }
-
-  return { dayIso, slot };
+  const start = dateAtMinutes(endDayIso, slotToEndMinutes(endSlot));
+  const end = new Date(start.getTime() + waitHours * 60 * 60 * 1000);
+  return instantFromDate(end, endSlot);
 }
 
 export function dayIndex(axis: string[], iso: string): number {
   return axis.indexOf(iso);
 }
 
-/** Posición fraccional en el eje [0, axis.length] para un instante de planning. */
+/** Posición fraccional en el eje [0, axis.length] usando minutos reales y horario de nave. */
 export function toAxisFraction(
   axis: string[],
   dayIso: string,
-  slot: number,
+  minutes: number,
+  timeAxis: GanttTimeAxisContext,
 ): number | null {
   const idx = dayIndex(axis, dayIso);
   if (idx < 0) return null;
-  const clamped = Math.max(0, Math.min(PRODUCTIVE_SLOTS_PER_DAY, slot));
-  const dayFrac = clamped / PRODUCTIVE_SLOTS_PER_DAY;
+  const bounds = timeAxis.boundsForDayIso(dayIso);
+  const dayFrac = minuteToDayFraction(minutes, bounds);
   return idx + dayFrac;
 }
 
@@ -97,13 +98,24 @@ export function resolveBlockRange(
   axis: string[],
   block: Pick<
     GanttTimelineBlock,
-    "startDayIso" | "startSlot" | "endDayIso" | "endSlot"
+    "startDayIso" | "endDayIso" | "startMinutes" | "endMinutes"
   >,
+  timeAxis: GanttTimeAxisContext,
 ): { startFrac: number; endFrac: number } | null {
   if (axis.length === 0) return null;
 
-  const startFrac = toAxisFraction(axis, block.startDayIso, block.startSlot);
-  const endFrac = toAxisFraction(axis, block.endDayIso, block.endSlot);
+  const startFrac = toAxisFraction(
+    axis,
+    block.startDayIso,
+    block.startMinutes,
+    timeAxis,
+  );
+  const endFrac = toAxisFraction(
+    axis,
+    block.endDayIso,
+    block.endMinutes,
+    timeAxis,
+  );
 
   if (startFrac == null || endFrac == null) return null;
   if (endFrac <= startFrac) return null;
@@ -136,44 +148,48 @@ function formatShortDay(iso: string): string {
 }
 
 function dryWaitAfterBlock(
-  last: Pick<GanttTimelineBlock, "endDayIso" | "endSlot">,
+  last: Pick<
+    GanttTimelineBlock,
+    "endDayIso" | "endSlot" | "endMinutes"
+  >,
   waitHours: number,
-  holidayDates: Set<string>,
   capBefore: PlanningInstant | null,
 ): Omit<GanttTimelineBlock, "kind" | "label" | "hours"> | null {
-  const waitEnd = addProductiveWait(
-    last.endDayIso,
-    last.endSlot,
-    waitHours,
-    holidayDates,
-  );
+  const waitEnd = addWallClockWait(last.endDayIso, last.endSlot, waitHours);
 
   let endDayIso = waitEnd.dayIso;
-  let endSlot = waitEnd.slot;
+  let endMinutes = waitEnd.minutes;
+  let endSlot = last.endSlot;
 
-  if (
-    capBefore &&
-    comparePlanningInstant({ dayIso: endDayIso, slot: endSlot }, capBefore) > 0
-  ) {
+  if (capBefore && compareByMinutes(waitEnd, capBefore) > 0) {
     endDayIso = capBefore.dayIso;
+    endMinutes = capBefore.minutes;
     endSlot = capBefore.slot;
   }
 
+  const startMinutes = last.endMinutes;
   const start: PlanningInstant = {
     dayIso: last.endDayIso,
     slot: last.endSlot,
+    minutes: startMinutes,
   };
-  const end: PlanningInstant = { dayIso: endDayIso, slot: endSlot };
+  const end: PlanningInstant = {
+    dayIso: endDayIso,
+    slot: endSlot,
+    minutes: endMinutes,
+  };
 
-  if (comparePlanningInstant(end, start) <= 0) {
+  if (compareByMinutes(end, start) <= 0) {
     return null;
   }
 
   return {
     startDayIso: last.endDayIso,
     startSlot: last.endSlot,
+    startMinutes,
     endDayIso,
     endSlot,
+    endMinutes,
   };
 }
 
@@ -189,26 +205,35 @@ interface TimelineTaskRef {
 function taskExtentEnd(
   task: TimelineTaskRef,
   waitHoursByProcess: Map<string, number>,
-  holidayDates: Set<string>,
-): { endDayIso: string; endSlot: number } {
+): { endDayIso: string; endSlot: number; endMinutes: number } {
   const work = task.timelineBlocks.filter((b) => b.kind === "work");
   const lastWork = work[work.length - 1];
   if (!lastWork) {
+    const endSlot = task.endSlot ?? 0;
     return {
       endDayIso: task.estimatedEnd!,
-      endSlot: task.endSlot ?? 0,
+      endSlot,
+      endMinutes: slotToEndMinutes(endSlot),
     };
   }
 
   const waitHours = waitHoursByProcess.get(task.process) ?? 0;
   if (waitHours > 1e-6) {
-    const dry = dryWaitAfterBlock(lastWork, waitHours, holidayDates, null);
+    const dry = dryWaitAfterBlock(lastWork, waitHours, null);
     if (dry) {
-      return { endDayIso: dry.endDayIso, endSlot: dry.endSlot };
+      return {
+        endDayIso: dry.endDayIso,
+        endSlot: dry.endSlot,
+        endMinutes: dry.endMinutes,
+      };
     }
   }
 
-  return { endDayIso: lastWork.endDayIso, endSlot: lastWork.endSlot };
+  return {
+    endDayIso: lastWork.endDayIso,
+    endSlot: lastWork.endSlot,
+    endMinutes: lastWork.endMinutes,
+  };
 }
 
 /** Una sola barra continua desde el inicio de la primera tarea hasta el fin de la última (incl. secado). */
@@ -218,43 +243,57 @@ export function buildContinuousTimeline(
   holidayDates: Set<string>,
   labelPrefix: string,
 ): GanttTimelineBlock[] {
+  void holidayDates;
   const assigned = tasks.filter((t) => t.estimatedStart && t.estimatedEnd);
   if (assigned.length === 0) return [];
 
   function taskStart(
     task: TimelineTaskRef,
-  ): { startDayIso: string; startSlot: number } {
+  ): { startDayIso: string; startSlot: number; startMinutes: number } {
     const work = task.timelineBlocks.filter((b) => b.kind === "work");
     const firstWork = work[0];
     if (firstWork) {
-      return { startDayIso: firstWork.startDayIso, startSlot: firstWork.startSlot };
+      return {
+        startDayIso: firstWork.startDayIso,
+        startSlot: firstWork.startSlot,
+        startMinutes: firstWork.startMinutes,
+      };
     }
-    return { startDayIso: task.estimatedStart!, startSlot: task.startSlot ?? 0 };
+    const startSlot = task.startSlot ?? 0;
+    return {
+      startDayIso: task.estimatedStart!,
+      startSlot,
+      startMinutes: slotToStartMinutes(startSlot),
+    };
   }
 
   const firstStart = taskStart(assigned[0]!);
   let startDayIso = firstStart.startDayIso;
   let startSlot = firstStart.startSlot;
+  let startMinutes = firstStart.startMinutes;
   let endDayIso = assigned[0]!.estimatedEnd!;
   let endSlot = assigned[0]!.endSlot ?? 0;
+  let endMinutes = slotToEndMinutes(endSlot);
 
   for (const t of assigned) {
     const tStart = taskStart(t);
     if (
       tStart.startDayIso < startDayIso ||
-      (tStart.startDayIso === startDayIso && tStart.startSlot < startSlot)
+      (tStart.startDayIso === startDayIso && tStart.startMinutes < startMinutes)
     ) {
       startDayIso = tStart.startDayIso;
       startSlot = tStart.startSlot;
+      startMinutes = tStart.startMinutes;
     }
 
-    const extent = taskExtentEnd(t, waitHoursByProcess, holidayDates);
+    const extent = taskExtentEnd(t, waitHoursByProcess);
     if (
       extent.endDayIso > endDayIso ||
-      (extent.endDayIso === endDayIso && extent.endSlot > endSlot)
+      (extent.endDayIso === endDayIso && extent.endMinutes > endMinutes)
     ) {
       endDayIso = extent.endDayIso;
       endSlot = extent.endSlot;
+      endMinutes = extent.endMinutes;
     }
   }
 
@@ -263,8 +302,10 @@ export function buildContinuousTimeline(
       kind: "work",
       startDayIso,
       startSlot,
+      startMinutes,
       endDayIso,
       endSlot,
+      endMinutes,
       label: `${labelPrefix} · ${formatShortDay(startDayIso)} ${slotToLabel(startSlot)} → ${formatShortDay(endDayIso)} ${slotEndLabel(endSlot)}`,
     },
   ];
@@ -278,6 +319,7 @@ export function buildTaskTimelineBlocks(
   processCode: string,
   capBefore: PlanningInstant | null = null,
 ): GanttTimelineBlock[] {
+  void holidayDates;
   const forTask = assignments
     .filter((a) => a.taskId === taskId)
     .sort(
@@ -295,6 +337,8 @@ export function buildTaskTimelineBlocks(
 
   const work: GanttTimelineBlock[] = forTask.map((a) => {
     const dayIso = toPlanningDayIso(a.date);
+    const startMinutes = slotToStartMinutes(a.startSlot);
+    const endMinutes = slotToEndMinutes(a.endSlot);
     const workLabel = frameLabel
       ? `${workBlockLabel(dayIso, a.startSlot, a.endSlot, a.hours)} · Bastidor ${frameLabel}`
       : workBlockLabel(dayIso, a.startSlot, a.endSlot, a.hours);
@@ -302,8 +346,10 @@ export function buildTaskTimelineBlocks(
       kind: "work" as const,
       startDayIso: dayIso,
       startSlot: a.startSlot,
+      startMinutes,
       endDayIso: dayIso,
       endSlot: a.endSlot,
+      endMinutes,
       hours: a.hours,
       label: workLabel,
     };
@@ -313,7 +359,7 @@ export function buildTaskTimelineBlocks(
 
   if (waitHours > 1e-6) {
     const last = work[work.length - 1]!;
-    const dry = dryWaitAfterBlock(last, waitHours, holidayDates, capBefore);
+    const dry = dryWaitAfterBlock(last, waitHours, capBefore);
     if (dry) {
       blocks.push({
         kind: "wait",

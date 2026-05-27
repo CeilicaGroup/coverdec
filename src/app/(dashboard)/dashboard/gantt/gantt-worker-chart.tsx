@@ -7,6 +7,12 @@ import { ProcessBadge } from "@/components/process-badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { GanttTimelineBlock } from "@/features/planning/gantt-data";
 import { toPlanningDayIso } from "@/features/planning/gantt-data";
+import {
+  buildGanttTimeAxisContext,
+  daySpanMinutes,
+  type GanttTimeAxisContext,
+  type WorkWindowRow,
+} from "@/features/planning/gantt-time-axis";
 import { resolveBlockRange, timelineHoverSummary } from "@/features/planning/gantt-timeline";
 import { formatDayMonthYear } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
@@ -66,21 +72,52 @@ function gridCols(axisLen: number): string {
   return `${LABEL_COL} repeat(${axisLen}, minmax(48px, 1fr))`;
 }
 
+function formatMinutesClock(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function GanttDayGrid({
+  dayIso,
+  timeAxis,
+}: {
+  dayIso: string;
+  timeAxis: GanttTimeAxisContext;
+}) {
+  const bounds = timeAxis.boundsForDayIso(dayIso);
+  const hourCount = Math.floor(daySpanMinutes(bounds) / 60);
+  if (hourCount <= 0) return null;
+  return (
+    <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden rounded-full">
+      {Array.from({ length: hourCount }, (_, i) => (
+        <div
+          key={i}
+          className="absolute top-0 bottom-0 w-px bg-border/70"
+          style={{ left: `${((i + 1) / (hourCount + 1)) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function TimelineBars({
   blocks,
   axis,
   total,
   color,
+  timeAxis,
 }: {
   blocks: GanttTimelineBlock[];
   axis: string[];
   total: number;
   color: string;
+  timeAxis: GanttTimeAxisContext;
 }) {
   return (
     <>
       {blocks.map((block, i) => {
-        const range = resolveBlockRange(axis, block);
+        const range = resolveBlockRange(axis, block, timeAxis);
         if (!range) return null;
         const barLeft = (range.startFrac / total) * 100;
         const barWidth = ((range.endFrac - range.startFrac) / total) * 100;
@@ -117,14 +154,21 @@ function TimelineBars({
 export function GanttWorkerChart({
   axisStartIso,
   axisEndIso,
+  workWindows,
   workers,
   processStyles,
 }: {
   axisStartIso: string;
   axisEndIso: string;
+  workWindows: WorkWindowRow[];
   workers: GanttWorkerRow[];
   processStyles: Record<string, ProcessBadgeStyle>;
 }) {
+  const timeAxis = useMemo(
+    () => buildGanttTimeAxisContext(workWindows),
+    [workWindows],
+  );
+
   const axis = useMemo(
     () => listBusinessDays(axisStartIso, axisEndIso),
     [axisStartIso, axisEndIso],
@@ -137,11 +181,22 @@ export function GanttWorkerChart({
         <div className="min-w-[720px] relative">
           <div className="grid border-b bg-muted/40" style={{ gridTemplateColumns: gridCols(axis.length) }}>
             <div className="p-2 text-xs font-semibold">Trabajador / tarea</div>
-            {axis.map((iso) => (
-              <div key={iso} className="p-2 text-center text-[10px] text-muted-foreground border-l">
-                {formatDayMonthYear(parseUtc(iso))}
-              </div>
-            ))}
+            {axis.map((iso) => {
+              const bounds = timeAxis.boundsForDayIso(iso);
+              return (
+                <div
+                  key={iso}
+                  className="p-2 text-center text-[10px] text-muted-foreground border-l"
+                  title={`${formatMinutesClock(bounds.dayStartMinutes)} – ${formatMinutesClock(bounds.dayEndMinutes)}`}
+                >
+                  <div>{formatDayMonthYear(parseUtc(iso))}</div>
+                  <div className="text-[9px] opacity-80">
+                    {formatMinutesClock(bounds.dayStartMinutes)}–
+                    {formatMinutesClock(bounds.dayEndMinutes)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {workers.length === 0 ? (
@@ -155,10 +210,20 @@ export function GanttWorkerChart({
                     <div className="text-xs font-semibold truncate">{worker.iniciales} · {worker.nombre}</div>
                   </div>
                   <div className="relative h-8 mx-2" style={{ gridColumn: `2 / span ${axis.length}` }}>
+                    <GanttDayGrid
+                      dayIso={worker.estimatedStart ?? axis[0] ?? ""}
+                      timeAxis={timeAxis}
+                    />
                     <div className="absolute inset-0 bg-secondary/50 rounded-full z-0" />
                     <div className="absolute inset-0 z-[1]">
                       {worker.isAssigned ? (
-                        <TimelineBars blocks={worker.timelineBlocks} axis={axis} total={total} color={worker.color} />
+                        <TimelineBars
+                          blocks={worker.timelineBlocks}
+                          axis={axis}
+                          total={total}
+                          color={worker.color}
+                          timeAxis={timeAxis}
+                        />
                       ) : (
                         <span className="absolute inset-0 flex items-center px-2 text-[10px] text-muted-foreground">Sin asignar</span>
                       )}
@@ -184,10 +249,20 @@ export function GanttWorkerChart({
                         </Tooltip>
                       </div>
                       <div className="relative h-8 mx-2" style={{ gridColumn: `2 / span ${axis.length}` }}>
+                        <GanttDayGrid
+                          dayIso={task.estimatedStart ?? axis[0] ?? ""}
+                          timeAxis={timeAxis}
+                        />
                         <div className="absolute inset-0 bg-secondary/50 rounded-full z-0" />
                         <div className="absolute inset-0 z-[1]">
                           {task.isAssigned && task.estimatedStart && task.estimatedEnd ? (
-                            <TimelineBars blocks={task.timelineBlocks} axis={axis} total={total} color={barColor} />
+                            <TimelineBars
+                              blocks={task.timelineBlocks}
+                              axis={axis}
+                              total={total}
+                              color={barColor}
+                              timeAxis={timeAxis}
+                            />
                           ) : (
                             <span className="absolute inset-0 flex items-center px-2 text-[10px] text-muted-foreground">Sin asignar</span>
                           )}

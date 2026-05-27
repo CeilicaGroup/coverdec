@@ -22,7 +22,15 @@ import {
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-data";
 import {
+  buildGanttTimeAxisContext,
+  daySpanMinutes,
+  type GanttTimeAxisContext,
+  type WorkWindowRow,
+} from "@/features/planning/gantt-time-axis";
+import {
   resolveBlockRange,
+  slotToEndMinutes,
+  slotToStartMinutes,
   timelineHoverSummary,
 } from "@/features/planning/gantt-timeline";
 import { formatDayMonthYear, formatShortDate } from "@/lib/format";
@@ -43,11 +51,18 @@ interface GanttChartProps {
   axisStartIso: string;
   axisEndIso: string;
   todayIso: string;
+  workWindows: WorkWindowRow[];
   projects: GanttProjectRow[];
   milestones: GanttMilestone[];
   autoExpandProjectId?: string;
   autoExpandLampId?: string;
   processStyles: Record<string, ProcessBadgeStyle>;
+}
+
+function formatMinutesClock(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 const WAIT_BAR_COLOR = "rgba(245, 158, 11, 0.55)";
@@ -150,15 +165,24 @@ function GanttUnassignedTrack() {
   );
 }
 
-function GanttDayGrid({ total }: { total: number }) {
-  if (total <= 1) return null;
+function GanttDayGrid({
+  dayIso,
+  timeAxis,
+}: {
+  dayIso: string;
+  timeAxis: GanttTimeAxisContext;
+}) {
+  const bounds = timeAxis.boundsForDayIso(dayIso);
+  const spanMinutes = daySpanMinutes(bounds);
+  const hourCount = Math.floor(spanMinutes / 60);
+  if (hourCount <= 0) return null;
   return (
     <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden rounded-full">
-      {Array.from({ length: total - 1 }, (_, i) => (
+      {Array.from({ length: hourCount }, (_, i) => (
         <div
           key={i}
           className="absolute top-0 bottom-0 w-px bg-border/70"
-          style={{ left: `${((i + 1) / total) * 100}%` }}
+          style={{ left: `${((i + 1) / (hourCount + 1)) * 100}%` }}
         />
       ))}
     </div>
@@ -174,6 +198,7 @@ function GanttBarContent({
   axis,
   total,
   color,
+  timeAxis,
 }: {
   isPlanningComplete: boolean;
   isAssigned: boolean;
@@ -183,6 +208,7 @@ function GanttBarContent({
   axis: string[];
   total: number;
   color: string;
+  timeAxis: GanttTimeAxisContext;
 }) {
   if (isPlanningComplete && !isAssigned) {
     return (
@@ -201,6 +227,7 @@ function GanttBarContent({
         axis={axis}
         total={total}
         workColor={color}
+        timeAxis={timeAxis}
       />
     );
   }
@@ -211,14 +238,17 @@ function GanttBarContent({
           kind: "work",
           startDayIso: estimatedStart,
           startSlot: 0,
+          startMinutes: slotToStartMinutes(0),
           endDayIso: estimatedEnd,
           endSlot: 8,
+          endMinutes: slotToEndMinutes(8),
           label: `Planificado ${formatShortDate(parseUtc(estimatedStart))} – ${formatShortDate(parseUtc(estimatedEnd))}`,
         },
       ]}
       axis={axis}
       total={total}
       workColor={color}
+      timeAxis={timeAxis}
     />
   );
 }
@@ -228,12 +258,16 @@ function GanttBarTrack({
   total,
   todayIdx,
   showTodayMarker = false,
+  timeAxis,
+  gridDayIso,
   children,
 }: {
   axis: string[];
   total: number;
   todayIdx: number;
   showTodayMarker?: boolean;
+  timeAxis: GanttTimeAxisContext;
+  gridDayIso: string;
   children: ReactNode;
 }) {
   return (
@@ -241,7 +275,7 @@ function GanttBarTrack({
       className="relative h-8 mx-2"
       style={{ gridColumn: `2 / span ${axis.length}` }}
     >
-      <GanttDayGrid total={total} />
+      <GanttDayGrid dayIso={gridDayIso} timeAxis={timeAxis} />
       {showTodayMarker && todayIdx >= 0 ? (
         <div
           className="absolute top-0 bottom-0 w-px bg-primary z-10"
@@ -287,16 +321,18 @@ function TimelineBars({
   axis,
   total,
   workColor,
+  timeAxis,
 }: {
   blocks: GanttTimelineBlock[];
   axis: string[];
   total: number;
   workColor: string;
+  timeAxis: GanttTimeAxisContext;
 }) {
   return (
     <>
       {blocks.map((block, i) => {
-        const range = resolveBlockRange(axis, block);
+        const range = resolveBlockRange(axis, block, timeAxis);
         if (!range) return null;
 
         const barLeft = (range.startFrac / total) * 100;
@@ -374,6 +410,7 @@ function ProjectGanttRow({
   axis,
   total,
   todayIdx,
+  timeAxis,
   expanded,
   onToggle,
   hasLamps,
@@ -382,6 +419,7 @@ function ProjectGanttRow({
   axis: string[];
   total: number;
   todayIdx: number;
+  timeAxis: GanttTimeAxisContext;
   expanded: boolean;
   onToggle: () => void;
   hasLamps: boolean;
@@ -423,6 +461,8 @@ function ProjectGanttRow({
         total={total}
         todayIdx={todayIdx}
         showTodayMarker
+        timeAxis={timeAxis}
+        gridDayIso={p.estimatedStart}
       >
         <GanttBarContent
           isPlanningComplete={false}
@@ -433,6 +473,7 @@ function ProjectGanttRow({
           axis={axis}
           total={total}
           color={color}
+          timeAxis={timeAxis}
         />
         {p.deliveryDate ? (
           <DeliveryDiamond
@@ -451,6 +492,7 @@ function LampGanttRow({
   axis,
   total,
   todayIdx,
+  timeAxis,
   expanded,
   onToggle,
 }: {
@@ -458,6 +500,7 @@ function LampGanttRow({
   axis: string[];
   total: number;
   todayIdx: number;
+  timeAxis: GanttTimeAxisContext;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -491,7 +534,13 @@ function LampGanttRow({
           />
         </div>
       </div>
-      <GanttBarTrack axis={axis} total={total} todayIdx={todayIdx}>
+      <GanttBarTrack
+        axis={axis}
+        total={total}
+        todayIdx={todayIdx}
+        timeAxis={timeAxis}
+        gridDayIso={lamp.estimatedStart ?? axis[0] ?? ""}
+      >
         <GanttBarContent
           isPlanningComplete={false}
           isAssigned={lamp.isAssigned}
@@ -501,6 +550,7 @@ function LampGanttRow({
           axis={axis}
           total={total}
           color="#64748B"
+          timeAxis={timeAxis}
         />
       </GanttBarTrack>
     </div>
@@ -512,12 +562,14 @@ function TaskGanttRow({
   axis,
   total,
   todayIdx,
+  timeAxis,
   processStyles,
 }: {
   task: GanttTaskRow;
   axis: string[];
   total: number;
   todayIdx: number;
+  timeAxis: GanttTimeAxisContext;
   processStyles: Record<string, ProcessBadgeStyle>;
 }) {
   const processStyle = processStyles[task.process];
@@ -554,7 +606,13 @@ function TaskGanttRow({
           operators={task.operators}
         />
       </div>
-      <GanttBarTrack axis={axis} total={total} todayIdx={todayIdx}>
+      <GanttBarTrack
+        axis={axis}
+        total={total}
+        todayIdx={todayIdx}
+        timeAxis={timeAxis}
+        gridDayIso={task.estimatedStart ?? axis[0] ?? ""}
+      >
         <GanttBarContent
           isPlanningComplete={task.isPlanningComplete}
           isAssigned={task.isAssigned}
@@ -564,6 +622,7 @@ function TaskGanttRow({
           axis={axis}
           total={total}
           color={barColor}
+          timeAxis={timeAxis}
         />
       </GanttBarTrack>
     </div>
@@ -574,12 +633,18 @@ export function GanttChart({
   axisStartIso,
   axisEndIso,
   todayIso,
+  workWindows,
   projects,
   milestones,
   autoExpandProjectId,
   autoExpandLampId,
   processStyles,
 }: GanttChartProps) {
+  const timeAxis = useMemo(
+    () => buildGanttTimeAxisContext(workWindows),
+    [workWindows],
+  );
+
   const axis = useMemo(
     () => listBusinessDays(axisStartIso, axisEndIso),
     [axisStartIso, axisEndIso],
@@ -638,14 +703,22 @@ export function GanttChart({
             style={{ gridTemplateColumns: gridCols(axis.length) }}
           >
             <div className="p-2 text-xs font-semibold">Proyecto / lámpara / proceso</div>
-            {axis.map((iso) => (
-              <div
-                key={iso}
-                className="p-2 text-center text-[10px] text-muted-foreground border-l"
-              >
-                {formatDayMonthYear(parseUtc(iso))}
-              </div>
-            ))}
+            {axis.map((iso) => {
+              const bounds = timeAxis.boundsForDayIso(iso);
+              return (
+                <div
+                  key={iso}
+                  className="p-2 text-center text-[10px] text-muted-foreground border-l"
+                  title={`${formatMinutesClock(bounds.dayStartMinutes)} – ${formatMinutesClock(bounds.dayEndMinutes)}`}
+                >
+                  <div>{formatDayMonthYear(parseUtc(iso))}</div>
+                  <div className="text-[9px] opacity-80">
+                    {formatMinutesClock(bounds.dayStartMinutes)}–
+                    {formatMinutesClock(bounds.dayEndMinutes)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {projects.length === 0 ? (
@@ -664,6 +737,7 @@ export function GanttChart({
                     axis={axis}
                     total={total}
                     todayIdx={todayIdx}
+                    timeAxis={timeAxis}
                     expanded={projectExpanded}
                     onToggle={() => toggleProject(p.id)}
                     hasLamps={hasLamps}
@@ -679,6 +753,7 @@ export function GanttChart({
                               axis={axis}
                               total={total}
                               todayIdx={todayIdx}
+                              timeAxis={timeAxis}
                               expanded={lampExpanded}
                               onToggle={() => toggleLamp(p.id, lamp.id)}
                             />
@@ -690,6 +765,7 @@ export function GanttChart({
                                     axis={axis}
                                     total={total}
                                     todayIdx={todayIdx}
+                                    timeAxis={timeAxis}
                                     processStyles={processStyles}
                                   />
                                 ))

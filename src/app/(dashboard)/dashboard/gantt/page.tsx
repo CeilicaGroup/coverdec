@@ -24,6 +24,11 @@ import {
   filterGanttAssignments,
 } from "@/features/planning/gantt-data";
 import type { GanttTimelineBlock } from "@/features/planning/gantt-data";
+import type { WorkWindowRow } from "@/features/planning/gantt-time-axis";
+import {
+  slotToEndMinutes,
+  slotToStartMinutes,
+} from "@/features/planning/gantt-timeline";
 import { PageHeader } from "../../_components/page-header";
 import { GanttChart } from "./gantt-chart";
 import { GanttFilters, type GanttAxisMode } from "./gantt-filters";
@@ -84,6 +89,8 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         endDayIso: a.date.toISOString().slice(0, 10),
         startSlot: a.startSlot,
         endSlot: a.endSlot,
+        startMinutes: slotToStartMinutes(a.startSlot),
+        endMinutes: slotToEndMinutes(a.endSlot),
         hours: a.hours,
         label: (() => {
           const frameLabel =
@@ -130,6 +137,8 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
             endDayIso: a.date.toISOString().slice(0, 10),
             startSlot: a.startSlot,
             endSlot: a.endSlot,
+            startMinutes: slotToStartMinutes(a.startSlot),
+            endMinutes: slotToEndMinutes(a.endSlot),
             hours: a.hours,
             label: (() => {
               const frameLabel =
@@ -260,6 +269,13 @@ export default async function GanttPage({
 
   const projectOptions = buildGanttProjectOptions(projects);
   const processStylesRecord = Object.fromEntries(processStyles);
+  const workWindows: WorkWindowRow[] = people.flatMap((p) =>
+    p.workWindows.map((w) => ({
+      dayOfWeek: w.dayOfWeek,
+      startMinutes: w.startMinutes,
+      endMinutes: w.endMinutes,
+    })),
+  );
   const workerRows = axisMode === "worker" ? buildWorkerRows(filteredAssignments) : [];
 
   return (
@@ -286,6 +302,7 @@ export default async function GanttPage({
         <GanttWorkerChart
           axisStartIso={axisRange.axisStartIso}
           axisEndIso={axisRange.axisEndIso}
+          workWindows={workWindows}
           workers={workerRows}
           processStyles={processStylesRecord}
         />
@@ -294,6 +311,7 @@ export default async function GanttPage({
           axisStartIso={axisRange.axisStartIso}
           axisEndIso={axisRange.axisEndIso}
           todayIso={todayIso}
+          workWindows={workWindows}
           projects={ganttProjects}
           milestones={milestones}
           processStyles={processStylesRecord}

@@ -5,6 +5,7 @@ import type { getActiveProjectsForGantt } from "@/features/planning/queries";
 import {
   buildContinuousTimeline,
   buildTaskTimelineBlocks,
+  slotToStartMinutes,
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-timeline";
 
@@ -350,7 +351,11 @@ function buildTasksWithEstimates(
 
       const remainingWorkHours = Math.max(0, t.estimatedHours - t.doneHours);
 
-      let capBefore: { dayIso: string; slot: number } | null = null;
+      let capBefore: {
+        dayIso: string;
+        slot: number;
+        minutes: number;
+      } | null = null;
       const nextTask = sorted[ti + 1];
       if (nextTask) {
         const nextForTask = assignments
@@ -364,6 +369,7 @@ function buildTasksWithEstimates(
           capBefore = {
             dayIso: toPlanningDayIso(firstNext.date),
             slot: firstNext.startSlot,
+            minutes: slotToStartMinutes(firstNext.startSlot),
           };
         }
       }
