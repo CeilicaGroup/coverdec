@@ -211,7 +211,20 @@ export async function getGanttPlanningAssignments(naveId: string | null) {
           id: true,
           projectId: true,
           project: { select: { id: true, name: true } },
-          lamp: { select: { id: true, name: true } },
+          lamp: {
+            select: {
+              id: true,
+              name: true,
+              frameType: { select: { name: true } },
+            },
+          },
+          lampFrame: {
+            select: {
+              id: true,
+              label: true,
+              frameType: { select: { name: true } },
+            },
+          },
         },
       },
     },
@@ -240,7 +253,21 @@ export async function getActiveProjectsForGantt(naveId: string | null) {
           estimatedHours: true,
           pendingHours: true,
           doneHours: true,
-          lamp: { select: { id: true, name: true } },
+          lamp: {
+            select: {
+              id: true,
+              name: true,
+              frameType: { select: { name: true } },
+            },
+          },
+          lampFrameId: true,
+          lampFrame: {
+            select: {
+              id: true,
+              label: true,
+              frameType: { select: { name: true } },
+            },
+          },
         },
         orderBy: [{ order: "asc" }, { process: "asc" }],
       },

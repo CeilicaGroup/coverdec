@@ -8,17 +8,31 @@ export interface TaskBlueprint {
   order: number;
 }
 
-export async function buildTasksFromFrame(
-  frameTypeId: string,
+export interface FrameProcessInput {
+  process: ProcessCode;
+  hoursPerUnit: number;
+  fixedHours: number;
+  sequence: number;
+}
+
+/** Etiqueta de una unidad física (p. ej. «Panel tela 1», «Panel tela 2»). */
+export function formatLampFrameUnitLabel(
+  frameName: string,
+  unitIndex: number,
+  totalUnits: number,
+): string {
+  if (totalUnits > 1) return `${frameName} ${unitIndex}`;
+  return frameName;
+}
+
+export function computeTaskBlueprintsFromProcesses(
+  processes: FrameProcessInput[],
   surfaceM2: number,
-): Promise<TaskBlueprint[]> {
-  const frameProcesses = await prisma.frameTypeProcess.findMany({
-    where: { frameTypeId },
-    orderBy: { sequence: "asc" },
-  });
+): TaskBlueprint[] {
+  const sorted = [...processes].sort((a, b) => a.sequence - b.sequence);
   const blueprints: TaskBlueprint[] = [];
   let order = 0;
-  for (const fp of frameProcesses) {
+  for (const fp of sorted) {
     const hours = fp.hoursPerUnit * surfaceM2 + fp.fixedHours;
     if (hours <= 0) continue;
     blueprints.push({
@@ -28,6 +42,25 @@ export async function buildTasksFromFrame(
     });
   }
   return blueprints;
+}
+
+export async function buildTasksFromFrame(
+  frameTypeId: string,
+  surfaceM2: number,
+): Promise<TaskBlueprint[]> {
+  const frameProcesses = await prisma.frameTypeProcess.findMany({
+    where: { frameTypeId },
+    orderBy: { sequence: "asc" },
+  });
+  return computeTaskBlueprintsFromProcesses(
+    frameProcesses.map((fp) => ({
+      process: fp.process as ProcessCode,
+      hoursPerUnit: fp.hoursPerUnit,
+      fixedHours: fp.fixedHours,
+      sequence: fp.sequence,
+    })),
+    surfaceM2,
+  );
 }
 
 export function adjustPendingOnEstimateChange(

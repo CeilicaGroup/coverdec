@@ -261,8 +261,17 @@ export function buildTaskTimelineBlocks(
 
   if (forTask.length === 0) return [];
 
+  const frameLabel =
+    forTask[0]!.task.lampFrame?.label ??
+    forTask[0]!.task.lampFrame?.frameType?.name ??
+    forTask[0]!.task.lamp.frameType?.name ??
+    null;
+
   const work: GanttTimelineBlock[] = forTask.map((a) => {
     const dayIso = toPlanningDayIso(a.date);
+    const workLabel = frameLabel
+      ? `${workBlockLabel(dayIso, a.startSlot, a.endSlot, a.hours)} · Bastidor ${frameLabel}`
+      : workBlockLabel(dayIso, a.startSlot, a.endSlot, a.hours);
     return {
       kind: "work" as const,
       startDayIso: dayIso,
@@ -270,7 +279,7 @@ export function buildTaskTimelineBlocks(
       endDayIso: dayIso,
       endSlot: a.endSlot,
       hours: a.hours,
-      label: workBlockLabel(dayIso, a.startSlot, a.endSlot, a.hours),
+      label: workLabel,
     };
   });
 
@@ -283,7 +292,9 @@ export function buildTaskTimelineBlocks(
       blocks.push({
         kind: "wait",
         ...dry,
-        label: processWaitLabel(processCode, waitHours),
+        label: frameLabel
+          ? `${processWaitLabel(processCode, waitHours)} · Bastidor ${frameLabel}`
+          : processWaitLabel(processCode, waitHours),
       });
     }
   }

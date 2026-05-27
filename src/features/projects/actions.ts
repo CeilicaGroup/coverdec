@@ -9,6 +9,7 @@ import {Role } from "@/generated/prisma";
 import {
   adjustPendingOnEstimateChange,
   buildTasksFromFrame,
+  formatLampFrameUnitLabel,
   getNextTaskOrder,
 } from "@/features/projects/lamp-tasks";
 
@@ -89,13 +90,17 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
   return { id: data.projectId };
 }
 
+const lampFrameInputSchema = z.object({
+  frameTypeId: z.string().min(1),
+  surfaceM2: z.number().positive(),
+  units: z.number().int().positive(),
+});
+
 const lampSchema = z.object({
   projectId: z.string().min(1),
   name: z.string().min(1),
-  frameTypeId: z.string().min(1),
-  surfaceM2: z.number().positive(),
-  units: z.number().int().positive().default(1),
   naveId: z.string().min(1),
+  frames: z.array(lampFrameInputSchema).min(1),
 });
 
 export async function createLamp(input: z.infer<typeof lampSchema>) {
@@ -103,35 +108,91 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = lampSchema.parse(input);
 
-  const blueprints = await buildTasksFromFrame(data.frameTypeId, data.surfaceM2);
-  if (blueprints.length === 0) {
+  const frameTypeIds = [...new Set(data.frames.map((f) => f.frameTypeId))];
+  const frameTypes = await prisma.frameType.findMany({
+    where: { id: { in: frameTypeIds } },
+    select: { id: true, name: true },
+  });
+  const frameNameById = new Map(frameTypes.map((f) => [f.id, f.name]));
+  if (frameTypes.length !== frameTypeIds.length) {
+    throw new Error("Alguno de los bastidores seleccionados no existe.");
+  }
+
+  const frameBlueprints = await Promise.all(
+    data.frames.map(async (frame) => ({
+      frame,
+      blueprints: await buildTasksFromFrame(frame.frameTypeId, frame.surfaceM2),
+    })),
+  );
+  if (!frameBlueprints.some(({ blueprints }) => blueprints.length > 0)) {
     throw new Error(
-      "El bastidor seleccionado no tiene procesos con horas para esta medida.",
+      "Ningún bastidor tiene procesos con horas para las medidas indicadas.",
     );
   }
+
+  const primary = data.frames[0]!;
+  const totalUnits = data.frames.reduce((sum, f) => sum + f.units, 0);
 
   const lamp = await prisma.$transaction(async (tx) => {
     const created = await tx.lamp.create({
       data: {
         projectId: data.projectId,
         name: data.name,
-        frameTypeId: data.frameTypeId,
-        surfaceM2: data.surfaceM2,
-        units: data.units,
+        frameTypeId: primary.frameTypeId,
+        surfaceM2: primary.surfaceM2,
+        units: totalUnits,
       },
     });
 
-    await tx.task.createMany({
-      data: blueprints.map((bp) => ({
-        projectId: data.projectId,
-        lampId: created.id,
-        process: bp.process,
-        estimatedHours: bp.estimatedHours,
-        pendingHours: bp.estimatedHours,
-        order: bp.order,
-        naveId: data.naveId,
-      })),
-    });
+    const tasksToCreate: Array<{
+      projectId: string;
+      lampId: string;
+      lampFrameId: string;
+      process: string;
+      estimatedHours: number;
+      pendingHours: number;
+      order: number;
+      naveId: string;
+    }> = [];
+
+    let physicalFrameIndex = 0;
+
+    for (const { frame, blueprints } of frameBlueprints) {
+      if (blueprints.length === 0) continue;
+
+      const frameName = frameNameById.get(frame.frameTypeId) ?? "Bastidor";
+
+      for (let unitIndex = 1; unitIndex <= frame.units; unitIndex++) {
+        const lampFrame = await tx.lampFrame.create({
+          data: {
+            lampId: created.id,
+            frameTypeId: frame.frameTypeId,
+            label: formatLampFrameUnitLabel(frameName, unitIndex, frame.units),
+            surfaceM2: frame.surfaceM2,
+            units: 1,
+          },
+        });
+
+        for (const bp of blueprints) {
+          tasksToCreate.push({
+            projectId: data.projectId,
+            lampId: created.id,
+            lampFrameId: lampFrame.id,
+            process: bp.process,
+            estimatedHours: bp.estimatedHours,
+            pendingHours: bp.estimatedHours,
+            order: bp.order + physicalFrameIndex * 1000,
+            naveId: data.naveId,
+          });
+        }
+
+        physicalFrameIndex += 1;
+      }
+    }
+
+    if (tasksToCreate.length > 0) {
+      await tx.task.createMany({ data: tasksToCreate });
+    }
 
     return created;
   });
@@ -195,15 +256,34 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
 
   const lamp = await prisma.lamp.findFirst({
     where: { id: data.lampId },
-    include: { tasks: { select: { process: true, naveId: true }, take: 1 } },
+    select: { id: true, projectId: true, frameTypeId: true },
   });
   if (!lamp) throw new Error("Lámpara no encontrada");
 
-  if (lamp.tasks.some((t) => t.process === data.process)) {
-    throw new Error("Ese proceso ya existe en esta lámpara.");
+  const primaryLampFrame = await prisma.lampFrame.findFirst({
+    where: { lampId: lamp.id, frameTypeId: lamp.frameTypeId },
+    select: { id: true },
+  });
+
+  if (primaryLampFrame) {
+    const exists = await prisma.task.count({
+      where: {
+        lampId: lamp.id,
+        lampFrameId: primaryLampFrame.id,
+        process: data.process,
+      },
+    });
+    if (exists > 0) {
+      throw new Error("Ese proceso ya existe en este bastidor.");
+    }
+  } else {
+    const exists = await prisma.task.count({
+      where: { lampId: lamp.id, process: data.process, lampFrameId: null },
+    });
+    if (exists > 0) throw new Error("Ese proceso ya existe en esta lámpara.");
   }
 
-  const naveId = lamp.tasks[0]?.naveId ?? ctx.naveId;
+  const naveId = ctx.naveId;
 
   await prisma.$transaction(async (tx) => {
     const order = await getNextTaskOrder(tx, lamp.id);
@@ -211,6 +291,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       data: {
         projectId: lamp.projectId,
         lampId: lamp.id,
+        lampFrameId: primaryLampFrame?.id,
         process: data.process,
         estimatedHours: data.estimatedHours,
         pendingHours: data.estimatedHours,

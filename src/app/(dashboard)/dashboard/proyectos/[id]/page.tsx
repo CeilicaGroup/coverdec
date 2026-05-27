@@ -36,7 +36,19 @@ export default async function ProjectDetailPage({
       lamps: {
         include: {
           frameType: true,
-          tasks: { orderBy: { order: "asc" }, include: { nave: { select: { id: true } } } },
+              tasks: {
+                orderBy: { order: "asc" },
+                include: {
+                  nave: { select: { id: true } },
+                  lampFrame: {
+                    select: {
+                      id: true,
+                      label: true,
+                      frameType: { select: { name: true } },
+                    },
+                  },
+                },
+              },
         },
         orderBy: { name: "asc" },
       },
@@ -111,7 +123,11 @@ export default async function ProjectDetailPage({
                 />
               </>
             ) : null}
-            <Button variant="outline" render={<Link href="/dashboard/proyectos" />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/dashboard/proyectos" />}
+            >
               <ArrowLeft className="size-4 mr-1" />
               Volver
             </Button>
@@ -137,6 +153,9 @@ export default async function ProjectDetailPage({
                 name: f.name,
                 processes: f.processes.map((p) => ({
                   process: p.process,
+                  hoursPerUnit: p.hoursPerUnit,
+                  fixedHours: p.fixedHours,
+                  sequence: p.sequence,
                   label: p.definition.label,
                   bgColor: p.definition.bgColor,
                   fgColor: p.definition.fgColor,

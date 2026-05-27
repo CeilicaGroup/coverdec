@@ -69,6 +69,8 @@ export interface GanttTaskRow {
   endSlot: number | null;
   timelineBlocks: GanttTimelineBlock[];
   personIds: string[];
+  /** Solo se rellena si el usuario debe verlo (p.ej. lámpara con >1 bastidor). */
+  lampFrameLabel: string | null;
   operators: GanttOperator[];
 }
 
@@ -315,6 +317,17 @@ function buildTasksWithEstimates(
     const sorted = [...lampTasks].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );
+    const distinctFrameLabels = new Set(
+      sorted
+        .map((t) => {
+          if (t.lampFrame?.label) return t.lampFrame.label;
+          if (t.lampFrame?.frameType?.name) return t.lampFrame.frameType.name;
+          if (t.lamp?.frameType?.name) return t.lamp.frameType.name;
+          return null;
+        })
+        .filter((x): x is string => Boolean(x)),
+    );
+    const showFrameLabel = distinctFrameLabels.size > 1;
     let chainStartIso: string | null = null;
     const lampRows: GanttTaskRow[] = [];
 
@@ -362,6 +375,12 @@ function buildTasksWithEstimates(
         endSlot: range.endSlot,
         timelineBlocks,
         personIds: schedule.personIds,
+        lampFrameLabel: showFrameLabel
+          ? t.lampFrame?.label ??
+            t.lampFrame?.frameType?.name ??
+            t.lamp?.frameType?.name ??
+            null
+          : null,
         operators: schedule.operators,
       });
     }

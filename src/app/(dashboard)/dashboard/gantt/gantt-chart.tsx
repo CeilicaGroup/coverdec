@@ -543,6 +543,11 @@ function TaskGanttRow({
               : "Sin planificación"}
           </TooltipContent>
         </Tooltip>
+        {task.lampFrameLabel ? (
+          <div className="text-[10px] text-muted-foreground leading-tight">
+            Bastidor: <span className="text-foreground">{task.lampFrameLabel}</span>
+          </div>
+        ) : null}
         <GanttPlanningStatus
           isPlanningComplete={task.isPlanningComplete}
           isAssigned={task.isAssigned}

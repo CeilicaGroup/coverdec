@@ -79,6 +79,7 @@ export default async function OrdenesPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        nativeButton={false}
                         render={<Link href={`/dashboard/ordenes/${o.id}`} />}
                       >
                         <Printer className="size-3.5 mr-1" />

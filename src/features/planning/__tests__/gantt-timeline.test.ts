@@ -32,7 +32,8 @@ function assignment(
       id: "t1",
       projectId: "proj",
       project: { id: "proj", name: "Proyecto" },
-      lamp: { id: "l1", name: "L1" },
+      lamp: { id: "l1", name: "L1", frameType: { name: "Bastidor 1" } },
+      lampFrame: null,
     },
   };
 }

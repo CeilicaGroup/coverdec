@@ -115,6 +115,7 @@ async function importProyectos(
   const frameTypeByName = new Map(
     frameTypes.map((f) => [f.name.toUpperCase().trim(), f]),
   );
+  const frameIndexById = new Map(frameTypes.map((f, i) => [f.id, i]));
 
   for (let r = 2; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
@@ -161,11 +162,11 @@ async function importProyectos(
     if (projExisting) summary.projects.updated += 1;
     else summary.projects.created += 1;
 
-    const frameType = bastidor
+    const rowFrameType = bastidor
       ? frameTypeByName.get(bastidor.toUpperCase().trim()) ?? null
       : null;
     const legacyFrame =
-      frameType ??
+      rowFrameType ??
       (await prisma.frameType.findFirst({ where: { code: "LEGACY" } })) ??
       (await prisma.frameType.findFirst());
 
@@ -174,6 +175,9 @@ async function importProyectos(
       summary.tasks.skipped += 1;
       continue;
     }
+    const frameTypeForRow = legacyFrame;
+    const frameTypeIdForRow = frameTypeForRow.id;
+    const frameLabelForRow = frameTypeForRow.name;
 
     let lamp = await prisma.lamp.findFirst({
       where: { projectId: project.id, name: lampName },
@@ -185,7 +189,7 @@ async function importProyectos(
           name: lampName,
           code: `${lampName}`.slice(0, 60),
           surfaceM2: medida ?? 1,
-          frameTypeId: frameType?.id ?? legacyFrame.id,
+          frameTypeId: frameTypeIdForRow,
         },
       });
       summary.lamps.created += 1;
@@ -195,6 +199,25 @@ async function importProyectos(
         data: { surfaceM2: medida },
       });
       summary.lamps.updated += 1;
+    }
+
+    let lampFrame = await prisma.lampFrame.findFirst({
+      where: {
+        lampId: lamp.id,
+        frameTypeId: frameTypeIdForRow,
+        label: frameLabelForRow,
+      },
+    });
+    if (!lampFrame) {
+      lampFrame = await prisma.lampFrame.create({
+        data: {
+          lampId: lamp.id,
+          frameTypeId: frameTypeIdForRow,
+          label: frameLabelForRow,
+          surfaceM2: medida ?? lamp.surfaceM2 ?? undefined,
+          units: lamp.units,
+        },
+      });
     }
 
     const estimated = hrPlan ?? hrPend ?? 0;
@@ -207,24 +230,31 @@ async function importProyectos(
     const frameProcess = await prisma.frameTypeProcess.findUnique({
       where: {
         frameTypeId_process: {
-          frameTypeId: lamp.frameTypeId,
+          frameTypeId: frameTypeIdForRow,
           process: procCode,
         },
       },
     });
+    const frameOrderOffset =
+      (frameIndexById.get(frameTypeIdForRow) ?? 0) * 1000;
     let taskOrder: number;
     if (frameProcess) {
-      taskOrder = frameProcess.sequence;
+      taskOrder = frameProcess.sequence + frameOrderOffset;
     } else {
       const maxOrder = await prisma.task.aggregate({
-        where: { lampId: lamp.id },
+        where: { lampId: lamp.id, lampFrameId: lampFrame.id },
         _max: { order: true },
       });
       taskOrder = (maxOrder._max.order ?? -1) + 1;
     }
 
     const taskExisting = await prisma.task.findFirst({
-      where: { projectId: project.id, lampId: lamp.id, process: procCode },
+      where: {
+        projectId: project.id,
+        lampId: lamp.id,
+        lampFrameId: lampFrame.id,
+        process: procCode,
+      },
     });
     if (taskExisting) {
       await prisma.task.update({
@@ -242,6 +272,7 @@ async function importProyectos(
         data: {
           projectId: project.id,
           lampId: lamp.id,
+          lampFrameId: lampFrame.id,
           process: procCode,
           estimatedHours: estimated,
           pendingHours: pending,

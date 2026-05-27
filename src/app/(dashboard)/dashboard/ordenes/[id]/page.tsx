@@ -24,7 +24,11 @@ export default async function OrdenDetailPage({
     <div className="min-h-screen bg-secondary/30 p-6 print:bg-white print:p-0">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-4 no-print">
-          <Button variant="ghost" render={<Link href="/dashboard/ordenes" />}>
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href="/dashboard/ordenes" />}
+          >
             <ArrowLeft className="size-4 mr-1" /> Volver
           </Button>
           <PrintTrigger />

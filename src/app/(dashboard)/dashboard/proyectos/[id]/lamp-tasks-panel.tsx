@@ -48,6 +48,12 @@ interface LampTaskRow {
   order: number;
   notes: string | null;
   naveId: string | null;
+  lampFrame:
+    | {
+        label: string | null;
+        frameType: { name: string };
+      }
+    | null;
 }
 
 export function LampTasksPanel({
@@ -80,6 +86,14 @@ export function LampTasksPanel({
   );
 
   const sorted = [...tasks].sort((a, b) => a.order - b.order);
+  const showFrameColumn = (() => {
+    const frameLabels = new Set(
+      sorted
+        .map((t) => t.lampFrame?.label ?? t.lampFrame?.frameType.name ?? null)
+        .filter((x): x is string => Boolean(x)),
+    );
+    return frameLabels.size > 1;
+  })();
 
   if (sorted.length === 0) {
     return (
@@ -94,6 +108,9 @@ export function LampTasksPanel({
           <tr className="text-muted-foreground">
             <th className="text-left font-medium py-1.5 px-3 w-8">#</th>
             <th className="text-left font-medium py-1.5 px-2">Proceso</th>
+            {showFrameColumn ? (
+              <th className="text-left font-medium py-1.5 px-2">Bastidor</th>
+            ) : null}
             <th className="text-right font-medium py-1.5 px-2">Est.</th>
             <th className="text-right font-medium py-1.5 px-2">Hecho</th>
             <th className="text-right font-medium py-1.5 px-2">Pend.</th>
@@ -115,6 +132,11 @@ export function LampTasksPanel({
               <td className="py-1.5 px-2">
                 <ProcessBadge code={t.process} />
               </td>
+              {showFrameColumn ? (
+                <td className="py-1.5 px-2 text-muted-foreground">
+                  {t.lampFrame?.label ?? t.lampFrame?.frameType.name ?? "—"}
+                </td>
+              ) : null}
               <td className="py-1.5 px-2 text-right font-mono">
                 {formatHours(t.estimatedHours)}
               </td>

@@ -84,7 +84,15 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         startSlot: a.startSlot,
         endSlot: a.endSlot,
         hours: a.hours,
-        label: `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h`,
+        label: (() => {
+          const frameLabel =
+            a.task.lampFrame?.label ??
+            a.task.lampFrame?.frameType?.name ??
+            a.task.lamp.frameType?.name ??
+            null;
+          const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
+          return `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h${bastidor}`;
+        })(),
       }));
 
       const byTask = new Map<string, GanttPlanningAssignment[]>();
@@ -102,7 +110,15 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         const last = taskSorted[taskSorted.length - 1]!;
         return {
           id: `${workerId}:${taskId}`,
-          label: `${first.task.project.name} · ${first.task.lamp.name ?? "Lámpara"}`,
+          label: (() => {
+            const frameLabel =
+              first.task.lampFrame?.label ??
+              first.task.lampFrame?.frameType?.name ??
+              first.task.lamp.frameType?.name ??
+              null;
+            const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
+            return `${first.task.project.name} · ${first.task.lamp.name ?? "Lámpara"}${bastidor}`;
+          })(),
           process: first.process,
           estimatedStart: first.date.toISOString().slice(0, 10),
           estimatedEnd: last.date.toISOString().slice(0, 10),
@@ -114,7 +130,15 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
             startSlot: a.startSlot,
             endSlot: a.endSlot,
             hours: a.hours,
-            label: `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h`,
+            label: (() => {
+              const frameLabel =
+                a.task.lampFrame?.label ??
+                a.task.lampFrame?.frameType?.name ??
+                a.task.lamp.frameType?.name ??
+                null;
+              const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
+              return `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h${bastidor}`;
+            })(),
           })),
         };
       });
