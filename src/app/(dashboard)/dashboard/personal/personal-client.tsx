@@ -58,15 +58,13 @@ interface UserSummary { id: string; name: string; email: string; personId: strin
 
 interface PersonWithSpecs {
   id: string;
-  nombre: string;
+  displayName: string;
   alias: string | null;
   iniciales: string;
   color: string;
-  capacityHours: number;
   hourlyRate: number;
   overtimeHourlyRate: number;
   isActive: boolean;
-  naveId: string | null;
   naveIds: string[];
   notes: string | null;
   createdAt: Date;
@@ -109,12 +107,11 @@ export function PersonalTeamClient({
   const [nombre, setNombre] = useState("");
   const [iniciales, setIniciales] = useState("");
   const [color, setColor] = useState("#64748b");
-  const [capacityHours, setCapacityHours] = useState("8");
   const [hourlyRate, setHourlyRate] = useState("14.75");
   const [overtimeHourlyRate, setOvertimeHourlyRate] = useState("22.13");
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
-  const [naveId, setNaveId] = useState<string>("none");
+  const [naveIds, setNaveIds] = useState<string[]>([]);
   const [userId, setUserId] = useState<string>("none");
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
     emptySpecMap(processDefs),
@@ -124,7 +121,7 @@ export function PersonalTeamClient({
 
   const activeCount = useMemo(() => people.filter((p) => p.isActive).length, [people]);
   const displayedPeople = useMemo(
-    () => filterNave === "all" ? people : people.filter((p) => p.naveId === filterNave),
+    () => filterNave === "all" ? people : people.filter((p) => p.naveIds.includes(filterNave)),
     [people, filterNave],
   );
 
@@ -133,12 +130,11 @@ export function PersonalTeamClient({
     setNombre("");
     setIniciales("");
     setColor("#64748b");
-    setCapacityHours("8");
     setHourlyRate("14.75");
     setOvertimeHourlyRate("22.13");
     setNotes("");
     setIsActive(true);
-    setNaveId("none");
+    setNaveIds([]);
     setUserId("none");
     setSpecMap(emptySpecMap(processDefs));
     setOpen(true);
@@ -146,15 +142,14 @@ export function PersonalTeamClient({
 
   function openEdit(p: PersonWithSpecs) {
     setEditingId(p.id);
-    setNombre(p.nombre);
+    setNombre(p.alias ?? "");
     setIniciales(p.iniciales);
     setColor(p.color);
-    setCapacityHours(String(p.capacityHours));
     setHourlyRate(String(p.hourlyRate));
     setOvertimeHourlyRate(String(p.overtimeHourlyRate));
     setNotes(p.notes ?? "");
     setIsActive(p.isActive);
-    setNaveId(p.naveId ?? "none");
+    setNaveIds(p.naveIds);
     const linked = users.find((u) => u.personId === p.id);
     setUserId(linked?.id ?? "none");
     const next = emptySpecMap(processDefs);
@@ -172,19 +167,14 @@ export function PersonalTeamClient({
   function submit() {
     startTransition(async () => {
       try {
-        const cap = Number(capacityHours);
         const rate = Number(hourlyRate);
         const otRate = Number(overtimeHourlyRate);
-        if (Number.isNaN(cap) || cap < 1 || cap > 24) {
-          toast.error("Capacidad diaria inválida (1–24 h)");
-          return;
-        }
         if (Number.isNaN(rate) || rate < 0 || Number.isNaN(otRate) || otRate < 0) {
           toast.error("Tarifas horarias inválidas");
           return;
         }
-        if (!naveId || naveId === "none") {
-          toast.error("Selecciona una nave");
+        if (naveIds.length === 0) {
+          toast.error("Selecciona al menos una nave");
           return;
         }
         if (!userId || userId === "none") {
@@ -204,15 +194,14 @@ export function PersonalTeamClient({
 
         await savePerson({
           id: editingId,
-          nombre,
           iniciales,
           color,
-          capacityHours: cap,
+          alias: nombre.trim() || undefined,
           hourlyRate: rate,
           overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
           isActive,
-          naveIds: [naveId],
+          naveIds,
           userId,
           specialties,
         });
@@ -241,7 +230,7 @@ export function PersonalTeamClient({
     }
     if (
       !globalThis.confirm(
-        `¿Eliminar definitivamente a ${p.nombre} (${p.iniciales})? Esta acción no se puede deshacer.`,
+        `¿Eliminar definitivamente a ${p.displayName} (${p.iniciales})? Esta acción no se puede deshacer.`,
       )
     ) {
       return;
@@ -310,7 +299,7 @@ export function PersonalTeamClient({
                   <div className="flex items-center gap-3 min-w-0">
                     <PersonAvatar iniciales={p.iniciales} color={p.color} size={42} />
                     <div className="min-w-0">
-                      <CardTitle className="text-base truncate">{p.nombre}</CardTitle>
+                      <CardTitle className="text-base truncate">{p.displayName}</CardTitle>
                       <div className="flex flex-wrap gap-1 mt-0.5">
                         {!p.isActive ? (
                           <Badge variant="secondary" className="text-[10px]">
@@ -327,12 +316,12 @@ export function PersonalTeamClient({
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                       <PersonScheduleDialog
                         personId={p.id}
-                        personName={p.nombre}
+                        personName={p.displayName}
                         workWindows={p.workWindows}
                       />
                       <PersonAbsenceDialog
                         personId={p.id}
-                        personName={p.nombre}
+                        personName={p.displayName}
                         absences={p.absences}
                       />
                       <Button
@@ -367,18 +356,14 @@ export function PersonalTeamClient({
               </CardHeader>
               <CardContent className="space-y-3 py-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-muted-foreground">Capacidad:</span>
-                  <Badge variant="outline" className="font-mono">
-                    {p.capacityHours}h/día
-                  </Badge>
-                  {p.naveId && naves.length > 0 && (() => {
-                    const n = naves.find((n) => n.id === p.naveId);
+                  {p.naveIds.map((personNaveId) => {
+                    const n = naves.find((x) => x.id === personNaveId);
                     return n ? (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge key={n.id} variant="secondary" className="text-[10px]">
                         {n.codigo} · {n.nombre}
                       </Badge>
                     ) : null;
-                  })()}
+                  })}
                   {(() => {
                     const linkedUser = users.find((u) => u.personId === p.id);
                     return linkedUser ? (
@@ -443,7 +428,7 @@ export function PersonalTeamClient({
           </DialogHeader>
           <div className="space-y-3 py-1">
             <div className="space-y-2">
-              <Label>Nombre completo</Label>
+              <Label>Alias (opcional)</Label>
               <Input value={nombre} onChange={(e) => setNombre(e.target.value)} disabled={pending} />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -467,15 +452,6 @@ export function PersonalTeamClient({
                   className="h-9 p-1 cursor-pointer"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Horas útiles por día</Label>
-              <Input
-                inputMode="decimal"
-                value={capacityHours}
-                onChange={(e) => setCapacityHours(e.target.value)}
-                disabled={pending}
-              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -508,18 +484,28 @@ export function PersonalTeamClient({
             </div>
             {naves.length > 0 && (
               <div className="space-y-2">
-                <Label>Nave</Label>
-                <Select value={naveId} onValueChange={(v) => v && setNaveId(v)} disabled={pending}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin asignar</SelectItem>
-                    {naves.map((n) => (
-                      <SelectItem key={n.id} value={n.id}>{n.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Naves</Label>
+                <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
+                  {naves.map((n) => {
+                    const checked = naveIds.includes(n.id);
+                    return (
+                      <label key={n.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setNaveIds((prev) =>
+                              e.target.checked
+                                ? [...prev, n.id]
+                                : prev.filter((id) => id !== n.id),
+                            )
+                          }
+                        />
+                        {n.codigo} · {n.nombre}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {canManage && users.length > 0 && (() => {
@@ -561,28 +547,30 @@ export function PersonalTeamClient({
             ) : null}
             <div className="space-y-2 border-t pt-3">
               <Label>Especialidades por proceso</Label>
-              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                {processDefs.map((d) => (
-                  <div
-                    key={d.code}
-                    className="grid grid-cols-[1fr_140px] gap-2 items-center text-sm"
-                  >
-                    <span className="text-muted-foreground truncate">{d.label}</span>
-                    <Select
-                      value={specMap[d.code] ?? "ninguno"}
-                      onValueChange={(v) => setModeForProcess(d.code, v as SpecMode)}
-                      disabled={pending}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Ninguna" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ninguno">Ninguna</SelectItem>
-                        <SelectItem value="responsable">Responsable</SelectItem>
-                        <SelectItem value="apoyo">Apoyo</SelectItem>
-                        <SelectItem value="otra">Otra</SelectItem>
-                      </SelectContent>
-                    </Select>
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  { key: "responsable" as const, title: "Responsable" },
+                  { key: "apoyo" as const, title: "Apoyo / sustituto" },
+                  { key: "otra" as const, title: "Otras tareas" },
+                ].map((section) => (
+                  <div key={section.key} className="border rounded-md p-3 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {section.title}
+                    </div>
+                    <div className="space-y-1 max-h-[180px] overflow-y-auto pr-1">
+                      {processDefs.map((d) => (
+                        <label key={`${section.key}-${d.code}`} className="flex items-center gap-2 text-xs">
+                          <Checkbox
+                            checked={specMap[d.code] === section.key}
+                            onCheckedChange={(checked) =>
+                              setModeForProcess(d.code, checked ? section.key : "ninguno")
+                            }
+                            disabled={pending}
+                          />
+                          <span className="truncate text-muted-foreground">{d.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -595,7 +583,7 @@ export function PersonalTeamClient({
             <Button
               type="button"
               onClick={submit}
-              disabled={pending || !nombre.trim() || !iniciales.trim()}
+              disabled={pending || !iniciales.trim()}
             >
               {pending ? "Guardando…" : "Guardar"}
             </Button>

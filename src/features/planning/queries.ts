@@ -29,7 +29,7 @@ export async function getPlanningForWeek({
   const include = {
     assignments: {
       include: {
-        person: true,
+        person: { include: { user: { select: { name: true } } } },
         task: { include: { project: true, lamp: true } },
       },
       orderBy: [{ date: "asc" as const }, { startSlot: "asc" as const }],
@@ -39,10 +39,21 @@ export async function getPlanningForWeek({
   if (naveScope !== null && naveScope.length === 0) return null;
 
   if (naveScope !== null && naveScope.length === 1) {
-    return prisma.planning.findUnique({
+    const planning = await prisma.planning.findUnique({
       where: { naveId_year_week: { naveId: naveScope[0]!, year, week } },
       include,
     });
+    if (!planning) return null;
+    return {
+      ...planning,
+      assignments: planning.assignments.map((a) => ({
+        ...a,
+        person: {
+          ...a.person,
+          nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+        },
+      })),
+    };
   }
 
   const plannings = await prisma.planning.findMany({
@@ -59,7 +70,18 @@ export async function getPlanningForWeek({
     .flatMap((p) => p.assignments)
     .sort((a, b) => a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot);
 
-  return { ...plannings[0]!, id: "__all__", naveId: "__all__", assignments: allAssignments };
+  return {
+    ...plannings[0]!,
+    id: "__all__",
+    naveId: "__all__",
+    assignments: allAssignments.map((a) => ({
+      ...a,
+      person: {
+        ...a.person,
+        nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+      },
+    })),
+  };
 }
 
 export interface ProcessDefinitionInfo {
@@ -69,26 +91,45 @@ export interface ProcessDefinitionInfo {
 
 const personInclude = {
   specialties: true,
+  workWindows: true,
+  user: { select: { name: true } },
   personNaves: { include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
 } as const;
 
+function deriveDailyHoursFromWindows(
+  windows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[],
+): number {
+  const byDay = new Map<number, number>();
+  for (const w of windows) {
+    const span = Math.max(0, w.endMinutes - w.startMinutes) / 60;
+    byDay.set(w.dayOfWeek, (byDay.get(w.dayOfWeek) ?? 0) + span);
+  }
+  const total = [1, 2, 3, 4, 5].reduce((acc, d) => acc + (byDay.get(d) ?? 0), 0);
+  return total > 0 ? total / 5 : 8;
+}
+
 export async function getNavePersonnel(naveScope: string[] | null) {
   if (naveScope !== null && naveScope.length === 0) return [];
-  if (naveScope === null) {
-    return prisma.person.findMany({
+  const rows = naveScope === null
+    ? await prisma.person.findMany({
       where: { isActive: true },
       include: personInclude,
       orderBy: { iniciales: "asc" },
+    })
+    : await prisma.person.findMany({
+      where: {
+        isActive: true,
+        personNaves: { some: { naveId: { in: naveScope } } },
+      },
+      include: personInclude,
+      orderBy: { iniciales: "asc" },
     });
-  }
-  return prisma.person.findMany({
-    where: {
-      isActive: true,
-      personNaves: { some: { naveId: { in: naveScope } } },
-    },
-    include: personInclude,
-    orderBy: { iniciales: "asc" },
-  });
+
+  return rows.map((p) => ({
+    ...p,
+    nombre: p.user?.name ?? p.alias ?? p.iniciales,
+    capacityHours: deriveDailyHoursFromWindows(p.workWindows),
+  }));
 }
 
 export interface ActualHourEntry {
@@ -130,7 +171,7 @@ export async function getActualHoursForWeek({
       },
     },
     include: {
-      user: { include: { person: true } },
+      user: { include: { person: { include: { user: { select: { name: true } } } } } },
       project: { select: { id: true, name: true } },
       lamp: { select: { id: true, name: true } },
     },
@@ -148,7 +189,7 @@ export async function getActualHoursForWeek({
     person: e.user.person
       ? {
           id: e.user.person.id,
-          nombre: e.user.person.nombre,
+          nombre: e.user.person.user?.name ?? e.user.person.alias ?? e.user.person.iniciales,
           iniciales: e.user.person.iniciales,
           color: e.user.person.color,
         }
@@ -209,7 +250,7 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
 export async function getGanttPlanningAssignments(naveScope: string[] | null) {
   if (naveScope !== null && naveScope.length === 0) return [];
   const naveIn = naveScope !== null ? { in: naveScope } : undefined;
-  return prisma.planningAssignment.findMany({
+  const rows = await prisma.planningAssignment.findMany({
     where: {
       task: {
         project: { isActive: true },
@@ -226,7 +267,13 @@ export async function getGanttPlanningAssignments(naveScope: string[] | null) {
       hours: true,
       process: true,
       person: {
-        select: { id: true, iniciales: true, nombre: true, color: true },
+        select: {
+          id: true,
+          iniciales: true,
+          alias: true,
+          color: true,
+          user: { select: { name: true } },
+        },
       },
       task: {
         select: {
@@ -252,6 +299,15 @@ export async function getGanttPlanningAssignments(naveScope: string[] | null) {
     },
     orderBy: [{ date: "asc" }, { startSlot: "asc" }],
   });
+  return rows.map((a) => ({
+    ...a,
+    person: {
+      id: a.person.id,
+      iniciales: a.person.iniciales,
+      color: a.person.color,
+      nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+    },
+  }));
 }
 
 export type GanttPlanningAssignment = Awaited<

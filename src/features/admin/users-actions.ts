@@ -71,6 +71,8 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
 
 const updateUserSchema = z.object({
   userId: z.string().min(1),
+  name: z.string().min(1).max(100).optional(),
+  email: z.string().email().optional(),
   role: z.nativeEnum(Role),
   personId: z.string().optional().nullable(),
   naveIds: naveIdsSchema.optional(),
@@ -80,6 +82,16 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN]);
   const data = updateUserSchema.parse(input);
+
+  if (data.email) {
+    const existing = await prisma.user.findUnique({
+      where: { email: data.email },
+      select: { id: true },
+    });
+    if (existing && existing.id !== data.userId) {
+      throw new Error("Ya existe un usuario con ese email.");
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     if (data.personId) {
@@ -91,6 +103,8 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
     await tx.user.update({
       where: { id: data.userId },
       data: {
+        name: data.name,
+        email: data.email,
         role: data.role,
         personId: data.personId ?? null,
       },

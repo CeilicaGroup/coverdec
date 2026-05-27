@@ -15,6 +15,7 @@ export interface EnginePerson {
   iniciales: string;
   primary: string[];
   fallback: string[];
+  /** Average weekday capacity derived from configured work windows. */
   capacityHours: number;
   hourlyRate: number;
   overtimeHourlyRate: number;

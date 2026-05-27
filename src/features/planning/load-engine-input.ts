@@ -13,10 +13,13 @@ import {
   type PriorPlanningAssignment,
 } from "@/features/planning/prior-week-planning";
 import { isSameUtcDay, isoWeek, toUtcDay } from "@/lib/week";
+import {
+  defaultWeeklyTemplate,
+  minutesToProductiveQuarters,
+} from "./engine/slots/person-schedule";
 import type {
   PersonScheduleDayInput,
   PersonScheduleOverrideInput,
-  WorkWindowMinutes,
 } from "./engine/slots/person-schedule";
 import type { SolverInput } from "./engine/solver-types";
 import type {
@@ -28,31 +31,7 @@ import type {
   EngineProcessDef,
   EngineTask,
 } from "./engine/types";
-import {
-  AFTERNOON_START,
-  MORNING_END,
-  MORNING_START,
-} from "./engine/types";
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Deriva ventanas de trabajo a partir del contrato de horas diarias.
- * Rellena primero la mañana (08:00–14:00, hasta 6h) y luego la tarde (15:00–17:00). */
-function deriveWindowsFromCapacity(capacityHours: number): WorkWindowMinutes[] {
-  const morningH = Math.min(capacityHours, MORNING_END - MORNING_START);
-  const afternoonH = Math.max(0, capacityHours - morningH);
-  const windows: WorkWindowMinutes[] = [{
-    startMinutes: MORNING_START * 60,
-    endMinutes: (MORNING_START + morningH) * 60,
-  }];
-  if (afternoonH > 0) {
-    windows.push({
-      startMinutes: AFTERNOON_START * 60,
-      endMinutes: (AFTERNOON_START + afternoonH) * 60,
-    });
-  }
-  return windows;
-}
 
 function isTaskDone(task: {
   pendingHours: number;
@@ -310,13 +289,7 @@ export async function loadSolverInput(args: {
         })),
       );
     } else {
-      // Sin workWindows explícitas: derivar de capacityHours para que el solver
-      // respete la jornada real (ej: mañana-sólo si capacityHours=6).
-      const windows = deriveWindowsFromCapacity(p.capacityHours);
-      weeklyByPerson.set(
-        p.id,
-        [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, windows })),
-      );
+      weeklyByPerson.set(p.id, defaultWeeklyTemplate());
     }
     if (p.scheduleOverrides.length > 0) {
       overridesByPerson.set(
@@ -332,17 +305,25 @@ export async function loadSolverInput(args: {
     }
   }
 
-  const enginePeople: EnginePerson[] = peopleRaw.map((p) => ({
-    id: p.id,
-    iniciales: p.iniciales,
-    primary: p.specialties.filter((s) => s.isPrimary).map((s) => s.process),
-    fallback: p.specialties
-      .filter((s) => !s.isPrimary)
-      .map((s) => s.process),
-    capacityHours: p.capacityHours,
-    hourlyRate: Number(p.hourlyRate),
-    overtimeHourlyRate: Number(p.overtimeHourlyRate),
-  }));
+  const enginePeople: EnginePerson[] = peopleRaw.map((p) => {
+    const weekly = weeklyByPerson.get(p.id) ?? defaultWeeklyTemplate();
+    const totalHours = weekly.reduce(
+      (acc, day) => acc + minutesToProductiveQuarters(day.windows) / 4,
+      0,
+    );
+    const capacityHours = totalHours > 0 ? totalHours / 5 : 8;
+    return {
+      id: p.id,
+      iniciales: p.iniciales,
+      primary: p.specialties.filter((s) => s.isPrimary).map((s) => s.process),
+      fallback: p.specialties
+        .filter((s) => !s.isPrimary)
+        .map((s) => s.process),
+      capacityHours,
+      hourlyRate: Number(p.hourlyRate),
+      overtimeHourlyRate: Number(p.overtimeHourlyRate),
+    };
+  });
 
   const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
     args.priorWeekAssignments ?? [],

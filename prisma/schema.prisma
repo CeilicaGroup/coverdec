@@ -137,11 +137,9 @@ model Verification {
 
 model Person {
   id                 String   @id @default(cuid())
-  nombre             String
   alias              String?
   iniciales          String   @unique
   color              String
-  capacityHours      Float    @default(8)
   hourlyRate         Decimal  @default(14.75) @db.Decimal(10, 2)
   overtimeHourlyRate Decimal  @default(22.13) @db.Decimal(10, 2)
   isActive           Boolean  @default(true)

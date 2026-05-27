@@ -131,10 +131,9 @@ const specialtySchema = z.object({
 const savePersonSchema = z
   .object({
     id: z.string().min(1).optional(),
-    nombre: z.string().min(1),
+    alias: z.string().optional(),
     iniciales: z.string().min(1).max(12),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-    capacityHours: z.number().min(1).max(24).default(8),
     hourlyRate: z.number().min(0).default(14.75),
     overtimeHourlyRate: z.number().min(0).default(22.13),
     notes: z.string().optional(),
@@ -173,10 +172,9 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
         await tx.person.update({
           where: { id: data.id },
           data: {
-            nombre: data.nombre.trim(),
             iniciales,
+            alias: data.alias?.trim() ? data.alias.trim() : null,
             color: data.color,
-            capacityHours: data.capacityHours,
             hourlyRate: data.hourlyRate,
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
@@ -187,10 +185,9 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
       } else {
         const created = await tx.person.create({
           data: {
-            nombre: data.nombre.trim(),
             iniciales,
+            alias: data.alias?.trim() ? data.alias.trim() : null,
             color: data.color,
-            capacityHours: data.capacityHours,
             hourlyRate: data.hourlyRate,
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,

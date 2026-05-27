@@ -120,6 +120,8 @@ export function UsuariosAdminClient({
         } else if (editUserId) {
           await updateUser({
             userId: editUserId,
+            name: form.name,
+            email: form.email,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
             personId: form.personId === "none" ? null : form.personId,
             naveIds: form.naveIds,
@@ -181,7 +183,6 @@ export function UsuariosAdminClient({
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 required
-                disabled={dialogMode === "edit"}
               />
             </div>
             <div className="space-y-2">
@@ -191,7 +192,6 @@ export function UsuariosAdminClient({
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 required
-                disabled={dialogMode === "edit"}
               />
             </div>
             {dialogMode === "create" && (

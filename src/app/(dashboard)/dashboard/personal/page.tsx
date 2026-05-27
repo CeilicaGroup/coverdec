@@ -22,6 +22,7 @@ export default async function PersonalPage() {
     prisma.person.findMany({
       where: peopleWhere,
       include: {
+        user: { select: { id: true, name: true, email: true } },
         specialties: true,
         personNaves: true,
         workWindows: true,
@@ -56,9 +57,9 @@ export default async function PersonalPage() {
     usersLinked.map((u) => u.personId).filter((id): id is string => id != null),
   );
 
-  const people = peopleRaw.map(({ _count, workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, ...p }) => ({
+  const people = peopleRaw.map(({ _count, workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => ({
     ...p,
-    naveId: personNaves[0]?.naveId ?? null,
+    displayName: user?.name ?? p.alias ?? p.iniciales,
     naveIds: personNaves.map((pn) => pn.naveId),
     hourlyRate: Number(hourlyRate),
     overtimeHourlyRate: Number(overtimeHourlyRate),

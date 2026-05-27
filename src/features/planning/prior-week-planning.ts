@@ -327,12 +327,24 @@ export async function getPriorPlanningAssignmentsDetailed(args: {
       hours: true,
       personId: true,
       person: {
-        select: { id: true, iniciales: true, nombre: true, color: true },
+        select: {
+          id: true,
+          iniciales: true,
+          alias: true,
+          color: true,
+          user: { select: { name: true } },
+        },
       },
     },
     orderBy: [{ date: "asc" }, { endSlot: "asc" }],
   });
-  return rows;
+  return rows.map((r) => ({
+    ...r,
+    person: {
+      ...r.person,
+      nombre: r.person.user?.name ?? r.person.alias ?? r.person.iniciales,
+    },
+  }));
 }
 
 export async function sumPriorPlannedHoursByTaskId(args: {
