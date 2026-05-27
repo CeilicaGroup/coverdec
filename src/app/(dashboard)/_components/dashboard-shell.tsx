@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ClipboardList,
   Gauge,
+  FileSpreadsheet,
   LayoutGrid,
   LineChart,
   LogOut,
@@ -84,6 +85,7 @@ const NAV_SECTIONS = [
       { href: "/dashboard/costes", label: "Costes", icon: ShieldCheck, restricted: true },
       { href: "/dashboard/admin/naves", label: "Naves", icon: Warehouse, adminOnly: true },
       { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
+      { href: "/dashboard/admin/export", label: "Exportaciones", icon: FileSpreadsheet, adminOnly: true },
     ],
   },
 ] as const;

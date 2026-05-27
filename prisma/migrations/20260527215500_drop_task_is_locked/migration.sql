@@ -1,0 +1,2 @@
+ALTER TABLE "Task"
+DROP COLUMN "isLocked";
