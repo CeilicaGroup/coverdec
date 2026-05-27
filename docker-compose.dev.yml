@@ -35,8 +35,6 @@ services:
     build:
       context: ./services/planning-solver
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-60}
     volumes:
