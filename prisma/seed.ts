@@ -22,7 +22,7 @@ const PROCESSES = [
 
 const PEOPLE = [
   {
-    nombre: "Claudio Peralta",
+    name: "Claudio Peralta",
     alias: "Claudio",
     iniciales: "CP",
     color: "#059669",
@@ -38,7 +38,7 @@ const PEOPLE = [
     notes: "Responsable de nave. Único responsable de Pintura.",
   },
   {
-    nombre: "Serhii Kotluienko",
+    name: "Serhii Kotluienko",
     alias: "Sergio",
     iniciales: "SK",
     color: "#EA580C",
@@ -54,7 +54,7 @@ const PEOPLE = [
     notes: "Único responsable de Imprimación. Selcos metacrilato. Hair perfiles.",
   },
   {
-    nombre: "Ihor Alieksieiev",
+    name: "Ihor Alieksieiev",
     alias: "Ihor",
     iniciales: "IA",
     color: "#2563EB",
@@ -69,7 +69,7 @@ const PEOPLE = [
     notes: "Responsable de Pegado espejo Hair.",
   },
   {
-    nombre: "Tetiana Mesriakin",
+    name: "Tetiana Mesriakin",
     alias: "Tetiana",
     iniciales: "TM",
     color: "#7C3AED",
@@ -79,7 +79,7 @@ const PEOPLE = [
     notes: "Especialista lijado y masillado.",
   },
   {
-    nombre: "Daniil Shcheglov",
+    name: "Daniil Shcheglov",
     alias: "Daniil",
     iniciales: "DS",
     color: "#0891B2",
@@ -346,12 +346,24 @@ async function main() {
 
   console.log("Seeding people...");
   for (const person of PEOPLE) {
-    const { specialties, email, role, ...data } = person;
-    const personData = { ...data, naveId: firstNave.id };
+    const { specialties, email, role, name, ...personData } = person;
     const created = await prisma.person.upsert({
-      where: { iniciales: data.iniciales },
+      where: { iniciales: personData.iniciales },
       update: personData,
       create: personData,
+    });
+    await prisma.personNave.upsert({
+      where: {
+        personId_naveId: {
+          personId: created.id,
+          naveId: firstNave.id,
+        },
+      },
+      update: {},
+      create: {
+        personId: created.id,
+        naveId: firstNave.id,
+      },
     });
     for (const spec of specialties) {
       await prisma.personSpecialty.upsert({
@@ -388,14 +400,14 @@ async function main() {
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (!existingUser) {
       await auth.api.signUpEmail({
-        body: { email, password: DEFAULT_PASSWORD, name: data.nombre },
+        body: { email, password: DEFAULT_PASSWORD, name },
       });
     }
     await prisma.user.update({
       where: { email },
       data: { role, emailVerified: true, personId: created.id },
     });
-    console.log(`  ${data.iniciales} → ${email} (${role})`);
+    console.log(`  ${personData.iniciales} → ${email} (${role})`);
   }
 
   console.log("Seeding holidays...");
