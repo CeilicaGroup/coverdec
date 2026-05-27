@@ -11,10 +11,19 @@ export default async function UsuariosAdminPage() {
   const [users, naves, people] = await Promise.all([
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
         person: {
-          include: {
-            personNaves: { include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
+          select: {
+            id: true,
+            personNaves: {
+              select: {
+                nave: { select: { id: true, codigo: true, nombre: true } },
+              },
+            },
           },
         },
       },
