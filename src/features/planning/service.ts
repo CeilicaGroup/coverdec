@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { childLogger } from "@/lib/logger";
-import { runPlanningEngine } from "./engine";
+import { runPlanningEngine, SolverInfeasibleError } from "./engine";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import { loadSolverInput } from "./load-engine-input";
 import {
@@ -185,7 +185,15 @@ export async function generatePlanning(
   }
 
   const solveStarted = Date.now();
-  const result = await runPlanningEngine(engineInput);
+  let result;
+  try {
+    result = await runPlanningEngine(engineInput);
+  } catch (err) {
+    if (err instanceof SolverInfeasibleError) {
+      throw new Error(err.message);
+    }
+    throw err;
+  }
   log.info(
     {
       naveId: args.naveId,

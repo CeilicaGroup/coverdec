@@ -331,7 +331,8 @@ function buildTasksWithEstimates(
     let chainStartIso: string | null = null;
     const lampRows: GanttTaskRow[] = [];
 
-    for (const t of sorted) {
+    for (let ti = 0; ti < sorted.length; ti++) {
+      const t = sorted[ti]!;
       const schedule = buildTaskScheduleFromAssignments(assignments, t.id);
       const pendingHours = Math.max(0, t.pendingHours);
       const isPlanningComplete = pendingHours <= 1e-6;
@@ -348,12 +349,32 @@ function buildTasksWithEstimates(
       }
 
       const remainingWorkHours = Math.max(0, t.estimatedHours - t.doneHours);
+
+      let capBefore: { dayIso: string; slot: number } | null = null;
+      const nextTask = sorted[ti + 1];
+      if (nextTask) {
+        const nextForTask = assignments
+          .filter((a) => a.taskId === nextTask.id)
+          .sort(
+            (a, b) =>
+              a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot,
+          );
+        const firstNext = nextForTask[0];
+        if (firstNext) {
+          capBefore = {
+            dayIso: toPlanningDayIso(firstNext.date),
+            slot: firstNext.startSlot,
+          };
+        }
+      }
+
       const timelineBlocks = buildTaskTimelineBlocks(
         assignments,
         t.id,
         waitHoursByProcess.get(t.process) ?? 0,
         holidayDates,
         t.process,
+        capBefore,
       );
 
       lampRows.push({

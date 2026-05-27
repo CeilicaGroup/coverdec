@@ -1,5 +1,7 @@
 import { childLogger } from "@/lib/logger";
 import {
+  formatNoCandidateWarning,
+  isNoCandidateWarning,
   parseSolverResponse,
   serializeSolverInput,
   solveResponseSchema,
@@ -88,6 +90,15 @@ export async function callPlanningSolver(
     },
     "planning solver response ok",
   );
+
+  const noCandidateWarnings = result.warnings.filter((w) =>
+    isNoCandidateWarning(w.reason),
+  );
+  if (noCandidateWarnings.length > 0) {
+    throw new SolverInfeasibleError(
+      noCandidateWarnings.map((w) => formatNoCandidateWarning(w.taskId, w.reason)).join("\n"),
+    );
+  }
 
   if (
     result.assignments.length === 0 &&

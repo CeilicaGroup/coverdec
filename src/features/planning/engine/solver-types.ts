@@ -256,3 +256,15 @@ export class SolverInfeasibleError extends Error {
     this.name = "SolverInfeasibleError";
   }
 }
+
+/** Solver warnings with this prefix must abort planning (no operator / no slots). */
+export const SOLVER_NO_CANDIDATE_PREFIX = "NO_CANDIDATE:";
+
+export function isNoCandidateWarning(reason: string): boolean {
+  return reason.startsWith(SOLVER_NO_CANDIDATE_PREFIX);
+}
+
+export function formatNoCandidateWarning(taskId: string, reason: string): string {
+  const detail = reason.slice(SOLVER_NO_CANDIDATE_PREFIX.length).trim();
+  return `Tarea ${taskId}: ${detail}`;
+}

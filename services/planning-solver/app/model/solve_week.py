@@ -57,6 +57,9 @@ from app.schemas import (
 
 logger = logging.getLogger("planning-solver")
 
+# Prefix parsed by the TypeScript client to fail generation (not a capacity warning).
+NO_CANDIDATE_PREFIX = "NO_CANDIDATE:"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────────────────────────
@@ -752,6 +755,64 @@ def _apply_fixed_assignments(
         model.Add(sv.size == size_q)
 
 
+def _diagnose_no_candidate(data: ProblemData, task: EngineTask) -> str:
+    if task.process not in data.process_by_code:
+        return (
+            f"{NO_CANDIDATE_PREFIX} El proceso «{task.process}» no está en el catálogo."
+        )
+    candidates = pick_candidates(data.people, task.process)
+    if not candidates:
+        return (
+            f"{NO_CANDIDATE_PREFIX} Ningún operario tiene el proceso "
+            f"«{task.process}» configurado (primary/fallback)."
+        )
+    return (
+        f"{NO_CANDIDATE_PREFIX} Los operarios de «{task.process}» "
+        "no tienen capacidad disponible en esta semana."
+    )
+
+
+def _find_unplannable_warnings(
+    data: ProblemData,
+    mv: ModelVars,
+) -> list[EngineWarning]:
+    """Tasks with no CP slots, plus lamp-chain successors blocked by them."""
+    warnings: list[EngineWarning] = []
+    no_slot_task_ids: set[str] = set()
+    task_by_id = {t.id: t for t in data.tasks}
+
+    for task in data.tasks:
+        if mv.by_task.get(task.id):
+            continue
+        warnings.append(
+            EngineWarning(taskId=task.id, reason=_diagnose_no_candidate(data, task))
+        )
+        no_slot_task_ids.add(task.id)
+
+    for edge in data.lamp_edges:
+        if edge.predecessor_id not in no_slot_task_ids:
+            continue
+        if edge.successor_id in no_slot_task_ids:
+            continue
+        pred = task_by_id.get(edge.predecessor_id)
+        succ = task_by_id.get(edge.successor_id)
+        if pred is None or succ is None:
+            continue
+        warnings.append(
+            EngineWarning(
+                taskId=edge.successor_id,
+                reason=(
+                    f"{NO_CANDIDATE_PREFIX} No se puede planificar «{succ.process}» "
+                    f"porque el proceso anterior «{pred.process}» no tiene operario "
+                    "o capacidad en esta semana."
+                ),
+            )
+        )
+        no_slot_task_ids.add(edge.successor_id)
+
+    return warnings
+
+
 def _add_lamp_ordering(
     model: cp_model.CpModel,
     data: ProblemData,
@@ -1267,6 +1328,15 @@ def solve_week(
 
     model = cp_model.CpModel()
     mv = _build_variables(model, data)
+    unplannable = _find_unplannable_warnings(data, mv)
+    if unplannable:
+        total_q = sum(data.demand_q.get(t.id, 0) for t in data.tasks)
+        return SolveResponse(
+            assignments=[],
+            warnings=unplannable,
+            unscheduledHours=total_q / QUARTERS_PER_HOUR,
+        )
+
     _inject_busy_slots(model, data, mv)
     unscheduled = _add_constraints(model, data, mv)
     _apply_fixed_assignments(model, data, mv)

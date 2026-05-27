@@ -12,6 +12,9 @@ export type { SolverInput } from "./solver-types";
 export {
   SolverInfeasibleError,
   SolverUnavailableError,
+  SOLVER_NO_CANDIDATE_PREFIX,
+  formatNoCandidateWarning,
+  isNoCandidateWarning,
 } from "./solver-types";
 export { serializeSolverInput } from "./solver-types";
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addProductiveWait,
   buildContinuousTimeline,
   buildTaskTimelineBlocks,
   resolveBlockRange,
@@ -117,6 +118,37 @@ describe("gantt-timeline", () => {
     expect(blocks[0]!.startSlot).toBe(0);
     expect(blocks[0]!.endDayIso).toBe("2026-05-13");
     expect(blocks[0]!.endSlot).toBe(6);
+  });
+
+  it("advances dry wait in quarter-hour steps on the productive slot axis", () => {
+    expect(addProductiveWait("2026-05-12", 0, 0.5, new Set())).toEqual({
+      dayIso: "2026-05-12",
+      slot: 2,
+    });
+    const spill = addProductiveWait("2026-05-12", 7, 0.5, new Set());
+    expect(spill.dayIso).toBe("2026-05-13");
+    expect(spill.slot).toBeGreaterThan(0);
+  });
+
+  it("caps wait block before next process start to avoid overlap", () => {
+    const blocks = buildTaskTimelineBlocks(
+      [assignment(0, 2, 2, "2026-05-12T00:00:00.000Z")],
+      "t1",
+      24,
+      new Set(),
+      "IMPRIMACION",
+      { dayIso: "2026-05-12", slot: 4 },
+    );
+    const wait = blocks.find((b) => b.kind === "wait");
+    expect(wait).toBeDefined();
+    expect(wait!.endDayIso).toBe("2026-05-12");
+    expect(wait!.endSlot).toBe(4);
+    const axis = ["2026-05-12"];
+    const waitRange = resolveBlockRange(axis, wait!);
+    const workRange = resolveBlockRange(axis, blocks[0]!);
+    expect(waitRange).not.toBeNull();
+    expect(workRange).not.toBeNull();
+    expect(waitRange!.startFrac).toBeGreaterThanOrEqual(workRange!.endFrac - 0.01);
   });
 
   it("maps slots to proportional axis fractions without minimum width", () => {

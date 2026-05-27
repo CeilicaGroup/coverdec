@@ -384,6 +384,68 @@ def test_dry_hours_delay_between_lamp_processes():
         assert min(paint_days) >= min(imp_days)
 
 
+def test_no_candidate_process_without_operator():
+    """Task with no matching operator returns NO_CANDIDATE and does not solve."""
+    result = run_solve(
+        _base_request(
+            [
+                EngineTask(
+                    id="pint-1",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 5, 15),
+                    lampId="l1",
+                    order=0,
+                    process="PINTURA",
+                    pendingHours=2,
+                ),
+            ]
+        ),
+    )
+    assert result.assignments == []
+    assert any("NO_CANDIDATE:" in w.reason for w in result.warnings)
+    assert any(w.taskId == "pint-1" for w in result.warnings)
+
+
+def test_partial_unscheduled_with_candidates_is_not_no_candidate():
+    """Heavy load may leave hours unscheduled but must not flag NO_CANDIDATE."""
+    worker = EnginePerson(
+        id="daniil",
+        iniciales="DS",
+        primary=["CNC"],
+        fallback=[],
+        capacityHours=8,
+        hourlyRate=14.75,
+        overtimeHourlyRate=22.13,
+    )
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[worker],
+            tasks=[
+                EngineTask(
+                    id="cnc-1",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 5, 15),
+                    lampId="l1",
+                    order=0,
+                    process="CNC",
+                    pendingHours=80,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=1, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["daniil"]),
+        ),
+    )
+    assert not any("NO_CANDIDATE:" in w.reason for w in result.warnings)
+    assert result.unscheduledHours > 0
+    assert len(result.assignments) > 0
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from app.main import app
