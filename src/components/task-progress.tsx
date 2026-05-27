@@ -122,34 +122,43 @@ export function TaskProgressInline({
   });
 
   const [hoverOpen, setHoverOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const tooltipOpen = hoverOpen || pinned;
+  const [clickOpen, setClickOpen] = useState(false);
+  const [dialogPinned, setDialogPinned] = useState(false);
+  const tooltipOpen = hoverOpen || clickOpen || dialogPinned;
 
-  const pinTooltip = useCallback(() => setPinned(true), []);
-  const unpinTooltip = useCallback(() => setPinned(false), []);
+  const pinTooltip = useCallback(() => setDialogPinned(true), []);
+  const unpinTooltip = useCallback(() => setDialogPinned(false), []);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (pinned && !next) return;
+      if (dialogPinned && !next) return;
+      if (!next) setClickOpen(false);
       setHoverOpen(next);
     },
-    [pinned],
+    [dialogPinned],
   );
+
+  const handleTriggerClick = useCallback(() => {
+    setClickOpen((open) => !open);
+  }, []);
 
   return (
     <TaskProgressTooltipContext.Provider value={{ pinTooltip, unpinTooltip }}>
     <TooltipProvider>
       <Tooltip open={tooltipOpen} onOpenChange={handleOpenChange} disableHoverablePopup={false}>
         <TooltipTrigger
+          closeOnClick={false}
+          delay={0}
           render={
             <span
               className={cn(
-                "text-[10px] font-semibold cursor-help",
+                "text-[10px] font-semibold cursor-pointer",
                 stateClass(progress.state),
                 delayedClass(progress.isDelayed),
                 overrunClass(progress),
                 className,
               )}
+              onClick={handleTriggerClick}
             >
               {text}
             </span>

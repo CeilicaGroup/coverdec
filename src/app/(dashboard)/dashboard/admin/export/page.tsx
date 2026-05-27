@@ -13,13 +13,12 @@ export default async function AdminExportPage({ searchParams }: ExportPageProps)
   const params = await searchParams;
 
   return (
-    <div>
+    <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Exportaciones"
         description="Descarga un Excel global con 4 hojas: proyectos, tareas, bastidores y registros de horas."
       />
-      <div className="px-6 pb-10 pt-6">
-        <section className="rounded-md border bg-card p-4 space-y-4 max-w-2xl">
+      <section className="rounded-md border bg-card p-4 space-y-4 max-w-2xl">
           <div>
             <h2 className="text-sm font-semibold">Exportar plataforma</h2>
             <p className="text-xs text-muted-foreground mt-1">
@@ -52,8 +51,7 @@ export default async function AdminExportPage({ searchParams }: ExportPageProps)
               </Button>
             </div>
           </form>
-        </section>
-      </div>
+      </section>
     </div>
   );
 }

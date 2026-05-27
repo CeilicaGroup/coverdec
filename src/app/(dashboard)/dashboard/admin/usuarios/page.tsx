@@ -42,11 +42,9 @@ export default async function UsuariosAdminPage() {
   }));
 
   return (
-    <div>
+    <div className="p-6 lg:p-8 space-y-6">
       <PageHeader title="Gestión de usuarios" />
-      <div className="px-6 pb-10">
-        <UsuariosAdminClient users={users} naves={naves} people={peopleOptions} />
-      </div>
+      <UsuariosAdminClient users={users} naves={naves} people={peopleOptions} />
     </div>
   );
 }

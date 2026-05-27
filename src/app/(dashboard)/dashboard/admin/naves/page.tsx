@@ -32,11 +32,9 @@ export default async function NavesAdminPage() {
   });
 
   return (
-    <div>
+    <div className="p-6 lg:p-8 space-y-6">
       <PageHeader title="Gestión de naves" />
-      <div className="px-6 pb-10">
-        <NavesAdminClient naves={naves} />
-      </div>
+      <NavesAdminClient naves={naves} />
     </div>
   );
 }
