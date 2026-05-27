@@ -22,12 +22,22 @@ import {
 import { RiskBadge } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
 import { Role } from "@/generated/prisma";
+import {
+  GlobalProjectPresetControl,
+} from "./project-strategy-controls";
 
-export default async function ProyectosPage() {
+export default async function ProyectosPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ archived?: string }>;
+}) {
   const ctx = await requireDashboardContext();
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const params = (await searchParams) ?? {};
+  const showArchived = params.archived === "1";
 
   const projects = await prisma.project.findMany({
+    where: showArchived ? undefined : { isActive: true },
     include: {
       _count: { select: { lamps: true, tasks: true } },
       tasks: { select: { pendingHours: true, doneHours: true, estimatedHours: true } },
@@ -63,7 +73,18 @@ export default async function ProyectosPage() {
       <PageHeader
         title="Proyectos"
         description={`${projects.length} proyectos`}
-        actions={<CreateProjectDialog />}
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {canManage ? <GlobalProjectPresetControl /> : null}
+            <Link
+              href={showArchived ? "/dashboard/proyectos" : "/dashboard/proyectos?archived=1"}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              {showArchived ? "Ocultar archivados" : "Mostrar archivados"}
+            </Link>
+            <CreateProjectDialog />
+          </div>
+        }
       />
       <Card>
         <CardContent className="p-0">

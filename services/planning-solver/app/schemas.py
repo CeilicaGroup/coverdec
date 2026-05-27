@@ -57,6 +57,8 @@ class EngineTask(BaseModel):
     id: str
     projectId: str
     projectPriority: int = 50
+    deadlineCurveExponent: float = 2.0
+    overduePenaltyMultiplier: float = 2.5
     projectDeliveryDate: datetime | None = None
     lampId: str
     order: int

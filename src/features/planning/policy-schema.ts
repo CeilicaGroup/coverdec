@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProjectPlanningPreset } from "@/generated/prisma";
 
 /** Rango acotado para sliders; el solver normaliza con SCALE en Python. */
 export const PLANNING_WEIGHT_MIN = 0;
@@ -30,6 +31,17 @@ export const planningStrategySchema = z.object({
 
 export type PlanningStrategy = z.infer<typeof planningStrategySchema>;
 
+export const projectPlanningPresetSchema = z.nativeEnum(ProjectPlanningPreset);
+
+export const projectPlanningStrategySchema = z.object({
+  preset: projectPlanningPresetSchema,
+  costPriority: z.number().min(0).max(PLANNING_STRATEGY_MAX),
+  stability: z.number().min(0).max(PLANNING_STRATEGY_MAX),
+  deadlineBoost: z.number().min(0).max(PLANNING_STRATEGY_MAX),
+});
+
+export type ProjectPlanningStrategy = z.infer<typeof projectPlanningStrategySchema>;
+
 export const DEFAULT_PLANNING_WEIGHTS = {
   wLate: 1,
   wUnscheduled: 1,
@@ -44,6 +56,13 @@ export const DEFAULT_PLANNING_STRATEGY = {
   costPriority: 50,
   stability: 50,
 } as const satisfies PlanningStrategy;
+
+export const DEFAULT_PROJECT_PLANNING_STRATEGY = {
+  preset: ProjectPlanningPreset.EQUILIBRADO,
+  costPriority: 50,
+  stability: 50,
+  deadlineBoost: 50,
+} as const satisfies ProjectPlanningStrategy;
 
 /** Rellena pesos faltantes (p. ej. filas creadas antes de wLaborCost). */
 export function normalizePlanningWeights(
@@ -87,6 +106,58 @@ export function strategyToWeights(strategy: PlanningStrategy): PlanningWeights {
     wLaborCost,
     wPriority: toWeight(strategy.deliveryPriority),
   };
+}
+
+function toWeight(priority: number): number {
+  return (priority / PLANNING_STRATEGY_MAX) * PLANNING_WEIGHT_MAX;
+}
+
+export const PROJECT_PLANNING_PRESETS = {
+  [ProjectPlanningPreset.A_TIEMPO]: {
+    preset: ProjectPlanningPreset.A_TIEMPO,
+    costPriority: 20,
+    stability: 30,
+    deadlineBoost: 100,
+  },
+  [ProjectPlanningPreset.EQUILIBRADO]: {
+    ...DEFAULT_PROJECT_PLANNING_STRATEGY,
+  },
+  [ProjectPlanningPreset.MIN_COSTE]: {
+    preset: ProjectPlanningPreset.MIN_COSTE,
+    costPriority: 90,
+    stability: 70,
+    deadlineBoost: 15,
+  },
+} as const satisfies Record<ProjectPlanningPreset, ProjectPlanningStrategy>;
+
+export function normalizeProjectPlanningStrategy(
+  strategy: Partial<ProjectPlanningStrategy> | null | undefined,
+): ProjectPlanningStrategy {
+  const preset = strategy?.preset ?? DEFAULT_PROJECT_PLANNING_STRATEGY.preset;
+  const base = PROJECT_PLANNING_PRESETS[preset];
+  return {
+    preset,
+    costPriority: strategy?.costPriority ?? base.costPriority,
+    stability: strategy?.stability ?? base.stability,
+    deadlineBoost: strategy?.deadlineBoost ?? base.deadlineBoost,
+  };
+}
+
+export function projectStrategyToWeights(
+  strategyInput: Partial<ProjectPlanningStrategy> | ProjectPlanningStrategy,
+): PlanningWeights {
+  const strategy = normalizeProjectPlanningStrategy(strategyInput);
+  const base = strategyToWeights({
+    deliveryPriority: strategy.deadlineBoost,
+    costPriority: strategy.costPriority,
+    stability: strategy.stability,
+  });
+
+  const stabilityNudge = toWeight((strategy.stability - 50) / 2 + 50);
+  return normalizePlanningWeights({
+    ...base,
+    wPriority: Math.min(PLANNING_WEIGHT_MAX, base.wPriority + stabilityNudge * 0.2),
+  });
 }
 
 /** Aproximación inversa para hidratar la UI desde pesos guardados. */

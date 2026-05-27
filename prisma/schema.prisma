@@ -44,6 +44,12 @@ enum FactoryStatus {
   ENVIADO
 }
 
+enum ProjectPlanningPreset {
+  A_TIEMPO
+  EQUILIBRADO
+  MIN_COSTE
+}
+
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
@@ -68,6 +74,9 @@ model PlanningPolicy {
   wLoadBalance Float    @default(1)
   wMove        Float    @default(1)
   wLaborCost   Float    @default(1)
+  wPriority    Float    @default(0)
+  deadlineCurveExponent Float @default(2)
+  overduePenaltyMultiplier Float @default(2.5)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -276,6 +285,10 @@ model Project {
   deliveryDate DateTime?
   isBillable   Boolean   @default(true)
   isActive     Boolean   @default(true)
+  planningPreset ProjectPlanningPreset @default(EQUILIBRADO)
+  planningCostPriority Int @default(50)
+  planningStability Int @default(50)
+  planningDeadlineBoost Int @default(50)
   notes        String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

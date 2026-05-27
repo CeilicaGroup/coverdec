@@ -409,10 +409,48 @@ export async function getPlanningWeights(
   return normalizePlanningWeights(row);
 }
 
+export interface PlanningDeadlineSettings {
+  globalDeadlineBoost: number;
+  deadlineCurveExponent: number;
+  overduePenaltyMultiplier: number;
+}
+
+export async function getPlanningDeadlineSettings(
+  naveId: string | null,
+): Promise<PlanningDeadlineSettings> {
+  if (!naveId) {
+    return {
+      globalDeadlineBoost: 50,
+      deadlineCurveExponent: 2,
+      overduePenaltyMultiplier: 2.5,
+    };
+  }
+  const row = await prisma.planningPolicy.findUnique({
+    where: { naveId },
+    select: {
+      wPriority: true,
+      deadlineCurveExponent: true,
+      overduePenaltyMultiplier: true,
+    },
+  });
+  const globalDeadlineBoost = row
+    ? Math.round((row.wPriority / 5) * 100)
+    : 50;
+  return {
+    globalDeadlineBoost,
+    deadlineCurveExponent: row?.deadlineCurveExponent ?? 2,
+    overduePenaltyMultiplier: row?.overduePenaltyMultiplier ?? 2.5,
+  };
+}
+
 export interface ActiveProjectRow {
   projectId: string;
   name: string;
   code: string;
+  planningPreset: "A_TIEMPO" | "EQUILIBRADO" | "MIN_COSTE";
+  planningCostPriority: number;
+  planningStability: number;
+  planningDeadlineBoost: number;
   deliveryDate: Date | null;
   estimatedHours: number;
   doneHours: number;
@@ -519,6 +557,10 @@ export function summarizeAllActiveProjects(
       projectId: p.id,
       name: p.name,
       code: p.code,
+      planningPreset: p.planningPreset,
+      planningCostPriority: p.planningCostPriority,
+      planningStability: p.planningStability,
+      planningDeadlineBoost: p.planningDeadlineBoost,
       deliveryDate: p.deliveryDate,
       estimatedHours,
       doneHours,
@@ -549,6 +591,10 @@ export interface UnassignedProjectRow {
   projectId: string;
   name: string;
   code: string;
+  planningPreset: "A_TIEMPO" | "EQUILIBRADO" | "MIN_COSTE";
+  planningCostPriority: number;
+  planningStability: number;
+  planningDeadlineBoost: number;
   deliveryDate: Date | null;
   estimatedHours: number;
   doneHours: number;
@@ -600,6 +646,10 @@ export function summarizeUnassignedProjects(
       projectId: p.id,
       name: p.name,
       code: p.code,
+      planningPreset: p.planningPreset,
+      planningCostPriority: p.planningCostPriority,
+      planningStability: p.planningStability,
+      planningDeadlineBoost: p.planningDeadlineBoost,
       deliveryDate: p.deliveryDate,
       estimatedHours,
       doneHours,

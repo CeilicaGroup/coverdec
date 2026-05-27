@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import {Role } from "@/generated/prisma";
+import { ProjectPlanningPreset, Role } from "@/generated/prisma";
+import {
+  projectPlanningStrategySchema,
+  PROJECT_PLANNING_PRESETS,
+} from "@/features/planning/policy-schema";
 import {
   adjustPendingOnEstimateChange,
   buildTasksFromFrame,
@@ -32,6 +36,10 @@ const projectSchema = z.object({
   deliveryDate: z.string().optional(),
   isBillable: z.boolean().default(true),
   notes: z.string().optional(),
+  planningPreset: z.nativeEnum(ProjectPlanningPreset).optional(),
+  planningCostPriority: z.number().min(0).max(100).optional(),
+  planningStability: z.number().min(0).max(100).optional(),
+  planningDeadlineBoost: z.number().min(0).max(100).optional(),
 });
 
 export async function createProject(input: z.infer<typeof projectSchema>) {
@@ -45,6 +53,8 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
     suffix += 1;
     code = `${baseCode}-${suffix}`;
   }
+  const preset = data.planningPreset ?? ProjectPlanningPreset.EQUILIBRADO;
+  const presetDefaults = PROJECT_PLANNING_PRESETS[preset];
   const project = await prisma.project.create({
     data: {
       code,
@@ -54,6 +64,11 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
       isBillable: data.isBillable,
       notes: data.notes,
+      planningPreset: preset,
+      planningCostPriority: data.planningCostPriority ?? presetDefaults.costPriority,
+      planningStability: data.planningStability ?? presetDefaults.stability,
+      planningDeadlineBoost:
+        data.planningDeadlineBoost ?? presetDefaults.deadlineBoost,
     },
   });
   log.info({ id: project.id }, "project created");
@@ -79,6 +94,10 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
       isBillable: data.isBillable,
       notes: data.notes?.trim() ? data.notes.trim() : null,
+      planningPreset: data.planningPreset ?? undefined,
+      planningCostPriority: data.planningCostPriority ?? undefined,
+      planningStability: data.planningStability ?? undefined,
+      planningDeadlineBoost: data.planningDeadlineBoost ?? undefined,
     },
   });
 
@@ -477,4 +496,91 @@ export async function deleteProject(input: z.infer<typeof deleteProjectSchema>) 
   revalidatePath("/dashboard/semana");
   revalidatePath("/dashboard/persona");
   revalidatePath("/dashboard/proyecto");
+}
+
+const updateProjectStrategySchema = z.object({
+  projectId: z.string().min(1),
+  strategy: projectPlanningStrategySchema,
+});
+
+export async function updateProjectPlanningStrategy(
+  input: z.infer<typeof updateProjectStrategySchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateProjectStrategySchema.parse(input);
+
+  await prisma.project.update({
+    where: { id: data.projectId },
+    data: {
+      planningPreset: data.strategy.preset,
+      planningCostPriority: data.strategy.costPriority,
+      planningStability: data.strategy.stability,
+      planningDeadlineBoost: data.strategy.deadlineBoost,
+    },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+  revalidatePath("/dashboard");
+}
+
+const applyProjectPresetSchema = z.object({
+  projectId: z.string().min(1),
+  preset: z.nativeEnum(ProjectPlanningPreset),
+});
+
+export async function applyProjectPlanningPreset(
+  input: z.infer<typeof applyProjectPresetSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = applyProjectPresetSchema.parse(input);
+  const strategy = PROJECT_PLANNING_PRESETS[data.preset];
+
+  await prisma.project.update({
+    where: { id: data.projectId },
+    data: {
+      planningPreset: data.preset,
+      planningCostPriority: strategy.costPriority,
+      planningStability: strategy.stability,
+      planningDeadlineBoost: strategy.deadlineBoost,
+    },
+  });
+
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+  revalidatePath("/dashboard");
+}
+
+const applyGlobalPresetSchema = z.object({
+  preset: z.nativeEnum(ProjectPlanningPreset),
+});
+
+export async function applyGlobalPlanningPresetToActiveProjects(
+  input: z.infer<typeof applyGlobalPresetSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = applyGlobalPresetSchema.parse(input);
+  const strategy = PROJECT_PLANNING_PRESETS[data.preset];
+
+  const result = await prisma.project.updateMany({
+    where: { isActive: true },
+    data: {
+      planningPreset: data.preset,
+      planningCostPriority: strategy.costPriority,
+      planningStability: strategy.stability,
+      planningDeadlineBoost: strategy.deadlineBoost,
+    },
+  });
+
+  log.info(
+    { updatedCount: result.count, preset: data.preset },
+    "global planning preset applied",
+  );
+
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath("/dashboard");
+  return { updatedCount: result.count };
 }

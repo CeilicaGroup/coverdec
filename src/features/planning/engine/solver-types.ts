@@ -45,6 +45,9 @@ export type SolveRequestPayload = {
   tasks: {
     id: string;
     projectId: string;
+    projectPriority: number;
+    deadlineCurveExponent: number;
+    overduePenaltyMultiplier: number;
     projectDeliveryDate: string | null;
     lampId: string;
     order: number;
@@ -166,6 +169,9 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
     tasks: input.tasks.map((t) => ({
       id: t.id,
       projectId: t.projectId,
+      projectPriority: t.projectPriority,
+      deadlineCurveExponent: t.deadlineCurveExponent,
+      overduePenaltyMultiplier: t.overduePenaltyMultiplier,
       projectDeliveryDate: t.projectDeliveryDate
         ? t.projectDeliveryDate.toISOString()
         : null,

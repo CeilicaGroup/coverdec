@@ -55,6 +55,9 @@ describe("serializeSolverInput", () => {
         {
           id: "t1",
           projectId: "pr1",
+          projectPriority: 60,
+          deadlineCurveExponent: 2,
+          overduePenaltyMultiplier: 2.5,
           projectDeliveryDate: null,
           lampId: "l1",
           order: 0,

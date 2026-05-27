@@ -98,3 +98,36 @@ def test_legacy_planning_weights_keep_automatic_tier2_nudges():
     )
     assert w.split_penalty == 1.0
     assert w.early_start == 0.3
+
+
+def test_nonlinear_deadline_score_grows_when_overdue():
+    from app.model.solve_week import _delivery_urgency_score
+
+    near_due = EngineTask(
+        id="near",
+        projectId="pr",
+        projectPriority=80,
+        projectDeliveryDate=datetime(2026, 5, 8),
+        lampId="l1",
+        order=0,
+        process="CNC",
+        pendingHours=1,
+        deadlineCurveExponent=2.0,
+        overduePenaltyMultiplier=2.5,
+    )
+    overdue = EngineTask(
+        id="overdue",
+        projectId="pr",
+        projectPriority=80,
+        projectDeliveryDate=datetime(2026, 4, 28),
+        lampId="l1",
+        order=0,
+        process="CNC",
+        pendingHours=1,
+        deadlineCurveExponent=2.0,
+        overduePenaltyMultiplier=2.5,
+    )
+
+    assert _delivery_urgency_score(overdue, WEEK_START) > _delivery_urgency_score(
+        near_due, WEEK_START
+    )

@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLANNING_STRATEGY,
   DEFAULT_PLANNING_WEIGHTS,
+  PROJECT_PLANNING_PRESETS,
   PLANNING_STRATEGY_PRESETS,
+  projectStrategyToWeights,
   normalizePlanningWeights,
   strategyToWeights,
   weightsToStrategy,
 } from "../policy-schema";
+import { ProjectPlanningPreset } from "@/generated/prisma";
 
 describe("normalizePlanningWeights", () => {
   it("fills wLaborCost when missing from legacy rows", () => {
@@ -38,5 +41,18 @@ describe("planning strategy mapping", () => {
     const back = weightsToStrategy(strategyToWeights(DEFAULT_PLANNING_STRATEGY));
     expect(back.deliveryPriority).toBe(50);
     expect(back.costPriority).toBe(50);
+  });
+
+  it("maps project preset to delivery-priority weight", () => {
+    const onTime = projectStrategyToWeights(PROJECT_PLANNING_PRESETS.A_TIEMPO);
+    const minCost = projectStrategyToWeights(PROJECT_PLANNING_PRESETS.MIN_COSTE);
+    expect(onTime.wPriority).toBeGreaterThan(minCost.wPriority);
+    expect(onTime.wLate).toBeGreaterThan(minCost.wLate);
+  });
+
+  it("normalizes missing project strategy fields from preset defaults", () => {
+    const w = projectStrategyToWeights({ preset: ProjectPlanningPreset.EQUILIBRADO });
+    expect(w.wPriority).toBeGreaterThan(0);
+    expect(w.wUnscheduled).toBe(DEFAULT_PLANNING_WEIGHTS.wUnscheduled * 5);
   });
 });

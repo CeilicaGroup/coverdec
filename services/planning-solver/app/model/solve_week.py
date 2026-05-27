@@ -899,9 +899,12 @@ def _add_deadline_terms(
     w: int,
     terms: list,
 ) -> None:
-    """
-    Per-lamp: penalise (lamp_end − delivery_target_q) when positive.
-    Urgency multiplier amplifies near-deadline lamps within the tier.
+    """Per-lamp deadline penalty with strong punishment when late.
+
+    We combine:
+    - linear lateness penalty (always)
+    - quadratic lateness penalty (ramps quickly as delay grows)
+    - overdue multiplier when project is already beyond target date
     """
     by_lamp: dict[str, list[EngineTask]] = defaultdict(list)
     for t in data.tasks:
@@ -937,15 +940,26 @@ def _add_deadline_terms(
         model.Add(late_q >= lamp_end - target_q)
         model.Add(late_q >= 0)
 
-        urgency_w = int(
-            data.weights.urgency_scale * sample.urgency
-            if hasattr(sample, "urgency")
-            else _urgency(sample, data.week_start)
+        urgency_w = max(
+            1,
+            int(data.weights.urgency_scale * _urgency(sample, data.week_start)),
         )
-        coef = TIER_DEADLINE * w * urgency_w
+        deadline_mult = 1
+        if delivery is not None and delivery <= data.week_start:
+            deadline_mult = max(
+                2,
+                int(round(max(1.0, sample.overduePenaltyMultiplier) * 2)),
+            )
+
+        coef = TIER_DEADLINE * w * urgency_w * deadline_mult
         terms.append(coef * late_q)
 
-        # Soft bonus: finish earlier is better when delivery is this week
+        # Strong anti-late term: lateness grows quadratically.
+        late_q_sq = model.NewIntVar(0, (HORIZON_Q + 1) * (HORIZON_Q + 1), f"late2_{lamp_id}")
+        model.AddMultiplicationEquality(late_q_sq, [late_q, late_q])
+        terms.append(TIER_DEADLINE * max(1, w // 8) * deadline_mult * late_q_sq)
+
+        # Soft bonus: finishing earlier still helps when deadline is within week.
         if delivery is not None:
             days_left = (delivery - data.week_start).days
             if 0 <= days_left < HORIZON_DAYS:
@@ -1093,22 +1107,32 @@ def _add_early_start_terms(
 
 
 def _delivery_urgency_score(task: EngineTask, week_start: date) -> int:
-    """Continuous urgency score 0–90 (higher = more urgent).
+    """Non-linear urgency score (0..400), steeper near and beyond deadline.
 
-    Differentiates projects within the 'far deadline' bucket that _urgency()
-    collapses to a single level (e.g. 51d vs 143d are both urgency=1 there).
-
-    Returns:
-        90  for overdue or due today
-        39  for 51 days out  (90-51)
-        0   for ≥90 days out or no deadline
+    Behaviour:
+    - Far from deadline: low pressure.
+    - Near deadline: convex increase controlled by deadlineCurveExponent.
+    - Overdue: multiplies pressure with overduePenaltyMultiplier.
+    - projectPriority (0..100) scales the final pressure per project.
     """
     if task.projectDeliveryDate is None:
         return 0
+
     days_left = (task.projectDeliveryDate.date() - week_start).days
-    if days_left <= 0:
-        return 90
-    return max(0, 90 - days_left)
+    curve = max(1.0, float(task.deadlineCurveExponent))
+    overdue_mult = max(1.0, float(task.overduePenaltyMultiplier))
+    priority_factor = 0.5 + (max(0, min(100, task.projectPriority)) / 100.0) * 1.5
+
+    if days_left >= 0:
+        # 30-day lookahead window with convex growth when approaching deadline.
+        near = max(0.0, (30.0 - days_left) / 30.0)
+        pressure = near**curve
+    else:
+        # Overdue ramps harder than "near deadline".
+        overdue_days = abs(days_left)
+        pressure = ((1.0 + overdue_days / 7.0) ** curve) * overdue_mult
+
+    return int(min(400, round(pressure * priority_factor * 100)))
 
 
 def _add_project_priority_terms(
@@ -1118,26 +1142,20 @@ def _add_project_priority_terms(
     w: int,
     terms: list,
 ) -> None:
-    """Tier 1: prefer filling slots for projects with closer delivery dates.
+    """Tier 1: nonlinear per-project urgency by delivery proximity.
 
-    For each active slot the cost is (90 - urgency_score) × w × effective, so
-    closer-deadline tasks have a lower cost per quarter and the solver naturally
-    fills them before distant-deadline tasks when resources are shared.
-
-    Example with w=2500 (deliveryPriority=50%):
-      DRUNI Splau  (51d)  → inverse=51  → 51×2500 per quarter
-      ARENAL El Rosal (143d) → inverse=90  → 90×2500 per quarter
-    The solver prefers Splau (lower cost), resolving the priority inversion.
+    We convert urgency score to an inverse cost per scheduled quarter:
+      inverse = max_score - score
+    so higher urgency (near/overdue) has lower cost and is scheduled first.
     """
+    max_score = 400
     task_inverse: dict[str, int] = {}
     for task in data.tasks:
         score = _delivery_urgency_score(task, data.week_start)
-        task_inverse[task.id] = 90 - score  # 0 = most urgent, 90 = no deadline
+        task_inverse[task.id] = max(0, max_score - score)
 
     for task in data.tasks:
-        inv = task_inverse.get(task.id, 90)
-        if inv <= 0:
-            continue  # overdue/due-today: schedule for free
+        inv = task_inverse.get(task.id, max_score)
         for sv in mv.by_task.get(task.id, []):
             terms.append(TIER_DEADLINE * w * inv * sv.effective)
 

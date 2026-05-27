@@ -21,6 +21,9 @@ function minimalInput() {
       {
         id: "t1",
         projectId: "pr1",
+        projectPriority: 50,
+        deadlineCurveExponent: 2,
+        overduePenaltyMultiplier: 2.5,
         projectDeliveryDate: null,
         lampId: "l1",
         order: 0,

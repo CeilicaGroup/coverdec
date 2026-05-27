@@ -99,6 +99,7 @@ export default async function HorasPage() {
           where: {
             id: { in: assignedTaskIds },
             isCompleted: false,
+            project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },
           select: {

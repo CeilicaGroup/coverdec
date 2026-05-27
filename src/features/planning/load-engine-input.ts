@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { utcDayStart } from "@/lib/holidays";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
 import { getPlanningWeights } from "@/features/planning/queries";
+import { projectStrategyToWeights } from "@/features/planning/policy-schema";
 import {
   computePlanFromBounds,
   type PlanFrom,
@@ -161,6 +162,7 @@ export async function loadSolverInput(args: {
     tasksRaw,
     timeEntriesRaw,
     crossNaveAssignments,
+    planningPolicy,
   ] = await Promise.all([
     prisma.processDefinition.findMany(),
     prisma.person.findMany({
@@ -197,7 +199,14 @@ export async function loadSolverInput(args: {
       },
       include: {
         project: {
-          select: { id: true, deliveryDate: true },
+          select: {
+            id: true,
+            deliveryDate: true,
+            planningPreset: true,
+            planningCostPriority: true,
+            planningStability: true,
+            planningDeadlineBoost: true,
+          },
         },
       },
     }),
@@ -224,6 +233,13 @@ export async function loadSolverInput(args: {
         startSlot: true,
         endSlot: true,
         hours: true,
+      },
+    }),
+    prisma.planningPolicy.findUnique({
+      where: { naveId: args.naveId },
+      select: {
+        deadlineCurveExponent: true,
+        overduePenaltyMultiplier: true,
       },
     }),
   ]);
@@ -337,16 +353,27 @@ export async function loadSolverInput(args: {
       }),
     }))
     .filter(({ pending }) => pending > 0)
-    .map(({ task: t, pending }) => ({
+    .map(({ task: t, pending }) => {
+      const projectWeights = projectStrategyToWeights({
+        preset: t.project.planningPreset,
+        costPriority: t.project.planningCostPriority,
+        stability: t.project.planningStability,
+        deadlineBoost: t.project.planningDeadlineBoost,
+      });
+      return {
       id: t.id,
       projectId: t.projectId,
+      projectPriority: Math.round((projectWeights.wPriority / 5) * 100),
+      deadlineCurveExponent: planningPolicy?.deadlineCurveExponent ?? 2,
+      overduePenaltyMultiplier: planningPolicy?.overduePenaltyMultiplier ?? 2.5,
       projectDeliveryDate: t.project.deliveryDate ?? null,
       lampId: t.lampId,
       order: t.order,
       process: t.process,
       pendingHours: pending,
       canFragment: processCanFragment.get(t.process) ?? true,
-    }));
+      };
+    });
 
   const holidayDates = new Set<string>();
   for (const h of holidaysRaw) {

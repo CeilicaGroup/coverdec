@@ -31,6 +31,7 @@ import {
   getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
+  getPlanningDeadlineSettings,
   getPlanningWeights,
   getProcessBadgeStylesByCode,
   summarizeAllActiveProjects,
@@ -55,6 +56,7 @@ import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge
 import Link from "next/link";
 import { GenerateButton } from "./generate-button";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
+import { ProjectStrategyControls } from "./proyectos/project-strategy-controls";
 import { getPlanningUndoState } from "@/features/planning/actions";
 import {
   buildPriorPlannedHoursByProjectId,
@@ -76,7 +78,7 @@ export default async function ResumenPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
 
-  const [planning, people, projects, holidays, absences, planningWeights, processStyles, priorAssignments] =
+  const [planning, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments] =
     await Promise.all([
     getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
     getNavePersonnel(naveScopeFromContext(ctx)),
@@ -84,6 +86,7 @@ export default async function ResumenPage({
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
     getPlanningWeights(ctx.naveId),
+    getPlanningDeadlineSettings(ctx.naveId),
     getProcessBadgeStylesByCode(),
     ctx.naveId
       ? getPriorPlanningAssignments({
@@ -150,6 +153,7 @@ export default async function ResumenPage({
               <>
                 <PlanningWeightsPopover
                   initialWeights={planningWeights}
+                  initialDeadlineSettings={deadlineSettings}
                   role={ctx.role}
                 />
                 <GenerateButton
@@ -276,12 +280,14 @@ export default async function ResumenPage({
                 rows={allProjects}
                 showAssigned
                 showExpected
+                canManage={ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION"}
                 processStyles={processStyles}
               />
             </TabsContent>
             <TabsContent value="sin-asignar" className="mt-0">
               <ProjectsTable
                 rows={unassignedProjects}
+                canManage={ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION"}
                 processStyles={processStyles}
                 emptyMessage={
                   planning
@@ -307,6 +313,10 @@ interface ProjectTableRow {
   projectId: string;
   name: string;
   code: string;
+  planningPreset: "A_TIEMPO" | "EQUILIBRADO" | "MIN_COSTE";
+  planningCostPriority: number;
+  planningStability: number;
+  planningDeadlineBoost: number;
   deliveryDate: Date | null;
   estimatedHours: number;
   doneHours: number;
@@ -326,17 +336,19 @@ function ProjectsTable({
   rows,
   showAssigned,
   showExpected,
+  canManage = false,
   processStyles,
   emptyMessage = "No hay proyectos",
 }: {
   rows: ProjectTableRow[];
   showAssigned?: boolean;
   showExpected?: boolean;
+  canManage?: boolean;
   processStyles: Map<string, ProcessBadgeStyle>;
   emptyMessage?: string;
 }) {
   const colSpan =
-    9 + (showAssigned ? 1 : 0) + (showExpected ? 1 : 0);
+    9 + (showAssigned ? 1 : 0) + (showExpected ? 1 : 0) + (canManage ? 1 : 0);
 
   return (
     <Table>
@@ -359,6 +371,7 @@ function ProjectsTable({
             Pend. planif.
           </TableHead>
           <TableHead>Procesos</TableHead>
+          {canManage ? <TableHead>Estrategia</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -442,6 +455,17 @@ function ProjectsTable({
                         ) : null}
                       </div>
                     </TableCell>
+                    {canManage ? (
+                      <TableCell className="align-top">
+                        <ProjectStrategyControls
+                          projectId={row.projectId}
+                          planningPreset={row.planningPreset}
+                          planningCostPriority={row.planningCostPriority}
+                          planningStability={row.planningStability}
+                          planningDeadlineBoost={row.planningDeadlineBoost}
+                        />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
           ))
         )}
