@@ -59,7 +59,6 @@ interface UserSummary { id: string; name: string; email: string; personId: strin
 interface PersonWithSpecs {
   id: string;
   displayName: string;
-  alias: string | null;
   iniciales: string;
   color: string;
   hourlyRate: number;
@@ -76,6 +75,14 @@ interface PersonWithSpecs {
 }
 
 type SpecMode = "ninguno" | "responsable" | "apoyo" | "otra";
+
+const SPECIALTY_SECTIONS = [
+  { key: "responsable" as const, title: "Responsable" },
+  { key: "apoyo" as const, title: "Apoyo / sustituto" },
+  { key: "otra" as const, title: "Otras tareas" },
+] as const;
+
+type SpecialtySectionKey = (typeof SPECIALTY_SECTIONS)[number]["key"];
 
 function modeFromSpecialty(s: PersonSpecialty): SpecMode {
   if (s.isPrimary) return "responsable";
@@ -104,7 +111,6 @@ export function PersonalTeamClient({
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
-  const [nombre, setNombre] = useState("");
   const [iniciales, setIniciales] = useState("");
   const [color, setColor] = useState("#64748b");
   const [hourlyRate, setHourlyRate] = useState("14.75");
@@ -116,6 +122,11 @@ export function PersonalTeamClient({
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
     emptySpecMap(processDefs),
   );
+  const [pendingAdd, setPendingAdd] = useState<Record<SpecialtySectionKey, string>>({
+    responsable: "",
+    apoyo: "",
+    otra: "",
+  });
 
   const [filterNave, setFilterNave] = useState<string>("all");
 
@@ -127,7 +138,6 @@ export function PersonalTeamClient({
 
   function openCreate() {
     setEditingId(undefined);
-    setNombre("");
     setIniciales("");
     setColor("#64748b");
     setHourlyRate("14.75");
@@ -142,7 +152,6 @@ export function PersonalTeamClient({
 
   function openEdit(p: PersonWithSpecs) {
     setEditingId(p.id);
-    setNombre(p.alias ?? "");
     setIniciales(p.iniciales);
     setColor(p.color);
     setHourlyRate(String(p.hourlyRate));
@@ -196,7 +205,6 @@ export function PersonalTeamClient({
           id: editingId,
           iniciales,
           color,
-          alias: nombre.trim() || undefined,
           hourlyRate: rate,
           overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
@@ -427,10 +435,6 @@ export function PersonalTeamClient({
             <DialogTitle>{editingId ? "Editar persona" : "Nueva persona"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-1">
-            <div className="space-y-2">
-              <Label>Alias (opcional)</Label>
-              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} disabled={pending} />
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Iniciales</Label>
@@ -519,12 +523,17 @@ export function PersonalTeamClient({
                     disabled={pending}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un usuario…" />
+                      <SelectValue placeholder="Selecciona un usuario…">
+                        {userId === "none"
+                          ? "Selecciona un usuario…"
+                          : (availableUsers.find((u) => u.id === userId)?.email ??
+                            "Selecciona un usuario…")}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {availableUsers.map((u) => (
                         <SelectItem key={u.id} value={u.id}>
-                          {u.name} — {u.email}
+                          {u.email}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -548,31 +557,78 @@ export function PersonalTeamClient({
             <div className="space-y-2 border-t pt-3">
               <Label>Especialidades por proceso</Label>
               <div className="grid gap-3 md:grid-cols-3">
-                {[
-                  { key: "responsable" as const, title: "Responsable" },
-                  { key: "apoyo" as const, title: "Apoyo / sustituto" },
-                  { key: "otra" as const, title: "Otras tareas" },
-                ].map((section) => (
+                {SPECIALTY_SECTIONS.map((section) => {
+                  const current = processDefs.filter(
+                    (d) => specMap[d.code] === section.key,
+                  );
+                  const available = processDefs.filter(
+                    (d) => specMap[d.code] === "ninguno",
+                  );
+                  return (
                   <div key={section.key} className="border rounded-md p-3 space-y-2">
                     <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {section.title}
                     </div>
-                    <div className="space-y-1 max-h-[180px] overflow-y-auto pr-1">
-                      {processDefs.map((d) => (
-                        <label key={`${section.key}-${d.code}`} className="flex items-center gap-2 text-xs">
-                          <Checkbox
-                            checked={specMap[d.code] === section.key}
-                            onCheckedChange={(checked) =>
-                              setModeForProcess(d.code, checked ? section.key : "ninguno")
+                    <div className="space-y-1 max-h-[140px] overflow-y-auto pr-1">
+                      {current.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground italic">
+                          Sin procesos
+                        </p>
+                      ) : (
+                        current.map((d) => (
+                          <div
+                            key={d.code}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
+                            <span className="truncate text-muted-foreground">
+                              {d.label}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-[10px]"
+                              onClick={() => setModeForProcess(d.code, "ninguno")}
+                              disabled={pending}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="pt-1">
+                      <Select
+                        value={pendingAdd[section.key]}
+                        onValueChange={(code) => {
+                          setModeForProcess(code as ProcessCode, section.key);
+                          setPendingAdd((prev) => ({
+                            ...prev,
+                            [section.key]: "",
+                          }));
+                        }}
+                        disabled={pending || available.length === 0}
+                      >
+                        <SelectTrigger className="h-7 w-full text-[11px]">
+                          <SelectValue
+                            placeholder={
+                              available.length === 0
+                                ? "Sin procesos libres"
+                                : "Añadir proceso…"
                             }
-                            disabled={pending}
                           />
-                          <span className="truncate text-muted-foreground">{d.label}</span>
-                        </label>
-                      ))}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {available.map((d) => (
+                            <SelectItem key={d.code} value={d.code}>
+                              {d.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                ))}
+                );})}
               </div>
             </div>
           </div>

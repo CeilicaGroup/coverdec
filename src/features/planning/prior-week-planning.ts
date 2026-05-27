@@ -330,7 +330,6 @@ export async function getPriorPlanningAssignmentsDetailed(args: {
         select: {
           id: true,
           iniciales: true,
-          alias: true,
           color: true,
           user: { select: { name: true } },
         },
@@ -341,8 +340,10 @@ export async function getPriorPlanningAssignmentsDetailed(args: {
   return rows.map((r) => ({
     ...r,
     person: {
-      ...r.person,
-      nombre: r.person.user?.name ?? r.person.alias ?? r.person.iniciales,
+      id: r.person.id,
+      iniciales: r.person.iniciales,
+      color: r.person.color,
+      nombre: r.person.user?.name ?? r.person.iniciales,
     },
   }));
 }

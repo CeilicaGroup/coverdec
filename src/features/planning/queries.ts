@@ -50,7 +50,7 @@ export async function getPlanningForWeek({
         ...a,
         person: {
           ...a.person,
-          nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+          nombre: a.person.user?.name ?? a.person.iniciales,
         },
       })),
     };
@@ -78,7 +78,7 @@ export async function getPlanningForWeek({
       ...a,
       person: {
         ...a.person,
-        nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+        nombre: a.person.user?.name ?? a.person.iniciales,
       },
     })),
   };
@@ -125,11 +125,14 @@ export async function getNavePersonnel(naveScope: string[] | null) {
       orderBy: { iniciales: "asc" },
     });
 
-  return rows.map((p) => ({
-    ...p,
-    nombre: p.user?.name ?? p.alias ?? p.iniciales,
-    capacityHours: deriveDailyHoursFromWindows(p.workWindows),
-  }));
+  return rows.map((p) => {
+    const capacityHours = deriveDailyHoursFromWindows(p.workWindows);
+    return {
+      ...p,
+      nombre: p.user?.name ?? p.iniciales,
+      capacityHours,
+    };
+  });
 }
 
 export interface ActualHourEntry {
@@ -189,7 +192,7 @@ export async function getActualHoursForWeek({
     person: e.user.person
       ? {
           id: e.user.person.id,
-          nombre: e.user.person.user?.name ?? e.user.person.alias ?? e.user.person.iniciales,
+          nombre: e.user.person.user?.name ?? e.user.person.iniciales,
           iniciales: e.user.person.iniciales,
           color: e.user.person.color,
         }
@@ -305,7 +308,7 @@ export async function getGanttPlanningAssignments(naveScope: string[] | null) {
       id: a.person.id,
       iniciales: a.person.iniciales,
       color: a.person.color,
-      nombre: a.person.user?.name ?? a.person.alias ?? a.person.iniciales,
+      nombre: a.person.user?.name ?? a.person.iniciales,
     },
   }));
 }

@@ -59,7 +59,7 @@ export default async function PersonalPage() {
 
   const people = peopleRaw.map(({ _count, workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => ({
     ...p,
-    displayName: user?.name ?? p.alias ?? p.iniciales,
+    displayName: user?.name ?? p.iniciales,
     naveIds: personNaves.map((pn) => pn.naveId),
     hourlyRate: Number(hourlyRate),
     overtimeHourlyRate: Number(overtimeHourlyRate),
