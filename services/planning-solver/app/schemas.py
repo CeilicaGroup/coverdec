@@ -94,6 +94,14 @@ class BookedHoursEntry(BaseModel):
     hours: float
 
 
+class BusySlotEntry(BaseModel):
+    personId: str
+    date: date
+    startSlot: float
+    endSlot: float
+    hours: float
+
+
 class SolveRequest(BaseModel):
     weekStart: date
     processes: list[EngineProcessDef]
@@ -108,6 +116,7 @@ class SolveRequest(BaseModel):
     firstSchedulableWeekQuarter: int | None = None
     fixedAssignments: list[FixedAssignment] = Field(default_factory=list)
     bookedHours: list[BookedHoursEntry] = Field(default_factory=list)
+    busySlots: list[BusySlotEntry] = Field(default_factory=list)
 
 
 class EngineAssignment(BaseModel):

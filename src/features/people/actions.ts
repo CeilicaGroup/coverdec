@@ -4,8 +4,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import {Role } from "@/generated/prisma";
+import { Role } from "@/generated/prisma";
 import { childLogger } from "@/lib/logger";
+import { replacePersonNaves } from "@/features/people/person-naves";
 
 const log = childLogger({ module: "people.actions" });
 
@@ -138,7 +139,7 @@ const savePersonSchema = z
     overtimeHourlyRate: z.number().min(0).default(22.13),
     notes: z.string().optional(),
     isActive: z.boolean().default(true),
-    naveId: z.string().min(1),
+    naveIds: z.array(z.string().min(1)).min(1),
     userId: z.string().min(1),
     specialties: z.array(specialtySchema).default([]),
   })
@@ -180,7 +181,6 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
-            naveId: data.naveId,
           },
         });
         personId = data.id;
@@ -195,11 +195,11 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
             overtimeHourlyRate: data.overtimeHourlyRate,
             notes: data.notes?.trim() ? data.notes.trim() : null,
             isActive: data.isActive,
-            naveId: data.naveId,
           },
         });
         personId = created.id;
       }
+      await replacePersonNaves(personId, data.naveIds, tx);
       await tx.personSpecialty.deleteMany({ where: { personId } });
       if (specialtyRows.length > 0) {
         await tx.personSpecialty.createMany({

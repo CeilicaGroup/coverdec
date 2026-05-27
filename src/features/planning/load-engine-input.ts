@@ -12,7 +12,7 @@ import {
   computeMinWeekQuarterByTaskId,
   type PriorPlanningAssignment,
 } from "@/features/planning/prior-week-planning";
-import { isSameUtcDay, toUtcDay } from "@/lib/week";
+import { isSameUtcDay, isoWeek, toUtcDay } from "@/lib/week";
 import type {
   PersonScheduleDayInput,
   PersonScheduleOverrideInput,
@@ -171,6 +171,8 @@ export async function loadSolverInput(args: {
   const { firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
     computePlanFromBounds(weekStart, planFrom, planFromAt);
 
+  const { year, week } = isoWeek(weekStart);
+
   const [
     processes,
     peopleRaw,
@@ -179,10 +181,14 @@ export async function loadSolverInput(args: {
     weights,
     tasksRaw,
     timeEntriesRaw,
+    crossNaveAssignments,
   ] = await Promise.all([
     prisma.processDefinition.findMany(),
     prisma.person.findMany({
-      where: { naveId: args.naveId, isActive: true },
+      where: {
+        isActive: true,
+        personNaves: { some: { naveId: args.naveId } },
+      },
       include: {
         specialties: true,
         workWindows: true,
@@ -225,7 +231,34 @@ export async function loadSolverInput(args: {
         user: { select: { personId: true } },
       },
     }),
+    prisma.planningAssignment.findMany({
+      where: {
+        planning: {
+          naveId: { not: args.naveId },
+          year,
+          week,
+        },
+      },
+      select: {
+        personId: true,
+        date: true,
+        startSlot: true,
+        endSlot: true,
+        hours: true,
+      },
+    }),
   ]);
+
+  const personIds = new Set(peopleRaw.map((p) => p.id));
+  const busySlots = crossNaveAssignments
+    .filter((a) => personIds.has(a.personId))
+    .map((a) => ({
+      personId: a.personId,
+      date: a.date,
+      startSlot: a.startSlot,
+      endSlot: a.endSlot,
+      hours: a.hours,
+    }));
 
   const taskById = new Map(tasksRaw.map((t) => [t.id, t]));
   const processCanFragment = new Map(processes.map((p) => [p.code, p.canFragment]));
@@ -420,6 +453,7 @@ export async function loadSolverInput(args: {
     firstSchedulableWeekQuarter,
     fixedAssignments,
     bookedHours,
+    busySlots,
     deferredTasks,
   };
 

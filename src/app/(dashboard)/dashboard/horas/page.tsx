@@ -1,3 +1,5 @@
+import { Role } from "@/generated/prisma";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "../../_components/page-header";
@@ -14,6 +16,14 @@ export default async function HorasPage() {
   today.setUTCHours(0, 0, 0, 0);
   const monday = new Date(today);
   monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
+
+  const naveScope = naveScopeFromContext(ctx);
+  const taskNaveFilter =
+    naveScope !== null && naveScope.length > 0
+      ? { naveId: { in: naveScope } }
+      : naveScope !== null
+        ? { naveId: { in: [] as string[] } }
+        : undefined;
 
   const [openTimer, entries, projects, processStyles] = await Promise.all([
     prisma.timeEntry.findFirst({
@@ -33,7 +43,10 @@ export default async function HorasPage() {
         name: true,
         lamps: { select: { id: true, name: true } },
         tasks: {
-          where: { pendingHours: { gt: 0 } },
+          where: {
+            pendingHours: { gt: 0 },
+            ...(taskNaveFilter ?? {}),
+          },
           select: {
             id: true,
             process: true,

@@ -42,6 +42,8 @@ interface DashboardShellProps {
   person: { iniciales: string; color: string } | null;
   naves: NaveSummary[];
   activeNave: NaveSummary | null;
+  /** Naves assigned to the linked person (operario/jefe). */
+  assignedNaves?: NaveSummary[];
   children: React.ReactNode;
 }
 
@@ -91,6 +93,7 @@ export function DashboardShell({
   person,
   naves,
   activeNave,
+  assignedNaves = [],
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -113,7 +116,8 @@ export function DashboardShell({
 
   const isOperario = user.role === "OPERARIO";
   const canSeeRestricted = !isOperario;
-  const isAdmin = user.role === "ADMIN" || user.role === "JEFE_PRODUCCION";
+  const isAdmin = user.role === "ADMIN";
+  const canSwitchNave = isAdmin;
 
   return (
     <div className="flex min-h-screen w-full bg-secondary/30">
@@ -127,7 +131,16 @@ export function DashboardShell({
               <span className="truncate">{activeNave.nombre}</span>
             </div>
           )}
-          {!activeNave && isAdmin && (
+          {!activeNave && assignedNaves.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {assignedNaves.map((n) => (
+                <Badge key={n.id} variant="secondary" className="text-[9px] font-mono px-1.5 py-0">
+                  {n.codigo}
+                </Badge>
+              ))}
+            </div>
+          )}
+          {!activeNave && assignedNaves.length === 0 && isAdmin && (
             <div className="mt-1.5 text-[10px] text-muted-foreground/60 italic">
               Sin nave asignada
             </div>
@@ -149,7 +162,7 @@ export function DashboardShell({
                   {section.label}
                   {section.naveScoped && <Warehouse className="size-3 opacity-50 ml-0.5" />}
                 </div>
-                {section.naveScoped && isAdmin && naves.length > 0 && (
+                {section.naveScoped && canSwitchNave && naves.length > 0 && (
                   <div className="px-2 mb-2">
                     <select
                       value={activeNave?.id ?? ""}

@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
   getMondayOf,
@@ -68,7 +69,7 @@ export default async function SemanaPage({
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
 
   const [people, holidays, absences, processStyles] = await Promise.all([
-    getNavePersonnel(ctx.naveId),
+    getNavePersonnel(naveScopeFromContext(ctx)),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
     getProcessBadgeStylesByCode(),
@@ -83,10 +84,16 @@ export default async function SemanaPage({
   let grid: Map<string, Map<string, GridCell[]>>;
 
   if (view === "actual") {
-    const actualEntries = await getActualHoursForWeek({ naveId: ctx.naveId, weekStart });
+    const actualEntries = await getActualHoursForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
     grid = buildActualGrid(actualEntries, people, days);
   } else {
-    const planning = await getPlanningForWeek({ naveId: ctx.naveId, weekStart });
+    const planning = await getPlanningForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
     grid = buildPlanGrid(planning, people, days);
   }
 

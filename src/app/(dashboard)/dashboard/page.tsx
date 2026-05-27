@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
   getMondayOf,
@@ -77,9 +78,9 @@ export default async function ResumenPage({
 
   const [planning, people, projects, holidays, absences, planningWeights, processStyles, priorAssignments] =
     await Promise.all([
-    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
-    getNavePersonnel(ctx.naveId),
-    getActiveProjectsWithLoad(ctx.naveId),
+    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
+    getNavePersonnel(naveScopeFromContext(ctx)),
+    getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
     getPlanningWeights(ctx.naveId),

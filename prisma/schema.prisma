@@ -53,9 +53,8 @@ model Nave {
   isActive Boolean @default(true)
 
   tasks          Task[]
-  users          User[]          @relation("AssignedNave")
   activeUsers    User[]          @relation("ActiveNave")
-  people         Person[]        @relation("NavePeople")
+  personNaves    PersonNave[]
   plannings      Planning[]      @relation("NavePlannings")
   planningPolicy PlanningPolicy? @relation("NavePolicy")
 }
@@ -85,7 +84,6 @@ model User {
   image         String?
   role          Role     @default(OPERARIO)
   personId      String?  @unique
-  naveId        String?
   activeNaveId  String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -94,7 +92,6 @@ model User {
   accounts    Account[]
   person      Person?     @relation(fields: [personId], references: [id])
   timeEntries TimeEntry[]
-  nave        Nave?       @relation("AssignedNave", fields: [naveId], references: [id])
   activeNave  Nave?       @relation("ActiveNave", fields: [activeNaveId], references: [id])
 }
 
@@ -148,18 +145,28 @@ model Person {
   hourlyRate         Decimal  @default(14.75) @db.Decimal(10, 2)
   overtimeHourlyRate Decimal  @default(22.13) @db.Decimal(10, 2)
   isActive           Boolean  @default(true)
-  naveId             String
   notes              String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   user              User?
-  nave              Nave                     @relation("NavePeople", fields: [naveId], references: [id])
+  personNaves       PersonNave[]
   specialties       PersonSpecialty[]
   absences          Absence[]
   assignments       PlanningAssignment[]
   workWindows       PersonWorkWindow[]
   scheduleOverrides PersonScheduleOverride[]
+}
+
+model PersonNave {
+  personId String
+  naveId   String
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  nave   Nave   @relation(fields: [naveId], references: [id], onDelete: Cascade)
+
+  @@id([personId, naveId])
+  @@index([naveId])
 }
 
 /// Plantilla semanal (Lun–Vie). Minutos desde medianoche UTC; endMinutes exclusivo.

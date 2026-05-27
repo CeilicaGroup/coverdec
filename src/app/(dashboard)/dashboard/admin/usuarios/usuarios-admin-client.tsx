@@ -29,10 +29,14 @@ interface UserRow {
   name: string;
   email: string;
   role: string;
-  nave: { id: string; codigo: string; nombre: string } | null;
+  person: {
+    id: string;
+    personNaves: { nave: { id: string; codigo: string; nombre: string } }[];
+  } | null;
 }
 
 interface NaveOption { id: string; codigo: string; nombre: string }
+interface PersonOption { id: string; nombre: string; iniciales: string }
 
 const ROLES = [
   { value: "ADMIN", label: "Admin" },
@@ -45,7 +49,8 @@ type FormState = {
   email: string;
   password: string;
   role: string;
-  naveId: string;
+  personId: string;
+  naveIds: string[];
 };
 
 const emptyForm = (): FormState => ({
@@ -53,15 +58,24 @@ const emptyForm = (): FormState => ({
   email: "",
   password: "",
   role: "OPERARIO",
-  naveId: "none",
+  personId: "none",
+  naveIds: [],
 });
+
+function personSelectLabel(personId: string, people: PersonOption[]): string {
+  if (personId === "none") return "Sin persona";
+  const person = people.find((p) => p.id === personId);
+  return person ? `${person.iniciales} · ${person.nombre}` : "Sin persona";
+}
 
 export function UsuariosAdminClient({
   users,
   naves,
+  people,
 }: {
   users: UserRow[];
   naves: NaveOption[];
+  people: PersonOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -81,7 +95,8 @@ export function UsuariosAdminClient({
       email: u.email,
       password: "",
       role: u.role,
-      naveId: u.nave?.id ?? "none",
+      personId: u.person?.id ?? "none",
+      naveIds: u.person?.personNaves.map((pn) => pn.nave.id) ?? [],
     });
     setEditUserId(u.id);
     setDialogMode("edit");
@@ -89,7 +104,7 @@ export function UsuariosAdminClient({
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const naveId = form.naveId === "none" ? null : form.naveId;
+    const personId = form.personId === "none" ? undefined : form.personId;
     startTransition(async () => {
       try {
         if (dialogMode === "create") {
@@ -98,14 +113,16 @@ export function UsuariosAdminClient({
             email: form.email,
             password: form.password,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            naveId,
+            personId,
+            naveIds: form.naveIds,
           });
           toast.success("Usuario creado");
         } else if (editUserId) {
           await updateUser({
             userId: editUserId,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            naveId,
+            personId: form.personId === "none" ? null : form.personId,
+            naveIds: form.naveIds,
           });
           toast.success("Usuario actualizado");
         }
@@ -137,9 +154,11 @@ export function UsuariosAdminClient({
                 <div className="text-xs text-muted-foreground truncate">{u.email}</div>
                 <div className="flex flex-wrap gap-1 mt-1">
                   <Badge variant="outline" className="text-[10px] font-mono">{u.role}</Badge>
-                  {u.nave && (
-                    <Badge variant="secondary" className="text-[10px]">{u.nave.codigo} · {u.nave.nombre}</Badge>
-                  )}
+                  {u.person?.personNaves.map((pn) => (
+                    <Badge key={pn.nave.id} variant="secondary" className="text-[10px]">
+                      {pn.nave.codigo}
+                    </Badge>
+                  ))}
                 </div>
               </div>
             </div>
@@ -200,20 +219,47 @@ export function UsuariosAdminClient({
                 </SelectContent>
               </Select>
             </div>
-            {naves.length > 0 && (
+            <div className="space-y-2">
+              <Label>Persona vinculada</Label>
+              <Select value={form.personId} onValueChange={(v) => v && setForm((f) => ({ ...f, personId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin persona">
+                    {personSelectLabel(form.personId, people)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin persona</SelectItem>
+                  {people.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.iniciales} · {p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {naves.length > 0 && form.role !== "ADMIN" && (
               <div className="space-y-2">
-                <Label>Nave asignada</Label>
-                <Select value={form.naveId} onValueChange={(v) => v && setForm((f) => ({ ...f, naveId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin nave</SelectItem>
-                    {naves.map((n) => (
-                      <SelectItem key={n.id} value={n.id}>{n.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Naves</Label>
+                <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
+                  {naves.map((n) => {
+                    const checked = form.naveIds.includes(n.id);
+                    return (
+                      <label key={n.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              naveIds: e.target.checked
+                                ? [...f.naveIds, n.id]
+                                : f.naveIds.filter((id) => id !== n.id),
+                            }))
+                          }
+                        />
+                        {n.codigo} · {n.nombre}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             )}
             <DialogFooter>

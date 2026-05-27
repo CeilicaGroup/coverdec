@@ -1,4 +1,5 @@
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import { Role } from "@/generated/prisma";
 import {
   formatWeekRange,
@@ -62,7 +63,7 @@ export default async function PersonaPage({
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
 
   const [allPeople, absences, processByCode] = await Promise.all([
-    getNavePersonnel(ctx.naveId),
+    getNavePersonnel(naveScopeFromContext(ctx)),
     getAbsencesForRange(days[0], days[4]),
     getProcessDefinitionsByCode(),
   ]);
@@ -77,13 +78,19 @@ export default async function PersonaPage({
   let actualEntries: ActualHourEntry[] = [];
 
   if (view === "actual") {
-    const raw = await getActualHoursForWeek({ naveId: ctx.naveId, weekStart });
+    const raw = await getActualHoursForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
     actualEntries =
       ctx.role === Role.OPERARIO && ctx.personId
         ? raw.filter((e) => e.personId === ctx.personId)
         : raw;
   } else {
-    const planning = await getPlanningForWeek({ naveId: ctx.naveId, weekStart });
+    const planning = await getPlanningForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
     planningAssignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
   }
 

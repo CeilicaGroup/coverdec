@@ -3,6 +3,7 @@ import type { PlanningWeights } from "@/features/planning/policy-schema";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import type {
   EngineBookedHours,
+  EngineBusySlot,
   EngineFixedAssignment,
   EngineInput,
   EngineResult,
@@ -26,6 +27,7 @@ export interface SolverInput extends EngineInput {
   firstSchedulableWeekQuarter?: number;
   fixedAssignments: EngineFixedAssignment[];
   bookedHours: EngineBookedHours[];
+  busySlots: EngineBusySlot[];
   planFrom?: PlanFrom;
   /** Tareas que no pueden empezar en esta semana (secado / cadena). */
   deferredTasks?: DeferredPlanningTask[];
@@ -76,6 +78,13 @@ export type SolveRequestPayload = {
     process: string;
   }[];
   bookedHours: { personId: string; date: string; hours: number }[];
+  busySlots: {
+    personId: string;
+    date: string;
+    startSlot: number;
+    endSlot: number;
+    hours: number;
+  }[];
 };
 
 const solveResponseSchema = z.object({
@@ -191,6 +200,13 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
     bookedHours: input.bookedHours.map((b) => ({
       personId: b.personId,
       date: toIsoDate(b.date),
+      hours: b.hours,
+    })),
+    busySlots: input.busySlots.map((b) => ({
+      personId: b.personId,
+      date: toIsoDate(b.date),
+      startSlot: b.startSlot,
+      endSlot: b.endSlot,
       hours: b.hours,
     })),
   };

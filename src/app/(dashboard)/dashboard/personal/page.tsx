@@ -23,6 +23,7 @@ export default async function PersonalPage() {
       where: peopleWhere,
       include: {
         specialties: true,
+        personNaves: true,
         workWindows: true,
         absences: {
           where: { date: { gte: rangeStart, lte: rangeEnd } },
@@ -55,8 +56,10 @@ export default async function PersonalPage() {
     usersLinked.map((u) => u.personId).filter((id): id is string => id != null),
   );
 
-  const people = peopleRaw.map(({ _count, workWindows, absences, hourlyRate, overtimeHourlyRate, ...p }) => ({
+  const people = peopleRaw.map(({ _count, workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, ...p }) => ({
     ...p,
+    naveId: personNaves[0]?.naveId ?? null,
+    naveIds: personNaves.map((pn) => pn.naveId),
     hourlyRate: Number(hourlyRate),
     overtimeHourlyRate: Number(overtimeHourlyRate),
     workWindows,

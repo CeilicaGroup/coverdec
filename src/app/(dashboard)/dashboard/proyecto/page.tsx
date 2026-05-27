@@ -1,4 +1,5 @@
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
   getMondayOf,
@@ -63,7 +64,7 @@ export default async function ProyectoPage({
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
 
   const [projects, processByCode] = await Promise.all([
-    getActiveProjectsWithLoad(ctx.naveId),
+    getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
     getProcessDefinitionsByCode(),
   ]);
 
@@ -72,9 +73,15 @@ export default async function ProyectoPage({
   let actualEntries: ActualHourEntry[] = [];
 
   if (view === "actual") {
-    actualEntries = await getActualHoursForWeek({ naveId: ctx.naveId, weekStart });
+    actualEntries = await getActualHoursForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
   } else {
-    const planning = await getPlanningForWeek({ naveId: ctx.naveId, weekStart });
+    const planning = await getPlanningForWeek({
+      naveScope: naveScopeFromContext(ctx),
+      weekStart,
+    });
     assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
   }
 

@@ -14,7 +14,9 @@ export default async function DashboardLayout({
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: { person: true },
+    include: {
+      person: { include: { personNaves: { include: { nave: true } } } },
+    },
   });
   if (!user) return redirectToLoginWithStaleSession();
 
@@ -24,9 +26,11 @@ export default async function DashboardLayout({
     select: { id: true, codigo: true, nombre: true },
   });
 
-  const canSwitchNave = user.role === "ADMIN" || user.role === "JEFE_PRODUCCION";
-  const activeNaveId = canSwitchNave ? user.activeNaveId : user.naveId;
-  const activeNave = naves.find((n) => n.id === activeNaveId) ?? null;
+  const canSwitchNave = user.role === "ADMIN";
+  const personNaveList = user.person?.personNaves.map((pn) => pn.nave) ?? [];
+  const activeNave = canSwitchNave
+    ? (naves.find((n) => n.id === user.activeNaveId) ?? null)
+    : null;
 
   return (
     <DashboardShell
@@ -34,6 +38,7 @@ export default async function DashboardLayout({
       person={user.person ? { iniciales: user.person.iniciales, color: user.person.color } : null}
       naves={naves}
       activeNave={activeNave}
+      assignedNaves={canSwitchNave ? [] : personNaveList}
     >
       {children}
     </DashboardShell>

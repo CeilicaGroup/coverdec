@@ -1,4 +1,5 @@
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import {
@@ -178,9 +179,9 @@ export default async function GanttPage({
   const personIds = parseSelectedIds(params.people);
 
   const [projects, assignments, people, processStyles, processDefs] = await Promise.all([
-    getActiveProjectsForGantt(ctx.naveId),
-    ctx.naveId ? getGanttPlanningAssignments(ctx.naveId) : Promise.resolve([]),
-    getNavePersonnel(ctx.naveId),
+    getActiveProjectsForGantt(naveScopeFromContext(ctx)),
+    getGanttPlanningAssignments(naveScopeFromContext(ctx)),
+    getNavePersonnel(naveScopeFromContext(ctx)),
     getProcessBadgeStylesByCode(),
     getProcessDefinitionsByCode(),
   ]);

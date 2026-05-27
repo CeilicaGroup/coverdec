@@ -17,10 +17,11 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function getPlanningForWeek({
-  naveId,
+  naveScope,
   weekStart,
 }: {
-  naveId: string | null;
+  /** null = todas las naves; [] = ninguna; [ids] = subconjunto */
+  naveScope: string[] | null;
   weekStart: Date;
 }) {
   const monday = getMondayOf(weekStart);
@@ -35,15 +36,23 @@ export async function getPlanningForWeek({
     },
   };
 
-  if (naveId !== null) {
+  if (naveScope !== null && naveScope.length === 0) return null;
+
+  if (naveScope !== null && naveScope.length === 1) {
     return prisma.planning.findUnique({
-      where: { naveId_year_week: { naveId, year, week } },
+      where: { naveId_year_week: { naveId: naveScope[0]!, year, week } },
       include,
     });
   }
 
-  // All naves: merge assignments from every planning this week
-  const plannings = await prisma.planning.findMany({ where: { year, week }, include });
+  const plannings = await prisma.planning.findMany({
+    where: {
+      year,
+      week,
+      ...(naveScope !== null ? { naveId: { in: naveScope } } : {}),
+    },
+    include,
+  });
   if (plannings.length === 0) return null;
 
   const allAssignments = plannings
@@ -58,23 +67,26 @@ export interface ProcessDefinitionInfo {
   badge: ProcessBadgeStyle;
 }
 
-export async function getNavePersonnel(naveId: string | null) {
-  if (naveId === null) {
+const personInclude = {
+  specialties: true,
+  personNaves: { include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
+} as const;
+
+export async function getNavePersonnel(naveScope: string[] | null) {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  if (naveScope === null) {
     return prisma.person.findMany({
       where: { isActive: true },
-      include: { specialties: true },
+      include: personInclude,
       orderBy: { iniciales: "asc" },
     });
   }
-  const byNave = await prisma.person.findMany({
-    where: { naveId, isActive: true },
-    include: { specialties: true },
-    orderBy: { iniciales: "asc" },
-  });
-  if (byNave.length > 0) return byNave;
   return prisma.person.findMany({
-    where: { isActive: true },
-    include: { specialties: true },
+    where: {
+      isActive: true,
+      personNaves: { some: { naveId: { in: naveScope } } },
+    },
+    include: personInclude,
     orderBy: { iniciales: "asc" },
   });
 }
@@ -94,14 +106,16 @@ export interface ActualHourEntry {
 }
 
 export async function getActualHoursForWeek({
-  naveId,
+  naveScope,
   weekStart,
 }: {
-  naveId: string | null;
+  naveScope: string[] | null;
   weekStart: Date;
 }): Promise<ActualHourEntry[]> {
   const monday = getMondayOf(weekStart);
   const saturdayStart = new Date(monday.getTime() + 5 * 86_400_000);
+
+  if (naveScope !== null && naveScope.length === 0) return [];
 
   const entries = await prisma.timeEntry.findMany({
     where: {
@@ -110,7 +124,9 @@ export async function getActualHoursForWeek({
       endedAt: { not: null },
       user: {
         personId: { not: null },
-        ...(naveId !== null ? { person: { naveId } } : {}),
+        ...(naveScope !== null
+          ? { person: { personNaves: { some: { naveId: { in: naveScope } } } } }
+          : {}),
       },
     },
     include: {
@@ -160,14 +176,18 @@ export async function getAbsencesForRange(start: Date, end: Date) {
   });
 }
 
-export async function getActiveProjectsWithLoad(naveId: string | null) {
+export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const taskNaveFilter =
+    naveScope !== null ? { naveId: { in: naveScope } } : undefined;
   const projects = await prisma.project.findMany({
-    where: naveId !== null
-      ? { isActive: true, tasks: { some: { naveId } } }
-      : { isActive: true },
+    where:
+      naveScope !== null
+        ? { isActive: true, tasks: { some: taskNaveFilter! } }
+        : { isActive: true },
     include: {
       tasks: {
-        where: naveId !== null ? { naveId } : undefined,
+        where: taskNaveFilter,
         select: {
           id: true,
           process: true,
@@ -186,14 +206,16 @@ export async function getActiveProjectsWithLoad(naveId: string | null) {
 }
 
 /** Asignaciones de planning de proyectos activos (todas las semanas) para el Gantt global. */
-export async function getGanttPlanningAssignments(naveId: string | null) {
+export async function getGanttPlanningAssignments(naveScope: string[] | null) {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const naveIn = naveScope !== null ? { in: naveScope } : undefined;
   return prisma.planningAssignment.findMany({
     where: {
       task: {
         project: { isActive: true },
-        ...(naveId !== null ? { naveId } : {}),
+        ...(naveIn ? { naveId: naveIn } : {}),
       },
-      ...(naveId !== null ? { planning: { naveId } } : {}),
+      ...(naveIn ? { planning: { naveId: naveIn } } : {}),
     },
     select: {
       taskId: true,
@@ -237,14 +259,18 @@ export type GanttPlanningAssignment = Awaited<
 >[number];
 
 /** Proyectos activos con tareas y lámpara para la vista Gantt. */
-export async function getActiveProjectsForGantt(naveId: string | null) {
+export async function getActiveProjectsForGantt(naveScope: string[] | null) {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const taskNaveFilter =
+    naveScope !== null ? { naveId: { in: naveScope } } : undefined;
   return prisma.project.findMany({
-    where: naveId !== null
-      ? { isActive: true, tasks: { some: { naveId } } }
-      : { isActive: true },
+    where:
+      naveScope !== null
+        ? { isActive: true, tasks: { some: taskNaveFilter! } }
+        : { isActive: true },
     include: {
       tasks: {
-        where: naveId !== null ? { naveId } : undefined,
+        where: taskNaveFilter,
         select: {
           id: true,
           lampId: true,

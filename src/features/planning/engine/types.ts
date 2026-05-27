@@ -60,6 +60,15 @@ export interface EngineBookedHours {
   hours: number;
 }
 
+/** Franja ya ocupada en otra nave (bloquea al trabajador, sin tarea en esta nave). */
+export interface EngineBusySlot {
+  personId: string;
+  date: Date;
+  startSlot: number;
+  endSlot: number;
+  hours: number;
+}
+
 export interface EngineWarning {
   taskId: string;
   reason: string;

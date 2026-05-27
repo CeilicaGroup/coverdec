@@ -1,0 +1,493 @@
+// Schema CoverDec MVP
+// Person, ProcessDefinition, FrameType, Holiday son globales.
+// Planning y PlanningPolicy son por nave. El resto es global.
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma2"
+  // Host Debian + imagen node:alpine en Docker (dev y prod)
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  JEFE_PRODUCCION
+  OPERARIO
+}
+
+enum RiskLevel {
+  OK
+  ATENCION
+  RIESGO
+}
+
+enum PlanningStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum TimeEntrySource {
+  TIMER
+  MANUAL
+}
+
+enum FactoryStatus {
+  DOSSIER
+  PRODUCCION
+  CONTROL_CALIDAD
+  EMBALAJE
+  ENVIADO
+}
+
+// ---------- Naves (talleres físicos, global) ----------
+
+model Nave {
+  id       String  @id @default(cuid())
+  codigo   String  @unique
+  nombre   String
+  isActive Boolean @default(true)
+
+  tasks          Task[]
+  activeUsers    User[]          @relation("ActiveNave")
+  personNaves    PersonNave[]
+  plannings      Planning[]      @relation("NavePlannings")
+  planningPolicy PlanningPolicy? @relation("NavePolicy")
+}
+
+/// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
+model PlanningPolicy {
+  id           String   @id @default(cuid())
+  naveId       String   @unique
+  wLate        Float    @default(1)
+  wUnscheduled Float    @default(1)
+  wLoadBalance Float    @default(1)
+  wMove        Float    @default(1)
+  wLaborCost   Float    @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  nave Nave @relation("NavePolicy", fields: [naveId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Auth (better-auth schema) ----------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  role          Role     @default(OPERARIO)
+  personId      String?  @unique
+  activeNaveId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  person      Person?     @relation(fields: [personId], references: [id])
+  timeEntries TimeEntry[]
+  activeNave  Nave?       @relation("ActiveNave", fields: [activeNaveId], references: [id])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ---------- Equipo productivo (global) ----------
+
+model Person {
+  id                 String   @id @default(cuid())
+  nombre             String
+  alias              String?
+  iniciales          String   @unique
+  color              String
+  capacityHours      Float    @default(8)
+  hourlyRate         Decimal  @default(14.75) @db.Decimal(10, 2)
+  overtimeHourlyRate Decimal  @default(22.13) @db.Decimal(10, 2)
+  isActive           Boolean  @default(true)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user              User?
+  personNaves       PersonNave[]
+  specialties       PersonSpecialty[]
+  absences          Absence[]
+  assignments       PlanningAssignment[]
+  workWindows       PersonWorkWindow[]
+  scheduleOverrides PersonScheduleOverride[]
+}
+
+model PersonNave {
+  personId String
+  naveId   String
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  nave   Nave   @relation(fields: [naveId], references: [id], onDelete: Cascade)
+
+  @@id([personId, naveId])
+  @@index([naveId])
+}
+
+/// Plantilla semanal (Lun–Vie). Minutos desde medianoche UTC; endMinutes exclusivo.
+model PersonWorkWindow {
+  id           String @id @default(cuid())
+  personId     String
+  dayOfWeek    Int
+  startMinutes Int
+  endMinutes   Int
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId, dayOfWeek])
+}
+
+model PersonScheduleOverride {
+  id       String   @id @default(cuid())
+  personId String
+  date     DateTime @db.Date
+
+  person  Person                 @relation(fields: [personId], references: [id], onDelete: Cascade)
+  windows PersonOverrideWindow[]
+
+  @@unique([personId, date])
+}
+
+model PersonOverrideWindow {
+  id           String @id @default(cuid())
+  overrideId   String
+  startMinutes Int
+  endMinutes   Int
+
+  override PersonScheduleOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+}
+
+model PersonSpecialty {
+  id         String            @id @default(cuid())
+  personId   String
+  process    String
+  isPrimary  Boolean           @default(false)
+  isFallback Boolean           @default(false)
+  person     Person            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  definition ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([personId, process])
+}
+
+model ProcessDefinition {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  label       String
+  factor      Float   @default(1)
+  setupHours  Float   @default(0)
+  waitHours   Float   @default(0)
+  bgColor     String
+  fgColor     String
+  borderColor String
+  canFragment Boolean @default(true)
+
+  frameTypeProcesses  FrameTypeProcess[]
+  tasks               Task[]
+  personSpecialties   PersonSpecialty[]
+  planningAssignments PlanningAssignment[]
+  timeEntries         TimeEntry[]
+  productionOrders    ProductionOrder[]
+}
+
+// ---------- Catálogo de bastidores ----------
+
+model FrameType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  baseUnit    String   @default("m2")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  processes  FrameTypeProcess[]
+  lamps      Lamp[]
+  lampFrames LampFrame[]
+}
+
+model FrameTypeProcess {
+  id           String  @id @default(cuid())
+  frameTypeId  String
+  process      String
+  sequence     Int     @default(0)
+  hoursPerUnit Float
+  fixedHours   Float   @default(0)
+  notes        String?
+
+  frameType  FrameType         @relation(fields: [frameTypeId], references: [id], onDelete: Cascade)
+  definition ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([frameTypeId, process])
+  @@index([frameTypeId, sequence])
+}
+
+// ---------- Proyectos y producción ----------
+
+model Project {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  client       String?
+  obra         String?
+  deliveryDate DateTime?
+  isBillable   Boolean   @default(true)
+  isActive     Boolean   @default(true)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lamps            Lamp[]
+  tasks            Task[]
+  timeEntries      TimeEntry[]
+  productionOrders ProductionOrder[]
+}
+
+model Lamp {
+  id          String   @id @default(cuid())
+  projectId   String
+  frameTypeId String
+  code        String?
+  name        String
+  width       Float?
+  height      Float?
+  depth       Float?
+  units       Int      @default(1)
+  surfaceM2   Float?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  frameType   FrameType   @relation(fields: [frameTypeId], references: [id])
+  frames      LampFrame[]
+  tasks       Task[]
+  timeEntries TimeEntry[]
+}
+
+model LampFrame {
+  id          String   @id @default(cuid())
+  lampId      String
+  frameTypeId String
+  label       String?
+  surfaceM2   Float?
+  units       Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lamp      Lamp      @relation(fields: [lampId], references: [id], onDelete: Cascade)
+  frameType FrameType @relation(fields: [frameTypeId], references: [id])
+  tasks     Task[]
+
+  @@unique([lampId, frameTypeId, label])
+  @@index([lampId])
+  @@index([frameTypeId])
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  projectId      String
+  lampId         String
+  lampFrameId    String?
+  process        String
+  estimatedHours Float
+  pendingHours   Float
+  doneHours      Float    @default(0)
+  order          Int      @default(0)
+  isLocked       Boolean  @default(false)
+  naveId         String
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project           Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lamp              Lamp                 @relation(fields: [lampId], references: [id], onDelete: Cascade)
+  lampFrame         LampFrame?           @relation(fields: [lampFrameId], references: [id], onDelete: SetNull)
+  processDefinition ProcessDefinition    @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  nave              Nave                 @relation(fields: [naveId], references: [id])
+  assignments       PlanningAssignment[]
+  timeEntries       TimeEntry[]
+
+  @@index([lampFrameId])
+}
+
+// ---------- Planning ----------
+
+model Planning {
+  id          String         @id @default(cuid())
+  naveId      String
+  year        Int
+  week        Int
+  weekStart   DateTime
+  weekEnd     DateTime
+  status      PlanningStatus @default(DRAFT)
+  publishedAt DateTime?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  nave        Nave                 @relation("NavePlannings", fields: [naveId], references: [id], onDelete: Cascade)
+  assignments PlanningAssignment[]
+
+  @@unique([naveId, year, week])
+}
+
+model PlanningAssignment {
+  id          String   @id @default(cuid())
+  planningId  String
+  taskId      String
+  personId    String
+  date        DateTime
+  startSlot   Float
+  endSlot     Float
+  hours       Float
+  process     String
+  isOverride  Boolean  @default(false)
+  isAfternoon Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  planning          Planning          @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person            Person            @relation(fields: [personId], references: [id])
+  processDefinition ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([planningId, personId, date])
+}
+
+model Absence {
+  id                String   @id @default(cuid())
+  personId          String
+  date              DateTime
+  hours             Float    @default(8)
+  /// When set with blockEndMinutes, [start, end) minutes are forbidden inside work windows (solver).
+  blockStartMinutes Int?
+  blockEndMinutes   Int?
+  reason            String?
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, date])
+}
+
+/// Rango inclusive [startDate, endDate] en días UTC (medianoche).
+model Holiday {
+  id        String   @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  name      String
+  region    String   @default("Silla 46460")
+
+  @@index([startDate, endDate])
+}
+
+// ---------- Registro de horas ----------
+
+model TimeEntry {
+  id        String          @id @default(cuid())
+  userId    String
+  projectId String?
+  lampId    String?
+  taskId    String?
+  process   String?
+  source    TimeEntrySource @default(MANUAL)
+  startedAt DateTime
+  endedAt   DateTime?
+  hours     Float?
+  notes     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id])
+  project           Project?           @relation(fields: [projectId], references: [id])
+  lamp              Lamp?              @relation(fields: [lampId], references: [id])
+  task              Task?              @relation(fields: [taskId], references: [id])
+  processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([userId, startedAt])
+}
+
+// ---------- Órdenes de producción ----------
+
+model ProductionOrder {
+  id          String    @id @default(cuid())
+  number      String    @unique
+  year        Int
+  serial      Int
+  projectId   String
+  lampLabel   String?
+  process     String?
+  hours       Float?
+  scheduledAt DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  project           Project            @relation(fields: [projectId], references: [id])
+  processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([year, serial])
+}
+
+// ---------- Fábrica ----------
+
+model FactoryItem {
+  id          String        @id @default(cuid())
+  code        String?
+  product     String
+  client      String?
+  obra        String?
+  nave        String?
+  status      FactoryStatus @default(DOSSIER)
+  scheduledAt DateTime?
+  shippedAt   DateTime?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status])
+}

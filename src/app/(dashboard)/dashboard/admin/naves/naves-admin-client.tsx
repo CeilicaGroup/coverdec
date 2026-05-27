@@ -20,16 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  assignUserToNave,
   createNave,
   toggleNaveActive,
   updateNave,
@@ -40,24 +32,14 @@ interface NaveRow {
   codigo: string;
   nombre: string;
   isActive: boolean;
-  users: { id: string; name: string; email: string; role: string }[];
+  personNaves: { person: { user: { id: string; name: string; email: string; role: string } | null } }[];
   tasks: { id: string; process: string; pendingHours: number; project: { name: string; code: string } }[];
-}
-
-interface UserRow {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  naveId: string | null;
 }
 
 export function NavesAdminClient({
   naves,
-  allUsers,
 }: {
   naves: NaveRow[];
-  allUsers: UserRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -99,17 +81,6 @@ export function NavesAdminClient({
     startTransition(async () => {
       try {
         await toggleNaveActive(naveId, isActive);
-        router.refresh();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
-      }
-    });
-  };
-
-  const onAssignUser = (userId: string, naveId: string | null) => {
-    startTransition(async () => {
-      try {
-        await assignUserToNave(userId, naveId === "none" ? null : naveId);
         router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Error");
@@ -188,14 +159,20 @@ export function NavesAdminClient({
                 )}
               </div>
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">
-                  Usuarios asignados ({nave.users.length})
-                </div>
-                {nave.users.length === 0 ? (
+                {(() => {
+                  const users = nave.personNaves
+                    .map((pn) => pn.person.user)
+                    .filter((u): u is NonNullable<typeof u> => u !== null);
+                  return (
+                    <>
+                      <div className="text-xs font-medium text-muted-foreground mb-1.5">
+                        Usuarios asignados ({users.length})
+                      </div>
+                      {users.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic">Sin usuarios</p>
                 ) : (
                   <div className="space-y-0.5">
-                    {nave.users.map((u) => (
+                        {users.map((u) => (
                       <div key={u.id} className="flex items-center justify-between text-xs">
                         <span className="truncate">{u.name}</span>
                         <Badge variant="outline" className="text-[9px] font-mono shrink-0 ml-1">
@@ -204,49 +181,14 @@ export function NavesAdminClient({
                       </div>
                     ))}
                   </div>
-                )}
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>
         ))}
-      </div>
-
-      <div>
-        <h2 className="text-sm font-semibold mb-3">Asignación de usuarios a naves</h2>
-        <div className="border rounded-md divide-y">
-          {allUsers.map((u) => (
-            <div key={u.id} className="flex items-center justify-between px-4 py-2.5 gap-4">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{u.name}</div>
-                <div className="text-xs text-muted-foreground truncate">{u.email}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Badge variant="outline" className="text-[10px] font-mono">{u.role}</Badge>
-                {u.role !== "ADMIN" ? (
-                  <Select
-                    value={u.naveId ?? "none"}
-                    onValueChange={(v) => onAssignUser(u.id, v)}
-                    disabled={pending}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-36">
-                      <SelectValue placeholder="Sin nave" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sin nave</SelectItem>
-                      {naves.map((n) => (
-                        <SelectItem key={n.id} value={n.id}>
-                          {n.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">Elige al entrar</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

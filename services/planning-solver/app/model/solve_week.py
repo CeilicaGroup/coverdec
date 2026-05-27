@@ -45,6 +45,7 @@ from app.model.timeline import (
     minute_to_week_quarter,
 )
 from app.schemas import (
+    BusySlotEntry,
     EngineAssignment,
     EnginePerson,
     EngineTask,
@@ -362,6 +363,7 @@ class ProblemData:
     lamp_edges: list[LampEdge]
     weights: SchedulerWeights
     fixed_assignments: list[FixedAssignment]
+    busy_slots: list[BusySlotEntry]
 
 
 def _empty_timeline(person_id: str, day: date, day_index: int) -> WorkerDayTimeline:
@@ -470,6 +472,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         lamp_edges=_build_lamp_edges(tasks, process_by_code),
         weights=weights,
         fixed_assignments=list(request.fixedAssignments),
+        busy_slots=list(request.busySlots),
     )
 
 
@@ -697,6 +700,32 @@ def _find_slot_var(
         if sv.slot.person_id == person_id and sv.slot.day_index == day_idx:
             return sv
     return None
+
+
+def _inject_busy_slots(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+) -> None:
+    """Block worker timeline slots occupied by planning in other naves."""
+    for idx, busy in enumerate(data.busy_slots):
+        day_idx = (busy.date - data.week_start).days
+        if day_idx < 0 or day_idx >= len(data.days):
+            continue
+        tl = data.timelines.get((busy.personId, day_idx))
+        if tl is None or tl.cap <= 0:
+            continue
+        local_start = _match_ui_start(tl, busy.startSlot, busy.hours)
+        if local_start is None:
+            continue
+        size_q = round(busy.hours * QUARTERS_PER_HOUR)
+        if size_q <= 0:
+            continue
+        tag = f"busy_{busy.personId}_{day_idx}_{idx}"
+        busy_iv = model.NewFixedSizeIntervalVar(
+            local_start, size_q, f"biv_{tag}"
+        )
+        mv.worker_day_ivs.setdefault((busy.personId, day_idx), []).append(busy_iv)
 
 
 def _apply_fixed_assignments(
@@ -1220,6 +1249,7 @@ def solve_week(
 
     model = cp_model.CpModel()
     mv = _build_variables(model, data)
+    _inject_busy_slots(model, data, mv)
     unscheduled = _add_constraints(model, data, mv)
     _apply_fixed_assignments(model, data, mv)
     _build_objective(model, data, mv, unscheduled)

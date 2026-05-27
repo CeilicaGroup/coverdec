@@ -67,6 +67,7 @@ interface PersonWithSpecs {
   overtimeHourlyRate: number;
   isActive: boolean;
   naveId: string | null;
+  naveIds: string[];
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -211,7 +212,7 @@ export function PersonalTeamClient({
           overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
           isActive,
-          naveId,
+          naveIds: [naveId],
           userId,
           specialties,
         });

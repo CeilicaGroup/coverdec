@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
   getMondayOf,
@@ -40,8 +41,8 @@ export default async function CostesPage({
   const weekMon = getMondayOf(weekStart);
   const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
   const [planning, people, holidays] = await Promise.all([
-    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
-    getNavePersonnel(ctx.naveId),
+    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
+    getNavePersonnel(naveScopeFromContext(ctx)),
     getHolidaysForRange(weekMon, weekFri),
   ]);
   const workDays = Math.max(1, 5 - holidays.length);

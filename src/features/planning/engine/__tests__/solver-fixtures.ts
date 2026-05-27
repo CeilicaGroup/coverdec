@@ -19,6 +19,7 @@ export function minimalSolverInput(
     firstSchedulableDayIndex: 0,
     fixedAssignments: [],
     bookedHours: [],
+    busySlots: [],
     ...overrides,
   };
 }

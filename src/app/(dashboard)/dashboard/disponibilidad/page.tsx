@@ -1,4 +1,5 @@
 import { requireDashboardContext } from "@/lib/context";
+import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
   getMondayOf,
@@ -39,8 +40,8 @@ export default async function DisponibilidadPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
   const [planning, people, holidays, absences] = await Promise.all([
-    getPlanningForWeek({ naveId: ctx.naveId, weekStart }),
-    getNavePersonnel(ctx.naveId),
+    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
+    getNavePersonnel(naveScopeFromContext(ctx)),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
   ]);

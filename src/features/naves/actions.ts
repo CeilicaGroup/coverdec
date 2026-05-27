@@ -37,13 +37,6 @@ export async function toggleNaveActive(naveId: string, isActive: boolean) {
   revalidatePath("/dashboard/admin/naves");
 }
 
-export async function assignUserToNave(userId: string, naveId: string | null) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  await prisma.user.update({ where: { id: userId }, data: { naveId } });
-  revalidatePath("/dashboard/admin/naves");
-}
-
 export async function assignLampToNave(lampId: string, naveId: string) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
@@ -71,12 +64,15 @@ export async function getAllNavesWithDetails() {
   return prisma.nave.findMany({
     orderBy: { codigo: "asc" },
     include: {
-      users: {
+      personNaves: {
         select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
+          person: {
+            select: {
+              user: {
+                select: { id: true, name: true, email: true, role: true },
+              },
+            },
+          },
         },
       },
       tasks: {

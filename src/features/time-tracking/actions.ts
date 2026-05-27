@@ -8,6 +8,8 @@ import { childLogger } from "@/lib/logger";
 import type { Prisma } from "@/generated/prisma";
 import { TimeEntrySource } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
+import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
+import { Role } from "@/generated/prisma";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -60,6 +62,21 @@ function revalidateHorasAndLoad() {
   revalidatePath("/dashboard", "layout");
 }
 
+async function assertTaskAccessible(
+  ctx: Awaited<ReturnType<typeof requireDashboardContext>>,
+  taskId: string | undefined,
+) {
+  if (!taskId || ctx.role === Role.ADMIN) return;
+  const task = await prisma.task.findFirst({
+    where: { id: taskId },
+    select: { naveId: true },
+  });
+  if (!task) throw new Error("Tarea no encontrada.");
+  if (!ctx.naveIds.includes(task.naveId)) {
+    throw new Error("No tienes acceso a tareas de esa nave.");
+  }
+}
+
 const startSchema = z.object({
   projectId: z.string().min(1),
   lampId: z.string().min(1).optional(),
@@ -78,6 +95,7 @@ export async function startTimer(input: z.infer<typeof startSchema>) {
     throw new Error("Ya tienes un timer activo. Detenlo primero.");
   }
   if (data.taskId) {
+    await assertTaskAccessible(ctx, data.taskId);
     const unlocked = await isTaskUnlocked(data.taskId);
     if (!unlocked) {
       throw new Error(
@@ -112,6 +130,7 @@ export async function stopTimer(input: z.infer<typeof stopSchema>) {
   if (!entry) throw new Error("Timer no encontrado");
   const endedAt = new Date();
   const hours = (endedAt.getTime() - entry.startedAt.getTime()) / 3600000;
+  await assertNoTimeOverlap(ctx.userId, entry.startedAt, endedAt, entry.id);
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.update({
       where: { id: entry.id },
@@ -137,6 +156,7 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
   const ctx = await requireDashboardContext();
   const data = manualSchema.parse(input);
   if (data.taskId) {
+    await assertTaskAccessible(ctx, data.taskId);
     const unlocked = await isTaskUnlocked(data.taskId);
     if (!unlocked) {
       throw new Error(
@@ -146,6 +166,7 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
   }
   const startedAt = new Date(data.startedAt);
   const endedAt = new Date(startedAt.getTime() + data.hours * 3600000);
+  await assertNoTimeOverlap(ctx.userId, startedAt, endedAt);
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.create({
       data: {
