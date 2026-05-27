@@ -48,3 +48,6 @@ __pycache__/
 
 # libreoffice lock files
 .~lock.*
+
+# worktrees
+.worktrees
