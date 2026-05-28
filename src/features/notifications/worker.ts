@@ -341,3 +341,75 @@ export async function scanAssignedTasksNotLogged(): Promise<void> {
     });
   }
 }
+
+export async function scanAttendanceIncidents(): Promise<void> {
+  const now = new Date();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const dayIso = dayStart.toISOString().slice(0, 10);
+
+  const [sessions, people] = await Promise.all([
+    prisma.attendanceSession.findMany({
+      where: { startedAt: { gte: dayStart, lt: dayEnd } },
+      select: { id: true, userId: true, personId: true, startedAt: true, endedAt: true, minutes: true },
+      orderBy: { startedAt: "asc" },
+    }),
+    prisma.person.findMany({
+      where: { isActive: true, user: { isNot: null } },
+      select: { id: true, user: { select: { id: true } }, workWindows: true },
+    }),
+  ]);
+
+  const sessionsByUser = new Map<string, typeof sessions>();
+  for (const session of sessions) {
+    const rows = sessionsByUser.get(session.userId) ?? [];
+    rows.push(session);
+    sessionsByUser.set(session.userId, rows);
+  }
+
+  for (const person of people) {
+    const userId = person.user?.id;
+    if (!userId) continue;
+    const userSessions = sessionsByUser.get(userId) ?? [];
+    if (userSessions.length === 0) {
+      await emitNotification({
+        type: NotificationType.ATTENDANCE_MISSING_WORKDAY,
+        title: "Día laborable sin fichaje",
+        body: "No hay fichajes de presencia registrados para hoy.",
+        payload: {
+          eventKey: `attendance-missing:${userId}:${dayIso}`,
+          userId,
+          personId: person.id,
+          dateIso: dayIso,
+        },
+        scopeKey: `attendance-missing:${userId}:${dayIso}`,
+      });
+      continue;
+    }
+    await resolveNotificationStates({
+      type: NotificationType.ATTENDANCE_MISSING_WORKDAY,
+      scopeKeys: [`attendance-missing:${userId}:${dayIso}`],
+    });
+
+    const hasOpen = userSessions.some((s) => s.endedAt == null);
+    if (hasOpen) {
+      await emitNotification({
+        type: NotificationType.ATTENDANCE_INCOMPLETE_DAY,
+        title: "Jornada con fichaje incompleto",
+        body: "Hay una sesión de presencia abierta sin cierre.",
+        payload: {
+          eventKey: `attendance-incomplete:${userId}:${dayIso}`,
+          userId,
+          personId: person.id,
+          dateIso: dayIso,
+        },
+        scopeKey: `attendance-incomplete:${userId}:${dayIso}`,
+      });
+    } else {
+      await resolveNotificationStates({
+        type: NotificationType.ATTENDANCE_INCOMPLETE_DAY,
+        scopeKeys: [`attendance-incomplete:${userId}:${dayIso}`],
+      });
+    }
+  }
+}

@@ -36,12 +36,22 @@ enum TimeEntrySource {
   MANUAL
 }
 
+enum AttendanceSource {
+  BUTTON
+  MANUAL
+  ADMIN_EDIT
+}
+
 enum NotificationType {
   PLAN_PUBLISHED_LOW_OCCUPATION
   PLAN_PUBLISHED_PROJECTS_OVER_DEADLINE
   TASK_HOURS_EXCEEDED
   PROJECT_SLIPPING
   ASSIGNED_TASKS_NOT_LOGGED
+  ATTENDANCE_OUTSIDE_WORK_WINDOW
+  ATTENDANCE_OPEN_TOO_LONG
+  ATTENDANCE_INCOMPLETE_DAY
+  ATTENDANCE_MISSING_WORKDAY
   DELIVERY_FAILED
 }
 
@@ -131,6 +141,7 @@ model User {
   notificationStates     NotificationState[]
   pushSubscriptions      PushSubscription[]
   responsibleProjects    Project[] @relation("ProjectResponsible")
+  attendanceSessions     AttendanceSession[]
 }
 
 model Session {
@@ -192,6 +203,7 @@ model Person {
   assignments       PlanningAssignment[]
   workWindows       PersonWorkWindow[]
   scheduleOverrides PersonScheduleOverride[]
+  attendanceSessions AttendanceSession[]
 }
 
 model PersonNave {
@@ -494,6 +506,25 @@ model TimeEntry {
   processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([userId, startedAt])
+}
+
+model AttendanceSession {
+  id        String           @id @default(cuid())
+  userId    String
+  personId  String
+  source    AttendanceSource @default(BUTTON)
+  startedAt DateTime
+  endedAt   DateTime?
+  minutes   Int?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([personId, startedAt])
 }
 
 // ---------- Notificaciones ----------

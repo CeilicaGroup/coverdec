@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { childLogger } from "@/lib/logger";
 import {
   processOutboxBatch,
+  scanAttendanceIncidents,
   scanAssignedTasksNotLogged,
   scanProjectSlipping,
 } from "@/features/notifications/worker";
@@ -42,6 +43,15 @@ async function runGeneralPass() {
     log.error(
       { error: err instanceof Error ? err.message : String(err) },
       "assigned tasks not logged scan failed",
+    );
+  }
+  try {
+    await scanAttendanceIncidents();
+    log.info("attendance incidents scan done");
+  } catch (err) {
+    log.error(
+      { error: err instanceof Error ? err.message : String(err) },
+      "attendance incidents scan failed",
     );
   }
   await processOutboxLoop();
@@ -88,6 +98,19 @@ cron.schedule(
       log.error(
         { error: err instanceof Error ? err.message : String(err) },
         "assigned tasks not logged scan failed",
+      );
+    });
+  },
+  { timezone: TZ },
+);
+
+cron.schedule(
+  "*/30 * * * *",
+  () => {
+    void scanAttendanceIncidents().catch((err) => {
+      log.error(
+        { error: err instanceof Error ? err.message : String(err) },
+        "attendance incidents scan failed",
       );
     });
   },

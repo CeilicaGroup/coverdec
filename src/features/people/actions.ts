@@ -12,6 +12,7 @@ const log = childLogger({ module: "people.actions" });
 
 const absenceSchema = z
   .object({
+    id: z.string().min(1).optional(),
     personId: z.string().min(1),
     date: z.string().min(8),
     hours: z.number().min(0).max(24).optional(),
@@ -49,10 +50,19 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
     data.blockEndMinutes != null &&
     data.blockEndMinutes > data.blockStartMinutes;
 
+  const existingAbsences = await prisma.absence.findMany({
+    where: { personId: data.personId, date },
+    select: { id: true, blockStartMinutes: true, blockEndMinutes: true },
+  });
+
   const rawHours = data.hours ?? 0;
 
   if (rawHours <= 0 && !hasBlock) {
-    await prisma.absence.deleteMany({ where: { personId: data.personId, date } });
+    if (data.id) {
+      await prisma.absence.deleteMany({ where: { id: data.id, personId: data.personId } });
+    } else {
+      await prisma.absence.deleteMany({ where: { personId: data.personId, date } });
+    }
     revalidatePath("/dashboard/personal");
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/semana");
@@ -66,6 +76,16 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
   let blockEnd: number | null = null;
 
   if (hasBlock) {
+    if (!data.id && existingAbsences.length > 0) {
+      throw new Error("Ya existe una ausencia para esa persona y día. Edita la existente para evitar solapes.");
+    }
+    if (data.id) {
+      const sameRecord = existingAbsences.find((a) => a.id === data.id);
+      if (!sameRecord && existingAbsences.length > 0) {
+        throw new Error("Ya existe una ausencia para esa persona y día. No se permiten franjas solapadas.");
+      }
+    }
+
     blockStart = data.blockStartMinutes!;
     blockEnd = data.blockEndMinutes!;
     const person = await prisma.person.findUnique({
@@ -99,23 +119,30 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
     hours = Math.round((lostMin / 60) * 100) / 100;
   }
 
-  await prisma.absence.upsert({
-    where: { personId_date: { personId: data.personId, date } },
-    update: {
-      hours,
-      reason: data.reason?.trim() ? data.reason.trim() : null,
-      blockStartMinutes: blockStart,
-      blockEndMinutes: blockEnd,
-    },
-    create: {
-      personId: data.personId,
-      date,
-      hours,
-      reason: data.reason?.trim() ? data.reason.trim() : null,
-      blockStartMinutes: blockStart,
-      blockEndMinutes: blockEnd,
-    },
-  });
+  if (data.id) {
+    await prisma.absence.update({
+      where: { id: data.id },
+      data: {
+        personId: data.personId,
+        date,
+        hours,
+        reason: data.reason?.trim() ? data.reason.trim() : null,
+        blockStartMinutes: blockStart,
+        blockEndMinutes: blockEnd,
+      },
+    });
+  } else {
+    await prisma.absence.create({
+      data: {
+        personId: data.personId,
+        date,
+        hours,
+        reason: data.reason?.trim() ? data.reason.trim() : null,
+        blockStartMinutes: blockStart,
+        blockEndMinutes: blockEnd,
+      },
+    });
+  }
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/semana");

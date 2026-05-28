@@ -30,7 +30,6 @@ import { Plus, Pencil, Trash2, Link2, Link2Off } from "lucide-react";
 import { toast } from "sonner";
 import { savePerson, deletePerson } from "@/features/people/actions";
 import { PersonScheduleDialog } from "./person-schedule-dialog";
-import { PersonAbsenceDialog } from "./person-absence-dialog";
 import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 
@@ -326,11 +325,6 @@ export function PersonalTeamClient({
                         personId={p.id}
                         personName={p.displayName}
                         workWindows={p.workWindows}
-                      />
-                      <PersonAbsenceDialog
-                        personId={p.id}
-                        personName={p.displayName}
-                        absences={p.absences}
                       />
                       <Button
                         type="button"

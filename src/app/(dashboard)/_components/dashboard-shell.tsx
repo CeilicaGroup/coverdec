@@ -11,7 +11,6 @@ import {
   LayoutGrid,
   LineChart,
   LogOut,
-  Palmtree,
   Settings,
   ShieldCheck,
   Timer,
@@ -63,13 +62,13 @@ const NAV_SECTIONS = [
       { href: "/dashboard/proyecto", label: "Por proyecto", icon: ClipboardList },
       { href: "/dashboard/gantt", label: "Gantt", icon: LineChart, operarioHidden: true },
       { href: "/dashboard/disponibilidad", label: "Disponibilidad", icon: Gauge, operarioHidden: true },
-      { href: "/dashboard/festivos", label: "Festivos", icon: Palmtree },
     ],
   },
   {
     label: "Operativa",
     naveScoped: false,
     items: [
+      { href: "/dashboard/fichaje-diario", label: "Fichaje diario", icon: Timer },
       { href: "/dashboard/horas", label: "Mis horas", icon: Timer, adminHidden: true },
       { href: "/dashboard/notificaciones", label: "Notificaciones", icon: Bell },
     ],

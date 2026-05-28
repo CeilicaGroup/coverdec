@@ -17,6 +17,18 @@ export const notificationTypeMeta = {
   [NotificationType.ASSIGNED_TASKS_NOT_LOGGED]: {
     label: "Tareas asignadas sin partes de horas",
   },
+  [NotificationType.ATTENDANCE_OUTSIDE_WORK_WINDOW]: {
+    label: "Fichajes fuera de horario",
+  },
+  [NotificationType.ATTENDANCE_OPEN_TOO_LONG]: {
+    label: "Fichajes abiertos demasiado tiempo",
+  },
+  [NotificationType.ATTENDANCE_INCOMPLETE_DAY]: {
+    label: "Jornada con fichaje incompleto",
+  },
+  [NotificationType.ATTENDANCE_MISSING_WORKDAY]: {
+    label: "Día laborable sin fichaje",
+  },
   [NotificationType.DELIVERY_FAILED]: {
     label: "Fallo de envío de notificación",
   },
@@ -41,6 +53,12 @@ const taskPayload = basePayloadSchema.extend({
   naveId: z.string().min(1),
 });
 
+const attendancePayload = basePayloadSchema.extend({
+  userId: z.string().min(1),
+  personId: z.string().min(1),
+  dateIso: z.string().min(10),
+});
+
 export const notificationPayloadSchema = {
   [NotificationType.PLAN_PUBLISHED_LOW_OCCUPATION]: planningPayload.extend({
     occupationPct: z.number().min(0),
@@ -63,6 +81,15 @@ export const notificationPayloadSchema = {
     dateIso: z.string().min(10),
     personIds: z.array(z.string().min(1)).min(1),
   }),
+  [NotificationType.ATTENDANCE_OUTSIDE_WORK_WINDOW]: attendancePayload.extend({
+    atIso: z.string().datetime(),
+  }),
+  [NotificationType.ATTENDANCE_OPEN_TOO_LONG]: attendancePayload.extend({
+    sessionId: z.string().min(1),
+    durationMinutes: z.number().int().min(1),
+  }),
+  [NotificationType.ATTENDANCE_INCOMPLETE_DAY]: attendancePayload,
+  [NotificationType.ATTENDANCE_MISSING_WORKDAY]: attendancePayload,
   [NotificationType.DELIVERY_FAILED]: basePayloadSchema.extend({
     deliveryId: z.string().min(1),
     originalType: z.nativeEnum(NotificationType),
