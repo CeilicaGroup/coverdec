@@ -1,6 +1,6 @@
 export interface TaskPlanningHours {
-  pendingHours: number;
-  doneHours: number;
+  pendingToPlanHours: number;
+  remainingWorkHours: number;
   estimatedHours: number;
   isCompleted?: boolean;
 }
@@ -8,26 +8,19 @@ export interface TaskPlanningHours {
 /** Tarea cerrada para el motor de planning (no generar ni reconciliar cola). */
 export function isTaskClosedForPlanning(task: TaskPlanningHours): boolean {
   if (task.isCompleted) return true;
-  if (task.pendingHours <= 0) return true;
-  if (
-    task.estimatedHours > 0 &&
-    task.doneHours >= task.estimatedHours - 1e-6
-  ) {
-    return true;
-  }
-  return false;
+  if (task.pendingToPlanHours <= 1e-6) return true;
+  return task.remainingWorkHours <= 1e-6;
 }
 
-/** Horas que el solver debe cubrir (pendingHours ya viene reconciliado por semana). */
+/** Horas que el solver debe cubrir derivadas de registros + planning previo. */
 export function effectivePendingHours(
   task: TaskPlanningHours,
   options?: { priorPlannedHours?: number },
 ): number {
   if (isTaskClosedForPlanning(task)) return 0;
-  const remaining = Math.max(0, task.estimatedHours - task.doneHours);
-  let cap = remaining;
+  let cap = Math.max(0, task.remainingWorkHours);
   if (options?.priorPlannedHours != null) {
-    cap = Math.min(cap, Math.max(0, remaining - options.priorPlannedHours));
+    cap = Math.min(cap, Math.max(0, task.remainingWorkHours - options.priorPlannedHours));
   }
-  return Math.min(Math.max(0, task.pendingHours), cap);
+  return Math.min(Math.max(0, task.pendingToPlanHours), cap);
 }

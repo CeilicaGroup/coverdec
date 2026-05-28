@@ -64,20 +64,14 @@ interface LampTaskRef {
   lampId: string;
   order: number;
   process: string;
-  pendingHours: number;
-  doneHours: number;
+  pendingToPlanHours: number;
+  remainingWorkHours: number;
   estimatedHours: number;
 }
 
 function taskHasNoPendingWork(task: LampTaskRef): boolean {
-  if (task.pendingHours <= 0) return true;
-  if (
-    task.estimatedHours > 0 &&
-    task.doneHours >= task.estimatedHours - 1e-6
-  ) {
-    return true;
-  }
-  return Math.max(0, task.estimatedHours - task.doneHours) <= 0;
+  if (task.pendingToPlanHours <= 1e-6) return true;
+  return task.remainingWorkHours <= 1e-6;
 }
 
 function isWeekend(d: Date): boolean {

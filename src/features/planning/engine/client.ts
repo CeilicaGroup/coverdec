@@ -4,6 +4,7 @@ import {
   isNoCandidateWarning,
   parseSolverResponse,
   serializeSolverInput,
+  summarizeSolverRequest,
   solveResponseSchema,
   SolverInfeasibleError,
   SolverUnavailableError,
@@ -30,11 +31,23 @@ export async function callPlanningSolver(
 ): Promise<EngineResult> {
   const base = solverBaseUrl();
   const payload = serializeSolverInput(input);
+  const solverUrl = `${base}/solve`;
   const started = Date.now();
+
+  log.info(
+    {
+      solverUrl,
+      planFrom: input.planFrom ?? null,
+      deferredTaskCount: input.deferredTasks?.length ?? 0,
+      solverRequestSummary: summarizeSolverRequest(payload),
+      solverRequest: payload,
+    },
+    "planning solver request",
+  );
 
   let response: Response;
   try {
-    response = await fetch(`${base}/solve`, {
+    response = await fetch(solverUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -87,6 +100,15 @@ export async function callPlanningSolver(
       solveMs: Date.now() - started,
       assignments: result.assignments.length,
       unscheduledHours: result.unscheduledHours,
+      warningCount: result.warnings.length,
+      warnings: result.warnings.slice(0, 20),
+      assignmentsSample: result.assignments.slice(0, 20).map((a) => ({
+        taskId: a.taskId,
+        personId: a.personId,
+        date: a.date.toISOString().slice(0, 10),
+        hours: a.hours,
+        process: a.process,
+      })),
     },
     "planning solver response ok",
   );

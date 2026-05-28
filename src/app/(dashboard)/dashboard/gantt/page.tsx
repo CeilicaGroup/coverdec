@@ -214,7 +214,11 @@ export default async function GanttPage({
   const provisionalHolidayDates = expandHolidayRangesToIsoDays([], today, addDays(today, 365));
 
   const priorChainContext = {
-    tasks: allGanttTasks,
+    tasks: allGanttTasks.map((task) => ({
+      ...task,
+      pendingToPlanHours: task.pendingHours,
+      remainingWorkHours: Math.max(0, task.estimatedHours - task.doneHours),
+    })),
     priorEnds,
     waitHoursByProcess,
     holidayDates: provisionalHolidayDates,

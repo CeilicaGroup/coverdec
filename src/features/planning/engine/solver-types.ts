@@ -53,6 +53,7 @@ export type SolveRequestPayload = {
     order: number;
     process: string;
     pendingHours: number;
+    minWeekQuarter?: number;
   }[];
   absences: {
     personId: string;
@@ -114,6 +115,63 @@ const solveResponseSchema = z.object({
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** Resumen legible del POST /solve para logs (sin repetir schedules completos). */
+export function summarizeSolverRequest(payload: SolveRequestPayload) {
+  const pendingByProcess: Record<string, number> = {};
+  for (const t of payload.tasks) {
+    pendingByProcess[t.process] =
+      (pendingByProcess[t.process] ?? 0) + t.pendingHours;
+  }
+
+  const bookedByPersonDay: Record<string, number> = {};
+  for (const b of payload.bookedHours) {
+    const key = `${b.personId}|${b.date}`;
+    bookedByPersonDay[key] = (bookedByPersonDay[key] ?? 0) + b.hours;
+  }
+
+  return {
+    weekStart: payload.weekStart,
+    firstSchedulableDayIndex: payload.firstSchedulableDayIndex,
+    firstSchedulableWeekQuarter: payload.firstSchedulableWeekQuarter ?? null,
+    taskCount: payload.tasks.length,
+    totalPendingHours: Math.round(
+      payload.tasks.reduce((a, t) => a + t.pendingHours, 0) * 100,
+    ) / 100,
+    pendingByProcess,
+    people: payload.people.map((p) => ({
+      id: p.id,
+      iniciales: p.iniciales,
+      primary: p.primary,
+      fallback: p.fallback,
+      capacityHours: p.capacityHours,
+    })),
+    fixedAssignmentCount: payload.fixedAssignments.length,
+    fixedHours:
+      Math.round(
+        payload.fixedAssignments.reduce((a, f) => a + f.hours, 0) * 100,
+      ) / 100,
+    bookedHoursTotal:
+      Math.round(payload.bookedHours.reduce((a, b) => a + b.hours, 0) * 100) /
+      100,
+    bookedByPersonDay,
+    previousHoursCount: payload.previousHours.length,
+    busySlotCount: payload.busySlots.length,
+    absenceCount: payload.absences.length,
+    holidayCount: payload.holidays.length,
+    weights: payload.weights,
+    tasks: payload.tasks.map((t) => ({
+      id: t.id,
+      lampId: t.lampId,
+      process: t.process,
+      order: t.order,
+      pendingHours: t.pendingHours,
+      minWeekQuarter: t.minWeekQuarter ?? 0,
+    })),
+    fixedAssignments: payload.fixedAssignments,
+    bookedHours: payload.bookedHours,
+  };
 }
 
 export function serializeSolverInput(input: SolverInput): SolveRequestPayload {

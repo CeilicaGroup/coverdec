@@ -36,8 +36,8 @@ describe("prior-week-planning", () => {
         lampId: "l1",
         order: 0,
         process: "PINTURA",
-        pendingHours: 0,
-        doneHours: 0,
+        pendingToPlanHours: 0,
+        remainingWorkHours: 0,
         estimatedHours: 8,
       },
       {
@@ -45,8 +45,8 @@ describe("prior-week-planning", () => {
         lampId: "l1",
         order: 1,
         process: "MONTAJE",
-        pendingHours: 8,
-        doneHours: 0,
+        pendingToPlanHours: 8,
+        remainingWorkHours: 8,
         estimatedHours: 8,
       },
     ];

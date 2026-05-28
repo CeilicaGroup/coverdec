@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
+import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { childLogger } from "@/lib/logger";
 
 const log = childLogger({ module: "admin.export-platform" });
@@ -140,8 +141,6 @@ async function fillTasksSheet(
       id: true,
       process: true,
       estimatedHours: true,
-      pendingHours: true,
-      doneHours: true,
       isCompleted: true,
       order: true,
       notes: true,
@@ -153,6 +152,10 @@ async function fillTasksSheet(
       nave: { select: { codigo: true } },
     },
   });
+  const doneByTaskId = await loadDoneHoursByTaskIds(
+    prisma,
+    tasks.map((task) => task.id),
+  );
 
   for (const task of tasks) {
     sheet.addRow({
@@ -163,8 +166,8 @@ async function fillTasksSheet(
       lampFrameLabel: toNullable(task.lampFrame?.label),
       process: task.process,
       estimatedHours: task.estimatedHours,
-      pendingHours: task.pendingHours,
-      doneHours: task.doneHours,
+      pendingHours: Math.max(0, task.estimatedHours - (doneByTaskId.get(task.id) ?? 0)),
+      doneHours: doneByTaskId.get(task.id) ?? 0,
       isCompleted: task.isCompleted,
       order: task.order,
       naveCodigo: task.nave.codigo,

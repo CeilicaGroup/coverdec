@@ -8,6 +8,7 @@ import { getMondayOf, isoWeek } from "@/lib/week";
 import {
   generatePlanning,
   hasFuturePlannings,
+  hasRegistrosFromWeek,
   publishPlanning,
   undoPlanning,
 } from "@/features/planning/service";
@@ -72,10 +73,18 @@ export async function undoPlanningAction(input: { weekStart: string }) {
 export async function getPlanningUndoState(weekStartIso: string): Promise<{
   canUndo: boolean;
   hasFuturePlannings: boolean;
+  hasRegistros: boolean;
   isPublished: boolean;
 }> {
   const ctx = await requireDashboardContext();
-  if (!ctx.naveId) return { canUndo: false, hasFuturePlannings: false, isPublished: false };
+  if (!ctx.naveId) {
+    return {
+      canUndo: false,
+      hasFuturePlannings: false,
+      hasRegistros: false,
+      isPublished: false,
+    };
+  }
   const weekStart = getMondayOf(new Date(weekStartIso));
   const { year, week } = isoWeek(weekStart);
 
@@ -85,13 +94,22 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
     },
   });
   if (!planning) {
-    return { canUndo: false, hasFuturePlannings: false, isPublished: false };
+    return {
+      canUndo: false,
+      hasFuturePlannings: false,
+      hasRegistros: false,
+      isPublished: false,
+    };
   }
 
-  const future = await hasFuturePlannings(ctx.naveId, weekStart);
+  const [future, registros] = await Promise.all([
+    hasFuturePlannings(ctx.naveId, weekStart),
+    hasRegistrosFromWeek(ctx.naveId, weekStart),
+  ]);
   return {
-    canUndo: !future,
+    canUndo: !future && !registros,
     hasFuturePlannings: future,
+    hasRegistros: registros,
     isPublished: planning.status === "PUBLISHED",
   };
 }

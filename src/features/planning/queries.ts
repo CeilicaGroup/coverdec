@@ -1,4 +1,5 @@
 import { PlanningStatus } from "@/generated/prisma";
+import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
 import { isoWeek } from "@/lib/week";
@@ -25,6 +26,10 @@ import {
   computeWeekTaskMetrics,
 } from "@/features/planning/week-progress";
 import { isTaskClosedForPlanning } from "@/features/planning/task-planning-status";
+import {
+  computeTaskHourTotals,
+  loadDoneHoursByTaskIds,
+} from "@/features/time-tracking/task-hours-derived";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -278,13 +283,7 @@ export async function getActualHoursForWeek({
   return entries.map((e) => {
     const endedAt = e.endedAt ?? null;
     const isRunning = endedAt == null;
-    const hours = (() => {
-      if (typeof e.hours === "number" && e.hours > 0) return e.hours;
-      if (!endedAt) {
-        return Math.max(0, (Date.now() - e.startedAt.getTime()) / 3600000);
-      }
-      return Math.max(0, (endedAt.getTime() - e.startedAt.getTime()) / 3600000);
-    })();
+    const hours = resolveTimeEntryHours(e);
     return {
     id: e.id,
     userId: e.userId,
@@ -375,8 +374,6 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
           id: true,
           process: true,
           estimatedHours: true,
-          pendingHours: true,
-          doneHours: true,
           isCompleted: true,
         },
       },
@@ -386,7 +383,22 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
       { name: "asc" },
     ],
   });
-  return projects;
+  const taskIds = projects.flatMap((project) => project.tasks.map((task) => task.id));
+  const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
+  return projects.map((project) => ({
+    ...project,
+    tasks: project.tasks.map((task) => {
+      const totals = computeTaskHourTotals(
+        task.estimatedHours,
+        doneByTaskId.get(task.id) ?? 0,
+      );
+      return {
+        ...task,
+        doneHours: totals.doneHours,
+        pendingHours: totals.remainingWorkHours,
+      };
+    }),
+  }));
 }
 
 /** Asignaciones de planning de proyectos activos (todas las semanas) para el Gantt global. */
@@ -541,10 +553,7 @@ export async function getGanttActualAssignments(
       const day = new Date(
         Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
       );
-      const hours =
-        typeof e.hours === "number" && e.hours > 0
-          ? e.hours
-          : Math.max(0, (end.getTime() - start.getTime()) / 3600000);
+      const hours = resolveTimeEntryHours(e, end);
       return {
         taskId: e.taskId!,
         personId: e.user.person!.id,
@@ -591,8 +600,6 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
           process: true,
           order: true,
           estimatedHours: true,
-          pendingHours: true,
-          doneHours: true,
           isCompleted: true,
           lamp: {
             select: {
@@ -617,6 +624,23 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
       { deliveryDate: { sort: "asc", nulls: "last" } },
       { name: "asc" },
     ],
+  }).then(async (projects) => {
+    const taskIds = projects.flatMap((project) => project.tasks.map((task) => task.id));
+    const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
+    return projects.map((project) => ({
+      ...project,
+      tasks: project.tasks.map((task) => {
+        const totals = computeTaskHourTotals(
+          task.estimatedHours,
+          doneByTaskId.get(task.id) ?? 0,
+        );
+        return {
+          ...task,
+          doneHours: totals.doneHours,
+          pendingHours: totals.remainingWorkHours,
+        };
+      }),
+    }));
   });
 }
 
@@ -744,16 +768,16 @@ function buildAssignedByProject(
 function pendingProcessesForProject(
   tasks: {
     process: string;
-    pendingHours: number;
+    pendingToPlanHours: number;
+    remainingWorkHours: number;
     estimatedHours: number;
-    doneHours: number;
     isCompleted: boolean;
   }[],
 ): string[] {
   return Array.from(
     new Set(
       tasks
-        .filter((t) => !isTaskClosedForPlanning(t) && t.pendingHours > 1e-6)
+        .filter((t) => !isTaskClosedForPlanning(t) && t.pendingToPlanHours > 1e-6)
         .map((t) => t.process),
     ),
   );
@@ -762,14 +786,21 @@ function pendingProcessesForProject(
 function remainingWorkHoursForProject(
   tasks: {
     estimatedHours: number;
-    doneHours: number;
-    pendingHours: number;
+    remainingWorkHours: number;
+    pendingToPlanHours: number;
     isCompleted: boolean;
   }[],
 ): number {
   return tasks
-    .filter((t) => !isTaskClosedForPlanning(t))
-    .reduce((acc, t) => acc + Math.max(0, t.estimatedHours - t.doneHours), 0);
+    .filter((t) =>
+      !isTaskClosedForPlanning({
+        estimatedHours: t.estimatedHours,
+        isCompleted: t.isCompleted,
+        pendingToPlanHours: t.pendingToPlanHours,
+        remainingWorkHours: t.remainingWorkHours,
+      })
+    )
+    .reduce((acc, t) => acc + t.remainingWorkHours, 0);
 }
 
 /** Todos los proyectos activos con carga y proyección de fin. */
@@ -794,7 +825,14 @@ export function summarizeAllActiveProjects(
   for (const p of projects) {
     const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
     const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
-    const remainingWorkHours = remainingWorkHoursForProject(p.tasks);
+    const remainingWorkHours = remainingWorkHoursForProject(
+      p.tasks.map((task) => ({
+        estimatedHours: task.estimatedHours,
+        isCompleted: task.isCompleted,
+        pendingToPlanHours: task.pendingHours,
+        remainingWorkHours: task.pendingHours,
+      })),
+    );
     if (remainingWorkHours <= 0) continue;
 
     const assignedThisWeek = assignedByProject.get(p.id) ?? 0;
@@ -803,7 +841,14 @@ export function summarizeAllActiveProjects(
 
     const weekMetrics = aggregateWeekTaskMetrics(
       p.tasks
-        .filter((t) => !isTaskClosedForPlanning(t))
+        .filter((t) =>
+          !isTaskClosedForPlanning({
+            estimatedHours: t.estimatedHours,
+            isCompleted: t.isCompleted,
+            pendingToPlanHours: t.pendingHours,
+            remainingWorkHours: t.pendingHours,
+          })
+        )
         .map((t) =>
           computeWeekTaskMetrics({
             estimatedHours: t.estimatedHours,
@@ -823,7 +868,13 @@ export function summarizeAllActiveProjects(
       assignedThisWeekHours: assignedThisWeek,
     });
 
-    const pendingProcesses = pendingProcessesForProject(p.tasks);
+    const pendingProcesses = pendingProcessesForProject(
+      p.tasks.map((task) => ({
+        ...task,
+        pendingToPlanHours: task.pendingHours,
+        remainingWorkHours: task.pendingHours,
+      })),
+    );
 
     rows.push({
       projectId: p.id,
@@ -893,9 +944,23 @@ export function summarizeUnassignedProjects(
   for (const p of projects) {
     const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
     const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
-    const openTasks = p.tasks.filter((t) => !isTaskClosedForPlanning(t));
+    const openTasks = p.tasks.filter((t) =>
+      !isTaskClosedForPlanning({
+        estimatedHours: t.estimatedHours,
+        isCompleted: t.isCompleted,
+        pendingToPlanHours: t.pendingHours,
+        remainingWorkHours: t.pendingHours,
+      })
+    );
     const pendingHours = openTasks.reduce((a, t) => a + t.pendingHours, 0);
-    const remainingWorkHours = remainingWorkHoursForProject(p.tasks);
+    const remainingWorkHours = remainingWorkHoursForProject(
+      p.tasks.map((task) => ({
+        estimatedHours: task.estimatedHours,
+        isCompleted: task.isCompleted,
+        pendingToPlanHours: task.pendingHours,
+        remainingWorkHours: task.pendingHours,
+      })),
+    );
     if (remainingWorkHours <= 0) continue;
 
     const assignedThisWeek = assignedByProject.get(p.id) ?? 0;
@@ -913,7 +978,13 @@ export function summarizeUnassignedProjects(
       assignedThisWeekHours: assignedThisWeek,
     });
 
-    const pendingProcesses = pendingProcessesForProject(p.tasks);
+    const pendingProcesses = pendingProcessesForProject(
+      p.tasks.map((task) => ({
+        ...task,
+        pendingToPlanHours: task.pendingHours,
+        remainingWorkHours: task.pendingHours,
+      })),
+    );
 
     rows.push({
       projectId: p.id,

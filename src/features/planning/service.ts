@@ -12,9 +12,13 @@ import {
   PlanningStatus,
     type Prisma,
 } from "@/generated/prisma";
+import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
+import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
 import { emitNotificationTx } from "@/features/notifications/service";
+
+export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
 const log = childLogger({ module: "planning.service" });
 
@@ -22,76 +26,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** DB writes only; CP-SAT solver runs outside the transaction (often 10–60s). */
 const PLANNING_WRITE_TX_MS = 30_000;
-
-async function restoreAssignmentHoursToTasks(
-  tx: Prisma.TransactionClient,
-  planningId: string,
-): Promise<void> {
-  const oldSums = await tx.planningAssignment.groupBy({
-    by: ["taskId"],
-    where: { planningId },
-    _sum: { hours: true },
-  });
-  if (oldSums.length === 0) return;
-
-  const taskIds = oldSums.map((r) => r.taskId);
-  const tasks = await tx.task.findMany({ where: { id: { in: taskIds } } });
-  const taskMap = new Map(tasks.map((t) => [t.id, t]));
-
-  await Promise.all(
-    oldSums.map(async (row) => {
-      const add = row._sum.hours ?? 0;
-      if (add <= 0) return;
-      const task = taskMap.get(row.taskId);
-      if (!task || isTaskClosedForPlanning(task)) return;
-      await tx.task.update({
-        where: { id: row.taskId },
-        data: { pendingHours: task.pendingHours + add },
-      });
-    }),
-  );
-}
-
-/** Alinea pendingHours con obra restante menos lo ya planificado en semanas anteriores. */
-async function reconcileTaskPendingBeforeSolve(
-  naveId: string,
-  beforeWeekStart: Date,
-): Promise<void> {
-  const [tasks, priorByTask] = await Promise.all([
-    prisma.task.findMany({
-      where: { naveId, project: { isActive: true } },
-      select: {
-        id: true,
-        pendingHours: true,
-        doneHours: true,
-        estimatedHours: true,
-        isCompleted: true,
-      },
-    }),
-    sumPriorPlannedHoursByTaskId({ naveId, beforeWeekStart }),
-  ]);
-
-  for (const task of tasks) {
-    if (isTaskClosedForPlanning(task)) {
-      if (task.isCompleted && task.pendingHours > 1e-6) {
-        await prisma.task.update({
-          where: { id: task.id },
-          data: { pendingHours: 0 },
-        });
-      }
-      continue;
-    }
-    const remaining = Math.max(0, task.estimatedHours - task.doneHours);
-    const priorPlanned = priorByTask.get(task.id) ?? 0;
-    const expectedPending = Math.max(0, remaining - priorPlanned);
-    if (Math.abs(task.pendingHours - expectedPending) > 1e-6) {
-      await prisma.task.update({
-        where: { id: task.id },
-        data: { pendingHours: expectedPending },
-      });
-    }
-  }
-}
 
 const ENGINE_HORIZON_DAYS = 5;
 /** Por debajo de 15 min de hueco sin colocar no bloqueamos el guardado del borrador. */
@@ -139,13 +73,11 @@ export async function generatePlanning(
     })
     : [];
 
-  if (existing) {
-    await prisma.$transaction(async (tx) => {
-      await restoreAssignmentHoursToTasks(tx, existing.id);
-    });
-  }
+  const planFromAt = args.planFromAt ?? new Date();
 
-  await reconcileTaskPendingBeforeSolve(args.naveId, weekStart);
+  if (existing) {
+    await prisma.planningAssignment.deleteMany({ where: { planningId: existing.id } });
+  }
 
   const priorWeekAssignments = await getPriorPlanningAssignments({
     naveId: args.naveId,
@@ -157,7 +89,7 @@ export async function generatePlanning(
     weekStart,
     weekEnd,
     planFrom: args.planFrom,
-    planFromAt: args.planFromAt,
+    planFromAt,
     previousAssignments,
     priorWeekAssignments,
   });
@@ -224,9 +156,7 @@ export async function generatePlanning(
   const planning = await prisma.$transaction(
     async (tx) => {
       if (existing) {
-        await tx.planningAssignment.deleteMany({
-          where: { planningId: existing.id },
-        });
+        // previous assignments were already removed before solving
       }
 
       const upserted = existing
@@ -265,19 +195,6 @@ export async function generatePlanning(
         });
       }
 
-      const newByTask = new Map<string, number>();
-      for (const a of result.assignments) {
-        newByTask.set(a.taskId, (newByTask.get(a.taskId) ?? 0) + a.hours);
-      }
-      for (const [taskId, hours] of newByTask) {
-        const task = await tx.task.findUnique({ where: { id: taskId } });
-        if (!task) continue;
-        await tx.task.update({
-          where: { id: taskId },
-          data: { pendingHours: Math.max(0, task.pendingHours - hours) },
-        });
-      }
-
       return upserted;
     },
     { timeout: PLANNING_WRITE_TX_MS },
@@ -292,17 +209,22 @@ export async function generatePlanning(
     "generate planning done",
   );
 
-  const deferredWarnings = (engineInput.deferredTasks ?? []).map(
-    (t) =>
-      `Tarea ${t.taskId}: ${t.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado/cadena).`,
-  );
+  const rawWarnings = [
+    ...(engineInput.deferredTasks ?? []).map((t) => ({
+      taskId: t.taskId,
+      reason: `${t.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado o cadena de procesos)`,
+    })),
+    ...result.warnings.map((w) => ({
+      taskId: w.taskId,
+      reason: w.reason,
+    })),
+  ];
+
+  const warnings = await formatPlanningWarningMessages(rawWarnings);
 
   return {
     planningId: planning.id,
-    warnings: [
-      ...deferredWarnings,
-      ...result.warnings.map((w) => `Tarea ${w.taskId}: ${w.reason}`),
-    ],
+    warnings,
     unscheduledHours: result.unscheduledHours + deferredHours,
     assignmentsCount: result.assignments.length,
   };
@@ -362,9 +284,14 @@ export async function undoPlanning(args: {
     );
   }
 
+  if (await hasRegistrosFromWeek(args.naveId, weekStart)) {
+    throw new Error(
+      "No se puede deshacer: hay registros de horas en esta semana o posteriores. Usa Regenerar.",
+    );
+  }
+
   await prisma.$transaction(
     async (tx) => {
-      await restoreAssignmentHoursToTasks(tx, existing.id);
       await tx.planning.delete({ where: { id: existing.id } });
     },
     { timeout: PLANNING_WRITE_TX_MS },

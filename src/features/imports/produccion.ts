@@ -261,8 +261,6 @@ async function importProyectos(
         where: { id: taskExisting.id },
         data: {
           estimatedHours: estimated,
-          pendingHours: pending,
-          doneHours: estimated - pending,
           order: taskOrder,
         },
       });
@@ -275,8 +273,6 @@ async function importProyectos(
           lampFrameId: lampFrame.id,
           process: procCode,
           estimatedHours: estimated,
-          pendingHours: pending,
-          doneHours: estimated - pending,
           order: taskOrder,
           naveId,
         },

@@ -22,6 +22,10 @@ import {
 import { RiskBadge } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
 import { Role } from "@/generated/prisma";
+import {
+  GlobalProjectPresetControl,
+} from "./project-strategy-controls";
+import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 
 export default async function ProyectosPage({
   searchParams,
@@ -39,7 +43,7 @@ export default async function ProyectosPage({
       include: {
         responsibleUser: { select: { name: true } },
         _count: { select: { lamps: true, tasks: true } },
-        tasks: { select: { pendingHours: true, doneHours: true, estimatedHours: true } },
+        tasks: { select: { estimatedHours: true } },
       },
       orderBy: [{ isActive: "desc" }, { deliveryDate: { sort: "asc", nulls: "last" } }],
     }),
@@ -52,8 +56,9 @@ export default async function ProyectosPage({
 
   const projectIds = projects.map((p) => p.id);
   const blocksProject = new Set<string>();
+  const doneByProjectId = new Map<string, number>();
   if (projectIds.length > 0) {
-    const [teRows, poRows] = await Promise.all([
+    const [teRows, poRows, entryRows] = await Promise.all([
       prisma.timeEntry.groupBy({
         by: ["projectId"],
         where: { projectId: { in: projectIds } },
@@ -64,12 +69,23 @@ export default async function ProyectosPage({
         where: { projectId: { in: projectIds } },
         _count: { _all: true },
       }),
+      prisma.timeEntry.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { projectId: true, startedAt: true, endedAt: true, hours: true },
+      }),
     ]);
     for (const r of teRows) {
       if (r.projectId) blocksProject.add(r.projectId);
     }
     for (const r of poRows) {
       blocksProject.add(r.projectId);
+    }
+    for (const entry of entryRows) {
+      if (!entry.projectId) continue;
+      doneByProjectId.set(
+        entry.projectId,
+        (doneByProjectId.get(entry.projectId) ?? 0) + resolveTimeEntryHours(entry),
+      );
     }
   }
 
@@ -109,9 +125,9 @@ export default async function ProyectosPage({
             </TableHeader>
             <TableBody>
               {projects.map((p) => {
-                const pending = p.tasks.reduce((acc, t) => acc + t.pendingHours, 0);
                 const estimated = p.tasks.reduce((acc, t) => acc + t.estimatedHours, 0);
-                const done = p.tasks.reduce((acc, t) => acc + t.doneHours, 0);
+                const done = doneByProjectId.get(p.id) ?? 0;
+                const pending = Math.max(0, estimated - done);
                 const pct = estimated > 0 ? Math.round((done / estimated) * 100) : 0;
                 const canHardDelete = !blocksProject.has(p.id);
                 return (

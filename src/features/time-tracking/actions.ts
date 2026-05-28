@@ -5,110 +5,18 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import type { Prisma } from "@/generated/prisma";
-import { NotificationType, TimeEntrySource } from "@/generated/prisma";
+import { TimeEntrySource } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
 import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
 import { Role } from "@/generated/prisma";
+import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 import {
   assertNoInternalOverlaps,
   computeTotalHours,
 } from "@/features/time-tracking/manual-ranges";
-import { emitNotificationTx } from "@/features/notifications/service";
-import { resolveNotificationStates } from "@/features/notifications/service";
+import { computeTaskHourTotals } from "@/features/time-tracking/task-hours-derived";
 
 const log = childLogger({ module: "time-tracking.actions" });
-
-async function creditWorkOnTask(
-  tx: Prisma.TransactionClient,
-  params: { taskId: string | null | undefined; hours: number },
-) {
-  if (!params.taskId || params.hours <= 0) return;
-  const task = await tx.task.findFirst({
-    where: { id: params.taskId },
-    select: {
-      id: true,
-      doneHours: true,
-      pendingHours: true,
-      estimatedHours: true,
-      process: true,
-      projectId: true,
-      naveId: true,
-      lamp: { select: { name: true } },
-      project: { select: { name: true, code: true, responsibleUserId: true } },
-    },
-  });
-  if (!task) {
-    log.warn({ taskId: params.taskId }, "time entry task not found; skipping task hour sync");
-    return;
-  }
-  const updatedTask = await tx.task.update({
-    where: { id: task.id },
-    data: {
-      doneHours: task.doneHours + params.hours,
-      pendingHours: Math.max(0, task.pendingHours - params.hours),
-    },
-    select: { doneHours: true },
-  });
-
-  if (updatedTask.doneHours > task.estimatedHours + 1e-6) {
-    const dayKey = new Date().toISOString().slice(0, 10);
-    await emitNotificationTx(tx, {
-      type: NotificationType.TASK_HOURS_EXCEEDED,
-      title: "Tarea por encima de horas previstas",
-      body:
-        `La tarea ${task.process} de ${task.lamp?.name ?? "lámpara"} ` +
-        `supera lo estimado (${updatedTask.doneHours.toFixed(1)}h / ${task.estimatedHours.toFixed(1)}h).`,
-      payload: {
-        eventKey: `task-hours-exceeded:${task.id}:${dayKey}`,
-        taskId: task.id,
-        projectId: task.projectId,
-        naveId: task.naveId,
-        estimatedHours: task.estimatedHours,
-        doneHours: updatedTask.doneHours,
-      },
-      projectId: task.projectId,
-      naveId: task.naveId,
-      responsibleUserId: task.project.responsibleUserId,
-      scopeKey: `task-overrun:${task.id}`,
-    });
-  } else {
-    await resolveNotificationStates({
-      type: NotificationType.TASK_HOURS_EXCEEDED,
-      scopeKeys: [`task-overrun:${task.id}`],
-    });
-  }
-}
-
-async function reverseWorkOnTask(
-  tx: Prisma.TransactionClient,
-  params: { taskId: string | null | undefined; hours: number },
-) {
-  if (!params.taskId || params.hours <= 0) return;
-  const task = await tx.task.findFirst({
-    where: { id: params.taskId },
-    select: { id: true, doneHours: true, pendingHours: true, estimatedHours: true },
-  });
-  if (!task) {
-    log.warn({ taskId: params.taskId }, "delete time entry: task not found; skipping task hour sync");
-    return;
-  }
-  const newDoneHours = Math.max(0, task.doneHours - params.hours);
-  await tx.task.update({
-    where: { id: task.id },
-    data: {
-      doneHours: newDoneHours,
-      pendingHours: task.pendingHours + params.hours,
-    },
-  });
-  if (newDoneHours <= task.estimatedHours + 1e-6) {
-    await resolveNotificationStates({
-      type: NotificationType.TASK_HOURS_EXCEEDED,
-      scopeKeys: [`task-overrun:${task.id}`],
-    });
-  }
-}
-
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
@@ -223,14 +131,16 @@ export async function stopTimer(input: z.infer<typeof stopSchema>) {
   });
   if (!entry) throw new Error("Timer no encontrado");
   const endedAt = new Date();
-  const hours = (endedAt.getTime() - entry.startedAt.getTime()) / 3600000;
+  const hours = resolveTimeEntryHours(
+    { startedAt: entry.startedAt, endedAt, hours: null },
+    endedAt,
+  );
   await assertNoTimeOverlap(ctx.userId, entry.startedAt, endedAt, entry.id);
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.update({
       where: { id: entry.id },
       data: { endedAt, hours },
     });
-    await creditWorkOnTask(tx, { taskId: entry.taskId, hours });
   });
   log.info({ entryId: entry.id, hours }, "timer stopped");
   revalidateHorasAndLoad();
@@ -247,7 +157,7 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, isCompleted: true, pendingHours: true },
+      select: { id: true, isCompleted: true },
     });
     if (!task) throw new Error("Tarea no encontrada.");
     if (task.isCompleted) return;
@@ -255,7 +165,6 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
       where: { id: task.id },
       data: {
         isCompleted: true,
-        pendingHours: 0,
       },
     });
   });
@@ -315,7 +224,6 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
         notes: data.notes,
       },
     });
-    await creditWorkOnTask(tx, { taskId: data.taskId, hours: data.hours });
   });
   revalidateHorasAndLoad();
 }
@@ -383,7 +291,6 @@ export async function createManualEntriesFromRanges(
         },
       });
     }
-    await creditWorkOnTask(tx, { taskId: data.taskId, hours: totalHours });
     if (data.markCompleted) {
       await tx.task.update({
         where: { id: data.taskId },
@@ -410,22 +317,33 @@ export async function deleteEntry(input: z.infer<typeof deleteSchema>) {
   });
   if (!entry) return;
   assertCanEditEntry(ctx, entry.userId);
-  const hours = entry.hours ?? 0;
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.delete({ where: { id: entry.id } });
-    if (entry.endedAt && hours > 0) {
-      await reverseWorkOnTask(tx, { taskId: entry.taskId, hours });
-      if (entry.taskId) {
-        const task = await tx.task.findFirst({
-          where: { id: entry.taskId },
-          select: { id: true, isCompleted: true, doneHours: true, estimatedHours: true },
+    if (entry.taskId) {
+      const task = await tx.task.findFirst({
+        where: { id: entry.taskId },
+        select: {
+          id: true,
+          isCompleted: true,
+          estimatedHours: true,
+          timeEntries: {
+            select: { startedAt: true, endedAt: true, hours: true },
+          },
+        },
+      });
+      const doneHours = (task?.timeEntries ?? []).reduce(
+        (sum, item) =>
+          sum + resolveTimeEntryHours(item),
+        0,
+      );
+      const totals = task
+        ? computeTaskHourTotals(task.estimatedHours, doneHours)
+        : null;
+      if (task?.isCompleted && (totals?.remainingWorkHours ?? 0) > 0.01) {
+        await tx.task.update({
+          where: { id: task.id },
+          data: { isCompleted: false },
         });
-        if (task?.isCompleted && task.doneHours + 0.01 < task.estimatedHours) {
-          await tx.task.update({
-            where: { id: task.id },
-            data: { isCompleted: false },
-          });
-        }
       }
     }
   });
@@ -463,9 +381,10 @@ export async function updateEntry(input: z.infer<typeof updateEntrySchema>) {
   assertCanEditEntry(ctx, entry.userId);
 
   await assertNoTimeOverlap(entry.userId, startedAt, endedAt, entry.id);
-  const newHours = (endedAt.getTime() - startedAt.getTime()) / 3600000;
-  const prevHours = entry.endedAt ? (entry.hours ?? 0) : 0;
-  const delta = newHours - prevHours;
+  const newHours = resolveTimeEntryHours(
+    { startedAt, endedAt, hours: null },
+    endedAt,
+  );
 
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.update({
@@ -477,17 +396,27 @@ export async function updateEntry(input: z.infer<typeof updateEntrySchema>) {
         notes: data.notes,
       },
     });
-    if (entry.taskId && Math.abs(delta) > 0.0001) {
-      if (delta > 0) {
-        await creditWorkOnTask(tx, { taskId: entry.taskId, hours: delta });
-      } else {
-        await reverseWorkOnTask(tx, { taskId: entry.taskId, hours: -delta });
-      }
+    if (entry.taskId) {
       const task = await tx.task.findFirst({
         where: { id: entry.taskId },
-        select: { id: true, isCompleted: true, doneHours: true, estimatedHours: true },
+        select: {
+          id: true,
+          isCompleted: true,
+          estimatedHours: true,
+          timeEntries: {
+            select: { startedAt: true, endedAt: true, hours: true },
+          },
+        },
       });
-      if (task?.isCompleted && task.doneHours + 0.01 < task.estimatedHours) {
+      const doneHours = (task?.timeEntries ?? []).reduce(
+        (sum, item) =>
+          sum + resolveTimeEntryHours(item),
+        0,
+      );
+      const totals = task
+        ? computeTaskHourTotals(task.estimatedHours, doneHours)
+        : null;
+      if (task?.isCompleted && (totals?.remainingWorkHours ?? 0) > 0.01) {
         await tx.task.update({
           where: { id: task.id },
           data: { isCompleted: false },
@@ -534,7 +463,10 @@ export async function createManualEntryForTask(input: z.infer<typeof createForTa
     throw new Error("Rango inválido: el fin debe ser posterior al inicio.");
   }
   await assertNoTimeOverlap(targetUserId, startedAt, endedAt);
-  const hours = (endedAt.getTime() - startedAt.getTime()) / 3600000;
+  const hours = resolveTimeEntryHours(
+    { startedAt, endedAt, hours: null },
+    endedAt,
+  );
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.create({
       data: {
@@ -550,7 +482,6 @@ export async function createManualEntryForTask(input: z.infer<typeof createForTa
         notes: data.notes,
       },
     });
-    await creditWorkOnTask(tx, { taskId: data.taskId, hours });
   });
   revalidateHorasAndLoad();
 }

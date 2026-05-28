@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
+import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
 const naveSchema = z.object({
   codigo: z.string().min(1).max(20),
@@ -61,7 +62,7 @@ export async function getNaves() {
 }
 
 export async function getAllNavesWithDetails() {
-  return prisma.nave.findMany({
+  const naves = await prisma.nave.findMany({
     orderBy: { codigo: "asc" },
     include: {
       personNaves: {
@@ -79,11 +80,22 @@ export async function getAllNavesWithDetails() {
         select: {
           id: true,
           process: true,
-          pendingHours: true,
           estimatedHours: true,
           project: { select: { name: true, code: true } },
         },
       },
     },
   });
+  const taskIds = naves.flatMap((nave) => nave.tasks.map((task) => task.id));
+  const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
+  return naves.map((nave) => ({
+    ...nave,
+    tasks: nave.tasks.map((task) => {
+      const doneHours = doneByTaskId.get(task.id) ?? 0;
+      return {
+        ...task,
+        pendingHours: Math.max(0, task.estimatedHours - doneHours),
+      };
+    }),
+  }));
 }

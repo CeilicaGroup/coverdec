@@ -31,6 +31,25 @@ export function minuteToWeekQuarter(dayIndex: number, minuteOfDay: number): numb
   return dayIndex * QUARTERS_PER_DAY + Math.floor(minuteOfDay / 15);
 }
 
+/** Ancla temporal única según la opción del menú «Planificar desde». */
+export function resolvePlanFromAnchor(
+  weekStart: Date,
+  planFrom: PlanFrom,
+  planFromAt: Date,
+): Date {
+  const monday = getMondayOf(weekStart);
+  switch (planFrom) {
+    case "WEEK_START":
+      return monday;
+    case "TODAY":
+      return toUtcDay(planFromAt);
+    case "TOMORROW":
+      return new Date(toUtcDay(planFromAt).getTime() + DAY_MS);
+    case "NOW":
+      return planFromAt;
+  }
+}
+
 export function computePlanFromBounds(
   weekStart: Date,
   planFrom: PlanFrom,
@@ -40,27 +59,28 @@ export function computePlanFromBounds(
     return { firstSchedulableDayIndex: 0 };
   }
 
-  let anchor = planFromAt;
-  if (planFrom === "TOMORROW") {
-    anchor = new Date(toUtcDay(planFromAt).getTime() + DAY_MS);
-  }
-
+  const anchor = resolvePlanFromAnchor(weekStart, planFrom, planFromAt);
   const firstSchedulableDayIndex = findFirstSchedulableDayIndex(weekStart, anchor);
   if (firstSchedulableDayIndex >= 5) {
     return { firstSchedulableDayIndex: 5 };
   }
 
-  if (planFrom !== "NOW") {
-    return { firstSchedulableDayIndex };
-  }
-
   const days = weekDays(getMondayOf(weekStart));
   const firstDay = days[firstSchedulableDayIndex];
-  if (!firstDay || toUtcDay(anchor).getTime() !== firstDay.getTime()) {
+  if (!firstDay) {
     return { firstSchedulableDayIndex };
   }
 
-  const minuteOfDay = planFromAt.getUTCHours() * 60 + planFromAt.getUTCMinutes();
+  const anchorDay = toUtcDay(anchor);
+  const hasIntraday =
+    anchorDay.getTime() === firstDay.getTime() &&
+    anchor.getTime() > anchorDay.getTime();
+
+  if (!hasIntraday) {
+    return { firstSchedulableDayIndex };
+  }
+
+  const minuteOfDay = anchor.getUTCHours() * 60 + anchor.getUTCMinutes();
   const firstSchedulableWeekQuarter = minuteToWeekQuarter(
     firstSchedulableDayIndex,
     minuteOfDay,

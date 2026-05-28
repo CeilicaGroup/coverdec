@@ -32,6 +32,11 @@ import type {
   EngineProcessDef,
   EngineTask,
 } from "./engine/types";
+import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
+import {
+  computeTaskPlanningTotals,
+  loadDoneHoursByTaskIds,
+} from "@/features/time-tracking/task-hours-derived";
 import {
   effectivePendingHours,
   isTaskClosedForPlanning,
@@ -41,16 +46,106 @@ export { effectivePendingHours } from "./task-planning-status";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export interface PlanningAssignmentSlice {
+  taskId: string;
+  personId: string;
+  date: Date;
+  startSlot: number;
+  endSlot: number;
+  hours: number;
+  process: string;
+}
+
+export function assignmentDayIndex(weekStart: Date, date: Date): number {
+  const week = toUtcDay(weekStart);
+  const days = Array.from({ length: 5 }, (_, i) =>
+    new Date(week.getTime() + i * DAY_MS),
+  );
+  return days.findIndex((d) => isSameUtcDay(d, date));
+}
+
+export function partitionAssignmentsByPlanFrom(
+  assignments: PlanningAssignmentSlice[],
+  weekStart: Date,
+  firstSchedulableDayIndex: number,
+): { beforeAnchor: PlanningAssignmentSlice[]; fromAnchor: PlanningAssignmentSlice[] } {
+  const beforeAnchor: PlanningAssignmentSlice[] = [];
+  const fromAnchor: PlanningAssignmentSlice[] = [];
+  for (const a of assignments) {
+    const dayIdx = assignmentDayIndex(weekStart, a.date);
+    if (dayIdx < 0) continue;
+    if (dayIdx < firstSchedulableDayIndex) {
+      beforeAnchor.push(a);
+    } else {
+      fromAnchor.push(a);
+    }
+  }
+  return { beforeAnchor, fromAnchor };
+}
+
+function fixedAssignmentKey(a: PlanningAssignmentSlice): string {
+  return `${a.taskId}|${a.personId}|${a.date.toISOString()}|${a.startSlot}`;
+}
+
+/** Fija asignaciones de tareas cerradas y de días anteriores al ancla al regenerar. */
+export function buildFixedAssignmentsForRegenerate(
+  assignments: PlanningAssignmentSlice[],
+  taskById: Map<
+    string,
+    {
+      pendingToPlanHours: number;
+      remainingWorkHours: number;
+      estimatedHours: number;
+      isCompleted: boolean;
+    }
+  >,
+  weekStart: Date,
+  firstSchedulableDayIndex: number,
+): EngineFixedAssignment[] {
+  const seen = new Set<string>();
+  const fixed: EngineFixedAssignment[] = [];
+
+  const push = (a: PlanningAssignmentSlice) => {
+    const key = fixedAssignmentKey(a);
+    if (seen.has(key)) return;
+    seen.add(key);
+    fixed.push({
+      taskId: a.taskId,
+      personId: a.personId,
+      date: a.date,
+      startSlot: a.startSlot,
+      endSlot: a.endSlot,
+      hours: a.hours,
+      process: a.process,
+    });
+  };
+
+  for (const a of assignments) {
+    const task = taskById.get(a.taskId);
+    if (!task) continue;
+    if (isTaskClosedForPlanning(task)) {
+      push(a);
+      continue;
+    }
+    const dayIdx = assignmentDayIndex(weekStart, a.date);
+    if (dayIdx >= 0 && dayIdx < firstSchedulableDayIndex) {
+      push(a);
+    }
+  }
+
+  return fixed;
+}
+
 function isTaskHalfDone(task: {
-  pendingHours: number;
-  doneHours: number;
+  pendingToPlanHours: number;
+  remainingWorkHours: number;
   estimatedHours: number;
   isCompleted: boolean;
 }): boolean {
   return (
     !isTaskClosedForPlanning(task) &&
-    task.doneHours > 0 &&
-    task.pendingHours > 0
+    task.pendingToPlanHours > 0 &&
+    task.remainingWorkHours > task.pendingToPlanHours
   );
 }
 
@@ -92,8 +187,8 @@ export function buildFixedAssignmentsFromPrevious(
   taskById: Map<
     string,
     {
-      pendingHours: number;
-      doneHours: number;
+      pendingToPlanHours: number;
+      remainingWorkHours: number;
       estimatedHours: number;
       isCompleted: boolean;
     }
@@ -202,7 +297,10 @@ export async function loadSolverInput(args: {
     prisma.timeEntry.findMany({
       where: {
         startedAt: { gte: weekStart, lte: args.weekEnd },
-        endedAt: { not: null },
+        user: {
+          personId: { not: null },
+          person: { personNaves: { some: { naveId: args.naveId } } },
+        },
       },
       include: {
         user: { select: { personId: true } },
@@ -244,15 +342,65 @@ export async function loadSolverInput(args: {
       hours: a.hours,
     }));
 
-  const taskById = new Map(tasksRaw.map((t) => [t.id, t]));
+  const doneHoursByTask = await loadDoneHoursByTaskIds(
+    prisma,
+    tasksRaw.map((task) => task.id),
+    planFromAt,
+  );
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
+    args.priorWeekAssignments ?? [],
+  );
+  const planningTotalsByTaskId = new Map(
+    tasksRaw.map((task) => [
+      task.id,
+      computeTaskPlanningTotals({
+        estimatedHours: task.estimatedHours,
+        doneHours: doneHoursByTask.get(task.id) ?? 0,
+        priorPlannedHours: priorPlannedHoursByTask.get(task.id) ?? 0,
+      }),
+    ]),
+  );
+  const taskById = new Map(
+    tasksRaw.map((task) => [
+      task.id,
+      {
+        estimatedHours: task.estimatedHours,
+        isCompleted: task.isCompleted,
+        pendingToPlanHours: planningTotalsByTaskId.get(task.id)?.pendingToPlanHours ?? 0,
+        remainingWorkHours: planningTotalsByTaskId.get(task.id)?.remainingWorkHours ?? 0,
+      },
+    ]),
+  );
   const processCanFragment = new Map(processes.map((p) => [p.code, p.canFragment]));
   const halfDoneIds = new Set(
-    tasksRaw.filter(isTaskHalfDone).map((t) => t.id),
+    tasksRaw
+      .map((task) => {
+        const totals = planningTotalsByTaskId.get(task.id);
+        if (!totals) return null;
+        return {
+          estimatedHours: task.estimatedHours,
+          isCompleted: task.isCompleted,
+          pendingToPlanHours: totals.pendingToPlanHours,
+          remainingWorkHours: totals.remainingWorkHours,
+          id: task.id,
+        };
+      })
+      .filter((task): task is NonNullable<typeof task> => task !== null)
+      .filter(isTaskHalfDone)
+      .map((task) => task.id),
   );
 
-  const fixedAssignments = buildFixedAssignmentsFromPrevious(
+  const fixedAssignments = buildFixedAssignmentsForRegenerate(
     args.previousAssignments ?? [],
     taskById,
+    weekStart,
+    firstSchedulableDayIndex,
+  );
+
+  const { fromAnchor: assignmentsForStability } = partitionAssignmentsByPlanFrom(
+    args.previousAssignments ?? [],
+    weekStart,
+    firstSchedulableDayIndex,
   );
 
   const bookedByKey = new Map<string, number>();
@@ -261,7 +409,8 @@ export async function loadSolverInput(args: {
     if (!personId) continue;
     const dayKey = toUtcDay(e.startedAt).toISOString().slice(0, 10);
     const key = `${personId}|${dayKey}`;
-    bookedByKey.set(key, (bookedByKey.get(key) ?? 0) + (e.hours ?? 0));
+    const hours = resolveTimeEntryHours(e, planFromAt);
+    bookedByKey.set(key, (bookedByKey.get(key) ?? 0) + hours);
   }
 
   const bookedHours: EngineBookedHours[] = [];
@@ -330,16 +479,28 @@ export async function loadSolverInput(args: {
     };
   });
 
-  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
-    args.priorWeekAssignments ?? [],
-  );
-
   const engineTasksBase = tasksRaw
     .map((t) => ({
-      task: t,
-      pending: effectivePendingHours(t, {
+      task: {
+        ...t,
+        pendingToPlanHours:
+          planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
+        remainingWorkHours:
+          planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
+      },
+      pending: effectivePendingHours(
+        {
+          estimatedHours: t.estimatedHours,
+          isCompleted: t.isCompleted,
+          pendingToPlanHours:
+            planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
+          remainingWorkHours:
+            planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
+        },
+        {
         priorPlannedHours: priorPlannedHoursByTask.get(t.id) ?? 0,
-      }),
+        },
+      ),
     }))
     .filter(({ pending }) => pending > 0)
     .map(({ task: t, pending }) => {
@@ -381,7 +542,17 @@ export async function loadSolverInput(args: {
   const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
     computeMinWeekQuarterByTaskId({
       weekStart,
-      tasks: tasksRaw,
+      tasks: tasksRaw.map((task) => ({
+        id: task.id,
+        lampId: task.lampId,
+        order: task.order,
+        process: task.process,
+        estimatedHours: task.estimatedHours,
+        pendingToPlanHours:
+          planningTotalsByTaskId.get(task.id)?.pendingToPlanHours ?? 0,
+        remainingWorkHours:
+          planningTotalsByTaskId.get(task.id)?.remainingWorkHours ?? 0,
+      })),
       engineTaskIds,
       priorEnds,
       waitHoursByProcess: new Map(
@@ -452,11 +623,12 @@ export async function loadSolverInput(args: {
     bookedHours,
     busySlots,
     deferredTasks,
+    planFrom,
   };
 
-  if (args.previousAssignments && args.previousAssignments.length > 0) {
+  if (assignmentsForStability.length > 0) {
     input.previousHours = buildPreviousHoursFromAssignments(
-      args.previousAssignments,
+      assignmentsForStability,
       weekStart,
       halfDoneIds,
     );

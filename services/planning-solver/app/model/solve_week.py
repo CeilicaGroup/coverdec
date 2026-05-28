@@ -529,6 +529,10 @@ class ModelVars:
     )
 
 
+def _person_by_id(people: list[EnginePerson]) -> dict[str, EnginePerson]:
+    return {p.id: p for p in people}
+
+
 def _build_variables(
     model: cp_model.CpModel,
     data: ProblemData,
@@ -610,6 +614,31 @@ def _build_variables(
                 )
 
     return mv
+
+
+def _task_debug_rows(
+    data: ProblemData,
+    mv: ModelVars,
+) -> list[dict]:
+    rows: list[dict] = []
+    for task in data.tasks:
+        task_slots = mv.by_task.get(task.id, [])
+        cand = pick_candidates(data.people, task.process)
+        rows.append(
+            {
+                "taskId": task.id,
+                "lampId": task.lampId,
+                "process": task.process,
+                "order": task.order,
+                "pendingHours": task.pendingHours,
+                "candidateCount": len(cand),
+                "candidatePeople": [p.id for p in cand],
+                "slotCount": len(task_slots),
+                "dayIndexes": sorted({sv.slot.day_index for sv in task_slots}),
+                "minWeekQuarter": task.minWeekQuarter,
+            }
+        )
+    return rows
 
 
 def _temp_sv(slot, presence, start, size, end, worker_iv, effective) -> SlotVars:
@@ -910,6 +939,9 @@ def _build_objective(
     if w1 > 0:
         _add_deadline_terms(model, data, mv, w1, terms)
 
+    # ── Tier 1: Prefer responsible (primary) over fallback ──────────────────
+    _add_primary_preference_terms(model, data, mv, terms)
+
     # ── Tier 2: Labour cost ──────────────────────────────────────────────────
     w_labor = _scale(w.labor_cost)
     if w_labor > 0:
@@ -1025,6 +1057,33 @@ def _add_deadline_terms(
             days_left = (delivery - data.week_start).days
             if 0 <= days_left < HORIZON_DAYS:
                 terms.append(TIER_DEADLINE * (w // 2) * lamp_end)
+
+
+def _add_primary_preference_terms(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+    terms: list,
+) -> None:
+    """
+    Prefer assigning a task to its primary responsible workers whenever possible.
+
+    We apply a Tier-1 penalty to fallback quarters so this dominates tier-2
+    objectives, but still stays below Tier-0 coverage. That means fallback is
+    used only when needed to avoid leaving work unscheduled.
+    """
+    person_by_id = _person_by_id(data.people)
+    fallback_quarter_penalty = _scale(1.0)
+
+    for sv in mv.all_slots:
+        person = person_by_id.get(sv.slot.person_id)
+        if person is None:
+            continue
+        if sv.slot.process in person.primary:
+            continue
+        # Candidate exists through fallback path for this process.
+        if sv.slot.process in person.fallback:
+            terms.append(TIER_DEADLINE * fallback_quarter_penalty * sv.effective)
 
 
 def _add_labor_terms(
@@ -1205,20 +1264,20 @@ def _add_project_priority_terms(
 ) -> None:
     """Tier 1: nonlinear per-project urgency by delivery proximity.
 
-    We convert urgency score to an inverse cost per scheduled quarter:
-      inverse = max_score - score
-    so higher urgency (near/overdue) has lower cost and is scheduled first.
+    We add a *bonus* (negative objective term) per scheduled quarter based on
+    urgency score, so more urgent projects are preferred when not everything
+    can be covered.
+
+    Important: this must never discourage coverage. Using a positive "cost per
+    scheduled quarter" here can accidentally make "leave work unscheduled"
+    cheaper than assigning it.
     """
-    max_score = 400
-    task_inverse: dict[str, int] = {}
     for task in data.tasks:
         score = _delivery_urgency_score(task, data.week_start)
-        task_inverse[task.id] = max(0, max_score - score)
-
-    for task in data.tasks:
-        inv = task_inverse.get(task.id, max_score)
+        if score <= 0:
+            continue
         for sv in mv.by_task.get(task.id, []):
-            terms.append(TIER_DEADLINE * w * inv * sv.effective)
+            terms.append(-TIER_DEADLINE * w * score * sv.effective)
 
 
 def _add_no_fragment_constraints(
@@ -1328,6 +1387,17 @@ def solve_week(
 
     model = cp_model.CpModel()
     mv = _build_variables(model, data)
+    task_debug = _task_debug_rows(data, mv)
+    logger.info(
+        "task candidates/slots: tasks=%d with_slots=%d without_slots=%d",
+        len(task_debug),
+        sum(1 for r in task_debug if r["slotCount"] > 0),
+        sum(1 for r in task_debug if r["slotCount"] == 0),
+    )
+    logger.info(
+        "task candidates/slots detail: %s",
+        task_debug,
+    )
     unplannable = _find_unplannable_warnings(data, mv)
     if unplannable:
         total_q = sum(data.demand_q.get(t.id, 0) for t in data.tasks)
@@ -1349,12 +1419,26 @@ def solve_week(
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return _infeasible_response(data.tasks, status, solver)
 
-    return _extract_solution(
+    response = _extract_solution(
         mv.all_slots,
         unscheduled,
         solver,
         request.fixedAssignments,
     )
+    if response.unscheduledHours > 0:
+        unscheduled_by_task = {
+            task_id: solver.Value(u_var) / QUARTERS_PER_HOUR
+            for task_id, u_var in unscheduled.items()
+            if solver.Value(u_var) > 0
+        }
+        logger.info(
+            "solve diagnostics: assignments=%d unscheduledHours=%.2f unscheduledTasks=%d",
+            len(response.assignments),
+            response.unscheduledHours,
+            len(unscheduled_by_task),
+        )
+        logger.info("solve diagnostics unscheduledByTask: %s", unscheduled_by_task)
+    return response
 
 
 def _infeasible_response(

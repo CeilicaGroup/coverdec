@@ -4,7 +4,11 @@ import { effectivePendingHours } from "../load-engine-input";
 describe("effectivePendingHours re-export", () => {
   it("caps pendingHours by remaining when doneHours has increased", () => {
     expect(
-      effectivePendingHours({ pendingHours: 6, doneHours: 4, estimatedHours: 8 }),
+      effectivePendingHours({
+        pendingToPlanHours: 6,
+        remainingWorkHours: 4,
+        estimatedHours: 8,
+      }),
     ).toBe(4);
   });
 });

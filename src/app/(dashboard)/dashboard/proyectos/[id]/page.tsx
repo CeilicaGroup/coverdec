@@ -22,6 +22,7 @@ import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
+import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
 export default async function ProjectDetailPage({
   params,
@@ -57,6 +58,19 @@ export default async function ProjectDetailPage({
   if (!project) notFound();
 
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const taskIds = project.lamps.flatMap((lamp) => lamp.tasks.map((task) => task.id));
+  const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
+  const lamps = project.lamps.map((lamp) => ({
+    ...lamp,
+    tasks: lamp.tasks.map((task) => {
+      const doneHours = doneByTaskId.get(task.id) ?? 0;
+      return {
+        ...task,
+        doneHours,
+        pendingHours: Math.max(0, task.estimatedHours - doneHours),
+      };
+    }),
+  }));
 
   const [timeEntries, orders] = await Promise.all([
     prisma.timeEntry.count({ where: { projectId: id } }),
@@ -94,7 +108,7 @@ export default async function ProjectDetailPage({
     processDefs.map((p) => [p.code, p.waitHours]),
   ) as Record<string, number>;
 
-  const allTasks = project.lamps.flatMap((l) => l.tasks);
+  const allTasks = lamps.flatMap((l) => l.tasks);
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
   const totalPending = allTasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
@@ -179,7 +193,7 @@ export default async function ProjectDetailPage({
             </p>
           ) : (
             <div className="divide-y">
-              {project.lamps.map((l) => {
+              {lamps.map((l) => {
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
                 const lampNaveId = l.tasks.find((t) => t.naveId)?.naveId ?? null;
                 return (

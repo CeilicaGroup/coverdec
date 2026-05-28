@@ -11,7 +11,6 @@ import {
   PROJECT_PLANNING_PRESETS,
 } from "@/features/planning/policy-schema";
 import {
-  adjustPendingOnEstimateChange,
   buildTasksFromFrame,
   formatLampFrameUnitLabel,
   getNextTaskOrder,
@@ -182,7 +181,6 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
       lampFrameId: string;
       process: string;
       estimatedHours: number;
-      pendingHours: number;
       order: number;
       naveId: string;
     }> = [];
@@ -212,7 +210,6 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
             lampFrameId: lampFrame.id,
             process: bp.process,
             estimatedHours: bp.estimatedHours,
-            pendingHours: bp.estimatedHours,
             order: bp.order + physicalFrameIndex * 1000,
             naveId: fallbackNave,
           });
@@ -260,15 +257,9 @@ export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchem
   const task = await prisma.task.findFirst({ where: { id: data.taskId } });
   if (!task) throw new Error("Tarea no encontrada");
 
-  const pendingHours = adjustPendingOnEstimateChange(
-    data.estimatedHours,
-    task.doneHours,
-    task.pendingHours,
-  );
-
   await prisma.task.update({
     where: { id: task.id },
-    data: { estimatedHours: data.estimatedHours, pendingHours },
+    data: { estimatedHours: data.estimatedHours },
   });
 
   revalidatePath("/dashboard/proyectos");
@@ -326,7 +317,6 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         lampFrameId: primaryLampFrame?.id,
         process: data.process,
         estimatedHours: data.estimatedHours,
-        pendingHours: data.estimatedHours,
         order,
         naveId,
       },
@@ -349,7 +339,7 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
   });
   if (!task) throw new Error("Tarea no encontrada");
 
-  if (task.doneHours > 0) {
+  if (task._count.timeEntries > 0) {
     throw new Error("No se puede eliminar: la tarea tiene horas registradas.");
   }
   if (task._count.assignments > 0 || task._count.timeEntries > 0) {
@@ -447,7 +437,6 @@ export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
 
   const hasWork = lamp.tasks.some(
     (t) =>
-      t.doneHours > 0 ||
       t._count.assignments > 0 ||
       t._count.timeEntries > 0,
   );
