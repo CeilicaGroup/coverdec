@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -26,7 +27,9 @@ import {
 import {
   createProcessDefinition,
   deleteProcessDefinition,
+  getProcessDefinitionUsage,
   updateProcessDefinition,
+  type ProcessDefinitionUsage,
 } from "@/features/catalog/actions";
 import { deriveProcessColors } from "@/lib/color";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
@@ -51,6 +54,30 @@ function toBadgeStyle(p: ProcessRow): ProcessBadgeStyle {
   };
 }
 
+const USAGE_LABELS: { key: keyof ProcessDefinitionUsage; label: string }[] = [
+  { key: "tasks", label: "Tareas" },
+  { key: "frameTypeProcesses", label: "Procesos en bastidores" },
+  { key: "personSpecialties", label: "Especialidades de personal" },
+  { key: "timeEntries", label: "Registros de horas" },
+  { key: "productionOrders", label: "Órdenes de producción" },
+  { key: "planningAssignments", label: "Asignaciones de planning" },
+];
+
+function isProcessInUseError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message.startsWith("PROCESS_IN_USE:") ||
+      err.message.includes("está en uso"))
+  );
+}
+
+function formatDeleteError(err: unknown): string {
+  if (err instanceof Error && err.message.startsWith("PROCESS_IN_USE:")) {
+    return err.message.replace(/^PROCESS_IN_USE:\s*/, "").trim();
+  }
+  return err instanceof Error ? err.message : "Error";
+}
+
 export function ProcessDefinitionsPanel({
   processes,
   canManage,
@@ -71,6 +98,27 @@ export function ProcessDefinitionsPanel({
   const [eLabel, setELabel] = useState("");
   const [eColor, setEColor] = useState("#64748b");
   const [eCanFragment, setECanFragment] = useState(true);
+
+  const [usageDialog, setUsageDialog] = useState<{
+    code: string;
+    label: string;
+    usage: ProcessDefinitionUsage;
+  } | null>(null);
+
+  function openUsageDialog(row: ProcessRow, usage: ProcessDefinitionUsage) {
+    setUsageDialog({ code: row.code, label: row.label, usage });
+  }
+
+  function loadUsageAndOpen(row: ProcessRow) {
+    startTransition(async () => {
+      try {
+        const usage = await getProcessDefinitionUsage({ code: row.code });
+        openUsageDialog(row, usage);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo cargar el detalle");
+      }
+    });
+  }
 
   function openEdit(row: ProcessRow) {
     setEditing(row);
@@ -153,7 +201,16 @@ export function ProcessDefinitionsPanel({
         toast.success("Proceso eliminado");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        if (isProcessInUseError(err)) {
+          toast.error(formatDeleteError(err), {
+            action: {
+              label: "Más información",
+              onClick: () => loadUsageAndOpen(row),
+            },
+          });
+        } else {
+          toast.error(formatDeleteError(err));
+        }
       }
     });
   }
@@ -257,6 +314,50 @@ export function ProcessDefinitionsPanel({
           <DialogFooter>
             <Button type="button" onClick={submitCreate} disabled={pending}>
               Crear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={usageDialog != null}
+        onOpenChange={(open) => !open && setUsageDialog(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Uso del proceso</DialogTitle>
+            <DialogDescription>
+              {usageDialog
+                ? `«${usageDialog.label}» (${usageDialog.code}) está referenciado en:`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          {usageDialog ? (
+            USAGE_LABELS.some(({ key }) => usageDialog.usage[key] > 0) ? (
+              <ul className="space-y-2 text-sm">
+                {USAGE_LABELS.map(({ key, label }) => {
+                  const count = usageDialog.usage[key];
+                  if (count <= 0) return null;
+                  return (
+                    <li
+                      key={key}
+                      className="flex items-center justify-between gap-4 rounded-md border px-3 py-2"
+                    >
+                      <span>{label}</span>
+                      <span className="font-mono font-semibold tabular-nums">{count}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No hay referencias activas en este momento.
+              </p>
+            )
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setUsageDialog(null)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>

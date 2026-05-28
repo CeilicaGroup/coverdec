@@ -4,8 +4,6 @@ import { importProduccion } from "../src/features/imports/produccion";
 import { importFabrica } from "../src/features/imports/fabrica";
 
 async function main() {
-  const nave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
-
   const produccionPath = path.resolve(
     process.cwd(),
     "docs/PRODUCCION.xlsx",
@@ -14,7 +12,6 @@ async function main() {
 
   const produccionSummary = await importProduccion({
     filePath: produccionPath,
-    naveId: nave.id,
   });
   console.log("PRODUCCION summary:", produccionSummary);
 

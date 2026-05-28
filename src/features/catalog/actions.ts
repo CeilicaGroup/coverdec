@@ -214,6 +214,61 @@ export async function createProcessDefinition(
   revalidatePath("/dashboard/personal");
 }
 
+export interface ProcessDefinitionUsage {
+  tasks: number;
+  frameTypeProcesses: number;
+  personSpecialties: number;
+  timeEntries: number;
+  productionOrders: number;
+  planningAssignments: number;
+}
+
+async function loadProcessDefinitionUsage(
+  code: string,
+): Promise<ProcessDefinitionUsage> {
+  const [tasks, frameTypeProcesses, personSpecialties, timeEntries, productionOrders, planningAssignments] =
+    await Promise.all([
+      prisma.task.count({ where: { process: code } }),
+      prisma.frameTypeProcess.count({ where: { process: code } }),
+      prisma.personSpecialty.count({ where: { process: code } }),
+      prisma.timeEntry.count({ where: { process: code } }),
+      prisma.productionOrder.count({ where: { process: code } }),
+      prisma.planningAssignment.count({ where: { process: code } }),
+    ]);
+  return {
+    tasks,
+    frameTypeProcesses,
+    personSpecialties,
+    timeEntries,
+    productionOrders,
+    planningAssignments,
+  };
+}
+
+function totalProcessUsage(usage: ProcessDefinitionUsage): number {
+  return (
+    usage.tasks +
+    usage.frameTypeProcesses +
+    usage.personSpecialties +
+    usage.timeEntries +
+    usage.productionOrders +
+    usage.planningAssignments
+  );
+}
+
+const processCodeSchema = z.object({
+  code: z.string().min(1),
+});
+
+export async function getProcessDefinitionUsage(
+  input: z.infer<typeof processCodeSchema>,
+): Promise<ProcessDefinitionUsage> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = processCodeSchema.parse(input);
+  return loadProcessDefinitionUsage(data.code);
+}
+
 const deleteProcessSchema = z.object({
   code: z.string().min(1),
 });
@@ -225,17 +280,10 @@ export async function deleteProcessDefinition(
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = deleteProcessSchema.parse(input);
 
-  const [tasks, ftp, ps, te, po, pa] = await Promise.all([
-    prisma.task.count({ where: { process: data.code } }),
-    prisma.frameTypeProcess.count({ where: { process: data.code } }),
-    prisma.personSpecialty.count({ where: { process: data.code } }),
-    prisma.timeEntry.count({ where: { process: data.code } }),
-    prisma.productionOrder.count({ where: { process: data.code } }),
-    prisma.planningAssignment.count({ where: { process: data.code } }),
-  ]);
-  if (tasks + ftp + ps + te + po + pa > 0) {
+  const usage = await loadProcessDefinitionUsage(data.code);
+  if (totalProcessUsage(usage) > 0) {
     throw new Error(
-      "No se puede eliminar: el proceso está en uso (tareas, bastidores, planning, horas u órdenes).",
+      "PROCESS_IN_USE:No se puede eliminar: el proceso está en uso.",
     );
   }
 

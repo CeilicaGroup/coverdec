@@ -90,7 +90,7 @@ const NAV_SECTIONS = [
       { href: "/dashboard/admin/naves", label: "Naves", icon: Warehouse, adminOnly: true },
       { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
       { href: "/dashboard/admin/notificaciones", label: "Notificaciones", icon: Bell, adminOnly: true },
-      { href: "/dashboard/admin/export", label: "Exportaciones", icon: FileSpreadsheet, adminOnly: true },
+      { href: "/dashboard/admin/export", label: "Importar / exportar", icon: FileSpreadsheet, adminOnly: true },
     ],
   },
 ] as const;

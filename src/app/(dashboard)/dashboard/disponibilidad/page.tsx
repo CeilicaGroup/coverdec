@@ -59,14 +59,15 @@ export default async function DisponibilidadPage({
   const days = weekDays(weekStart);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
-  const [planning, planningMeta, people, holidays, absences] = await Promise.all([
-    getPlanningForWeek({ naveScope, weekStart, viewMode }),
-    getPlanningWeekMeta({ naveScope, weekStart }),
-    getNavePersonnel(naveScope),
-    getHolidaysForRange(days[0], days[4]),
-    getAbsencesForRange(days[0], days[4]),
-    getActualHoursForWeek({ naveScope, weekStart }),
-  ]);
+  const [planning, planningMeta, people, holidays, absences, actualEntries] =
+    await Promise.all([
+      getPlanningForWeek({ naveScope, weekStart, viewMode }),
+      getPlanningWeekMeta({ naveScope, weekStart }),
+      getNavePersonnel(naveScope),
+      getHolidaysForRange(days[0], days[4]),
+      getAbsencesForRange(days[0], days[4]),
+      getActualHoursForWeek({ naveScope, weekStart }),
+    ]);
 
   const holidayDates = expandHolidayRangesToIsoDays(
     holidays,
