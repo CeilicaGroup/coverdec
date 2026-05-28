@@ -22,9 +22,6 @@ import {
 import { RiskBadge } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
 import { Role } from "@/generated/prisma";
-import {
-  GlobalProjectPresetControl,
-} from "./project-strategy-controls";
 
 export default async function ProyectosPage({
   searchParams,
@@ -83,7 +80,6 @@ export default async function ProyectosPage({
         description={`${projects.length} proyectos`}
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {canManage ? <GlobalProjectPresetControl /> : null}
             <Link
               href={showArchived ? "/dashboard/proyectos" : "/dashboard/proyectos?archived=1"}
               className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"

@@ -57,7 +57,10 @@ import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge
 import Link from "next/link";
 import { GenerateButton } from "./generate-button";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
-import { ProjectStrategyControls } from "./proyectos/project-strategy-controls";
+import {
+  GlobalProjectPresetControl,
+  ProjectStrategyControls,
+} from "./proyectos/project-strategy-controls";
 import { getPlanningUndoState } from "@/features/planning/actions";
 import {
   buildPriorPlannedHoursByProjectId,
@@ -157,6 +160,9 @@ export default async function ResumenPage({
             />
             {ctx.naveId ? (
               <>
+                {(ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION") ? (
+                  <GlobalProjectPresetControl />
+                ) : null}
                 <PlanningWeightsPopover
                   initialWeights={planningWeights}
                   initialDeadlineSettings={deadlineSettings}
