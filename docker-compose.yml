@@ -75,10 +75,33 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       NEXT_PUBLIC_BETTER_AUTH_URL: ${NEXT_PUBLIC_BETTER_AUTH_URL:?NEXT_PUBLIC_BETTER_AUTH_URL is required}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      NOTIFICATION_CRON_TZ: ${NOTIFICATION_CRON_TZ:-Europe/Madrid}
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:alerts@coverdec.local}
     depends_on:
       db:
         condition: service_healthy
       planning-solver:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npm run worker:notifications
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: >-
+        postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-coverdec}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NOTIFICATION_CRON_TZ: ${NOTIFICATION_CRON_TZ:-Europe/Madrid}
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:alerts@coverdec.local}
+    depends_on:
+      db:
         condition: service_healthy
 
 volumes:

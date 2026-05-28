@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { replacePersonNaves } from "@/features/people/person-naves";
 import { Role } from "@/generated/prisma";
+import { ensureDefaultSubscriptions } from "@/features/notifications/service";
 
 const naveIdsSchema = z.array(z.string().min(1));
 
@@ -64,6 +65,9 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
   if (data.role !== Role.ADMIN && data.naveIds?.length) {
     await applyPersonNavesForUser(user.id, data.role, data.naveIds);
   }
+  if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
+    await ensureDefaultSubscriptions(user.id);
+  }
 
   revalidatePath("/dashboard/admin/usuarios");
   revalidatePath("/dashboard/personal");
@@ -117,6 +121,9 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
       data.role,
       data.naveIds ?? [],
     );
+  }
+  if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
+    await ensureDefaultSubscriptions(data.userId);
   }
 
   revalidatePath("/dashboard/admin/usuarios");

@@ -16,6 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { updateProject } from "@/features/projects/actions";
 import { toast } from "sonner";
 
@@ -27,6 +34,7 @@ export interface EditableProject {
   deliveryDate: Date | null;
   isBillable: boolean;
   notes: string | null;
+  responsibleUserId?: string | null;
 }
 
 function toDateInputValue(date: Date | null): string {
@@ -37,9 +45,11 @@ function toDateInputValue(date: Date | null): string {
 export function EditProjectDialog({
   project,
   variant = "icon",
+  responsibleOptions = [],
 }: {
   project: EditableProject;
   variant?: "icon" | "button";
+  responsibleOptions?: Array<{ id: string; name: string; role: string }>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -50,6 +60,9 @@ export function EditProjectDialog({
   const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
   const [isBillable, setIsBillable] = useState(project.isBillable);
   const [notes, setNotes] = useState(project.notes ?? "");
+  const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
+    project.responsibleUserId ?? null,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +72,7 @@ export function EditProjectDialog({
     setDeliveryDate(toDateInputValue(project.deliveryDate));
     setIsBillable(project.isBillable);
     setNotes(project.notes ?? "");
+    setResponsibleUserId(project.responsibleUserId ?? null);
   }, [open, project]);
 
   return (
@@ -101,6 +115,7 @@ export function EditProjectDialog({
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
+                  responsibleUserId: responsibleUserId ?? undefined,
                   notes: notes || undefined,
                 });
                 toast.success("Proyecto actualizado");
@@ -142,6 +157,29 @@ export function EditProjectDialog({
               rows={2}
               className="resize-none"
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Responsable del proyecto</Label>
+            <Select
+              value={responsibleUserId}
+              onValueChange={(value) => setResponsibleUserId(value === "none" ? null : value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sin responsable">
+                  {responsibleUserId
+                    ? (responsibleOptions.find((u) => u.id === responsibleUserId)?.name ?? "")
+                    : undefined}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin responsable</SelectItem>
+                {responsibleOptions.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} ({u.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox

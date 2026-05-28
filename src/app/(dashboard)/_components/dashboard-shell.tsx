@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
+  Bell,
   ClipboardList,
   Gauge,
   FileSpreadsheet,
@@ -70,6 +71,7 @@ const NAV_SECTIONS = [
     naveScoped: false,
     items: [
       { href: "/dashboard/horas", label: "Mis horas", icon: Timer, adminHidden: true },
+      { href: "/dashboard/notificaciones", label: "Notificaciones", icon: Bell },
     ],
   },
   {
@@ -88,6 +90,7 @@ const NAV_SECTIONS = [
       { href: "/dashboard/costes", label: "Costes", icon: ShieldCheck, restricted: true },
       { href: "/dashboard/admin/naves", label: "Naves", icon: Warehouse, adminOnly: true },
       { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
+      { href: "/dashboard/admin/notificaciones", label: "Notificaciones", icon: Bell, adminOnly: true },
       { href: "/dashboard/admin/export", label: "Exportaciones", icon: FileSpreadsheet, adminOnly: true },
     ],
   },

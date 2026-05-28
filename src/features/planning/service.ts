@@ -12,6 +12,8 @@ import {
     type Prisma,
 } from "@/generated/prisma";
 import { getMondayOf, isoWeek } from "@/lib/week";
+import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
+import { emitNotificationTx } from "@/features/notifications/service";
 
 const log = childLogger({ module: "planning.service" });
 
@@ -309,9 +311,23 @@ export async function generatePlanning(
 }
 
 export async function publishPlanning(planningId: string): Promise<void> {
-  await prisma.planning.update({
-    where: { id: planningId },
-    data: { status: PlanningStatus.PUBLISHED, publishedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    const planning = await tx.planning.update({
+      where: { id: planningId },
+      data: { status: PlanningStatus.PUBLISHED, publishedAt: new Date() },
+    });
+    const alerts = await detectPlanningPublishNotifications(tx, planning.id);
+    for (const alert of alerts) {
+      await emitNotificationTx(tx, {
+        type: alert.type,
+        title: alert.title,
+        body: alert.body,
+        payload: alert.payload as never,
+        planningId: planning.id,
+        naveId: planning.naveId,
+        scopeKey: (alert.payload as { eventKey?: string }).eventKey,
+      });
+    }
   });
 }
 

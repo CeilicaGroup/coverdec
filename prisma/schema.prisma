@@ -36,6 +36,28 @@ enum TimeEntrySource {
   MANUAL
 }
 
+enum NotificationType {
+  PLAN_PUBLISHED_LOW_OCCUPATION
+  PLAN_PUBLISHED_PROJECTS_OVER_DEADLINE
+  TASK_HOURS_EXCEEDED
+  PROJECT_SLIPPING
+  ASSIGNED_TASKS_NOT_LOGGED
+  DELIVERY_FAILED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
 enum FactoryStatus {
   DOSSIER
   PRODUCCION
@@ -63,6 +85,7 @@ model Nave {
   personNaves    PersonNave[]
   plannings      Planning[]      @relation("NavePlannings")
   planningPolicy PlanningPolicy? @relation("NavePolicy")
+  notifications  Notification[]
 }
 
 /// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
@@ -102,6 +125,12 @@ model User {
   person      Person?     @relation(fields: [personId], references: [id])
   timeEntries TimeEntry[]
   activeNave  Nave?       @relation("ActiveNave", fields: [activeNaveId], references: [id])
+  notifications          Notification[]
+  notificationSubscriptions NotificationSubscription[]
+  notificationDeliveries NotificationDelivery[]
+  notificationStates     NotificationState[]
+  pushSubscriptions      PushSubscription[]
+  responsibleProjects    Project[] @relation("ProjectResponsible")
 }
 
 model Session {
@@ -289,6 +318,7 @@ model Project {
   planningCostPriority Int @default(50)
   planningStability Int @default(50)
   planningDeadlineBoost Int @default(50)
+  responsibleUserId String?
   notes        String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -297,6 +327,8 @@ model Project {
   tasks            Task[]
   timeEntries      TimeEntry[]
   productionOrders ProductionOrder[]
+  responsibleUser  User? @relation("ProjectResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  notifications    Notification[]
 }
 
 model Lamp {
@@ -384,6 +416,7 @@ model Planning {
 
   nave        Nave                 @relation("NavePlannings", fields: [naveId], references: [id], onDelete: Cascade)
   assignments PlanningAssignment[]
+  notifications Notification[]
 
   @@unique([naveId, year, week])
 }
@@ -461,6 +494,107 @@ model TimeEntry {
   processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([userId, startedAt])
+}
+
+// ---------- Notificaciones ----------
+
+model Notification {
+  id         String            @id @default(cuid())
+  userId     String
+  type       NotificationType
+  title      String
+  body       String
+  payload    Json?
+  readAt     DateTime?
+  naveId     String?
+  projectId  String?
+  planningId String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nave     Nave?    @relation(fields: [naveId], references: [id], onDelete: SetNull)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  planning Planning? @relation(fields: [planningId], references: [id], onDelete: SetNull)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model NotificationSubscription {
+  id      String            @id @default(cuid())
+  userId  String
+  type    NotificationType
+  inApp   Boolean           @default(true)
+  email   Boolean           @default(true)
+  push    Boolean           @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([type])
+}
+
+model NotificationDelivery {
+  id             String                     @id @default(cuid())
+  notificationId String?
+  userId         String
+  type           NotificationType
+  channel        NotificationChannel
+  status         NotificationDeliveryStatus @default(PENDING)
+  payload        Json?
+  dedupeKey      String                     @unique
+  attempts       Int                        @default(0)
+  maxAttempts    Int                        @default(5)
+  nextAttemptAt  DateTime                   @default(now())
+  lockedAt       DateTime?
+  lastError      String?
+  sentAt         DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  notification Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([channel, status])
+}
+
+model PushSubscription {
+  id             String    @id @default(cuid())
+  userId         String
+  endpoint       String    @unique
+  p256dh         String
+  auth           String
+  expirationTime DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+model NotificationState {
+  id             String           @id @default(cuid())
+  userId         String
+  type           NotificationType
+  scopeKey       String
+  isActive       Boolean          @default(true)
+  firstNotifiedAt DateTime        @default(now())
+  lastNotifiedAt DateTime         @default(now())
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, scopeKey])
+  @@index([type, scopeKey])
 }
 
 // ---------- Órdenes de producción ----------

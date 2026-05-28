@@ -11,6 +11,7 @@ import {
 } from "@/features/planning/planning-visibility";
 import { cookies } from "next/headers";
 import { DashboardShell } from "./_components/dashboard-shell";
+import { PushRegistration } from "./_components/push-registration";
 
 export default async function DashboardLayout({
   children,
@@ -59,6 +60,7 @@ export default async function DashboardLayout({
       assignedNaves={canSwitchNave ? [] : personNaveList}
       planningViewMode={planningViewMode}
     >
+      <PushRegistration />
       {children}
     </DashboardShell>
   );

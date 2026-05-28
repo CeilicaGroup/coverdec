@@ -15,10 +15,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createProject } from "@/features/projects/actions";
 import { toast } from "sonner";
 
-export function CreateProjectDialog() {
+export function CreateProjectDialog({
+  responsibleOptions = [],
+}: {
+  responsibleOptions?: Array<{ id: string; name: string; role: string }>;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -27,6 +38,7 @@ export function CreateProjectDialog() {
   const [obra, setObra] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [isBillable, setIsBillable] = useState(true);
+  const [responsibleUserId, setResponsibleUserId] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -49,6 +61,7 @@ export function CreateProjectDialog() {
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
+                  responsibleUserId: responsibleUserId ?? undefined,
                 });
                 toast.success("Proyecto creado");
                 setOpen(false);
@@ -81,6 +94,29 @@ export function CreateProjectDialog() {
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Responsable del proyecto</Label>
+            <Select
+              value={responsibleUserId}
+              onValueChange={(value) => setResponsibleUserId(value === "none" ? null : value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sin responsable">
+                  {responsibleUserId
+                    ? (responsibleOptions.find((u) => u.id === responsibleUserId)?.name ?? "")
+                    : undefined}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin responsable</SelectItem>
+                {responsibleOptions.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} ({u.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox

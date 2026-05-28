@@ -36,14 +36,22 @@ export default async function ProyectosPage({
   const params = (await searchParams) ?? {};
   const showArchived = params.archived === "1";
 
-  const projects = await prisma.project.findMany({
-    where: showArchived ? undefined : { isActive: true },
-    include: {
-      _count: { select: { lamps: true, tasks: true } },
-      tasks: { select: { pendingHours: true, doneHours: true, estimatedHours: true } },
-    },
-    orderBy: [{ isActive: "desc" }, { deliveryDate: { sort: "asc", nulls: "last" } }],
-  });
+  const [projects, responsibleUsers] = await Promise.all([
+    prisma.project.findMany({
+      where: showArchived ? undefined : { isActive: true },
+      include: {
+        responsibleUser: { select: { name: true } },
+        _count: { select: { lamps: true, tasks: true } },
+        tasks: { select: { pendingHours: true, doneHours: true, estimatedHours: true } },
+      },
+      orderBy: [{ isActive: "desc" }, { deliveryDate: { sort: "asc", nulls: "last" } }],
+    }),
+    prisma.user.findMany({
+      where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
+      select: { id: true, name: true, role: true },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    }),
+  ]);
 
   const projectIds = projects.map((p) => p.id);
   const blocksProject = new Set<string>();
@@ -82,7 +90,7 @@ export default async function ProyectosPage({
             >
               {showArchived ? "Ocultar archivados" : "Mostrar archivados"}
             </Link>
-            <CreateProjectDialog />
+            <CreateProjectDialog responsibleOptions={responsibleUsers} />
           </div>
         }
       />
@@ -96,6 +104,7 @@ export default async function ProyectosPage({
                 <TableHead>Riesgo</TableHead>
                 <TableHead>Entrega</TableHead>
                 <TableHead>Lámparas</TableHead>
+                <TableHead>Responsable</TableHead>
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
                 <TableHead>Facturable</TableHead>
@@ -137,6 +146,9 @@ export default async function ProyectosPage({
                     <TableCell className="font-mono text-xs">
                       {p._count.lamps} L / {p._count.tasks} T
                     </TableCell>
+                    <TableCell className="text-xs">
+                      {p.responsibleUser?.name ?? "—"}
+                    </TableCell>
                     <TableCell className="text-right font-mono">{formatHours(pending)}</TableCell>
                     <TableCell className="text-right font-mono">{pct}%</TableCell>
                     <TableCell>
@@ -161,8 +173,10 @@ export default async function ProyectosPage({
                             deliveryDate: p.deliveryDate,
                             isBillable: p.isBillable,
                             notes: p.notes,
+                            responsibleUserId: p.responsibleUserId,
                             isActive: p.isActive,
                           }}
+                          responsibleOptions={responsibleUsers}
                           canHardDelete={canHardDelete}
                         />
                       </TableCell>

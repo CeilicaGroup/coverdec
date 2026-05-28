@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import type { Prisma } from "@/generated/prisma";
-import { TimeEntrySource } from "@/generated/prisma";
+import { NotificationType, TimeEntrySource } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
 import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
 import { Role } from "@/generated/prisma";
@@ -14,6 +14,8 @@ import {
   assertNoInternalOverlaps,
   computeTotalHours,
 } from "@/features/time-tracking/manual-ranges";
+import { emitNotificationTx } from "@/features/notifications/service";
+import { resolveNotificationStates } from "@/features/notifications/service";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -24,19 +26,58 @@ async function creditWorkOnTask(
   if (!params.taskId || params.hours <= 0) return;
   const task = await tx.task.findFirst({
     where: { id: params.taskId },
-    select: { id: true, doneHours: true, pendingHours: true },
+    select: {
+      id: true,
+      doneHours: true,
+      pendingHours: true,
+      estimatedHours: true,
+      process: true,
+      projectId: true,
+      naveId: true,
+      lamp: { select: { name: true } },
+      project: { select: { name: true, code: true, responsibleUserId: true } },
+    },
   });
   if (!task) {
     log.warn({ taskId: params.taskId }, "time entry task not found; skipping task hour sync");
     return;
   }
-  await tx.task.update({
+  const updatedTask = await tx.task.update({
     where: { id: task.id },
     data: {
       doneHours: task.doneHours + params.hours,
       pendingHours: Math.max(0, task.pendingHours - params.hours),
     },
+    select: { doneHours: true },
   });
+
+  if (updatedTask.doneHours > task.estimatedHours + 1e-6) {
+    const dayKey = new Date().toISOString().slice(0, 10);
+    await emitNotificationTx(tx, {
+      type: NotificationType.TASK_HOURS_EXCEEDED,
+      title: "Tarea por encima de horas previstas",
+      body:
+        `La tarea ${task.process} de ${task.lamp?.name ?? "lámpara"} ` +
+        `supera lo estimado (${updatedTask.doneHours.toFixed(1)}h / ${task.estimatedHours.toFixed(1)}h).`,
+      payload: {
+        eventKey: `task-hours-exceeded:${task.id}:${dayKey}`,
+        taskId: task.id,
+        projectId: task.projectId,
+        naveId: task.naveId,
+        estimatedHours: task.estimatedHours,
+        doneHours: updatedTask.doneHours,
+      },
+      projectId: task.projectId,
+      naveId: task.naveId,
+      responsibleUserId: task.project.responsibleUserId,
+      scopeKey: `task-overrun:${task.id}`,
+    });
+  } else {
+    await resolveNotificationStates({
+      type: NotificationType.TASK_HOURS_EXCEEDED,
+      scopeKeys: [`task-overrun:${task.id}`],
+    });
+  }
 }
 
 async function reverseWorkOnTask(
@@ -46,19 +87,26 @@ async function reverseWorkOnTask(
   if (!params.taskId || params.hours <= 0) return;
   const task = await tx.task.findFirst({
     where: { id: params.taskId },
-    select: { id: true, doneHours: true, pendingHours: true },
+    select: { id: true, doneHours: true, pendingHours: true, estimatedHours: true },
   });
   if (!task) {
     log.warn({ taskId: params.taskId }, "delete time entry: task not found; skipping task hour sync");
     return;
   }
+  const newDoneHours = Math.max(0, task.doneHours - params.hours);
   await tx.task.update({
     where: { id: task.id },
     data: {
-      doneHours: Math.max(0, task.doneHours - params.hours),
+      doneHours: newDoneHours,
       pendingHours: task.pendingHours + params.hours,
     },
   });
+  if (newDoneHours <= task.estimatedHours + 1e-6) {
+    await resolveNotificationStates({
+      type: NotificationType.TASK_HOURS_EXCEEDED,
+      scopeKeys: [`task-overrun:${task.id}`],
+    });
+  }
 }
 
 function revalidateHorasAndLoad() {

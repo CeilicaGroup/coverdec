@@ -64,7 +64,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [frameTypes, processDefs, naves] = await Promise.all([
+  const [frameTypes, processDefs, naves, responsibleUsers] = await Promise.all([
     prisma.frameType.findMany({
       where: { isActive: true },
       include: {
@@ -82,6 +82,11 @@ export default async function ProjectDetailPage({
       where: { isActive: true },
       orderBy: { codigo: "asc" },
       select: { id: true, codigo: true, nombre: true },
+    }),
+    prisma.user.findMany({
+      where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
+      select: { id: true, name: true, role: true },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
     }),
   ]);
 
@@ -113,7 +118,9 @@ export default async function ProjectDetailPage({
                     deliveryDate: project.deliveryDate,
                     isBillable: project.isBillable,
                     notes: project.notes,
+                    responsibleUserId: project.responsibleUserId,
                   }}
+                  responsibleOptions={responsibleUsers}
                 />
                 <ProjectDangerZone
                   projectId={project.id}

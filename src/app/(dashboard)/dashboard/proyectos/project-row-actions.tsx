@@ -20,9 +20,11 @@ function formatActionError(err: unknown): string {
 
 export function ProjectRowActions({
   project,
+  responsibleOptions = [],
   canHardDelete,
 }: {
   project: EditableProject & { isActive: boolean };
+  responsibleOptions?: Array<{ id: string; name: string; role: string }>;
   canHardDelete: boolean;
 }) {
   const { id: projectId, name: projectName, isActive } = project;
@@ -68,7 +70,7 @@ export function ProjectRowActions({
 
   return (
     <div className="flex justify-end gap-1">
-      <EditProjectDialog project={project} />
+      <EditProjectDialog project={project} responsibleOptions={responsibleOptions} />
       <Button
         type="button"
         variant="ghost"
