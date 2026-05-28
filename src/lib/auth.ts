@@ -27,7 +27,13 @@ export const auth = betterAuth({
   trustedOrigins: process.env.BETTER_AUTH_URL
     ? [process.env.BETTER_AUTH_URL]
     : [],
-  plugins: [nextCookies(), admin()],
+  plugins: [
+    nextCookies(),
+    admin({
+      defaultRole: "OPERARIO",
+      adminRoles: ["ADMIN"],
+    }),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;
