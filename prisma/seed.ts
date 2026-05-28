@@ -329,7 +329,6 @@ async function seedLampWithTasks(
           lampFrameId: lampFrame.id,
           process: bp.process,
           estimatedHours: bp.estimatedHours,
-          pendingHours: bp.estimatedHours,
           order: bp.order + physicalFrameIndex * 1000,
           naveId,
         })),
