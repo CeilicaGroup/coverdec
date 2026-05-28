@@ -13,7 +13,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { requireDashboardContext } from "@/lib/context";
+import { requireDashboardContext, requireRole } from "@/lib/context";
+import { Role } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   formatWeekRange,
@@ -85,6 +86,7 @@ export default async function ResumenPage({
   searchParams: Promise<{ week?: string }>;
 }) {
   const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);

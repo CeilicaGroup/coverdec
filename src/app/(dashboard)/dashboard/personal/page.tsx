@@ -30,7 +30,6 @@ export default async function PersonalPage() {
           where: { date: { gte: rangeStart, lte: rangeEnd } },
           orderBy: { date: "asc" },
         },
-        _count: { select: { assignments: true } },
       },
       orderBy: { iniciales: "asc" },
     }),
@@ -57,7 +56,7 @@ export default async function PersonalPage() {
     usersLinked.map((u) => u.personId).filter((id): id is string => id != null),
   );
 
-  const people = peopleRaw.map(({ _count, workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => ({
+  const people = peopleRaw.map(({ workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => ({
     ...p,
     displayName: user?.name ?? p.iniciales,
     naveIds: personNaves.map((pn) => pn.naveId),
@@ -71,7 +70,6 @@ export default async function PersonalPage() {
       blockStartMinutes: a.blockStartMinutes,
       blockEndMinutes: a.blockEndMinutes,
     })),
-    canHardDelete: _count.assignments === 0 && !personIdsWithUser.has(p.id),
   }));
 
   return (

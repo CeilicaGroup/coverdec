@@ -26,9 +26,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Link2, Link2Off } from "lucide-react";
+import { Plus, Pencil, Link2, Link2Off } from "lucide-react";
 import { toast } from "sonner";
-import { savePerson, deletePerson } from "@/features/people/actions";
+import { savePerson } from "@/features/people/actions";
 import { PersonScheduleDialog } from "./person-schedule-dialog";
 import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
@@ -68,7 +68,6 @@ interface PersonWithSpecs {
   createdAt: Date;
   updatedAt: Date;
   specialties: PersonSpecialty[];
-  canHardDelete: boolean;
   workWindows: WorkWindowRow[];
   absences: AbsenceRow[];
 }
@@ -228,31 +227,6 @@ export function PersonalTeamClient({
     return err instanceof Error ? err.message : "Error";
   }
 
-  function onDeletePerson(p: PersonWithSpecs) {
-    if (!p.canHardDelete) {
-      toast.error(
-        "Hay planning o un usuario vinculado. Solo puedes desactivar la persona desde Editar.",
-      );
-      return;
-    }
-    if (
-      !globalThis.confirm(
-        `¿Eliminar definitivamente a ${p.displayName} (${p.iniciales})? Esta acción no se puede deshacer.`,
-      )
-    ) {
-      return;
-    }
-    startTransition(async () => {
-      try {
-        await deletePerson({ personId: p.id });
-        toast.success("Persona eliminada");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
-      }
-    });
-  }
-
   return (
     <>
       <PageHeader
@@ -335,22 +309,6 @@ export function PersonalTeamClient({
                         aria-label="Editar persona"
                       >
                         <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive disabled:opacity-40"
-                        disabled={!p.canHardDelete}
-                        onClick={() => onDeletePerson(p)}
-                        title={
-                          p.canHardDelete
-                            ? "Eliminar del todo"
-                            : "Solo desactivar: hay planning o usuario vinculado"
-                        }
-                        aria-label="Eliminar persona"
-                      >
-                        <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   ) : null}

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionCookie } from "better-auth/cookies";
 import { auth } from "@/lib/auth";
+import { getDefaultDashboardPath } from "@/lib/dashboard-path";
 import { prisma } from "@/lib/db";
 
 async function requestHeaders() {
@@ -42,15 +43,15 @@ export async function requireSessionOrRedirect() {
 }
 
 /** Only redirect away from login when the session maps to a real User row (server truth). */
-export async function redirectIfAuthenticated(destination = "/dashboard") {
+export async function redirectIfAuthenticated() {
   const session = await getSession();
   if (!session) return;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true },
+    select: { id: true, role: true },
   });
-  if (user) redirect(destination);
+  if (user) redirect(getDefaultDashboardPath(user.role));
 
   await clearSessionCookie();
 }

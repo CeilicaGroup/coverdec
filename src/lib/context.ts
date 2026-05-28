@@ -4,6 +4,7 @@ import {
   redirectToLoginWithStaleSession,
   requireSessionOrRedirect,
 } from "@/lib/auth-server";
+import { getDefaultDashboardPath } from "@/lib/dashboard-path";
 import { personNaveIds } from "@/features/people/person-naves";
 import type { Role } from "@/generated/prisma";
 
@@ -59,6 +60,6 @@ export function requireRole(
   allowed: Role[],
 ): void {
   if (!allowed.includes(ctx.role)) {
-    redirect("/dashboard");
+    redirect(getDefaultDashboardPath(ctx.role));
   }
 }

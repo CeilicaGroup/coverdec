@@ -24,8 +24,13 @@ export function LoginForm() {
       toast.error(error.message ?? "Credenciales inválidas");
       return;
     }
-    const redirectTo = searchParams.get("redirect") ?? "/dashboard";
-    router.push(redirectTo);
+    const redirectParam = searchParams.get("redirect");
+    const query = redirectParam
+      ? `?redirect=${encodeURIComponent(redirectParam)}`
+      : "";
+    const res = await fetch(`/api/auth/post-login-path${query}`);
+    const data = (await res.json()) as { path?: string };
+    router.push(data.path ?? "/dashboard/horas");
     router.refresh();
   };
 
