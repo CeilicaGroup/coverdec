@@ -32,42 +32,26 @@ import type {
   EngineProcessDef,
   EngineTask,
 } from "./engine/types";
-const DAY_MS = 24 * 60 * 60 * 1000;
+import {
+  effectivePendingHours,
+  isTaskClosedForPlanning,
+} from "./task-planning-status";
 
-function isTaskDone(task: {
-  pendingHours: number;
-  doneHours: number;
-  estimatedHours: number;
-}): boolean {
-  return (
-    task.pendingHours <= 0 ||
-    (task.estimatedHours > 0 && task.doneHours >= task.estimatedHours - 1e-6)
-  );
-}
+export { effectivePendingHours } from "./task-planning-status";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function isTaskHalfDone(task: {
   pendingHours: number;
   doneHours: number;
+  estimatedHours: number;
+  isCompleted: boolean;
 }): boolean {
-  return task.doneHours > 0 && task.pendingHours > 0;
-}
-
-/** Horas que el solver debe cubrir (pendingHours ya viene reconciliado por semana). */
-export function effectivePendingHours(
-  task: {
-    pendingHours: number;
-    doneHours: number;
-    estimatedHours: number;
-  },
-  options?: { priorPlannedHours?: number },
-): number {
-  if (isTaskDone(task)) return 0;
-  const remaining = Math.max(0, task.estimatedHours - task.doneHours);
-  let cap = remaining;
-  if (options?.priorPlannedHours != null) {
-    cap = Math.min(cap, Math.max(0, remaining - options.priorPlannedHours));
-  }
-  return Math.min(Math.max(0, task.pendingHours), cap);
+  return (
+    !isTaskClosedForPlanning(task) &&
+    task.doneHours > 0 &&
+    task.pendingHours > 0
+  );
 }
 
 export function roundUpToPlanningQuarterHours(hours: number): number {
@@ -107,13 +91,18 @@ export function buildFixedAssignmentsFromPrevious(
   }[],
   taskById: Map<
     string,
-    { pendingHours: number; doneHours: number; estimatedHours: number }
+    {
+      pendingHours: number;
+      doneHours: number;
+      estimatedHours: number;
+      isCompleted: boolean;
+    }
   >,
 ): EngineFixedAssignment[] {
   const fixed: EngineFixedAssignment[] = [];
   for (const a of assignments) {
     const task = taskById.get(a.taskId);
-    if (!task || !isTaskDone(task)) continue;
+    if (!task || !isTaskClosedForPlanning(task)) continue;
     fixed.push({
       taskId: a.taskId,
       personId: a.personId,

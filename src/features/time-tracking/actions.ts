@@ -247,13 +247,16 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, isCompleted: true },
+      select: { id: true, isCompleted: true, pendingHours: true },
     });
     if (!task) throw new Error("Tarea no encontrada.");
     if (task.isCompleted) return;
     await tx.task.update({
       where: { id: task.id },
-      data: { isCompleted: true },
+      data: {
+        isCompleted: true,
+        pendingHours: 0,
+      },
     });
   });
 

@@ -29,6 +29,17 @@ describe("computeWeekProgress", () => {
 });
 
 describe("taskHasRemainingToPlan", () => {
+  it("is false when marked completed", () => {
+    expect(
+      taskHasRemainingToPlan({
+        estimatedHours: 8,
+        doneHours: 2,
+        pendingHours: 5,
+        isCompleted: true,
+      }),
+    ).toBe(false);
+  });
+
   it("is false when pending is zero", () => {
     expect(
       taskHasRemainingToPlan({

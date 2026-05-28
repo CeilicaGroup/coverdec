@@ -3,6 +3,7 @@ import { childLogger } from "@/lib/logger";
 import { runPlanningEngine, SolverInfeasibleError } from "./engine";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import { loadSolverInput } from "./load-engine-input";
+import { isTaskClosedForPlanning } from "./task-planning-status";
 import {
   getPriorPlanningAssignments,
   sumPriorPlannedHoursByTaskId,
@@ -21,18 +22,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** DB writes only; CP-SAT solver runs outside the transaction (often 10–60s). */
 const PLANNING_WRITE_TX_MS = 30_000;
-
-function isTaskDoneInFactory(task: {
-  pendingHours: number;
-  doneHours: number;
-  estimatedHours: number;
-}): boolean {
-  return (
-    task.pendingHours <= 0 &&
-    task.estimatedHours > 0 &&
-    task.doneHours >= task.estimatedHours - 1e-6
-  );
-}
 
 async function restoreAssignmentHoursToTasks(
   tx: Prisma.TransactionClient,
@@ -54,7 +43,7 @@ async function restoreAssignmentHoursToTasks(
       const add = row._sum.hours ?? 0;
       if (add <= 0) return;
       const task = taskMap.get(row.taskId);
-      if (!task || isTaskDoneInFactory(task)) return;
+      if (!task || isTaskClosedForPlanning(task)) return;
       await tx.task.update({
         where: { id: row.taskId },
         data: { pendingHours: task.pendingHours + add },
@@ -76,13 +65,22 @@ async function reconcileTaskPendingBeforeSolve(
         pendingHours: true,
         doneHours: true,
         estimatedHours: true,
+        isCompleted: true,
       },
     }),
     sumPriorPlannedHoursByTaskId({ naveId, beforeWeekStart }),
   ]);
 
   for (const task of tasks) {
-    if (isTaskDoneInFactory(task)) continue;
+    if (isTaskClosedForPlanning(task)) {
+      if (task.isCompleted && task.pendingHours > 1e-6) {
+        await prisma.task.update({
+          where: { id: task.id },
+          data: { pendingHours: 0 },
+        });
+      }
+      continue;
+    }
     const remaining = Math.max(0, task.estimatedHours - task.doneHours);
     const priorPlanned = priorByTask.get(task.id) ?? 0;
     const expectedPending = Math.max(0, remaining - priorPlanned);

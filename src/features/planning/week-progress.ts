@@ -129,7 +129,9 @@ export function taskHasRemainingToPlan(task: {
   estimatedHours: number;
   doneHours: number;
   pendingHours: number;
+  isCompleted?: boolean;
 }): boolean {
+  if (task.isCompleted) return false;
   if (
     task.estimatedHours > 0 &&
     task.doneHours >= task.estimatedHours - 1e-6
