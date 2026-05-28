@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -187,6 +195,7 @@ function SliderRow({
 export function GlobalProjectPresetControl() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<ProjectPlanningPreset>(ProjectPlanningPreset.EQUILIBRADO);
 
   const onApply = () => {
@@ -194,6 +203,7 @@ export function GlobalProjectPresetControl() {
       try {
         const result = await applyGlobalPlanningPresetToActiveProjects({ preset });
         toast.success(`Preset aplicado a ${result.updatedCount} proyectos`);
+        setOpen(false);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo aplicar el preset");
@@ -202,30 +212,46 @@ export function GlobalProjectPresetControl() {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={preset}
-        onValueChange={(value) => {
-          if (value) setPreset(value);
-        }}
-      >
-        <SelectTrigger size="sm" className="min-w-[180px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ProjectPlanningPreset.A_TIEMPO}>{PRESET_LABELS.A_TIEMPO}</SelectItem>
-          <SelectItem value={ProjectPlanningPreset.EQUILIBRADO}>
-            {PRESET_LABELS.EQUILIBRADO}
-          </SelectItem>
-          <SelectItem value={ProjectPlanningPreset.MIN_COSTE}>
-            {PRESET_LABELS.MIN_COSTE}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      <Button size="sm" variant="outline" onClick={onApply} disabled={pending}>
-        {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-        Aplicar a activos
-      </Button>
-    </div>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        Aplicar estrategia a todos
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Aplicar estrategia en masa</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>Preset a aplicar en proyectos activos</Label>
+          <Select
+            value={preset}
+            onValueChange={(value) => {
+              if (value) setPreset(value);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ProjectPlanningPreset.A_TIEMPO}>{PRESET_LABELS.A_TIEMPO}</SelectItem>
+              <SelectItem value={ProjectPlanningPreset.EQUILIBRADO}>
+                {PRESET_LABELS.EQUILIBRADO}
+              </SelectItem>
+              <SelectItem value={ProjectPlanningPreset.MIN_COSTE}>
+                {PRESET_LABELS.MIN_COSTE}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onApply} disabled={pending}>
+            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+            Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

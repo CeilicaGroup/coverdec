@@ -58,9 +58,9 @@ import Link from "next/link";
 import { GenerateButton } from "./generate-button";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
 import {
-  GlobalProjectPresetControl,
   ProjectStrategyControls,
 } from "./proyectos/project-strategy-controls";
+import { GlobalProjectPresetControl } from "./proyectos/project-strategy-controls";
 import { getPlanningUndoState } from "@/features/planning/actions";
 import {
   buildPriorPlannedHoursByProjectId,
@@ -160,9 +160,6 @@ export default async function ResumenPage({
             />
             {ctx.naveId ? (
               <>
-                {(ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION") ? (
-                  <GlobalProjectPresetControl />
-                ) : null}
                 <PlanningWeightsPopover
                   initialWeights={planningWeights}
                   initialDeadlineSettings={deadlineSettings}
@@ -303,9 +300,14 @@ export default async function ResumenPage({
             <CalendarClock className="size-4" />
             Proyectos
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Progreso global, entregas y fin estimado (orientativo según capacidad del equipo).
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Progreso global, entregas y fin estimado (orientativo según capacidad del equipo).
+            </p>
+            {(ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION") ? (
+              <GlobalProjectPresetControl />
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <Tabs defaultValue="todos">
