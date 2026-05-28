@@ -929,6 +929,58 @@ export function summarizeUnassignedProjects(
   return rows;
 }
 
+export function mergeHoursByDay(...sources: Map<string, number>[]): Map<string, number> {
+  const merged = new Map<string, number>();
+  for (const source of sources) {
+    for (const [day, hours] of source) {
+      merged.set(day, (merged.get(day) ?? 0) + hours);
+    }
+  }
+  return merged;
+}
+
+export function sumPlannedHoursByDay(
+  assignments: { date: Date; hours: number }[],
+): { totalHours: number; byDay: Map<string, number> } {
+  const byDay = new Map<string, number>();
+  let totalHours = 0;
+  for (const assignment of assignments) {
+    totalHours += assignment.hours;
+    const dayKey = assignment.date.toISOString().slice(0, 10);
+    byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + assignment.hours);
+  }
+  return { totalHours, byDay };
+}
+
+/** Horas planificadas (borrador o publicado) en otras naves para el equipo visible. */
+export async function getCrossNavePlanningHoursForWeek({
+  naveScope,
+  weekStart,
+  personIds,
+}: {
+  naveScope: string[] | null;
+  weekStart: Date;
+  personIds: string[];
+}): Promise<{ totalHours: number; byDay: Map<string, number> }> {
+  if (naveScope === null || naveScope.length === 0 || personIds.length === 0) {
+    return { totalHours: 0, byDay: new Map() };
+  }
+  const monday = getMondayOf(weekStart);
+  const { year, week } = isoWeek(monday);
+  const assignments = await prisma.planningAssignment.findMany({
+    where: {
+      personId: { in: personIds },
+      planning: {
+        year,
+        week,
+        naveId: { notIn: naveScope },
+      },
+    },
+    select: { date: true, hours: true },
+  });
+  return sumPlannedHoursByDay(assignments);
+}
+
 export function summarizePlanning(
   planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
 ) {

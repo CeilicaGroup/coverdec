@@ -39,6 +39,8 @@ import {
   getPlanningDeadlineSettings,
   getPlanningWeights,
   getProcessBadgeStylesByCode,
+  getCrossNavePlanningHoursForWeek,
+  mergeHoursByDay,
   summarizeAllActiveProjects,
   summarizePlanning,
   summarizeUnassignedProjects,
@@ -94,8 +96,8 @@ export default async function ResumenPage({
     await Promise.all([
     getPlanningForWeek({ naveScope, weekStart, viewMode }),
     getPlanningWeekMeta({ naveScope, weekStart }),
-    getNavePersonnel(naveScopeFromContext(ctx)),
-    getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
+    getNavePersonnel(naveScope),
+    getActiveProjectsWithLoad(naveScope),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
     getPlanningWeights(ctx.naveId),
@@ -109,6 +111,18 @@ export default async function ResumenPage({
       : Promise.resolve([]),
   ]);
 
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    days[0],
+    days[days.length - 1] ?? days[0],
+  );
+
+  const crossNaveHours = await getCrossNavePlanningHoursForWeek({
+    naveScope,
+    weekStart,
+    personIds: people.map((p) => p.id),
+  });
+
   const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(priorAssignments);
   const priorPlannedHoursByProject = buildPriorPlannedHoursByProjectId(
     projects,
@@ -116,21 +130,12 @@ export default async function ResumenPage({
   );
 
   const summary = summarizePlanning(planning);
+  const usedByDay = mergeHoursByDay(summary.byDay, crossNaveHours.byDay);
+  const totalUsedHours = summary.totalHours + crossNaveHours.totalHours;
   const undoState = await getPlanningUndoState(
     getMondayOf(weekStart).toISOString(),
   );
-  const capacity = computeCapacity(
-    days,
-    people,
-    expandHolidayRangesToIsoDays(holidays, days[0], days[days.length - 1] ?? days[0]),
-    absences,
-  );
-
-  const holidayDates = expandHolidayRangesToIsoDays(
-    holidays,
-    days[0],
-    days[days.length - 1] ?? days[0],
-  );
+  const capacity = computeCapacity(days, people, holidayDates, absences);
 
   const allProjects = summarizeAllActiveProjects(
     projects,
@@ -148,8 +153,13 @@ export default async function ResumenPage({
     0,
   );
   const occupation = capacity.totalCapacity > 0
-    ? Math.round((summary.totalHours / capacity.totalCapacity) * 100)
+    ? Math.round((totalUsedHours / capacity.totalCapacity) * 100)
     : 0;
+
+  const occupationSub =
+    crossNaveHours.totalHours > 0
+      ? `${occupation}% ocupación · ${formatHours(crossNaveHours.totalHours)} otras naves`
+      : `${occupation}% ocupación`;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -217,8 +227,8 @@ export default async function ResumenPage({
         />
         <Kpi
           label="Horas asignadas"
-          value={`${formatHours(summary.totalHours)}`}
-          sub={`${occupation}% ocupación`}
+          value={`${formatHours(totalUsedHours)}`}
+          sub={occupationSub}
           icon={<TrendingUp className="size-4" />}
           highlight={occupation > 95 ? "warn" : occupation > 0 ? "ok" : "muted"}
         />
@@ -256,7 +266,7 @@ export default async function ResumenPage({
       <div className="grid grid-cols-5 gap-3">
         {days.map((day, idx) => {
           const dayKey = day.toISOString().slice(0, 10);
-          const used = summary.byDay.get(dayKey) ?? 0;
+          const used = usedByDay.get(dayKey) ?? 0;
           const cap = capacity.byDay.get(dayKey) ?? 0;
           const pct = cap > 0 ? Math.round((used / cap) * 100) : 0;
           const isHoliday = holidayDates.has(dayKey);
