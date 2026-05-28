@@ -11,6 +11,7 @@ import {
   getActualHoursForWeek,
   getPlanningForWeek,
   getProcessDefinitionsByCode,
+  toPlanningAssignmentSlices,
   type ActualHourEntry,
 } from "@/features/planning/queries";
 import {
@@ -85,7 +86,7 @@ export default async function ProyectoPage({
       weekStart,
     }),
   ]);
-  const assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+  const assignments = toPlanningAssignmentSlices(planning?.assignments ?? []);
 
   const planningMeta =
     view === "plan"

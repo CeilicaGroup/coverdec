@@ -26,6 +26,8 @@ import {
   computeWeekTaskMetrics,
 } from "@/features/planning/week-progress";
 import { isTaskClosedForPlanning } from "@/features/planning/task-planning-status";
+import type { PlanningAssignmentSlice } from "@/features/planning/planning-timeline";
+import type { ProcessCode } from "@/types/process";
 import {
   computeTaskHourTotals,
   loadDoneHoursByTaskIds,
@@ -152,6 +154,67 @@ export async function getPlanningForWeek({
       },
     })),
   };
+}
+
+/** Assignment row shape returned by {@link getPlanningForWeek} (before timeline narrowing). */
+export interface PlanningWeekAssignmentInput {
+  id: string;
+  date: Date;
+  startSlot: number;
+  endSlot: number;
+  hours: number;
+  process: string;
+  personId: string;
+  person: {
+    id: string;
+    iniciales: string;
+    color: string;
+    alias: string | null;
+    nombre?: string;
+    user?: { name: string | null } | null;
+  };
+  task: {
+    id: string;
+    order: number;
+    isCompleted: boolean;
+    projectId: string;
+    lampId: string;
+    lamp: PlanningAssignmentSlice["task"]["lamp"];
+    lampFrame?: PlanningAssignmentSlice["task"]["lampFrame"];
+    project: { name: string };
+  };
+}
+
+/** Narrow planning query rows into the slice expected by timeline/progress helpers. */
+export function toPlanningAssignmentSlices(
+  assignments: ReadonlyArray<PlanningWeekAssignmentInput>,
+): PlanningAssignmentSlice[] {
+  return assignments.map((a) => ({
+    id: a.id,
+    date: a.date,
+    startSlot: a.startSlot,
+    endSlot: a.endSlot,
+    hours: a.hours,
+    process: a.process as ProcessCode,
+    personId: a.personId,
+    person: {
+      id: a.person.id,
+      iniciales: a.person.iniciales,
+      color: a.person.color,
+      alias: a.person.alias,
+      nombre: a.person.nombre ?? a.person.user?.name ?? a.person.iniciales,
+    },
+    task: {
+      id: a.task.id,
+      order: a.task.order,
+      isCompleted: a.task.isCompleted,
+      projectId: a.task.projectId,
+      lampId: a.task.lampId,
+      lamp: a.task.lamp,
+      lampFrame: a.task.lampFrame,
+      project: { name: a.task.project.name },
+    },
+  }));
 }
 
 export interface ProcessDefinitionInfo {

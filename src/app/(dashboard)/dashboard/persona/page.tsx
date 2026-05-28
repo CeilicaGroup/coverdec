@@ -14,6 +14,7 @@ import {
   getNavePersonnel,
   getPlanningForWeek,
   getProcessDefinitionsByCode,
+  toPlanningAssignmentSlices,
   type ActualHourEntry,
 } from "@/features/planning/queries";
 import {
@@ -88,7 +89,9 @@ export default async function PersonaPage({
       weekStart,
     }),
   ]);
-  const planningAssignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+  const planningAssignments = toPlanningAssignmentSlices(
+    planning?.assignments ?? [],
+  );
   const actualEntries =
     ctx.role === Role.OPERARIO && ctx.personId
       ? rawActualEntries.filter((e) => e.personId === ctx.personId)
