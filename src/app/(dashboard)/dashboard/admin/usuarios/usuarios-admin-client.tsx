@@ -36,7 +36,6 @@ interface UserRow {
 }
 
 interface NaveOption { id: string; codigo: string; nombre: string }
-interface PersonOption { id: string; nombre: string; iniciales: string }
 
 const ROLES = [
   { value: "ADMIN", label: "Admin" },
@@ -49,7 +48,6 @@ type FormState = {
   email: string;
   password: string;
   role: string;
-  personId: string;
   naveIds: string[];
 };
 
@@ -58,24 +56,15 @@ const emptyForm = (): FormState => ({
   email: "",
   password: "",
   role: "OPERARIO",
-  personId: "none",
   naveIds: [],
 });
-
-function personSelectLabel(personId: string, people: PersonOption[]): string {
-  if (personId === "none") return "Sin persona";
-  const person = people.find((p) => p.id === personId);
-  return person ? `${person.iniciales} · ${person.nombre}` : "Sin persona";
-}
 
 export function UsuariosAdminClient({
   users,
   naves,
-  people,
 }: {
   users: UserRow[];
   naves: NaveOption[];
-  people: PersonOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -95,7 +84,6 @@ export function UsuariosAdminClient({
       email: u.email,
       password: "",
       role: u.role,
-      personId: u.person?.id ?? "none",
       naveIds: u.person?.personNaves.map((pn) => pn.nave.id) ?? [],
     });
     setEditUserId(u.id);
@@ -104,7 +92,6 @@ export function UsuariosAdminClient({
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const personId = form.personId === "none" ? undefined : form.personId;
     startTransition(async () => {
       try {
         if (dialogMode === "create") {
@@ -113,7 +100,6 @@ export function UsuariosAdminClient({
             email: form.email,
             password: form.password,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            personId,
             naveIds: form.naveIds,
           });
           toast.success("Usuario creado");
@@ -122,8 +108,8 @@ export function UsuariosAdminClient({
             userId: editUserId,
             name: form.name,
             email: form.email,
+            password: form.password.trim().length > 0 ? form.password : undefined,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            personId: form.personId === "none" ? null : form.personId,
             naveIds: form.naveIds,
           });
           toast.success("Usuario actualizado");
@@ -206,6 +192,17 @@ export function UsuariosAdminClient({
                 />
               </div>
             )}
+            {dialogMode === "edit" && (
+              <div className="space-y-2">
+                <Label>Nueva contraseña <span className="text-muted-foreground text-xs">(opcional, mín. 8)</span></Label>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  minLength={8}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Rol</Label>
               <Select value={form.role} onValueChange={(v) => v && setForm((f) => ({ ...f, role: v }))}>
@@ -219,21 +216,11 @@ export function UsuariosAdminClient({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <Label>Persona vinculada</Label>
-              <Select value={form.personId} onValueChange={(v) => v && setForm((f) => ({ ...f, personId: v }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin persona">
-                    {personSelectLabel(form.personId, people)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin persona</SelectItem>
-                  {people.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.iniciales} · {p.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <p className="text-xs text-muted-foreground">
+                Esta relación se gestiona desde Personal.
+              </p>
             </div>
             {naves.length > 0 && form.role !== "ADMIN" && (
               <div className="space-y-2">

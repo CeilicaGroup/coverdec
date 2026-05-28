@@ -8,7 +8,7 @@ export default async function UsuariosAdminPage() {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN]);
 
-  const [users, naves, people] = await Promise.all([
+  const [users, naves] = await Promise.all([
     prisma.user.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -29,22 +29,12 @@ export default async function UsuariosAdminPage() {
       },
     }),
     prisma.nave.findMany({ where: { isActive: true }, orderBy: { codigo: "asc" }, select: { id: true, codigo: true, nombre: true } }),
-    prisma.person.findMany({
-      orderBy: { iniciales: "asc" },
-      select: { id: true, alias: true, iniciales: true, user: { select: { name: true } } },
-    }),
   ]);
-
-  const peopleOptions = people.map((p) => ({
-    id: p.id,
-    iniciales: p.iniciales,
-    nombre: p.user?.name ?? p.alias ?? p.iniciales,
-  }));
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader title="Gestión de usuarios" />
-      <UsuariosAdminClient users={users} naves={naves} people={peopleOptions} />
+      <UsuariosAdminClient users={users} naves={naves} />
     </div>
   );
 }

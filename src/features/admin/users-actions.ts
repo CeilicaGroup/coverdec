@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { requireDashboardContext, requireRole } from "@/lib/context";
@@ -37,7 +38,6 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: z.nativeEnum(Role),
-  personId: z.string().optional(),
   naveIds: naveIdsSchema.optional(),
 });
 
@@ -57,7 +57,6 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
     where: { email: data.email },
     data: {
       role: data.role,
-      personId: data.personId ?? null,
       emailVerified: true,
     },
   });
@@ -77,8 +76,8 @@ const updateUserSchema = z.object({
   userId: z.string().min(1),
   name: z.string().min(1).max(100).optional(),
   email: z.string().email().optional(),
+  password: z.string().min(8).optional(),
   role: z.nativeEnum(Role),
-  personId: z.string().optional().nullable(),
   naveIds: naveIdsSchema.optional(),
 });
 
@@ -97,23 +96,24 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
     }
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (data.personId) {
-      await tx.user.updateMany({
-        where: { personId: data.personId, id: { not: data.userId } },
-        data: { personId: null },
-      });
-    }
-    await tx.user.update({
-      where: { id: data.userId },
-      data: {
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        personId: data.personId ?? null,
-      },
-    });
+  await prisma.user.update({
+    where: { id: data.userId },
+    data: {
+      name: data.name,
+      email: data.email,
+      role: data.role,
+    },
   });
+
+  if (data.password) {
+    await auth.api.setUserPassword({
+      body: {
+        userId: data.userId,
+        newPassword: data.password,
+      },
+      headers: await headers(),
+    });
+  }
 
   if (data.role !== Role.ADMIN) {
     await applyPersonNavesForUser(
