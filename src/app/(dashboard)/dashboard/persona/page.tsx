@@ -38,6 +38,9 @@ import {
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { PrintToolbar } from "./print-toolbar";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningWeekMeta } from "@/features/planning/queries";
+import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
 function formatTimeRange(startedAt: Date, hours: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -61,6 +64,8 @@ export default async function PersonaPage({
   const days = weekDays(weekStart);
   const view = params.view === "actual" ? "actual" : "plan";
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
 
   const [allPeople, absences, processByCode] = await Promise.all([
     getNavePersonnel(naveScopeFromContext(ctx)),
@@ -88,11 +93,28 @@ export default async function PersonaPage({
         : raw;
   } else {
     const planning = await getPlanningForWeek({
-      naveScope: naveScopeFromContext(ctx),
+      naveScope,
       weekStart,
+      viewMode,
     });
-    planningAssignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+    planningAssignments = (planning?.assignments ??
+      []) as unknown as PlanningAssignmentSlice[];
   }
+
+  const planningMeta =
+    view === "plan"
+      ? await getPlanningWeekMeta({ naveScope, weekStart })
+      : null;
+  const hiddenDraft =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    planningMeta?.status === "DRAFT" &&
+    planningAssignments.length === 0;
+  const noPublished =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    !planningMeta &&
+    planningAssignments.length === 0;
 
   const fullTimeline = buildPlanningTimeline(planningAssignments, processByCode);
 
@@ -117,7 +139,13 @@ export default async function PersonaPage({
         }
       />
 
-      {view === "plan" && planningAssignments.length === 0 && (
+      {view === "plan" && (
+        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+      )}
+      {view === "plan" &&
+        planningAssignments.length === 0 &&
+        !hiddenDraft &&
+        !noPublished && (
         <p className="text-sm text-muted-foreground">
           No hay planning para esta semana. Genera un borrador desde Resumen.
         </p>

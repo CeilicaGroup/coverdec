@@ -33,6 +33,7 @@ import { PageHeader } from "../../_components/page-header";
 import { GanttChart } from "./gantt-chart";
 import { GanttFilters, type GanttAxisMode } from "./gantt-filters";
 import { GanttWorkerChart, type GanttWorkerRow } from "./gantt-worker-chart";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -186,10 +187,12 @@ export default async function GanttPage({
   const axisMode: GanttAxisMode = params.axis === "worker" ? "worker" : "project";
   const projectIds = parseSelectedIds(params.projects);
   const personIds = parseSelectedIds(params.people);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
 
   const [projects, assignments, people, processStyles, processDefs] = await Promise.all([
-    getActiveProjectsForGantt(naveScopeFromContext(ctx)),
-    getGanttPlanningAssignments(naveScopeFromContext(ctx)),
+    getActiveProjectsForGantt(naveScope),
+    getGanttPlanningAssignments(naveScope, viewMode),
     getNavePersonnel(naveScopeFromContext(ctx)),
     getProcessBadgeStylesByCode(),
     getProcessDefinitionsByCode(),

@@ -40,6 +40,9 @@ import {
   riskFromPlannedEnd,
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningWeekMeta } from "@/features/planning/queries";
+import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
 function formatTimeRange(startedAt: Date, hours: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -62,6 +65,8 @@ export default async function ProyectoPage({
   const { year, week } = isoWeek(weekStart);
   const view = params.view === "actual" ? "actual" : "plan";
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
 
   const [projects, processByCode] = await Promise.all([
     getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
@@ -79,11 +84,28 @@ export default async function ProyectoPage({
     });
   } else {
     const planning = await getPlanningForWeek({
-      naveScope: naveScopeFromContext(ctx),
+      naveScope,
       weekStart,
+      viewMode,
     });
-    assignments = (planning?.assignments ?? []) as PlanningAssignmentSlice[];
+    assignments = (planning?.assignments ??
+      []) as unknown as PlanningAssignmentSlice[];
   }
+
+  const planningMeta =
+    view === "plan"
+      ? await getPlanningWeekMeta({ naveScope, weekStart })
+      : null;
+  const hiddenDraft =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    planningMeta?.status === "DRAFT" &&
+    assignments.length === 0;
+  const noPublished =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    !planningMeta &&
+    assignments.length === 0;
 
   // Build per-project data
   const byProject = new Map<string, PlanningAssignmentSlice[]>();
@@ -139,6 +161,10 @@ export default async function ProyectoPage({
           </div>
         }
       />
+
+      {view === "plan" && (
+        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+      )}
 
       {projectsWithLoad.length === 0 && (
         <p className="text-sm text-muted-foreground">

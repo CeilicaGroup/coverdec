@@ -27,6 +27,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatEuros, formatHours } from "@/lib/format";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
+import { getPlanningWeekMeta } from "@/features/planning/queries";
 
 export default async function CostesPage({
   searchParams,
@@ -40,9 +43,12 @@ export default async function CostesPage({
   const { year, week } = isoWeek(weekStart);
   const weekMon = getMondayOf(weekStart);
   const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
-  const [planning, people, holidays] = await Promise.all([
-    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
-    getNavePersonnel(naveScopeFromContext(ctx)),
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
+  const [planning, planningMeta, people, holidays] = await Promise.all([
+    getPlanningForWeek({ naveScope, weekStart, viewMode }),
+    getPlanningWeekMeta({ naveScope, weekStart }),
+    getNavePersonnel(naveScope),
     getHolidaysForRange(weekMon, weekFri),
   ]);
   const workDays = Math.max(1, 5 - holidays.length);
@@ -127,6 +133,15 @@ export default async function CostesPage({
             weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
           />
         }
+      />
+
+      <PlanningEmptyNotice
+        hiddenDraft={
+          viewMode === "published_only" &&
+          planningMeta?.status === "DRAFT" &&
+          !planning
+        }
+        noPublished={viewMode === "published_only" && !planningMeta && !planning}
       />
 
       <div className="rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 px-4 py-3 text-sm flex items-center gap-2 text-yellow-900 dark:text-yellow-200">

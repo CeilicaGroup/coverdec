@@ -2,6 +2,7 @@ import { PlanningStatus } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { PageHeader } from "../../_components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntriesList } from "./entries-list";
@@ -35,8 +36,13 @@ export default async function HorasPage() {
 
   const friday = new Date(monday);
   friday.setUTCDate(monday.getUTCDate() + 5);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const planningStatusWhere: { status?: PlanningStatus } =
+    viewMode === "include_draft"
+      ? {}
+      : { status: PlanningStatus.PUBLISHED };
 
-  const [openTimer, entries, processStyles, publishedPlanning] = await Promise.all([
+  const [openTimer, entries, processStyles, weekPlanning] = await Promise.all([
     prisma.timeEntry.findFirst({
       where: { userId: ctx.userId, endedAt: null },
       include: { project: true, lamp: true, task: true },
@@ -50,7 +56,7 @@ export default async function HorasPage() {
     getProcessBadgeStylesByCode(),
     prisma.planning.findMany({
       where: {
-        status: PlanningStatus.PUBLISHED,
+        ...planningStatusWhere,
         weekStart: { gte: monday, lt: friday },
         ...(naveScope !== null ? { naveId: { in: naveScope } } : {}),
       },
@@ -76,7 +82,7 @@ export default async function HorasPage() {
   const taskRanges = new Map<string, string[]>();
   const taskSortKey = new Map<string, number>();
   let orderCursor = 0;
-  for (const planning of publishedPlanning) {
+  for (const planning of weekPlanning) {
     for (const assignment of planning.assignments) {
       const label = `${weekdayLabel(assignment.date)} ${rangeLabel(
         assignment.startSlot,

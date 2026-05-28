@@ -12,6 +12,7 @@ import {
   getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
+  getPlanningWeekMeta,
 } from "@/features/planning/queries";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
@@ -28,6 +29,8 @@ import { PersonAvatar } from "@/components/person-avatar";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
 export default async function DisponibilidadPage({
   searchParams,
@@ -39,8 +42,11 @@ export default async function DisponibilidadPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
-  const [planning, people, holidays, absences] = await Promise.all([
-    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
+  const [planning, planningMeta, people, holidays, absences] = await Promise.all([
+    getPlanningForWeek({ naveScope, weekStart, viewMode }),
+    getPlanningWeekMeta({ naveScope, weekStart }),
     getNavePersonnel(naveScopeFromContext(ctx)),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
@@ -63,6 +69,15 @@ export default async function DisponibilidadPage({
             weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
           />
         }
+      />
+
+      <PlanningEmptyNotice
+        hiddenDraft={
+          viewMode === "published_only" &&
+          planningMeta?.status === "DRAFT" &&
+          !planning
+        }
+        noPublished={viewMode === "published_only" && !planningMeta && !planning}
       />
 
       <Card>

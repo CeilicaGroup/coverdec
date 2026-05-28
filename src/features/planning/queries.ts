@@ -1,6 +1,11 @@
+import { PlanningStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
 import { isoWeek } from "@/lib/week";
+import {
+  isPlanningVisible,
+  type PlanningViewMode,
+} from "@/features/planning/planning-visibility";
 import { daysUntil, riskFromDelivery, riskFromPlannedEnd } from "@/lib/format";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import {
@@ -16,13 +21,65 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function mapPlanningAssignments<
+  T extends {
+    assignments: {
+      person: { user: { name: string | null } | null; iniciales: string };
+    }[];
+  },
+>(planning: T) {
+  return {
+    ...planning,
+    assignments: planning.assignments.map((a) => ({
+      ...a,
+      person: {
+        ...a.person,
+        nombre: a.person.user?.name ?? a.person.iniciales,
+      },
+    })),
+  };
+}
+
+/** Metadatos del planning de la semana (sin filtrar por vista). */
+export async function getPlanningWeekMeta({
+  naveScope,
+  weekStart,
+}: {
+  naveScope: string[] | null;
+  weekStart: Date;
+}) {
+  const monday = getMondayOf(weekStart);
+  const { year, week } = isoWeek(monday);
+  if (naveScope !== null && naveScope.length === 0) return null;
+
+  if (naveScope !== null && naveScope.length === 1) {
+    return prisma.planning.findUnique({
+      where: { naveId_year_week: { naveId: naveScope[0]!, year, week } },
+      select: { id: true, status: true, publishedAt: true, naveId: true },
+    });
+  }
+
+  const rows = await prisma.planning.findMany({
+    where: {
+      year,
+      week,
+      ...(naveScope !== null ? { naveId: { in: naveScope } } : {}),
+    },
+    select: { id: true, status: true, publishedAt: true, naveId: true },
+    orderBy: { naveId: "asc" },
+  });
+  return rows[0] ?? null;
+}
+
 export async function getPlanningForWeek({
   naveScope,
   weekStart,
+  viewMode = "published_only",
 }: {
   /** null = todas las naves; [] = ninguna; [ids] = subconjunto */
   naveScope: string[] | null;
   weekStart: Date;
+  viewMode?: PlanningViewMode;
 }) {
   const monday = getMondayOf(weekStart);
   const { year, week } = isoWeek(monday);
@@ -44,16 +101,8 @@ export async function getPlanningForWeek({
       include,
     });
     if (!planning) return null;
-    return {
-      ...planning,
-      assignments: planning.assignments.map((a) => ({
-        ...a,
-        person: {
-          ...a.person,
-          nombre: a.person.user?.name ?? a.person.iniciales,
-        },
-      })),
-    };
+    if (!isPlanningVisible(planning.status, viewMode)) return null;
+    return mapPlanningAssignments(planning);
   }
 
   const plannings = await prisma.planning.findMany({
@@ -64,14 +113,17 @@ export async function getPlanningForWeek({
     },
     include,
   });
-  if (plannings.length === 0) return null;
+  const visible = plannings.filter((p) =>
+    isPlanningVisible(p.status, viewMode),
+  );
+  if (visible.length === 0) return null;
 
-  const allAssignments = plannings
+  const allAssignments = visible
     .flatMap((p) => p.assignments)
     .sort((a, b) => a.date.getTime() - b.date.getTime() || a.startSlot - b.startSlot);
 
   return {
-    ...plannings[0]!,
+    ...visible[0]!,
     id: "__all__",
     naveId: "__all__",
     assignments: allAssignments.map((a) => ({
@@ -250,16 +302,25 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
 }
 
 /** Asignaciones de planning de proyectos activos (todas las semanas) para el Gantt global. */
-export async function getGanttPlanningAssignments(naveScope: string[] | null) {
+export async function getGanttPlanningAssignments(
+  naveScope: string[] | null,
+  viewMode: PlanningViewMode = "published_only",
+) {
   if (naveScope !== null && naveScope.length === 0) return [];
   const naveIn = naveScope !== null ? { in: naveScope } : undefined;
+  const planningStatus =
+    viewMode === "published_only"
+      ? { status: PlanningStatus.PUBLISHED }
+      : {};
   const rows = await prisma.planningAssignment.findMany({
     where: {
       task: {
         project: { isActive: true },
         ...(naveIn ? { naveId: naveIn } : {}),
       },
-      ...(naveIn ? { planning: { naveId: naveIn } } : {}),
+      ...(naveIn
+        ? { planning: { naveId: naveIn, ...planningStatus } }
+        : { planning: planningStatus }),
     },
     select: {
       taskId: true,

@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { PlanningViewToggle } from "./planning-view-toggle";
+import type { PlanningViewMode } from "@/features/planning/planning-visibility";
 
 interface NaveSummary {
   id: string;
@@ -45,6 +47,7 @@ interface DashboardShellProps {
   activeNave: NaveSummary | null;
   /** Naves assigned to the linked person (operario/jefe). */
   assignedNaves?: NaveSummary[];
+  planningViewMode?: PlanningViewMode;
   children: React.ReactNode;
 }
 
@@ -96,6 +99,7 @@ export function DashboardShell({
   naves,
   activeNave,
   assignedNaves = [],
+  planningViewMode = "published_only",
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -165,7 +169,7 @@ export function DashboardShell({
                   {section.naveScoped && <Warehouse className="size-3 opacity-50 ml-0.5" />}
                 </div>
                 {section.naveScoped && canSwitchNave && naves.length > 0 && (
-                  <div className="px-2 mb-2">
+                  <div className="px-2 mb-2 space-y-2">
                     <select
                       value={activeNave?.id ?? ""}
                       onChange={(e) => onSwitchNave(e.target.value)}
@@ -180,6 +184,11 @@ export function DashboardShell({
                         </option>
                       ))}
                     </select>
+                  </div>
+                )}
+                {section.naveScoped && isAdmin && (
+                  <div className="px-2 mb-2">
+                    <PlanningViewToggle mode={planningViewMode} />
                   </div>
                 )}
                 <div className="space-y-0.5">

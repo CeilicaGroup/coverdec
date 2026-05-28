@@ -14,6 +14,7 @@ import {
   getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
+  getPlanningWeekMeta,
   getProcessBadgeStylesByCode,
   type ActualHourEntry,
 } from "@/features/planning/queries";
@@ -30,6 +31,8 @@ import {
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { formatDayMonthYear, formatHours } from "@/lib/format";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -67,6 +70,8 @@ export default async function SemanaPage({
   const days = weekDays(weekStart);
   const view = params.view === "actual" ? "actual" : "plan";
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
 
   const [people, holidays, absences, processStyles] = await Promise.all([
     getNavePersonnel(naveScopeFromContext(ctx)),
@@ -82,19 +87,26 @@ export default async function SemanaPage({
   );
 
   let grid: Map<string, Map<string, GridCell[]>>;
+  let hiddenDraft = false;
+  let noPublished = false;
 
   if (view === "actual") {
     const actualEntries = await getActualHoursForWeek({
-      naveScope: naveScopeFromContext(ctx),
+      naveScope,
       weekStart,
     });
     grid = buildActualGrid(actualEntries, people, days);
   } else {
-    const planning = await getPlanningForWeek({
-      naveScope: naveScopeFromContext(ctx),
-      weekStart,
-    });
+    const [planning, planningMeta] = await Promise.all([
+      getPlanningForWeek({ naveScope, weekStart, viewMode }),
+      getPlanningWeekMeta({ naveScope, weekStart }),
+    ]);
     grid = buildPlanGrid(planning, people, days);
+    hiddenDraft =
+      viewMode === "published_only" &&
+      planningMeta?.status === "DRAFT" &&
+      !planning;
+    noPublished = viewMode === "published_only" && !planningMeta && !planning;
   }
 
   return (
@@ -112,7 +124,10 @@ export default async function SemanaPage({
           </div>
         }
       />
-      {view === "plan" && grid.size === 0 && (
+      {view === "plan" && (
+        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+      )}
+      {view === "plan" && grid.size === 0 && !hiddenDraft && !noPublished && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           No hay planning generado para esta semana. Vuelve al Resumen y pulsa "Generar planning".
         </div>

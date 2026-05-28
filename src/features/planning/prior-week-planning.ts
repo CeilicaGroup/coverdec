@@ -1,3 +1,4 @@
+import { PlanningStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { slotEndToHour } from "@/features/planning/engine/slot-format";
 import { minuteToWeekQuarter } from "@/features/planning/plan-from";
@@ -290,19 +291,25 @@ export function buildNextChainAfterPriorTaskByTaskId(args: {
   return out;
 }
 
-const priorPlanningWhere = (naveId: string, beforeWeekStart: Date) => ({
-  planning: {
-    naveId,
-    weekStart: { lt: getMondayOf(beforeWeekStart) },
-  },
-});
+export function buildPriorPlanningWhere(
+  naveId: string,
+  beforeWeekStart: Date,
+) {
+  return {
+    planning: {
+      naveId,
+      status: PlanningStatus.PUBLISHED,
+      weekStart: { lt: getMondayOf(beforeWeekStart) },
+    },
+  };
+}
 
 export async function getPriorPlanningAssignments(args: {
   naveId: string;
   beforeWeekStart: Date;
 }): Promise<PriorPlanningAssignment[]> {
   const rows = await prisma.planningAssignment.findMany({
-    where: priorPlanningWhere(args.naveId, args.beforeWeekStart),
+    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart),
     select: { taskId: true, date: true, endSlot: true, hours: true },
     orderBy: [{ date: "asc" }, { endSlot: "asc" }],
   });
@@ -319,7 +326,7 @@ export async function getPriorPlanningAssignmentsDetailed(args: {
   beforeWeekStart: Date;
 }): Promise<PriorPlanningAssignmentDetail[]> {
   const rows = await prisma.planningAssignment.findMany({
-    where: priorPlanningWhere(args.naveId, args.beforeWeekStart),
+    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart),
     select: {
       taskId: true,
       date: true,
@@ -354,7 +361,7 @@ export async function sumPriorPlannedHoursByTaskId(args: {
 }): Promise<Map<string, number>> {
   const rows = await prisma.planningAssignment.groupBy({
     by: ["taskId"],
-    where: priorPlanningWhere(args.naveId, args.beforeWeekStart),
+    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart),
     _sum: { hours: true },
   });
   return new Map(

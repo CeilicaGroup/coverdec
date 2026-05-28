@@ -31,6 +31,7 @@ import {
   getNavePersonnel,
   getHolidaysForRange,
   getPlanningForWeek,
+  getPlanningWeekMeta,
   getPlanningDeadlineSettings,
   getPlanningWeights,
   getProcessBadgeStylesByCode,
@@ -64,6 +65,8 @@ import {
   getPriorPlanningAssignments,
 } from "@/features/planning/prior-week-planning";
 import { WeekProgressBar } from "@/components/week-progress-bar";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { PlanningEmptyNotice } from "../_components/planning-empty-notice";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
 
@@ -77,10 +80,13 @@ export default async function ResumenPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
+  const viewMode = await getPlanningViewModeForContext(ctx);
+  const naveScope = naveScopeFromContext(ctx);
 
-  const [planning, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments] =
+  const [planning, planningMeta, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments] =
     await Promise.all([
-    getPlanningForWeek({ naveScope: naveScopeFromContext(ctx), weekStart }),
+    getPlanningForWeek({ naveScope, weekStart, viewMode }),
+    getPlanningWeekMeta({ naveScope, weekStart }),
     getNavePersonnel(naveScopeFromContext(ctx)),
     getActiveProjectsWithLoad(naveScopeFromContext(ctx)),
     getHolidaysForRange(days[0], days[4]),
@@ -158,8 +164,8 @@ export default async function ResumenPage({
                 />
                 <GenerateButton
                   weekStart={getMondayOf(weekStart).toISOString()}
-                  planningId={planning?.id ?? null}
-                  planningStatus={planning?.status ?? null}
+                  planningId={planning?.id ?? planningMeta?.id ?? null}
+                  planningStatus={planning?.status ?? planningMeta?.status ?? null}
                   canUndo={undoState.canUndo}
                   hasFuturePlannings={undoState.hasFuturePlannings}
                   isPublished={undoState.isPublished}
@@ -179,6 +185,19 @@ export default async function ResumenPage({
               </TooltipProvider>
             )}
           </div>
+        }
+      />
+
+      <PlanningEmptyNotice
+        hiddenDraft={
+          viewMode === "published_only" &&
+          planningMeta?.status === "DRAFT" &&
+          !planning
+        }
+        noPublished={
+          viewMode === "published_only" &&
+          !planningMeta &&
+          !planning
         }
       />
 
@@ -205,10 +224,25 @@ export default async function ResumenPage({
         />
         <Kpi
           label="Estado planning"
-          value={planning?.status === "PUBLISHED" ? "Publicado" : planning ? "Borrador" : "Sin generar"}
-          sub={planning?.publishedAt ? formatShortDate(planning.publishedAt) : "Genera para empezar"}
-          icon={planning ? <CheckCircle2 className="size-4" /> : <Sparkles className="size-4" />}
-          highlight={planning?.status === "PUBLISHED" ? "ok" : "muted"}
+          value={
+            (planning?.status ?? planningMeta?.status) === "PUBLISHED"
+              ? "Publicado"
+              : planning ?? planningMeta
+                ? "Borrador"
+                : "Sin generar"
+          }
+          sub={(() => {
+            const publishedAt = planning?.publishedAt ?? planningMeta?.publishedAt;
+            if (publishedAt) return formatShortDate(publishedAt);
+            if (planningMeta?.status === "DRAFT" && viewMode === "published_only") {
+              return "Borrador oculto en vista";
+            }
+            return "Genera para empezar";
+          })()}
+          icon={planning ?? planningMeta ? <CheckCircle2 className="size-4" /> : <Sparkles className="size-4" />}
+          highlight={
+            (planning?.status ?? planningMeta?.status) === "PUBLISHED" ? "ok" : "muted"
+          }
         />
       </div>
 
