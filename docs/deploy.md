@@ -33,6 +33,15 @@ En el **CMD** de la imagen ya se ejecuta `prisma migrate deploy` antes de levant
 npx prisma migrate deploy
 ```
 
+Si Coolify u otro orquestador **sobrescribe el comando de arranque** con solo `node server.js`, las migraciones no se aplican y el dashboard fallará en producción (error genérico de Server Components). En ese caso, ejecuta `npx prisma migrate deploy` contra la base de datos del entorno o restaura el CMD del `Dockerfile`.
+
+### Error genérico en el dashboard
+
+Next.js oculta el detalle en producción. Busca en los logs del servicio **web** la línea con el mismo `digest` que muestra la UI. Causas habituales:
+
+- Migraciones pendientes (columnas nuevas como `User.banned` o tablas como `AttendanceSession`).
+- `DATABASE_URL` incorrecta o base de datos vacía sin seed.
+
 ## Backups
 
 Configura en Coolify copias de seguridad del volumen de Postgres (o snapshots del servicio de base de datos). Frecuencia recomendada: diaria para producción.
