@@ -4,6 +4,11 @@ const GENERIC_NEXT_ERROR_PATTERNS = [
   /An unexpected response was received from the server/i,
 ];
 
+const ERROR_MESSAGE_TRANSLATIONS: Record<string, string> = {
+  YOU_ARE_NOT_ALLOWED_TO_SET_USERS_PASSWORD:
+    "No tienes permisos para cambiar la contraseña de otros usuarios.",
+};
+
 function isUsefulMessage(value: string): boolean {
   const normalized = value.trim();
   if (!normalized) return false;
@@ -51,6 +56,21 @@ function collectCandidates(error: unknown, depth = 0): string[] {
 }
 
 export function getErrorMessage(error: unknown, fallback = "Error"): string {
+  if (typeof error === "object" && error !== null) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && ERROR_MESSAGE_TRANSLATIONS[code]) {
+      return ERROR_MESSAGE_TRANSLATIONS[code];
+    }
+
+    const bodyCode = (error as { body?: { code?: unknown } }).body?.code;
+    if (
+      typeof bodyCode === "string" &&
+      ERROR_MESSAGE_TRANSLATIONS[bodyCode]
+    ) {
+      return ERROR_MESSAGE_TRANSLATIONS[bodyCode];
+    }
+  }
+
   const candidates = collectCandidates(error).map((candidate) =>
     candidate.trim(),
   );
