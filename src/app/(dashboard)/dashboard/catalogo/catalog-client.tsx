@@ -37,6 +37,7 @@ import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown } from "lucide-re
 import { toast } from "sonner";
 import { deleteFrameType, setFrameTypeActive, upsertFrameType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/types/process";
+import { getErrorMessage } from "@/lib/error-message";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -199,7 +200,7 @@ export function CatalogoCatalogClient({
         setDialogOpen(false);
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error al guardar");
+        toast.error(getErrorMessage(e, "Error al guardar"));
       }
     });
   }
@@ -214,7 +215,7 @@ export function CatalogoCatalogClient({
         toast.success("Bastidor archivado");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error");
+        toast.error(getErrorMessage(e));
       }
     });
   }
@@ -226,7 +227,7 @@ export function CatalogoCatalogClient({
         toast.success("Bastidor reactivado");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error");
+        toast.error(getErrorMessage(e));
       }
     });
   }
@@ -235,7 +236,7 @@ export function CatalogoCatalogClient({
     if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
       return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
     }
-    return err instanceof Error ? err.message : "Error";
+    return getErrorMessage(err);
   }
 
   function hardDelete(frame: FrameRow) {

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { createUser, updateUser } from "@/features/admin/users-actions";
+import { getErrorMessage } from "@/lib/error-message";
 
 interface UserRow {
   id: string;
@@ -95,16 +96,20 @@ export function UsuariosAdminClient({
     startTransition(async () => {
       try {
         if (dialogMode === "create") {
-          await createUser({
+          const result = await createUser({
             name: form.name,
             email: form.email,
             password: form.password,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
             naveIds: form.naveIds,
           });
+          if (!result.ok) {
+            toast.error(result.error);
+            return;
+          }
           toast.success("Usuario creado");
         } else if (editUserId) {
-          await updateUser({
+          const result = await updateUser({
             userId: editUserId,
             name: form.name,
             email: form.email,
@@ -112,12 +117,16 @@ export function UsuariosAdminClient({
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
             naveIds: form.naveIds,
           });
+          if (!result.ok) {
+            toast.error(result.error);
+            return;
+          }
           toast.success("Usuario actualizado");
         }
         setDialogMode(null);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(getErrorMessage(err));
       }
     });
   };

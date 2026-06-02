@@ -9,6 +9,7 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { replacePersonNaves } from "@/features/people/person-naves";
 import { Role } from "@/generated/prisma";
 import { ensureDefaultSubscriptions } from "@/features/notifications/service";
+import { getErrorMessage } from "@/lib/error-message";
 
 const naveIdsSchema = z.array(z.string().min(1));
 
@@ -42,34 +43,45 @@ const createUserSchema = z.object({
 });
 
 export async function createUser(input: z.infer<typeof createUserSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  const data = createUserSchema.parse(input);
+  try {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN]);
+    const data = createUserSchema.parse(input);
 
-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
-  if (existing) throw new Error("Ya existe un usuario con ese email.");
+    const existing = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+    if (existing) throw new Error("Ya existe un usuario con ese email.");
 
-  await auth.api.signUpEmail({
-    body: { name: data.name, email: data.email, password: data.password },
-  });
+    await auth.api.signUpEmail({
+      body: { name: data.name, email: data.email, password: data.password },
+    });
 
-  const user = await prisma.user.update({
-    where: { email: data.email },
-    data: {
-      role: data.role,
-      emailVerified: true,
-    },
-  });
+    const user = await prisma.user.update({
+      where: { email: data.email },
+      data: {
+        role: data.role,
+        emailVerified: true,
+      },
+    });
 
-  if (data.role !== Role.ADMIN && data.naveIds?.length) {
-    await applyPersonNavesForUser(user.id, data.role, data.naveIds);
+    if (data.role !== Role.ADMIN && data.naveIds?.length) {
+      await applyPersonNavesForUser(user.id, data.role, data.naveIds);
+    }
+    if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
+      await ensureDefaultSubscriptions(user.id);
+    }
+
+    revalidatePath("/dashboard/admin/usuarios");
+    revalidatePath("/dashboard/personal");
+
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: getErrorMessage(error, "No se pudo crear el usuario."),
+    };
   }
-  if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
-    await ensureDefaultSubscriptions(user.id);
-  }
-
-  revalidatePath("/dashboard/admin/usuarios");
-  revalidatePath("/dashboard/personal");
 }
 
 const updateUserSchema = z.object({
@@ -82,50 +94,59 @@ const updateUserSchema = z.object({
 });
 
 export async function updateUser(input: z.infer<typeof updateUserSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  const data = updateUserSchema.parse(input);
+  try {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN]);
+    const data = updateUserSchema.parse(input);
 
-  if (data.email) {
-    const existing = await prisma.user.findUnique({
-      where: { email: data.email },
-      select: { id: true },
-    });
-    if (existing && existing.id !== data.userId) {
-      throw new Error("Ya existe un usuario con ese email.");
+    if (data.email) {
+      const existing = await prisma.user.findUnique({
+        where: { email: data.email },
+        select: { id: true },
+      });
+      if (existing && existing.id !== data.userId) {
+        throw new Error("Ya existe un usuario con ese email.");
+      }
     }
-  }
 
-  await prisma.user.update({
-    where: { id: data.userId },
-    data: {
-      name: data.name,
-      email: data.email,
-      role: data.role,
-    },
-  });
-
-  if (data.password) {
-    await auth.api.setUserPassword({
-      body: {
-        userId: data.userId,
-        newPassword: data.password,
+    await prisma.user.update({
+      where: { id: data.userId },
+      data: {
+        name: data.name,
+        email: data.email,
+        role: data.role,
       },
-      headers: await headers(),
     });
-  }
 
-  if (data.role !== Role.ADMIN) {
-    await applyPersonNavesForUser(
-      data.userId,
-      data.role,
-      data.naveIds ?? [],
-    );
-  }
-  if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
-    await ensureDefaultSubscriptions(data.userId);
-  }
+    if (data.password) {
+      await auth.api.setUserPassword({
+        body: {
+          userId: data.userId,
+          newPassword: data.password,
+        },
+        headers: await headers(),
+      });
+    }
 
-  revalidatePath("/dashboard/admin/usuarios");
-  revalidatePath("/dashboard/personal");
+    if (data.role !== Role.ADMIN) {
+      await applyPersonNavesForUser(
+        data.userId,
+        data.role,
+        data.naveIds ?? [],
+      );
+    }
+    if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
+      await ensureDefaultSubscriptions(data.userId);
+    }
+
+    revalidatePath("/dashboard/admin/usuarios");
+    revalidatePath("/dashboard/personal");
+
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: getErrorMessage(error, "No se pudo actualizar el usuario."),
+    };
+  }
 }

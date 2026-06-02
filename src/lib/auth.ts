@@ -27,11 +27,11 @@ export const auth = betterAuth({
     ? [process.env.BETTER_AUTH_URL]
     : [],
   plugins: [
-    nextCookies(),
     admin({
       defaultRole: "OPERARIO",
       adminRoles: ["ADMIN"],
     }),
+    nextCookies(),
   ],
 });
 

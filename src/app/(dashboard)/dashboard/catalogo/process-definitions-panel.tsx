@@ -34,6 +34,7 @@ import {
 import { deriveProcessColors } from "@/lib/color";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/error-message";
 
 export interface ProcessRow {
   code: string;
@@ -75,7 +76,7 @@ function formatDeleteError(err: unknown): string {
   if (err instanceof Error && err.message.startsWith("PROCESS_IN_USE:")) {
     return err.message.replace(/^PROCESS_IN_USE:\s*/, "").trim();
   }
-  return err instanceof Error ? err.message : "Error";
+  return getErrorMessage(err);
 }
 
 export function ProcessDefinitionsPanel({
@@ -115,7 +116,7 @@ export function ProcessDefinitionsPanel({
         const usage = await getProcessDefinitionUsage({ code: row.code });
         openUsageDialog(row, usage);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudo cargar el detalle");
+        toast.error(getErrorMessage(err, "No se pudo cargar el detalle"));
       }
     });
   }
@@ -156,7 +157,7 @@ export function ProcessDefinitionsPanel({
         setCWait("0");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(getErrorMessage(err));
       }
     });
   }
@@ -188,7 +189,7 @@ export function ProcessDefinitionsPanel({
         setEditing(null);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(getErrorMessage(err));
       }
     });
   }

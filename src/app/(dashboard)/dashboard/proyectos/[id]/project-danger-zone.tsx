@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Archive, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProject, toggleProjectActive } from "@/features/projects/actions";
+import { getErrorMessage } from "@/lib/error-message";
 
 function formatActionError(err: unknown): string {
   if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
     return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
   }
-  return err instanceof Error ? err.message : "Error";
+  return getErrorMessage(err);
 }
 
 export function ProjectDangerZone({

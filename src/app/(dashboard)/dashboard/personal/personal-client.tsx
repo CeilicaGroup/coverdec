@@ -32,6 +32,7 @@ import { savePerson } from "@/features/people/actions";
 import { PersonScheduleDialog } from "./person-schedule-dialog";
 import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
+import { getErrorMessage } from "@/lib/error-message";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -215,7 +216,7 @@ export function PersonalTeamClient({
         setOpen(false);
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error al guardar");
+        toast.error(getErrorMessage(e, "Error al guardar"));
       }
     });
   }
@@ -224,7 +225,7 @@ export function PersonalTeamClient({
     if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
       return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
     }
-    return err instanceof Error ? err.message : "Error";
+    return getErrorMessage(err);
   }
 
   return (
