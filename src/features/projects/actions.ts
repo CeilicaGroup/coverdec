@@ -15,6 +15,10 @@ import {
   formatLampFrameUnitLabel,
   getNextTaskOrder,
 } from "@/features/projects/lamp-tasks";
+import {
+  syncLampFrames,
+  type LampFrameConfig,
+} from "@/features/projects/sync-lamp-frames";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -124,10 +128,18 @@ const lampSchema = z.object({
   frames: z.array(lampFrameInputSchema).min(1),
 });
 
+function assertUniqueFrameTypes(frames: { frameTypeId: string }[]) {
+  const ids = frames.map((f) => f.frameTypeId);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("No puedes repetir el mismo tipo de bastidor en una lámpara.");
+  }
+}
+
 export async function createLamp(input: z.infer<typeof lampSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = lampSchema.parse(input);
+  assertUniqueFrameTypes(data.frames);
   const fallbackNave = data.naveId
     ?? ctx.naveId
     ?? (await prisma.nave.findFirst({
@@ -235,6 +247,58 @@ const renameLampSchema = z.object({
   lampId: z.string().min(1),
   name: z.string().min(1).max(120),
 });
+
+const updateLampFramesSchema = z.object({
+  lampId: z.string().min(1),
+  frames: z.array(lampFrameInputSchema).min(1),
+});
+
+export async function updateLampFrames(
+  input: z.infer<typeof updateLampFramesSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateLampFramesSchema.parse(input);
+  assertUniqueFrameTypes(data.frames);
+
+  const lamp = await prisma.lamp.findFirst({
+    where: { id: data.lampId },
+    select: {
+      id: true,
+      projectId: true,
+      tasks: { select: { naveId: true }, take: 1 },
+    },
+  });
+  if (!lamp) throw new Error("Lámpara no encontrada");
+
+  const naveId =
+    lamp.tasks[0]?.naveId ??
+    ctx.naveId ??
+    (
+      await prisma.nave.findFirst({
+        where: { isActive: true },
+        select: { id: true },
+        orderBy: { codigo: "asc" },
+      })
+    )?.id;
+  if (!naveId) {
+    throw new Error("No hay naves activas para asignar las tareas.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await syncLampFrames(tx, {
+      lampId: lamp.id,
+      projectId: lamp.projectId,
+      naveId,
+      frames: data.frames as LampFrameConfig[],
+    });
+  });
+
+  log.info({ lampId: lamp.id }, "lamp frames updated");
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
+  return { id: lamp.id };
+}
 
 export async function renameLamp(input: z.infer<typeof renameLampSchema>) {
   const ctx = await requireDashboardContext();

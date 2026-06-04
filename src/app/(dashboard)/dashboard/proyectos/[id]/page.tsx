@@ -15,7 +15,12 @@ import {
   riskFromDelivery,
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
+import { EditLampFramesDialog } from "./edit-lamp-frames-dialog";
 import { LampTasksPanel } from "./lamp-tasks-panel";
+import {
+  fallbackLampConfig,
+  lampFramesToConfig,
+} from "@/features/projects/sync-lamp-frames";
 import { LampNaveAssign } from "./lamp-nave-assign";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
@@ -37,6 +42,14 @@ export default async function ProjectDetailPage({
       lamps: {
         include: {
           frameType: true,
+          frames: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              frameTypeId: true,
+              surfaceM2: true,
+              frameType: { select: { name: true } },
+            },
+          },
               tasks: {
                 orderBy: { order: "asc" },
                 include: {
@@ -45,7 +58,8 @@ export default async function ProjectDetailPage({
                     select: {
                       id: true,
                       label: true,
-                      frameType: { select: { name: true } },
+                      surfaceM2: true,
+                      frameType: { select: { id: true, name: true } },
                     },
                   },
                 },
@@ -90,7 +104,14 @@ export default async function ProjectDetailPage({
       orderBy: { name: "asc" },
     }),
     prisma.processDefinition.findMany({
-      select: { code: true, waitHours: true },
+      select: {
+        code: true,
+        waitHours: true,
+        label: true,
+        bgColor: true,
+        fgColor: true,
+        borderColor: true,
+      },
     }),
     prisma.nave.findMany({
       where: { isActive: true },
@@ -107,6 +128,18 @@ export default async function ProjectDetailPage({
   const waitHoursByProcess = Object.fromEntries(
     processDefs.map((p) => [p.code, p.waitHours]),
   ) as Record<string, number>;
+
+  const processStylesByCode = Object.fromEntries(
+    processDefs.map((p) => [
+      p.code,
+      {
+        label: p.label,
+        bgColor: p.bgColor,
+        fgColor: p.fgColor,
+        borderColor: p.borderColor,
+      },
+    ]),
+  );
 
   const allTasks = lamps.flatMap((l) => l.tasks);
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
@@ -196,19 +229,54 @@ export default async function ProjectDetailPage({
               {lamps.map((l) => {
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
                 const lampNaveId = l.tasks.find((t) => t.naveId)?.naveId ?? null;
+                const editableFrames =
+                  l.frames.length > 0
+                    ? lampFramesToConfig(l.frames)
+                    : fallbackLampConfig(l);
+                const bastidorSummary =
+                  editableFrames.length > 0
+                    ? editableFrames
+                        .map((cfg) => {
+                          const name =
+                            l.frames.find((f) => f.frameTypeId === cfg.frameTypeId)
+                              ?.frameType.name ??
+                            l.frameType.name;
+                          const parts = [name, `${cfg.surfaceM2} m²`];
+                          if (cfg.units > 1) parts.push(`${cfg.units} uds`);
+                          return parts.join(" · ");
+                        })
+                        .join(" / ")
+                    : l.frameType.name;
                 return (
                   <div key={l.id}>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
                       <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
-                      <div className="text-xs text-muted-foreground">
-                        Bastidor: <span className="text-foreground">{l.frameType.name}</span>
+                      <div className="text-xs text-muted-foreground min-w-0">
+                        Bastidores:{" "}
+                        <span className="text-foreground">{bastidorSummary}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Medida: <span className="font-mono text-foreground">{l.surfaceM2 ?? "—"}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Uds: <span className="text-foreground">{l.units}</span>
-                      </div>
+                      {canManage ? (
+                        <EditLampFramesDialog
+                          key={`${l.id}-${l.updatedAt.toISOString()}`}
+                          lampId={l.id}
+                          lampName={l.name}
+                          initialFrames={editableFrames}
+                          frameTypes={frameTypes.map((f) => ({
+                            id: f.id,
+                            name: f.name,
+                            processes: f.processes.map((p) => ({
+                              process: p.process,
+                              hoursPerUnit: p.hoursPerUnit,
+                              fixedHours: p.fixedHours,
+                              sequence: p.sequence,
+                              label: p.definition.label,
+                              bgColor: p.definition.bgColor,
+                              fgColor: p.definition.fgColor,
+                              borderColor: p.definition.borderColor,
+                            })),
+                          }))}
+                        />
+                      ) : null}
                       <div className="text-xs font-mono ml-auto">
                         Pendiente: <span className="font-semibold">{formatHours(lampPending)}</span>
                       </div>
@@ -228,6 +296,7 @@ export default async function ProjectDetailPage({
                       tasks={l.tasks}
                       usedProcesses={l.tasks.map((t) => t.process)}
                       waitHoursByProcess={waitHoursByProcess}
+                      processStylesByCode={processStylesByCode}
                       canManage={canManage}
                       naves={naves}
                     />

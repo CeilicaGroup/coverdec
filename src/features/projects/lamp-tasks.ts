@@ -25,6 +25,119 @@ export function formatLampFrameUnitLabel(
   return frameName;
 }
 
+export interface TaskHoursAggregate {
+  process: ProcessCode;
+  estimatedHours: number;
+  doneHours: number;
+  pendingHours: number;
+  units: number;
+  minOrder: number;
+  taskIds: string[];
+}
+
+export interface BastidorTaskGroup<T> {
+  key: string;
+  frameTypeName: string;
+  surfaceM2: number | null;
+  unitCount: number;
+  tasks: T[];
+}
+
+/** Suma horas de tareas repetidas (misma lámpara/bastidor, varias unidades). */
+export function aggregateTasksByProcess<
+  T extends {
+    id: string;
+    process: ProcessCode;
+    estimatedHours: number;
+    doneHours: number;
+    pendingHours: number;
+    order: number;
+  },
+>(tasks: T[]): TaskHoursAggregate[] {
+  const byProcess = new Map<ProcessCode, TaskHoursAggregate>();
+  for (const task of tasks) {
+    const existing = byProcess.get(task.process);
+    if (existing) {
+      existing.estimatedHours += task.estimatedHours;
+      existing.doneHours += task.doneHours;
+      existing.pendingHours += task.pendingHours;
+      existing.units += 1;
+      existing.minOrder = Math.min(existing.minOrder, task.order);
+      existing.taskIds.push(task.id);
+    } else {
+      byProcess.set(task.process, {
+        process: task.process,
+        estimatedHours: task.estimatedHours,
+        doneHours: task.doneHours,
+        pendingHours: task.pendingHours,
+        units: 1,
+        minOrder: task.order,
+        taskIds: [task.id],
+      });
+    }
+  }
+  return [...byProcess.values()].sort((a, b) => a.minOrder - b.minOrder);
+}
+
+export function groupTasksByBastidor<
+  T extends {
+    order: number;
+    lampFrame: {
+      id: string;
+      label: string | null;
+      surfaceM2: number | null;
+      frameType: { id: string; name: string };
+    } | null;
+  },
+>(tasks: T[]): BastidorTaskGroup<T>[] {
+  const groups = new Map<
+    string,
+    BastidorTaskGroup<T> & { unitFrameIds: Set<string> }
+  >();
+
+  for (const task of tasks) {
+    const lf = task.lampFrame;
+    const key = lf ? lf.frameType.id : "__sin_bastidor__";
+    const frameTypeName = lf?.frameType.name ?? "Sin bastidor";
+    const existing = groups.get(key);
+    if (existing) {
+      existing.tasks.push(task);
+      if (lf && !existing.unitFrameIds.has(lf.id)) {
+        existing.unitFrameIds.add(lf.id);
+        existing.unitCount += 1;
+      }
+    } else {
+      groups.set(key, {
+        key,
+        frameTypeName,
+        surfaceM2: lf?.surfaceM2 ?? null,
+        unitCount: lf ? 1 : 0,
+        unitFrameIds: lf ? new Set([lf.id]) : new Set(),
+        tasks: [task],
+      });
+    }
+  }
+
+  return [...groups.values()]
+    .map(({ unitFrameIds: _ids, ...group }) => group)
+    .sort(
+      (a, b) =>
+        Math.min(...a.tasks.map((t) => t.order)) -
+        Math.min(...b.tasks.map((t) => t.order)),
+    );
+}
+
+export function scaleBlueprintHoursForUnits(
+  blueprints: TaskBlueprint[],
+  units: number,
+): TaskBlueprint[] {
+  if (units <= 1) return blueprints;
+  return blueprints.map((bp) => ({
+    ...bp,
+    estimatedHours: bp.estimatedHours * units,
+  }));
+}
+
 export function computeTaskBlueprintsFromProcesses(
   processes: FrameProcessInput[],
   surfaceM2: number,

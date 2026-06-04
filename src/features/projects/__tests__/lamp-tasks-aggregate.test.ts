@@ -1,0 +1,90 @@
+import { describe, expect, it } from "vitest";
+import {
+  aggregateTasksByProcess,
+  groupTasksByBastidor,
+  scaleBlueprintHoursForUnits,
+} from "@/features/projects/lamp-tasks";
+import { lampFramesToConfig } from "@/features/projects/sync-lamp-frames";
+
+describe("scaleBlueprintHoursForUnits", () => {
+  it("multiplies hours when units > 1", () => {
+    const blueprints = [
+      { process: "CNC" as const, estimatedHours: 1.7, order: 0 },
+      { process: "ENSAMBLAJE" as const, estimatedHours: 3.2, order: 1 },
+    ];
+    expect(scaleBlueprintHoursForUnits(blueprints, 4)).toEqual([
+      { process: "CNC", estimatedHours: 6.8, order: 0 },
+      { process: "ENSAMBLAJE", estimatedHours: 12.8, order: 1 },
+    ]);
+  });
+});
+
+describe("aggregateTasksByProcess", () => {
+  it("sums hours for repeated processes", () => {
+    const rows = aggregateTasksByProcess([
+      {
+        id: "1",
+        process: "CNC",
+        estimatedHours: 1.7,
+        doneHours: 0,
+        pendingHours: 1.7,
+        order: 0,
+      },
+      {
+        id: "2",
+        process: "CNC",
+        estimatedHours: 1.7,
+        doneHours: 0.5,
+        pendingHours: 1.2,
+        order: 1000,
+      },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.estimatedHours).toBeCloseTo(3.4);
+    expect(rows[0]?.doneHours).toBeCloseTo(0.5);
+    expect(rows[0]?.units).toBe(2);
+  });
+});
+
+describe("lampFramesToConfig", () => {
+  it("groups physical frames by frame type", () => {
+    const configs = lampFramesToConfig([
+      { frameTypeId: "ft1", surfaceM2: 4 },
+      { frameTypeId: "ft1", surfaceM2: 4 },
+      { frameTypeId: "ft2", surfaceM2: 2 },
+    ]);
+    expect(configs).toHaveLength(2);
+    const sol = configs.find((c) => c.frameTypeId === "ft1");
+    expect(sol?.units).toBe(2);
+    expect(sol?.surfaceM2).toBe(4);
+  });
+});
+
+describe("groupTasksByBastidor", () => {
+  it("groups units under the same frame type", () => {
+    const frameType = { id: "ft1", name: "Elemento Sol" };
+    const groups = groupTasksByBastidor([
+      {
+        order: 0,
+        lampFrame: {
+          id: "lf1",
+          label: "Elemento Sol 1",
+          surfaceM2: 4,
+          frameType,
+        },
+      },
+      {
+        order: 1000,
+        lampFrame: {
+          id: "lf2",
+          label: "Elemento Sol 2",
+          surfaceM2: 4,
+          frameType,
+        },
+      },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.unitCount).toBe(2);
+    expect(groups[0]?.tasks).toHaveLength(2);
+  });
+});

@@ -24,7 +24,7 @@ import {
 import { createLamp } from "@/features/projects/actions";
 import {
   computeTaskBlueprintsFromProcesses,
-  formatLampFrameUnitLabel,
+  scaleBlueprintHoursForUnits,
   type FrameProcessInput,
 } from "@/features/projects/lamp-tasks";
 import { formatHours } from "@/lib/format";
@@ -207,16 +207,9 @@ export function AddLampForm({
                     const medidaLabel =
                       medida > 0 ? `${medida} m²` : "sin medida";
                     const taskCount = blueprints.length * units;
-                    const unitGroups =
-                      frameType && medida > 0 && blueprints.length > 0
-                        ? Array.from({ length: units }, (_, i) => ({
-                            unitIndex: i + 1,
-                            label: formatLampFrameUnitLabel(
-                              frameName,
-                              i + 1,
-                              units,
-                            ),
-                          }))
+                    const aggregatedBlueprints =
+                      blueprints.length > 0
+                        ? scaleBlueprintHoursForUnits(blueprints, units)
                         : [];
 
                     return (
@@ -340,31 +333,35 @@ export function AddLampForm({
                                 Este bastidor no genera tareas con esa medida.
                               </p>
                             ) : (
-                              <ul className="space-y-3">
-                                {unitGroups.map((group) => (
-                                  <li key={group.unitIndex}>
-                                    <p className="text-[10px] font-medium text-muted-foreground mb-1">
-                                      {group.label}
-                                    </p>
-                                    <ul className="space-y-1">
-                                      {blueprints.map((bp) => (
-                                        <li
-                                          key={`${group.unitIndex}-${bp.process}`}
-                                          className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded-md bg-background/80"
-                                        >
-                                          <ProcessBadge
-                                            code={bp.process}
-                                            definition={processDefinition(
-                                              frameType!.processes,
-                                              bp.process,
-                                            )}
-                                          />
-                                          <span className="font-mono text-muted-foreground shrink-0">
+                              <ul className="space-y-1">
+                                {aggregatedBlueprints.map((bp) => (
+                                  <li
+                                    key={bp.process}
+                                    className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded-md bg-background/80"
+                                  >
+                                    <ProcessBadge
+                                      code={bp.process}
+                                      definition={processDefinition(
+                                        frameType!.processes,
+                                        bp.process,
+                                      )}
+                                    />
+                                    <span className="font-mono text-muted-foreground shrink-0 text-right">
+                                      {units > 1 ? (
+                                        <>
+                                          <span className="font-medium text-foreground">
                                             {formatHours(bp.estimatedHours)}
                                           </span>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                          <span className="block text-[9px] text-muted-foreground/80">
+                                            {formatHours(bp.estimatedHours / units)}/ud
+                                            {" × "}
+                                            {units}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        formatHours(bp.estimatedHours)
+                                      )}
+                                    </span>
                                   </li>
                                 ))}
                               </ul>
