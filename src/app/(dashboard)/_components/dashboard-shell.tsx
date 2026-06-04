@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   LineChart,
   LogOut,
+  AlertTriangle,
   Settings,
   ShieldCheck,
   Timer,
@@ -62,6 +63,7 @@ const NAV_SECTIONS = [
       { href: "/dashboard/proyecto", label: "Por proyecto", icon: ClipboardList },
       { href: "/dashboard/gantt", label: "Gantt", icon: LineChart, operarioHidden: true },
       { href: "/dashboard/disponibilidad", label: "Disponibilidad", icon: Gauge, operarioHidden: true },
+      { href: "/dashboard/desviaciones-tiempos", label: "Desviaciones tiempos", icon: AlertTriangle, operarioHidden: true },
     ],
   },
   {
@@ -89,7 +91,6 @@ const NAV_SECTIONS = [
       { href: "/dashboard/costes", label: "Costes", icon: ShieldCheck, restricted: true },
       { href: "/dashboard/admin/naves", label: "Naves", icon: Warehouse, adminOnly: true },
       { href: "/dashboard/admin/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
-      { href: "/dashboard/admin/notificaciones", label: "Notificaciones", icon: Bell, adminOnly: true },
       { href: "/dashboard/admin/export", label: "Importar / exportar", icon: FileSpreadsheet, adminOnly: true },
     ],
   },

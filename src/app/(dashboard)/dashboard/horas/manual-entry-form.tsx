@@ -14,7 +14,20 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createManualEntriesFromRanges } from "@/features/time-tracking/actions";
+import {
+  fromDatetimeLocalInputValue,
+  toDatetimeLocalInputValue,
+} from "@/lib/datetime-local";
 import { toast } from "sonner";
+
+function defaultRange(): { startedAt: string; endedAt: string } {
+  const start = new Date();
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  return {
+    startedAt: toDatetimeLocalInputValue(start),
+    endedAt: toDatetimeLocalInputValue(end),
+  };
+}
 
 export function ManualEntryForm({
   projects,
@@ -48,12 +61,7 @@ export function ManualEntryForm({
     if (preset?.ranges && preset.ranges.length > 0) {
       return preset.ranges;
     }
-    return [
-      {
-        startedAt: new Date().toISOString().slice(0, 16),
-        endedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
-      },
-    ];
+    return [defaultRange()];
   });
 
   const project = projects.find((p) => p.id === projectId);
@@ -89,8 +97,8 @@ export function ManualEntryForm({
           return;
         }
         const normalizedRanges = ranges.map((r) => ({
-          startedAt: new Date(r.startedAt).toISOString(),
-          endedAt: new Date(r.endedAt).toISOString(),
+          startedAt: fromDatetimeLocalInputValue(r.startedAt),
+          endedAt: fromDatetimeLocalInputValue(r.endedAt),
         }));
         startTransition(async () => {
           try {
@@ -220,13 +228,17 @@ export function ManualEntryForm({
             disabled={pending || ranges.length >= 20}
             className="w-full gap-2"
             onClick={() =>
-              setRanges((prev) => [
-                ...prev,
-                {
-                  startedAt: prev[prev.length - 1]?.endedAt ?? new Date().toISOString().slice(0, 16),
-                  endedAt: prev[prev.length - 1]?.endedAt ?? new Date().toISOString().slice(0, 16),
-                },
-              ])
+              setRanges((prev) => {
+                const last = prev[prev.length - 1];
+                const fallback = defaultRange();
+                return [
+                  ...prev,
+                  {
+                    startedAt: last?.endedAt ?? fallback.startedAt,
+                    endedAt: last?.endedAt ?? fallback.endedAt,
+                  },
+                ];
+              })
             }
           >
             <Plus className="size-4" />

@@ -11,6 +11,9 @@ export const notificationTypeMeta = {
   [NotificationType.TASK_HOURS_EXCEEDED]: {
     label: "Tareas con horas por encima de lo estimado",
   },
+  [NotificationType.TASK_TIME_DEVIATION_FROM_CATALOG]: {
+    label: "Desviación de tiempos del catálogo respecto a la media observada",
+  },
   [NotificationType.PROJECT_SLIPPING]: {
     label: "Proyectos que se alargan más de lo previsto",
   },
@@ -72,6 +75,16 @@ export const notificationPayloadSchema = {
   [NotificationType.TASK_HOURS_EXCEEDED]: taskPayload.extend({
     estimatedHours: z.number().min(0),
     doneHours: z.number().min(0),
+  }),
+  [NotificationType.TASK_TIME_DEVIATION_FROM_CATALOG]: basePayloadSchema.extend({
+    frameTypeId: z.string().min(1),
+    process: z.string().min(1),
+    frameTypeCode: z.string().min(1),
+    frameTypeName: z.string().min(1),
+    catalogHoursPerUnit: z.number().min(0),
+    observedHoursPerUnit: z.number().min(0),
+    deviationPct: z.number().min(0),
+    sampleCount: z.number().int().min(1),
   }),
   [NotificationType.PROJECT_SLIPPING]: projectPayload.extend({
     expectedEnd: z.string().datetime(),

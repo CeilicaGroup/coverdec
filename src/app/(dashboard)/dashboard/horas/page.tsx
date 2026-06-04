@@ -10,6 +10,7 @@ import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
 import { TaskQueuePanel } from "./task-queue-panel";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
+import { planningRangeToDatetimeLocal } from "@/lib/datetime-local";
 
 function weekdayLabel(date: Date): string {
   return new Intl.DateTimeFormat("es-ES", {
@@ -18,14 +19,6 @@ function weekdayLabel(date: Date): string {
   })
     .format(date)
     .replace(".", "");
-}
-
-function toDatetimeLocal(date: Date, hourDecimal: number): string {
-  const base = new Date(date);
-  const h = Math.floor(hourDecimal);
-  const m = Math.round((hourDecimal - h) * 60);
-  base.setUTCHours(h, m, 0, 0);
-  return base.toISOString().slice(0, 16);
 }
 
 export default async function HorasPage() {
@@ -103,8 +96,11 @@ export default async function HorasPage() {
       taskRanges.set(assignment.taskId, existing);
       const dateRanges = taskDateRanges.get(assignment.taskId) ?? [];
       dateRanges.push({
-        startedAt: toDatetimeLocal(assignment.date, slotToHour(assignment.startSlot)),
-        endedAt: toDatetimeLocal(assignment.date, slotEndToHour(assignment.endSlot)),
+        ...planningRangeToDatetimeLocal(
+          assignment.date,
+          slotToHour(assignment.startSlot),
+          slotEndToHour(assignment.endSlot),
+        ),
       });
       taskDateRanges.set(assignment.taskId, dateRanges);
       if (!taskSortKey.has(assignment.taskId)) {

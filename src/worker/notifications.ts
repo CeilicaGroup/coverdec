@@ -6,6 +6,7 @@ import {
   scanAssignedTasksNotLogged,
   scanProjectSlipping,
 } from "@/features/notifications/worker";
+import { scanTaskTimeDeviations } from "@/features/time-tracking/task-time-deviation-scan";
 
 const log = childLogger({ module: "worker.notifications" });
 const TZ = process.env.NOTIFICATION_CRON_TZ ?? "Europe/Madrid";
@@ -52,6 +53,15 @@ async function runGeneralPass() {
     log.error(
       { error: err instanceof Error ? err.message : String(err) },
       "attendance incidents scan failed",
+    );
+  }
+  try {
+    await scanTaskTimeDeviations();
+    log.info("task time deviation scan done");
+  } catch (err) {
+    log.error(
+      { error: err instanceof Error ? err.message : String(err) },
+      "task time deviation scan failed",
     );
   }
   await processOutboxLoop();

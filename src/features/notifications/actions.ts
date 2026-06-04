@@ -28,7 +28,7 @@ export async function updateNotificationSubscription(input: z.infer<typeof updat
   }
 
   await upsertNotificationSubscription(data);
-  revalidatePath("/dashboard/admin/notificaciones");
+  revalidatePath("/dashboard/admin/usuarios");
 }
 
 const markReadSchema = z.object({ notificationId: z.string().min(1) });

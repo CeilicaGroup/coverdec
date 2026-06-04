@@ -171,6 +171,13 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
 
   log.info({ userId: ctx.userId, taskId: data.taskId }, "task completed");
   revalidateHorasAndLoad();
+
+  const { evaluateCatalogTimeDeviationForTask } = await import(
+    "./task-time-deviation-scan"
+  );
+  void evaluateCatalogTimeDeviationForTask(data.taskId).catch(() => {
+    /* scanner errors must not block task completion */
+  });
 }
 
 export async function uncompleteTask(input: z.infer<typeof completeTaskSchema>) {

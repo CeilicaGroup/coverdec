@@ -1,18 +1,15 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
-import { formatShortDate } from "@/lib/format";
+import { getMondayOf } from "@/lib/week";
 import { PageHeader } from "../../_components/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   markAllNotificationsReadFiltered,
   markAllNotificationsUnread,
-  markNotificationRead,
-  markNotificationUnread,
 } from "@/features/notifications/actions";
-import { notificationTypeMeta } from "@/features/notifications/types";
+import { NotificationCard } from "./notification-card";
 
 type FilterMode = "all" | "read" | "unread";
 
@@ -32,7 +29,39 @@ export default async function NotificacionesPage({
     },
     orderBy: { createdAt: "desc" },
     take: 200,
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      body: true,
+      payload: true,
+      readAt: true,
+      createdAt: true,
+      projectId: true,
+      planningId: true,
+      naveId: true,
+    },
   });
+
+  const planningIds = [
+    ...new Set(
+      notifications.map((n) => n.planningId).filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const plannings =
+    planningIds.length > 0
+      ? await prisma.planning.findMany({
+          where: { id: { in: planningIds } },
+          select: { id: true, weekStart: true },
+        })
+      : [];
+  const planningWeekById = new Map(
+    plannings.map((p) => [
+      p.id,
+      getMondayOf(p.weekStart).toISOString().slice(0, 10),
+    ]),
+  );
+
   const [unread, read, total] = await Promise.all([
     prisma.notification.count({ where: { userId: ctx.userId, readAt: null } }),
     prisma.notification.count({ where: { userId: ctx.userId, readAt: { not: null } } }),
@@ -100,36 +129,23 @@ export default async function NotificacionesPage({
           </Card>
         ) : (
           notifications.map((item) => (
-            <Card key={item.id} className={item.readAt ? "" : "border-primary/40"}>
-              <CardContent className="py-4 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={item.readAt ? "outline" : "default"}>
-                      {notificationTypeMeta[item.type].label}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatShortDate(item.createdAt)}
-                    </span>
-                  </div>
-                  <form
-                    action={async () => {
-                      "use server";
-                      if (item.readAt) {
-                        await markNotificationUnread({ notificationId: item.id });
-                      } else {
-                        await markNotificationRead({ notificationId: item.id });
-                      }
-                    }}
-                  >
-                    <Button type="submit" variant="outline" size="sm">
-                      {item.readAt ? "Marcar no leída" : "Marcar leída"}
-                    </Button>
-                  </form>
-                </div>
-                <div className="text-sm font-semibold">{item.title}</div>
-                <div className="text-sm text-muted-foreground">{item.body}</div>
-              </CardContent>
-            </Card>
+            <NotificationCard
+              key={item.id}
+              id={item.id}
+              type={item.type}
+              title={item.title}
+              body={item.body}
+              payload={item.payload}
+              readAt={item.readAt}
+              createdAt={item.createdAt}
+              linkContext={{
+                projectId: item.projectId,
+                planningId: item.planningId,
+                planningWeekIso: item.planningId
+                  ? planningWeekById.get(item.planningId)
+                  : undefined,
+              }}
+            />
           ))
         )}
       </div>

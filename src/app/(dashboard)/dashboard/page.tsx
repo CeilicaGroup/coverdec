@@ -77,6 +77,7 @@ import {
 import { WeekProgressBar } from "@/components/week-progress-bar";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../_components/planning-empty-notice";
+import { listCatalogTimeDeviations } from "@/features/time-tracking/catalog-time-stats";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
 
@@ -94,7 +95,7 @@ export default async function ResumenPage({
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
-  const [planning, planningMeta, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments] =
+  const [planning, planningMeta, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments, timeDeviations] =
     await Promise.all([
     getPlanningForWeek({ naveScope, weekStart, viewMode }),
     getPlanningWeekMeta({ naveScope, weekStart }),
@@ -111,6 +112,7 @@ export default async function ResumenPage({
           beforeWeekStart: weekStart,
         })
       : Promise.resolve([]),
+    listCatalogTimeDeviations(),
   ]);
 
   const holidayDates = expandHolidayRangesToIsoDays(
@@ -207,6 +209,26 @@ export default async function ResumenPage({
           </div>
         }
       />
+
+      {timeDeviations.alertCount > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div className="flex items-center gap-2 text-sm">
+              <AlertTriangle className="size-4 text-amber-600 shrink-0" />
+              <span>
+                {timeDeviations.alertCount} desviación
+                {timeDeviations.alertCount !== 1 ? "es" : ""} de tiempos respecto al catálogo
+              </span>
+            </div>
+            <Link
+              href="/dashboard/desviaciones-tiempos"
+              className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent"
+            >
+              Ver desviaciones
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <PlanningEmptyNotice
         hiddenDraft={

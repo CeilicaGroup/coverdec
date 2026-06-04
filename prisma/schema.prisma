@@ -46,6 +46,7 @@ enum NotificationType {
   PLAN_PUBLISHED_LOW_OCCUPATION
   PLAN_PUBLISHED_PROJECTS_OVER_DEADLINE
   TASK_HOURS_EXCEEDED
+  TASK_TIME_DEVIATION_FROM_CATALOG
   PROJECT_SLIPPING
   ASSIGNED_TASKS_NOT_LOGGED
   ATTENDANCE_OUTSIDE_WORK_WINDOW
@@ -527,6 +528,15 @@ model AttendanceSession {
 
   @@index([userId, startedAt])
   @@index([personId, startedAt])
+}
+
+// ---------- Política de desviación de tiempos (catálogo) ----------
+
+model TimeDeviationPolicy {
+  id                    String   @id @default("singleton")
+  deviationThresholdPct Float    @default(15)
+  movingAverageSamples  Int      @default(10)
+  updatedAt             DateTime @updatedAt
 }
 
 // ---------- Notificaciones ----------

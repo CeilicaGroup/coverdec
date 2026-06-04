@@ -56,31 +56,38 @@ export function fromDatetimeLocalInputValue(
   return new Date(timestamp).toISOString();
 }
 
-export function toIsoUtcFromDateAndHour(date: Date, hourDecimal: number): string {
-  const dt = new Date(date);
+/** Convierte día laborable + hora mural (Europe/Madrid) a ISO UTC. */
+export function toIsoUtcFromDateAndHour(
+  date: Date,
+  hourDecimal: number,
+  timeZone: string = DISPLAY_TIME_ZONE,
+): string {
   const h = Math.floor(hourDecimal);
   const m = Math.round((hourDecimal - h) * 60);
-  dt.setUTCHours(h, m, 0, 0);
-  return dt.toISOString();
+  const datePart = toDatetimeLocalInputValue(date, timeZone).slice(0, 10);
+  const localValue = `${datePart}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return fromDatetimeLocalInputValue(localValue, timeZone);
+}
+
+export function toDatetimeLocalFromDateAndHour(
+  date: Date,
+  hourDecimal: number,
+  timeZone: string = DISPLAY_TIME_ZONE,
+): string {
+  return toDatetimeLocalInputValue(
+    new Date(toIsoUtcFromDateAndHour(date, hourDecimal, timeZone)),
+    timeZone,
+  );
 }
 
 export function planningRangeToDatetimeLocal(
   date: Date,
   startHourDecimal: number,
   endHourDecimal: number,
+  timeZone: string = DISPLAY_TIME_ZONE,
 ): { startedAt: string; endedAt: string } {
-  const startedAt = new Date(date);
-  const startH = Math.floor(startHourDecimal);
-  const startM = Math.round((startHourDecimal - startH) * 60);
-  startedAt.setUTCHours(startH, startM, 0, 0);
-
-  const endedAt = new Date(date);
-  const endH = Math.floor(endHourDecimal);
-  const endM = Math.round((endHourDecimal - endH) * 60);
-  endedAt.setUTCHours(endH, endM, 0, 0);
-
   return {
-    startedAt: toDatetimeLocalInputValue(startedAt),
-    endedAt: toDatetimeLocalInputValue(endedAt),
+    startedAt: toDatetimeLocalFromDateAndHour(date, startHourDecimal, timeZone),
+    endedAt: toDatetimeLocalFromDateAndHour(date, endHourDecimal, timeZone),
   };
 }

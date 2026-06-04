@@ -22,8 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { NotificationType } from "@/generated/prisma";
 import { createUser, updateUser } from "@/features/admin/users-actions";
 import { getErrorMessage } from "@/lib/error-message";
+import { NotificationSubscriptionsForm } from "@/features/notifications/notification-subscriptions-form";
 
 interface UserRow {
   id: string;
@@ -37,6 +39,14 @@ interface UserRow {
 }
 
 interface NaveOption { id: string; codigo: string; nombre: string }
+
+interface SubscriptionRow {
+  userId: string;
+  type: NotificationType;
+  inApp: boolean;
+  email: boolean;
+  push: boolean;
+}
 
 const ROLES = [
   { value: "ADMIN", label: "Admin" },
@@ -63,9 +73,11 @@ const emptyForm = (): FormState => ({
 export function UsuariosAdminClient({
   users,
   naves,
+  subscriptions,
 }: {
   users: UserRow[];
   naves: NaveOption[];
+  subscriptions: SubscriptionRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -167,7 +179,14 @@ export function UsuariosAdminClient({
       </div>
 
       <Dialog open={dialogMode != null} onOpenChange={(o) => !o && setDialogMode(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className={
+            dialogMode === "edit" &&
+            (form.role === "ADMIN" || form.role === "JEFE_PRODUCCION")
+              ? "max-w-2xl max-h-[90vh] overflow-y-auto"
+              : "max-w-md"
+          }
+        >
           <DialogHeader>
             <DialogTitle>{dialogMode === "create" ? "Nuevo usuario" : "Editar usuario"}</DialogTitle>
           </DialogHeader>
@@ -258,6 +277,27 @@ export function UsuariosAdminClient({
                 </div>
               </div>
             )}
+            {dialogMode === "edit" &&
+              editUserId &&
+              (form.role === "ADMIN" || form.role === "JEFE_PRODUCCION") && (
+                <div className="space-y-2 pt-2 border-t">
+                  <Label>Alertas y notificaciones</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Canales por tipo de alerta para este usuario.
+                  </p>
+                  <NotificationSubscriptionsForm
+                    userId={editUserId}
+                    subscriptions={subscriptions
+                      .filter((s) => s.userId === editUserId)
+                      .map(({ type, inApp, email, push }) => ({
+                        type,
+                        inApp,
+                        email,
+                        push,
+                      }))}
+                  />
+                </div>
+              )}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
                 {dialogMode === "create" ? "Crear" : "Guardar"}

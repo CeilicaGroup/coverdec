@@ -511,6 +511,16 @@ async function main() {
     data: { role: Role.ADMIN, emailVerified: true },
   });
 
+  await prisma.timeDeviationPolicy.upsert({
+    where: { id: "singleton" },
+    create: {
+      id: "singleton",
+      deviationThresholdPct: 15,
+      movingAverageSamples: 10,
+    },
+    update: {},
+  });
+
   console.log("Done.");
   console.log("");
   console.log("Usuarios creados:");
