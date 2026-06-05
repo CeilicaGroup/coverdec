@@ -65,7 +65,7 @@ describe("assertLampNameAllowed", () => {
     lamp: {
       findMany: async () => [{ id: "1", name: "Panel Sol" }],
     },
-  };
+  } as Pick<import("@/generated/prisma").PrismaClient, "lamp">;
 
   it("blocks identical names", async () => {
     await expect(

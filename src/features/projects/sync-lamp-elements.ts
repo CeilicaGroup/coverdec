@@ -6,6 +6,7 @@ import {
   type TaskBlueprint,
 } from "@/features/projects/lamp-tasks";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
+import { resolveNaveForElementType } from "@/features/projects/task-nave";
 
 export interface LampElementConfig {
   typology: ElementTypology;
@@ -131,7 +132,8 @@ async function createElementWithTasks(
   params: {
     lampId: string;
     projectId: string;
-    naveId: string;
+    elementTypeDefaultNaves: Map<string, string>;
+    fallbackNaveId: string;
     elementTypeId: string;
     elementName: string;
     surfaceM2: number;
@@ -144,7 +146,8 @@ async function createElementWithTasks(
   const {
     lampId,
     projectId,
-    naveId,
+    elementTypeDefaultNaves,
+    fallbackNaveId,
     elementTypeId,
     elementName,
     surfaceM2,
@@ -174,7 +177,11 @@ async function createElementWithTasks(
       process: bp.process,
       estimatedHours: bp.estimatedHours,
       order: bp.order + physicalElementIndex * 1000,
-      naveId,
+      naveId: resolveNaveForElementType(
+        elementTypeId,
+        elementTypeDefaultNaves,
+        fallbackNaveId,
+      ),
     })),
   });
 }
@@ -218,10 +225,12 @@ export async function syncLampElements(
     lampId: string;
     projectId: string;
     elements: LampElementConfig[];
-    taskNaveId: string;
+    elementTypeDefaultNaves: Map<string, string>;
+    fallbackNaveId: string;
   },
 ): Promise<void> {
-  const { lampId, projectId, elements, taskNaveId } = params;
+  const { lampId, projectId, elements, elementTypeDefaultNaves, fallbackNaveId } =
+    params;
 
   if (elements.length === 0) {
     throw new Error("La lámpara debe tener al menos un elemento.");
@@ -300,7 +309,8 @@ export async function syncLampElements(
         await createElementWithTasks(tx, {
           lampId,
           projectId,
-          naveId: taskNaveId,
+          elementTypeDefaultNaves,
+          fallbackNaveId,
           elementTypeId: config.elementTypeId,
           elementName,
           surfaceM2: config.surfaceM2,
@@ -332,7 +342,8 @@ export async function syncLampElements(
         await createElementWithTasks(tx, {
           lampId,
           projectId,
-          naveId: taskNaveId,
+          elementTypeDefaultNaves,
+          fallbackNaveId,
           elementTypeId: config.elementTypeId,
           elementName,
           surfaceM2: config.surfaceM2,

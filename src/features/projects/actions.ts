@@ -35,6 +35,12 @@ import {
   syncLampElements,
   type LampElementConfig,
 } from "@/features/projects/sync-lamp-elements";
+import {
+  elementTaskScopeWhere,
+  elementTypeIdFromGroupKey,
+  loadTaskNaveContext,
+  resolveNaveForElementType,
+} from "@/features/projects/task-nave";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -48,14 +54,55 @@ function slug(value: string): string {
     .slice(0, 80);
 }
 
-async function getDefaultTaskNaveId(): Promise<string> {
+async function assertActiveNaveId(naveId: string) {
   const nave = await prisma.nave.findFirst({
-    where: { isActive: true },
-    orderBy: { codigo: "asc" },
+    where: { id: naveId, isActive: true },
     select: { id: true },
   });
-  if (!nave) throw new Error("No hay ninguna nave activa.");
-  return nave.id;
+  if (!nave) throw new Error("La nave seleccionada no está activa.");
+}
+
+async function loadScopedTaskIds(args: {
+  lampId: string;
+  elementTypeId: string | null;
+  process?: string;
+}) {
+  const tasks = await prisma.task.findMany({
+    where: elementTaskScopeWhere(args),
+    select: { id: true },
+  });
+  return tasks.map((task) => task.id);
+}
+
+async function persistTasksNave(taskIds: string[], naveId: string) {
+  await assertActiveNaveId(naveId);
+  if (taskIds.length === 0) return;
+
+  const tasks = await prisma.task.findMany({
+    where: { id: { in: taskIds } },
+    select: {
+      id: true,
+      lamp: { select: { projectId: true } },
+      _count: { select: { assignments: true } },
+    },
+  });
+
+  if (tasks.some((task) => task._count.assignments > 0)) {
+    throw new Error(
+      "Alguna tarea tiene asignaciones de planning; no se puede cambiar la nave.",
+    );
+  }
+
+  await prisma.task.updateMany({
+    where: { id: { in: taskIds } },
+    data: { naveId },
+  });
+
+  const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
+  revalidatePath("/dashboard/proyectos");
+  for (const projectId of projectIds) {
+    revalidatePath(`/dashboard/proyectos/${projectId}`);
+  }
 }
 
 const projectSchema = z.object({
@@ -190,7 +237,8 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
   if (!project) throw new Error("Proyecto no encontrado");
 
   const mode = resolveCreateLampMode(project.kind, data);
-  const taskNaveId = await getDefaultTaskNaveId();
+  const { fallbackNaveId, elementTypeDefaultNaves } =
+    await loadTaskNaveContext(prisma);
 
   if (mode === "manual") {
     let lampId = "";
@@ -218,7 +266,11 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                 process: MANUAL_ESTIMATION_PROCESS,
                 estimatedHours: data.estimatedHours,
                 order: 0,
-                naveId: taskNaveId,
+                naveId: resolveNaveForElementType(
+                  null,
+                  elementTypeDefaultNaves,
+                  fallbackNaveId,
+                ),
               },
             });
           }
@@ -331,7 +383,11 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                 process: bp.process,
                 estimatedHours: bp.estimatedHours,
                 order: bp.order + physicalElementIndex * 1000,
-                naveId: taskNaveId,
+                naveId: resolveNaveForElementType(
+                  element.elementTypeId,
+                  elementTypeDefaultNaves,
+                  fallbackNaveId,
+                ),
               });
             }
 
@@ -373,7 +429,8 @@ export async function updateLampElements(
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = updateLampElementsSchema.parse(input);
   assertUniqueElementTypes(data.elements);
-  const taskNaveId = await getDefaultTaskNaveId();
+  const { fallbackNaveId, elementTypeDefaultNaves } =
+    await loadTaskNaveContext(prisma);
 
   const lamp = await prisma.lamp.findFirst({
     where: { id: data.lampId },
@@ -386,7 +443,8 @@ export async function updateLampElements(
       lampId: lamp.id,
       projectId: lamp.projectId,
       elements: data.elements as LampElementConfig[],
-      taskNaveId,
+      elementTypeDefaultNaves,
+      fallbackNaveId,
     });
   });
 
@@ -479,6 +537,7 @@ const addExtraTaskSchema = z.object({
   lampId: z.string().min(1),
   process: z.string().min(1),
   estimatedHours: z.number().positive(),
+  elementGroupKey: z.string().min(1).optional(),
 });
 
 export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
@@ -491,6 +550,74 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     select: { id: true, projectId: true, elementTypeId: true },
   });
   if (!lamp) throw new Error("Lámpara no encontrada");
+
+  const { fallbackNaveId, elementTypeDefaultNaves } =
+    await loadTaskNaveContext(prisma);
+
+  if (data.elementGroupKey) {
+    const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
+    const exists = await prisma.task.count({
+      where: elementTaskScopeWhere({
+        lampId: lamp.id,
+        elementTypeId,
+        process: data.process,
+      }),
+    });
+    if (exists > 0) {
+      throw new Error("Ese proceso ya existe en este elemento.");
+    }
+
+    const naveId = resolveNaveForElementType(
+      elementTypeId,
+      elementTypeDefaultNaves,
+      fallbackNaveId,
+    );
+
+    await prisma.$transaction(async (tx) => {
+      let order = await getNextTaskOrder(tx, lamp.id);
+
+      if (elementTypeId === null) {
+        await tx.task.create({
+          data: {
+            projectId: lamp.projectId,
+            lampId: lamp.id,
+            lampElementId: null,
+            process: data.process,
+            estimatedHours: data.estimatedHours,
+            order,
+            naveId,
+          },
+        });
+        return;
+      }
+
+      const lampElements = await tx.lampElement.findMany({
+        where: { lampId: lamp.id, elementTypeId },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (lampElements.length === 0) {
+        throw new Error("No hay unidades en este elemento.");
+      }
+
+      for (const lampElement of lampElements) {
+        await tx.task.create({
+          data: {
+            projectId: lamp.projectId,
+            lampId: lamp.id,
+            lampElementId: lampElement.id,
+            process: data.process,
+            estimatedHours: data.estimatedHours,
+            order: order++,
+            naveId,
+          },
+        });
+      }
+    });
+
+    revalidatePath("/dashboard/proyectos");
+    return;
+  }
 
   const primaryLampElement = lamp.elementTypeId
     ? await prisma.lampElement.findFirst({
@@ -517,13 +644,11 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     if (exists > 0) throw new Error("Ese proceso ya existe en esta lámpara.");
   }
 
-  const naveId =
-    (
-      await prisma.task.findFirst({
-        where: { lampId: lamp.id },
-        select: { naveId: true },
-      })
-    )?.naveId ?? (await getDefaultTaskNaveId());
+  const naveId = resolveNaveForElementType(
+    lamp.elementTypeId,
+    elementTypeDefaultNaves,
+    fallbackNaveId,
+  );
 
   await prisma.$transaction(async (tx) => {
     const order = await getNextTaskOrder(tx, lamp.id);
@@ -540,6 +665,166 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     });
   });
 
+  revalidatePath("/dashboard/proyectos");
+}
+
+const updateTaskNaveSchema = z.object({
+  taskId: z.string().min(1),
+  naveId: z.string().min(1),
+});
+
+export async function updateTaskNave(input: z.infer<typeof updateTaskNaveSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateTaskNaveSchema.parse(input);
+  await persistTasksNave([data.taskId], data.naveId);
+}
+
+const bulkAssignTasksNaveSchema = z.object({
+  taskIds: z.array(z.string().min(1)).min(1),
+  naveId: z.string().min(1),
+});
+
+export async function bulkAssignTasksNave(
+  input: z.infer<typeof bulkAssignTasksNaveSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = bulkAssignTasksNaveSchema.parse(input);
+  await persistTasksNave(data.taskIds, data.naveId);
+}
+
+const assignElementTasksNaveSchema = z.object({
+  lampId: z.string().min(1),
+  elementGroupKey: z.string().min(1),
+  naveId: z.string().min(1),
+});
+
+export async function assignElementTasksNave(
+  input: z.infer<typeof assignElementTasksNaveSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = assignElementTasksNaveSchema.parse(input);
+  const taskIds = await loadScopedTaskIds({
+    lampId: data.lampId,
+    elementTypeId: elementTypeIdFromGroupKey(data.elementGroupKey),
+  });
+  await persistTasksNave(taskIds, data.naveId);
+}
+
+const assignProcessTasksNaveSchema = z.object({
+  lampId: z.string().min(1),
+  elementGroupKey: z.string().min(1),
+  process: z.string().min(1),
+  naveId: z.string().min(1),
+});
+
+export async function assignProcessTasksNave(
+  input: z.infer<typeof assignProcessTasksNaveSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = assignProcessTasksNaveSchema.parse(input);
+  const taskIds = await loadScopedTaskIds({
+    lampId: data.lampId,
+    elementTypeId: elementTypeIdFromGroupKey(data.elementGroupKey),
+    process: data.process,
+  });
+  await persistTasksNave(taskIds, data.naveId);
+}
+
+const applyDefaultNavesSchema = z.object({
+  lampId: z.string().min(1),
+  elementGroupKey: z.string().min(1),
+});
+
+export async function applyDefaultNavesToElement(
+  input: z.infer<typeof applyDefaultNavesSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = applyDefaultNavesSchema.parse(input);
+  const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
+  const { fallbackNaveId, elementTypeDefaultNaves } =
+    await loadTaskNaveContext(prisma);
+  const defaultNaveId = resolveNaveForElementType(
+    elementTypeId,
+    elementTypeDefaultNaves,
+    fallbackNaveId,
+  );
+  const tasks = await prisma.task.findMany({
+    where: elementTaskScopeWhere({
+      lampId: data.lampId,
+      elementTypeId,
+    }),
+    select: {
+      id: true,
+      lamp: { select: { projectId: true } },
+      _count: { select: { assignments: true } },
+    },
+  });
+
+  if (tasks.some((task) => task._count.assignments > 0)) {
+    throw new Error(
+      "Alguna tarea tiene asignaciones de planning; no se puede cambiar la nave.",
+    );
+  }
+
+  await prisma.$transaction(
+    tasks.map((task) =>
+      prisma.task.update({
+        where: { id: task.id },
+        data: { naveId: defaultNaveId },
+      }),
+    ),
+  );
+
+  const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
+  revalidatePath("/dashboard/proyectos");
+  for (const projectId of projectIds) {
+    revalidatePath(`/dashboard/proyectos/${projectId}`);
+  }
+}
+
+const deleteProcessTasksSchema = z.object({
+  lampId: z.string().min(1),
+  elementGroupKey: z.string().min(1),
+  process: z.string().min(1),
+});
+
+export async function deleteProcessTasks(
+  input: z.infer<typeof deleteProcessTasksSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = deleteProcessTasksSchema.parse(input);
+
+  const tasks = await prisma.task.findMany({
+    where: elementTaskScopeWhere({
+      lampId: data.lampId,
+      elementTypeId: elementTypeIdFromGroupKey(data.elementGroupKey),
+      process: data.process,
+    }),
+    include: { _count: { select: { assignments: true, timeEntries: true } } },
+  });
+
+  if (tasks.length === 0) {
+    throw new Error("No hay tareas de ese proceso en este elemento.");
+  }
+
+  if (tasks.some((task) => task._count.timeEntries > 0)) {
+    throw new Error("No se puede eliminar: alguna tarea tiene horas registradas.");
+  }
+  if (tasks.some((task) => task._count.assignments > 0)) {
+    throw new Error(
+      "No se puede eliminar: alguna tarea tiene asignaciones de planning.",
+    );
+  }
+
+  await prisma.task.deleteMany({
+    where: { id: { in: tasks.map((task) => task.id) } },
+  });
   revalidatePath("/dashboard/proyectos");
 }
 

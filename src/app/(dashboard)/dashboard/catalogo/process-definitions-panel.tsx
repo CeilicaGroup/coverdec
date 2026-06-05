@@ -226,7 +226,12 @@ export function ProcessDefinitionsPanel({
           </p>
         </div>
         {canManage ? (
-          <Button type="button" size="sm" className="gap-1" onClick={() => setCreateOpen(true)}>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1"
+            onClick={() => setCreateOpen(true)}
+          >
             <Plus className="size-4" />
             Nuevo proceso
           </Button>

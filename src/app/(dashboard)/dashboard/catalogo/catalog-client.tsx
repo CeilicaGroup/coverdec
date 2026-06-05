@@ -49,11 +49,23 @@ interface ProcessDefOption {
   borderColor: string;
 }
 
+interface NaveOption {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
+
 interface FrameProcessRow {
   id: string;
   process: ProcessCode;
   hoursPerUnit: number;
   fixedHours: number;
+}
+
+interface TypologyNaveRow {
+  typology: ElementTypology;
+  defaultNaveId: string | null;
+  defaultNave: NaveOption | null;
 }
 
 interface FrameRow {
@@ -63,8 +75,41 @@ interface FrameRow {
   description: string | null;
   typology: ElementTypology;
   isActive: boolean;
+  defaultNaveId: string | null;
+  defaultNave: NaveOption | null;
   processes: FrameProcessRow[];
   lampCount: number;
+}
+
+const INHERIT_TYPOLOGY_NAVALUE = "__inherit_typology__";
+
+function naveLabel(nave: NaveOption | null): string {
+  return nave ? `${nave.codigo} · ${nave.nombre}` : "—";
+}
+
+function naveSelectLabel(naveId: string, naves: NaveOption[]): string {
+  if (!naveId) return "Selecciona nave";
+  const nave = naves.find((item) => item.id === naveId);
+  return nave ? naveLabel(nave) : "Nave";
+}
+
+function typologyNaveLabel(
+  typology: ElementTypology,
+  typologyNaves: TypologyNaveRow[],
+): string | null {
+  const row = typologyNaves.find((item) => item.typology === typology);
+  return row?.defaultNave ? naveLabel(row.defaultNave) : null;
+}
+
+function catalogNaveDisplay(
+  frame: FrameRow,
+  typologyNaves: TypologyNaveRow[],
+): string {
+  if (frame.defaultNave) return naveLabel(frame.defaultNave);
+  const inherited = typologyNaveLabel(frame.typology, typologyNaves);
+  return inherited
+    ? `${inherited} (tipología ${ELEMENT_TYPOLOGY_LABELS[frame.typology]})`
+    : "—";
 }
 
 type DialogMode = "create" | "edit";
@@ -93,10 +138,14 @@ function defaultProcessRow(
 export function CatalogoCatalogClient({
   frames,
   processDefs,
+  naves,
+  typologyNaves,
   canManage,
 }: {
   frames: FrameRow[];
   processDefs: ProcessDefOption[];
+  naves: NaveOption[];
+  typologyNaves: TypologyNaveRow[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -109,6 +158,7 @@ export function CatalogoCatalogClient({
   const [description, setDescription] = useState("");
   const [rows, setRows] = useState<ProcessFormRow[]>([]);
   const [typology, setTypology] = useState<ElementTypology>(ElementTypology.BASTIDOR);
+  const [defaultNaveId, setDefaultNaveId] = useState("");
 
   const activeCount = useMemo(() => frames.filter((f) => f.isActive).length, [frames]);
 
@@ -119,6 +169,7 @@ export function CatalogoCatalogClient({
     setName("");
     setDescription("");
     setTypology(ElementTypology.BASTIDOR);
+    setDefaultNaveId("");
     const used = new Set<ProcessCode>();
     const first = defaultProcessRow(processDefs, used);
     setRows(first ? [first] : []);
@@ -132,6 +183,7 @@ export function CatalogoCatalogClient({
     setName(frame.name);
     setDescription(frame.description ?? "");
     setTypology(frame.typology);
+    setDefaultNaveId(frame.defaultNaveId ?? "");
     setRows(
       frame.processes.length > 0
         ? frame.processes.map((p) => ({
@@ -201,6 +253,7 @@ export function CatalogoCatalogClient({
           description: description.trim() || undefined,
           typology,
           isActive: true,
+          defaultNaveId: defaultNaveId || null,
           processes,
         });
         toast.success(mode === "create" ? "Elemento creado" : "Elemento actualizado");
@@ -292,6 +345,7 @@ export function CatalogoCatalogClient({
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Tipología</TableHead>
+                <TableHead>Nave por defecto</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Procesos</TableHead>
                 {canManage ? <TableHead className="w-[152px] text-right">Acciones</TableHead> : null}
@@ -301,7 +355,7 @@ export function CatalogoCatalogClient({
               {frames.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={canManage ? 6 : 5}
+                    colSpan={canManage ? 7 : 6}
                     className="text-center text-muted-foreground py-6"
                   >
                     Catálogo vacío. Importa PRODUCCION.xlsx o crea un elemento.
@@ -319,6 +373,9 @@ export function CatalogoCatalogClient({
                       <Badge variant="secondary" className="text-[10px] font-medium">
                         {ELEMENT_TYPOLOGY_LABELS[f.typology]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {catalogNaveDisplay(f, typologyNaves)}
                     </TableCell>
                     <TableCell>
                       {f.isActive ? (
@@ -448,7 +505,16 @@ export function CatalogoCatalogClient({
               <Label>Tipología</Label>
               <Select
                 value={typology}
-                onValueChange={(v) => setTypology(v as ElementTypology)}
+                onValueChange={(v) => {
+                  const next = v as ElementTypology;
+                  setTypology(next);
+                  if (!defaultNaveId) return;
+                  const currentTypologyDefault = typologyNaveLabel(typology, typologyNaves);
+                  const selectedLabel = naveSelectLabel(defaultNaveId, naves);
+                  if (selectedLabel === currentTypologyDefault) {
+                    setDefaultNaveId("");
+                  }
+                }}
                 disabled={pending}
               >
                 <SelectTrigger className="h-9">
@@ -475,6 +541,44 @@ export function CatalogoCatalogClient({
                 disabled={pending}
                 rows={2}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Nave por defecto del catálogo</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Por defecto hereda la nave de la tipología (
+                {typologyNaveLabel(typology, typologyNaves) ?? "sin definir"}).
+                Puedes fijar otra solo para este tipo de catálogo.
+              </p>
+              <Select
+                value={defaultNaveId || INHERIT_TYPOLOGY_NAVALUE}
+                onValueChange={(value) =>
+                  setDefaultNaveId(
+                    value === INHERIT_TYPOLOGY_NAVALUE ? "" : (value ?? ""),
+                  )
+                }
+                disabled={pending}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Selecciona nave">
+                    <span className="truncate">
+                      {defaultNaveId
+                        ? naveSelectLabel(defaultNaveId, naves)
+                        : `Tipología · ${typologyNaveLabel(typology, typologyNaves) ?? "—"}`}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={INHERIT_TYPOLOGY_NAVALUE}>
+                    Usar tipología ·{" "}
+                    {typologyNaveLabel(typology, typologyNaves) ?? "sin definir"}
+                  </SelectItem>
+                  {naves.map((nave) => (
+                    <SelectItem key={nave.id} value={nave.id}>
+                      {nave.codigo} · {nave.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">

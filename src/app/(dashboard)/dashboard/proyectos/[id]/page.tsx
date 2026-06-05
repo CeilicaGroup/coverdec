@@ -94,10 +94,12 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [elementTypes, processDefs, naves, responsibleUsers] = await Promise.all([
+  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers] =
+    await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
       include: {
+        defaultNave: { select: { id: true, codigo: true, nombre: true } },
         processes: {
           include: { definition: true },
           orderBy: { sequence: "asc" },
@@ -120,12 +122,28 @@ export default async function ProjectDetailPage({
       orderBy: { codigo: "asc" },
       select: { id: true, codigo: true, nombre: true },
     }),
+    prisma.elementTypologyNave.findMany({
+      select: { typology: true, defaultNaveId: true },
+    }),
     prisma.user.findMany({
       where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
       select: { id: true, name: true, role: true },
       orderBy: [{ role: "asc" }, { name: "asc" }],
     }),
   ]);
+
+  const typologyDefaultNaveByTypology = Object.fromEntries(
+    typologyNaves.map((row) => [row.typology, row.defaultNaveId]),
+  ) as Record<string, string | null>;
+  const fallbackNaveId = naves[0]?.id ?? null;
+  const elementTypeDefaultNaves = Object.fromEntries(
+    elementTypes.map((elementType) => [
+      elementType.id,
+      elementType.defaultNaveId ??
+        typologyDefaultNaveByTypology[elementType.typology] ??
+        fallbackNaveId,
+    ]),
+  ) as Record<string, string | null>;
 
   const waitHoursByProcess = Object.fromEntries(
     processDefs.map((p) => [p.code, p.waitHours]),
@@ -314,6 +332,7 @@ export default async function ProjectDetailPage({
                       processStylesByCode={processStylesByCode}
                       canManage={canManage}
                       naves={naves}
+                      elementTypeDefaultNaves={elementTypeDefaultNaves}
                     />
                   </div>
                 );

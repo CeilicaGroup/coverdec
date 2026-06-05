@@ -1,0 +1,185 @@
+import type { ElementTypology, PrismaClient } from "@/generated/prisma";
+
+export interface NaveSummary {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
+
+export interface NaveLabelSummary {
+  label: string;
+  homogeneous: boolean;
+  naveId: string | null;
+}
+
+export async function getFallbackNaveId(
+  db: Pick<PrismaClient, "nave">,
+): Promise<string> {
+  const nave = await db.nave.findFirst({
+    where: { isActive: true },
+    orderBy: { codigo: "asc" },
+    select: { id: true },
+  });
+  if (!nave) throw new Error("No hay ninguna nave activa.");
+  return nave.id;
+}
+
+export async function loadTypologyDefaultNaves(
+  db: Pick<PrismaClient, "elementTypologyNave">,
+): Promise<Map<ElementTypology, string>> {
+  const rows = await db.elementTypologyNave.findMany({
+    where: { defaultNaveId: { not: null } },
+    select: { typology: true, defaultNaveId: true },
+  });
+  return new Map(
+    rows
+      .filter(
+        (row): row is { typology: ElementTypology; defaultNaveId: string } =>
+          row.defaultNaveId != null,
+      )
+      .map((row) => [row.typology, row.defaultNaveId]),
+  );
+}
+
+export function resolveEffectiveElementTypeNaveId(args: {
+  elementTypeId: string | null;
+  elementTypeDefaultNaveId: string | null | undefined;
+  elementTypeTypology: ElementTypology | null | undefined;
+  elementTypeDefaultNaves: Map<string, string>;
+  typologyDefaultNaves: Map<ElementTypology, string>;
+  fallbackNaveId: string;
+}): string {
+  if (args.elementTypeId == null) return args.fallbackNaveId;
+
+  const fromMap = args.elementTypeDefaultNaves.get(args.elementTypeId);
+  if (fromMap) return fromMap;
+
+  if (args.elementTypeDefaultNaveId) return args.elementTypeDefaultNaveId;
+
+  if (args.elementTypeTypology) {
+    const fromTypology = args.typologyDefaultNaves.get(args.elementTypeTypology);
+    if (fromTypology) return fromTypology;
+  }
+
+  return args.fallbackNaveId;
+}
+
+export async function loadElementTypeDefaultNaves(
+  db: Pick<PrismaClient, "elementType" | "elementTypologyNave" | "nave">,
+): Promise<Map<string, string>> {
+  const [fallbackNaveId, typologyDefaultNaves, elementTypes] = await Promise.all([
+    getFallbackNaveId(db),
+    loadTypologyDefaultNaves(db),
+    db.elementType.findMany({
+      select: { id: true, typology: true, defaultNaveId: true },
+    }),
+  ]);
+
+  return new Map(
+    elementTypes.map((elementType) => [
+      elementType.id,
+      resolveEffectiveElementTypeNaveId({
+        elementTypeId: elementType.id,
+        elementTypeDefaultNaveId: elementType.defaultNaveId,
+        elementTypeTypology: elementType.typology,
+        elementTypeDefaultNaves: new Map(),
+        typologyDefaultNaves,
+        fallbackNaveId,
+      }),
+    ]),
+  );
+}
+
+export async function loadTaskNaveContext(
+  db: Pick<PrismaClient, "nave" | "elementType" | "elementTypologyNave">,
+): Promise<{
+  fallbackNaveId: string;
+  typologyDefaultNaves: Map<ElementTypology, string>;
+  elementTypeDefaultNaves: Map<string, string>;
+}> {
+  const [fallbackNaveId, typologyDefaultNaves, elementTypeDefaultNaves] =
+    await Promise.all([
+      getFallbackNaveId(db),
+      loadTypologyDefaultNaves(db),
+      loadElementTypeDefaultNaves(db),
+    ]);
+  return { fallbackNaveId, typologyDefaultNaves, elementTypeDefaultNaves };
+}
+
+export function resolveNaveForElementType(
+  elementTypeId: string | null,
+  elementTypeDefaultNaves: Map<string, string>,
+  fallbackNaveId: string,
+): string {
+  if (elementTypeId == null) return fallbackNaveId;
+  return elementTypeDefaultNaves.get(elementTypeId) ?? fallbackNaveId;
+}
+
+export function formatNaveLabel(
+  nave: NaveSummary | undefined,
+  naveId: string,
+): string {
+  return nave ? `${nave.codigo} · ${nave.nombre}` : naveId;
+}
+
+export function isCustomNaveAssignment(
+  naveId: string,
+  elementTypeDefaultNaveId: string | null | undefined,
+): boolean {
+  if (!elementTypeDefaultNaveId) return false;
+  return naveId !== elementTypeDefaultNaveId;
+}
+
+export type NaveAssignmentKind = "default" | "custom" | "mixed" | "unknown";
+
+export function describeNaveAssignment(args: {
+  naveIds: string[];
+  elementTypeDefaultNaveId: string | null | undefined;
+}): NaveAssignmentKind {
+  const unique = [...new Set(args.naveIds)];
+  if (unique.length === 0) return "unknown";
+  if (unique.length > 1) return "mixed";
+  if (!args.elementTypeDefaultNaveId) return "unknown";
+  return unique[0] === args.elementTypeDefaultNaveId ? "default" : "custom";
+}
+
+export function summarizeNaveIds(
+  naveIds: string[],
+  navesById: Map<string, NaveSummary>,
+): NaveLabelSummary {
+  if (naveIds.length === 0) {
+    return { label: "—", homogeneous: true, naveId: null };
+  }
+
+  const unique = [...new Set(naveIds)];
+  if (unique.length === 1) {
+    const naveId = unique[0]!;
+    return {
+      label: formatNaveLabel(navesById.get(naveId), naveId),
+      homogeneous: true,
+      naveId,
+    };
+  }
+
+  return { label: "Mixto", homogeneous: false, naveId: null };
+}
+
+export const MANUAL_ELEMENT_KEY = "__sin_elemento__";
+
+export function elementTypeIdFromGroupKey(groupKey: string): string | null {
+  return groupKey === MANUAL_ELEMENT_KEY ? null : groupKey;
+}
+
+export function elementTaskScopeWhere(args: {
+  lampId: string;
+  elementTypeId: string | null;
+  process?: string;
+}) {
+  return {
+    lampId: args.lampId,
+    ...(args.process ? { process: args.process } : {}),
+    ...(args.elementTypeId === null
+      ? { lampElementId: null }
+      : { lampElement: { elementTypeId: args.elementTypeId } }),
+  };
+}

@@ -368,7 +368,34 @@ async function main() {
       create: nave,
     });
   }
+  const naveByCodigo = new Map(
+    (
+      await prisma.nave.findMany({
+        orderBy: { codigo: "asc" },
+        select: { id: true, codigo: true },
+      })
+    ).map((nave) => [nave.codigo, nave.id]),
+  );
   const firstNave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
+
+  console.log("Seeding typology default naves...");
+  const typologyNaveByCodigo: Array<{
+    typology: ElementTypology;
+    codigo: string;
+  }> = [
+    { typology: ElementTypology.TELA, codigo: "N1" },
+    { typology: ElementTypology.BASTIDOR, codigo: "N1" },
+    { typology: ElementTypology.ILUMINACION, codigo: "N2" },
+  ];
+  for (const row of typologyNaveByCodigo) {
+    const naveId = naveByCodigo.get(row.codigo);
+    if (!naveId) continue;
+    await prisma.elementTypologyNave.upsert({
+      where: { typology: row.typology },
+      update: { defaultNaveId: naveId },
+      create: { typology: row.typology, defaultNaveId: naveId },
+    });
+  }
 
   console.log("Seeding element types...");
   const elementTypeByCode = new Map<string, { id: string; name: string }>();
@@ -380,8 +407,9 @@ async function main() {
         name: etData.name,
         description: etData.description,
         typology: etData.typology,
+        defaultNaveId: null,
       },
-      create: etData,
+      create: { ...etData, defaultNaveId: null },
     });
     elementTypeByCode.set(etData.code, created);
     for (const ep of processes) {

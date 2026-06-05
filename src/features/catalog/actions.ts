@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { ElementTypology, Role } from "@/generated/prisma";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
+import { getFallbackNaveId } from "@/features/projects/task-nave";
 
 const processRowSchema = z.object({
   process: z.string().min(1),
@@ -20,6 +21,7 @@ const elementUpsertSchema = z
     description: z.string().optional(),
     typology: z.nativeEnum(ElementTypology),
     isActive: z.boolean().default(true),
+    defaultNaveId: z.string().min(1).nullable().optional(),
     processes: z.array(processRowSchema).default([]),
   })
   .superRefine((data, ctx) => {
@@ -56,6 +58,14 @@ export async function upsertElementType(input: z.infer<typeof elementUpsertSchem
     }
   }
 
+  if (data.defaultNaveId) {
+    const nave = await prisma.nave.findFirst({
+      where: { id: data.defaultNaveId, isActive: true },
+      select: { id: true },
+    });
+    if (!nave) throw new Error("La nave por defecto no está activa.");
+  }
+
   const element = await prisma.elementType.upsert({
     where: { code: data.code },
     update: {
@@ -63,6 +73,9 @@ export async function upsertElementType(input: z.infer<typeof elementUpsertSchem
       description: data.description ?? null,
       typology: data.typology,
       isActive: data.isActive,
+      ...(data.defaultNaveId !== undefined
+        ? { defaultNaveId: data.defaultNaveId }
+        : {}),
     },
     create: {
       code: data.code,
@@ -70,6 +83,7 @@ export async function upsertElementType(input: z.infer<typeof elementUpsertSchem
       description: data.description ?? null,
       typology: data.typology,
       isActive: data.isActive,
+      defaultNaveId: data.defaultNaveId ?? null,
     },
   });
 
@@ -111,6 +125,36 @@ const setActiveSchema = z.object({
   elementTypeId: z.string().min(1),
   isActive: z.boolean(),
 });
+
+const updateTypologyNaveSchema = z.object({
+  typology: z.nativeEnum(ElementTypology),
+  defaultNaveId: z.string().min(1).nullable(),
+});
+
+export async function updateTypologyDefaultNave(
+  input: z.infer<typeof updateTypologyNaveSchema>,
+) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = updateTypologyNaveSchema.parse(input);
+
+  if (data.defaultNaveId) {
+    const nave = await prisma.nave.findFirst({
+      where: { id: data.defaultNaveId, isActive: true },
+      select: { id: true },
+    });
+    if (!nave) throw new Error("La nave por defecto no está activa.");
+  }
+
+  await prisma.elementTypologyNave.upsert({
+    where: { typology: data.typology },
+    update: { defaultNaveId: data.defaultNaveId },
+    create: { typology: data.typology, defaultNaveId: data.defaultNaveId },
+  });
+
+  revalidatePath("/dashboard/catalogo");
+  revalidatePath("/dashboard/proyectos");
+}
 
 export async function setElementTypeActive(input: z.infer<typeof setActiveSchema>) {
   const ctx = await requireDashboardContext();

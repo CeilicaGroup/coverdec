@@ -46,12 +46,12 @@ export async function assignLampToNave(lampId: string, naveId: string) {
   revalidatePath("/dashboard/proyectos");
 }
 
+/** @deprecated Use updateTaskNave from @/features/projects/actions */
 export async function updateTaskNave(taskId: string, naveId: string) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  await prisma.task.findFirstOrThrow({ where: { id: taskId } });
-  await prisma.task.update({ where: { id: taskId }, data: { naveId } });
-  revalidatePath("/dashboard/proyectos");
+  const { updateTaskNave: updateTaskNaveAction } = await import(
+    "@/features/projects/actions"
+  );
+  await updateTaskNaveAction({ taskId, naveId });
 }
 
 export async function getNaves() {

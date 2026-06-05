@@ -3,16 +3,18 @@ import { requireDashboardContext } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { CatalogoCatalogClient } from "./catalog-client";
 import { ProcessDefinitionsPanel } from "./process-definitions-panel";
+import { TypologyNavesPanel } from "./typology-naves-panel";
 
 export default async function CatalogoPage() {
   const ctx = await requireDashboardContext();
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
 
-  const [framesRaw, processDefs] = await Promise.all([
+  const [framesRaw, processDefs, naves, typologyNaves] = await Promise.all([
     prisma.elementType.findMany({
       where: {},
       include: {
         processes: { orderBy: { sequence: "asc" } },
+        defaultNave: { select: { id: true, codigo: true, nombre: true } },
         _count: { select: { lamps: true } },
       },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
@@ -29,6 +31,16 @@ export default async function CatalogoPage() {
         canFragment: true,
       },
     }),
+    prisma.nave.findMany({
+      where: { isActive: true },
+      orderBy: { codigo: "asc" },
+      select: { id: true, codigo: true, nombre: true },
+    }),
+    prisma.elementTypologyNave.findMany({
+      include: {
+        defaultNave: { select: { id: true, codigo: true, nombre: true } },
+      },
+    }),
   ]);
 
   const frames = framesRaw.map(({ _count, ...f }) => ({
@@ -38,7 +50,19 @@ export default async function CatalogoPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      <ProcessDefinitionsPanel processes={processDefs} canManage={canManage} />
+      <ProcessDefinitionsPanel
+        processes={processDefs}
+        canManage={canManage}
+      />
+      <TypologyNavesPanel
+        rows={typologyNaves.map((row) => ({
+          typology: row.typology,
+          defaultNaveId: row.defaultNaveId,
+          defaultNave: row.defaultNave,
+        }))}
+        naves={naves}
+        canManage={canManage}
+      />
       <CatalogoCatalogClient
         frames={frames}
         processDefs={processDefs.map((p) => ({
@@ -47,6 +71,12 @@ export default async function CatalogoPage() {
           bgColor: p.bgColor,
           fgColor: p.fgColor,
           borderColor: p.borderColor,
+        }))}
+        naves={naves}
+        typologyNaves={typologyNaves.map((row) => ({
+          typology: row.typology,
+          defaultNaveId: row.defaultNaveId,
+          defaultNave: row.defaultNave,
         }))}
         canManage={canManage}
       />

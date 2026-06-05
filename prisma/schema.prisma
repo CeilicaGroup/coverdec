@@ -98,6 +98,8 @@ model Nave {
   isActive Boolean @default(true)
 
   tasks               Task[]
+  elementTypeDefaults ElementType[] @relation("ElementTypeDefaultNave")
+  typologyDefaults    ElementTypologyNave[] @relation("TypologyDefaultNave")
   activeUsers         User[]          @relation("ActiveNave")
   personNaves         PersonNave[]
   plannings           Planning[]      @relation("NavePlannings")
@@ -301,6 +303,12 @@ enum ElementTypology {
   ILUMINACION
 }
 
+model ElementTypologyNave {
+  typology      ElementTypology @id
+  defaultNaveId String?
+  defaultNave   Nave?           @relation("TypologyDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
+}
+
 model ElementType {
   id            String          @id @default(cuid())
   code          String          @unique
@@ -309,9 +317,11 @@ model ElementType {
   typology      ElementTypology @default(BASTIDOR)
   baseUnit      String          @default("m2")
   isActive      Boolean         @default(true)
+  defaultNaveId String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
+  defaultNave  Nave?              @relation("ElementTypeDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
   processes    ElementTypeProcess[]
   lamps        Lamp[]
   lampElements LampElement[]
