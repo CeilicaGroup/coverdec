@@ -1,4 +1,5 @@
 import { PlanningStatus } from "@/generated/prisma";
+import { absenceOverlapPrismaFilter } from "@/features/people/absence-model";
 import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
@@ -415,7 +416,7 @@ export async function getHolidaysForRange(start: Date, end: Date) {
 
 export async function getAbsencesForRange(start: Date, end: Date) {
   return prisma.absence.findMany({
-    where: { date: { gte: start, lte: end } },
+    where: absenceOverlapPrismaFilter(start, end),
     include: { person: true },
     orderBy: { date: "asc" },
   });

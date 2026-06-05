@@ -1,3 +1,5 @@
+import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absence-model";
+import { scheduledHoursForPersonDay } from "@/features/people/absence-schedule";
 import { riskFromPlannedEnd } from "@/lib/format";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { weekDays } from "@/lib/week";
@@ -5,8 +7,18 @@ import { NotificationType, type Prisma } from "@/generated/prisma";
 
 function computeCapacityForWeek(args: {
   days: Date[];
-  people: { id: string; capacityHours: number }[];
-  absences: { personId: string; date: Date; hours: number }[];
+  people: {
+    id: string;
+    workWindows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[];
+  }[];
+  absences: {
+    personId: string;
+    date: Date;
+    endDate: Date;
+    hours: number;
+    blockStartMinutes: number | null;
+    blockEndMinutes: number | null;
+  }[];
   holidayDates: Set<string>;
 }): number {
   let total = 0;
@@ -14,25 +26,17 @@ function computeCapacityForWeek(args: {
     const dayKey = day.toISOString().slice(0, 10);
     if (args.holidayDates.has(dayKey)) continue;
     for (const person of args.people) {
-      const absence = args.absences.find(
-        (a) => a.personId === person.id && a.date.toISOString().slice(0, 10) === dayKey,
+      const dayCap = scheduledHoursForPersonDay(day, person.workWindows);
+      const absenceHours = sumEffectiveAbsenceHoursForPersonOnDay(
+        args.absences,
+        person.id,
+        dayKey,
+        person.workWindows,
       );
-      total += Math.max(0, person.capacityHours - (absence?.hours ?? 0));
+      total += Math.max(0, dayCap - absenceHours);
     }
   }
   return total;
-}
-
-function deriveDailyHoursFromWindows(
-  windows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[],
-): number {
-  const byDay = new Map<number, number>();
-  for (const w of windows) {
-    const span = Math.max(0, w.endMinutes - w.startMinutes) / 60;
-    byDay.set(w.dayOfWeek, (byDay.get(w.dayOfWeek) ?? 0) + span);
-  }
-  const total = [1, 2, 3, 4, 5].reduce((acc, d) => acc + (byDay.get(d) ?? 0), 0);
-  return total > 0 ? total / 5 : 8;
 }
 
 export async function detectPlanningPublishNotifications(
@@ -85,8 +89,18 @@ export async function detectPlanningPublishNotifications(
       },
     }),
     tx.absence.findMany({
-      where: { date: { gte: planning.weekStart, lte: planning.weekEnd } },
-      select: { personId: true, date: true, hours: true },
+      where: {
+        date: { lte: planning.weekEnd },
+        endDate: { gte: planning.weekStart },
+      },
+      select: {
+        personId: true,
+        date: true,
+        endDate: true,
+        hours: true,
+        blockStartMinutes: true,
+        blockEndMinutes: true,
+      },
     }),
     tx.holiday.findMany({
       where: {
@@ -96,15 +110,11 @@ export async function detectPlanningPublishNotifications(
     }),
   ]);
 
-  const peopleWithCapacity = people.map((p) => ({
-    id: p.id,
-    capacityHours: deriveDailyHoursFromWindows(p.workWindows),
-  }));
   const holidayDates = expandHolidayRangesToIsoDays(holidays, planning.weekStart, planning.weekEnd);
   const days = weekDays(planning.weekStart);
   const capacityHours = computeCapacityForWeek({
     days,
-    people: peopleWithCapacity,
+    people,
     absences,
     holidayDates,
   });

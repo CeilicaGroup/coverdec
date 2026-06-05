@@ -53,13 +53,17 @@ export default async function FichajeDiarioPage() {
     }),
     prisma.absence.findMany({
       where: {
-        date: { gte: start, lte: end },
-        ...(canManage ? {} : { personId: ctx.personId ?? "__none__" }),
+        AND: [
+          { date: { lte: end } },
+          { endDate: { gte: start } },
+          ...(canManage ? [] : [{ personId: ctx.personId ?? "__none__" }]),
+        ],
       },
       select: {
         id: true,
         personId: true,
         date: true,
+        endDate: true,
         hours: true,
         reason: true,
         blockStartMinutes: true,
@@ -81,7 +85,7 @@ export default async function FichajeDiarioPage() {
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Fichaje diario"
-        description="Presencia diaria, ausencias y vacaciones desde una única vista."
+        description="Presencia diaria, ausencias (incl. vacaciones personales) y festivos de empresa."
       />
       <DailyAttendanceClient
         canManage={canManage}
@@ -101,6 +105,7 @@ export default async function FichajeDiarioPage() {
         absences={absences.map((a) => ({
           ...a,
           date: a.date.toISOString().slice(0, 10),
+          endDate: a.endDate.toISOString().slice(0, 10),
         }))}
         holidays={holidays.map((h) => ({
           id: h.id,

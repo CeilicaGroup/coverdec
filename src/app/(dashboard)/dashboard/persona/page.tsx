@@ -22,6 +22,7 @@ import {
   filterTimelineForPerson,
   type PlanningAssignmentSlice,
 } from "@/features/planning/planning-timeline";
+import { formatAbsenceDateLabel } from "@/features/people/absence-display";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { ViewToggle } from "../../_components/view-toggle";
@@ -523,7 +524,7 @@ function PersonCard({
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string; notes?: string | null };
   total: number;
-  absences: { date: Date }[];
+  absences: { date: Date; endDate: Date }[];
   children: React.ReactNode;
 }) {
   return (
@@ -556,7 +557,7 @@ function PersonCard({
         {absences.length > 0 && (
           <div className="px-3 py-2 text-xs bg-muted border-b">
             Ausencias:{" "}
-            {absences.map((a) => formatShortDate(a.date)).join(", ")}
+            {absences.map((a) => formatAbsenceDateLabel(a)).join(", ")}
           </div>
         )}
         {children}

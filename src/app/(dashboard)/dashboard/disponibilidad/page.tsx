@@ -34,6 +34,7 @@ import { PersonAvatar } from "@/components/person-avatar";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
+import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absence-model";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
@@ -158,16 +159,17 @@ export default async function DisponibilidadPage({
                 const dayRows = days.map((d) => {
                   const key = d.toISOString().slice(0, 10);
                   const isHoliday = holidayDates.has(key);
-                  const absence = absences.find(
-                    (a) =>
-                      a.personId === person.id &&
-                      a.date.toISOString().slice(0, 10) === key,
+                  const absenceHours = sumEffectiveAbsenceHoursForPersonOnDay(
+                    absences,
+                    person.id,
+                    key,
+                    person.workWindows,
                   );
                   const cap = computePersonDayCapacityHours({
                     day: d,
                     weekly: schedule.weekly,
                     overrides: schedule.overrides,
-                    absenceHours: absence?.hours ?? 0,
+                    absenceHours,
                     isHoliday,
                   });
                   const planUsed = (planning?.assignments ?? [])
@@ -182,7 +184,7 @@ export default async function DisponibilidadPage({
                     .reduce((acc, e) => acc + e.hours, 0);
                   const statusLabel = isHoliday
                     ? "Festivo"
-                    : cap <= 0.01 && absence
+                    : cap <= 0.01 && absenceHours > 0
                       ? "Ausente"
                       : cap <= 0.01
                         ? "Sin jornada"

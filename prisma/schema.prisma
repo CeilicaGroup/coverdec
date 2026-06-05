@@ -491,16 +491,19 @@ model PlanningAssignment {
 model Absence {
   id                String   @id @default(cuid())
   personId          String
+  /// Inicio del periodo (medianoche UTC del día civil).
   date              DateTime
+  /// Fin inclusive del periodo; igual a date en ausencias de un solo día.
+  endDate           DateTime
   hours             Float    @default(8)
-  /// When set with blockEndMinutes, [start, end) minutes are forbidden inside work windows (solver).
+  /// Con blockEndMinutes, [start, end) dentro del día laboral. 0–1440 = día completo.
   blockStartMinutes Int?
   blockEndMinutes   Int?
   reason            String?
 
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  @@unique([personId, date])
+  @@index([personId, date, endDate])
 }
 
 /// Rango inclusive [startDate, endDate] en días UTC (medianoche).

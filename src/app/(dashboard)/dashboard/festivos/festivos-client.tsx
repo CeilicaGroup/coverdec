@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createHoliday, deleteHoliday, updateHoliday } from "@/features/holidays/actions";
-import { formatShortDate } from "@/lib/format";
+import { formatCivilIsoDate } from "@/lib/civil-date";
 import { toast } from "sonner";
 
 export interface FestivoRow {
@@ -33,9 +33,9 @@ export interface FestivoRow {
 }
 
 function formatRange(r: FestivoRow): string {
-  const a = formatShortDate(new Date(`${r.startDate}T00:00:00.000Z`));
+  const a = formatCivilIsoDate(r.startDate);
   if (r.startDate === r.endDate) return a;
-  const b = formatShortDate(new Date(`${r.endDate}T00:00:00.000Z`));
+  const b = formatCivilIsoDate(r.endDate);
   return `${a} — ${b}`;
 }
 

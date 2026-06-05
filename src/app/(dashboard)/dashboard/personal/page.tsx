@@ -27,7 +27,10 @@ export default async function PersonalPage() {
         personNaves: true,
         workWindows: true,
         absences: {
-          where: { date: { gte: rangeStart, lte: rangeEnd } },
+          where: {
+            date: { lte: rangeEnd },
+            endDate: { gte: rangeStart },
+          },
           orderBy: { date: "asc" },
         },
       },
@@ -64,7 +67,9 @@ export default async function PersonalPage() {
     overtimeHourlyRate: Number(overtimeHourlyRate),
     workWindows,
     absences: absences.map((a) => ({
+      id: a.id,
       date: a.date.toISOString().slice(0, 10),
+      endDate: a.endDate.toISOString().slice(0, 10),
       hours: a.hours,
       reason: a.reason,
       blockStartMinutes: a.blockStartMinutes,

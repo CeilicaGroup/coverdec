@@ -1,3 +1,7 @@
+import {
+  absenceOverlapPrismaFilter,
+  expandAbsenceToEngineDays,
+} from "@/features/people/absence-model";
 import { prisma } from "@/lib/db";
 import { utcDayStart } from "@/lib/holidays";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
@@ -261,7 +265,7 @@ export async function loadSolverInput(args: {
       },
     }),
     prisma.absence.findMany({
-      where: { date: { gte: weekStart, lte: args.weekEnd } },
+      where: absenceOverlapPrismaFilter(weekStart, args.weekEnd),
     }),
     prisma.holiday.findMany({
       where: {
@@ -576,13 +580,26 @@ export async function loadSolverInput(args: {
     waitHours: p.waitHours,
   }));
 
-  const engineAbsences: EngineAbsence[] = absencesRaw.map((a) => ({
-    personId: a.personId,
-    date: a.date,
-    hours: a.hours,
-    blockStartMinutes: a.blockStartMinutes,
-    blockEndMinutes: a.blockEndMinutes,
-  }));
+  const peopleById = new Map(peopleRaw.map((p) => [p.id, p]));
+  const engineAbsences: EngineAbsence[] = [];
+  for (const a of absencesRaw) {
+    const person = peopleById.get(a.personId);
+    engineAbsences.push(
+      ...expandAbsenceToEngineDays(
+        {
+          personId: a.personId,
+          date: a.date,
+          endDate: a.endDate,
+          hours: a.hours,
+          blockStartMinutes: a.blockStartMinutes,
+          blockEndMinutes: a.blockEndMinutes,
+        },
+        person?.workWindows ?? [],
+        weekStart,
+        args.weekEnd,
+      ),
+    );
+  }
 
   const engineHolidays: EngineHoliday[] = [];
   const seenHolidayDays = new Set<string>();

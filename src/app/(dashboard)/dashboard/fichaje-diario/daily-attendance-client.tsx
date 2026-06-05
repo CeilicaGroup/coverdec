@@ -12,9 +12,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import type { FestivoRow } from "../festivos/festivos-client";
-import { setAbsence } from "@/features/people/actions";
+import { formatAbsenceDetail } from "@/features/people/absence-display";
+import {
+  absenceCoversCivilIso,
+  civilIsoDaysCoveredByAbsence,
+  effectiveAbsenceHoursOnDay,
+} from "@/features/people/absence-model";
+import { AbsenceForm } from "@/features/people/absence-form";
+import { deleteAbsence } from "@/features/people/actions";
 import { createHoliday, deleteHoliday, updateHoliday } from "@/features/holidays/actions";
 import { adminDeleteAttendanceSession, adminUpsertAttendanceSession, startAttendance, stopAttendance } from "@/features/attendance/actions";
+import {
+  civilIsoFromLocalDate,
+  expandCivilIsoRange,
+  formatCivilIsoDate,
+  formatMonthYearEs,
+  localDateFromCivilIso,
+} from "@/lib/civil-date";
 
 interface PersonRow {
   id: string;
@@ -38,6 +52,7 @@ interface AbsenceRow {
   id: string;
   personId: string;
   date: string;
+  endDate: string;
   hours: number;
   reason: string | null;
   blockStartMinutes: number | null;
@@ -48,27 +63,13 @@ function dayTooltipText(modifiers: Record<string, boolean>): string {
   const labels: string[] = [];
   if (modifiers.withSession) labels.push("Tiene fichajes");
   if (modifiers.withAbsence) labels.push("Tiene ausencia");
-  if (modifiers.withHoliday) labels.push("Es festivo/vacación");
+  if (modifiers.withHoliday) labels.push("Festivo de empresa");
   if (labels.length === 0) return "Día sin incidencias";
   return labels.join(" · ");
 }
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function toTimeValue(dateIso: string): string {
   return new Date(dateIso).toISOString().slice(11, 16);
-}
-
-function timeInputToMinutes(s: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mi = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(mi)) return null;
-  if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
-  return h * 60 + mi;
 }
 
 function formatHms(totalSeconds: number): string {
@@ -96,16 +97,13 @@ export function DailyAttendanceClient(props: {
   const [personId, setPersonId] = useState<string>(props.currentPersonId ?? props.people[0]?.id ?? "");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("14:00");
-  const [absenceReason, setAbsenceReason] = useState("");
-  const [blockStart, setBlockStart] = useState("09:00");
-  const [blockEnd, setBlockEnd] = useState("13:00");
   const [editingAbsenceId, setEditingAbsenceId] = useState<string | null>(null);
-  const [holidayStartDate, setHolidayStartDate] = useState(isoDay(new Date()));
-  const [holidayEndDate, setHolidayEndDate] = useState(isoDay(new Date()));
+  const [holidayStartDate, setHolidayStartDate] = useState(civilIsoFromLocalDate(new Date()));
+  const [holidayEndDate, setHolidayEndDate] = useState(civilIsoFromLocalDate(new Date()));
   const [holidayName, setHolidayName] = useState("");
   const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null);
 
-  const selectedIso = isoDay(selectedDate);
+  const selectedIso = civilIsoFromLocalDate(selectedDate);
   const visiblePersonId = props.canManage ? personId : props.currentPersonId;
   const selectedPersonName = props.people.find((p) => p.id === personId)?.name ?? "Selecciona persona";
   const holidaysSorted = useMemo(
@@ -120,44 +118,91 @@ export function DailyAttendanceClient(props: {
   }, [props.sessions, selectedIso, visiblePersonId]);
 
   const absencesForDay = useMemo(
-    () => props.absences.filter((a) => a.personId === visiblePersonId && a.date === selectedIso),
+    () =>
+      props.absences.filter(
+        (a) =>
+          a.personId === visiblePersonId &&
+          absenceCoversCivilIso(
+            {
+              date: new Date(`${a.date}T00:00:00.000Z`),
+              endDate: new Date(`${a.endDate}T00:00:00.000Z`),
+            },
+            selectedIso,
+          ),
+      ),
     [props.absences, visiblePersonId, selectedIso],
   );
-  const monthPrefix = selectedIso.slice(0, 7);
+
+  const editingAbsence = useMemo(
+    () =>
+      editingAbsenceId
+        ? props.absences.find((a) => a.id === editingAbsenceId) ?? null
+        : null,
+    [editingAbsenceId, props.absences],
+  );
   const absencesForMonth = useMemo(
     () =>
       props.absences
-        .filter((a) => a.personId === visiblePersonId && a.date.startsWith(monthPrefix))
+        .filter((a) => {
+          if (a.personId !== visiblePersonId) return false;
+          const month = selectedIso.slice(0, 7);
+          return (
+            a.date.slice(0, 7) === month ||
+            a.endDate.slice(0, 7) === month ||
+            (a.date.slice(0, 7) < month && a.endDate.slice(0, 7) > month)
+          );
+        })
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [props.absences, visiblePersonId, monthPrefix],
+    [props.absences, visiblePersonId, selectedIso],
   );
+
+  const personAbsenceIsos = useMemo(() => {
+    const isos = new Set<string>();
+    for (const a of props.absences.filter((row) => row.personId === visiblePersonId)) {
+      for (const iso of civilIsoDaysCoveredByAbsence({
+        date: new Date(`${a.date}T00:00:00.000Z`),
+        endDate: new Date(`${a.endDate}T00:00:00.000Z`),
+      })) {
+        isos.add(iso);
+      }
+    }
+    return isos;
+  }, [props.absences, visiblePersonId]);
 
   const holidayDays = useMemo(() => {
     const days: Date[] = [];
     for (const row of props.holidays) {
-      const start = new Date(`${row.startDate}T00:00:00.000Z`).getTime();
-      const end = new Date(`${row.endDate}T00:00:00.000Z`).getTime();
-      for (let t = start; t <= end; t += 86_400_000) {
-        days.push(new Date(t));
+      for (const iso of expandCivilIsoRange(row.startDate, row.endDate)) {
+        if (personAbsenceIsos.has(iso)) continue;
+        days.push(localDateFromCivilIso(iso));
       }
     }
     return days;
-  }, [props.holidays]);
+  }, [props.holidays, personAbsenceIsos]);
 
   const sessionDays = useMemo(
     () => props.sessions.filter((s) => s.personId === visiblePersonId).map((s) => new Date(s.startedAt)),
     [props.sessions, visiblePersonId],
   );
-  const absenceDays = useMemo(
-    () => props.absences.filter((a) => a.personId === visiblePersonId).map((a) => new Date(`${a.date}T00:00:00.000Z`)),
-    [props.absences, visiblePersonId],
-  );
+  const absenceDays = useMemo(() => {
+    const days: Date[] = [];
+    for (const a of props.absences.filter((row) => row.personId === visiblePersonId)) {
+      for (const iso of civilIsoDaysCoveredByAbsence({
+        date: new Date(`${a.date}T00:00:00.000Z`),
+        endDate: new Date(`${a.endDate}T00:00:00.000Z`),
+      })) {
+        days.push(localDateFromCivilIso(iso));
+      }
+    }
+    return days;
+  }, [props.absences, visiblePersonId]);
 
-  const todayIso = isoDay(new Date());
+  const todayIso = civilIsoFromLocalDate(new Date());
   const visiblePerson = props.people.find((p) => p.id === visiblePersonId) ?? null;
   const todayWeekday = (() => {
-    const d = new Date().getUTCDay();
-    return d === 0 ? 7 : d;
+    const d = new Date().getDay();
+    if (d === 0 || d === 6) return 5;
+    return d;
   })();
 
   const targetTodayMinutes = useMemo(() => {
@@ -166,8 +211,31 @@ export function DailyAttendanceClient(props: {
       .filter((w) => w.dayOfWeek === todayWeekday)
       .reduce((acc, w) => acc + Math.max(0, w.endMinutes - w.startMinutes), 0);
     const absenceMinutes = props.absences
-      .filter((a) => a.personId === visiblePerson.id && a.date === todayIso)
-      .reduce((acc, a) => acc + Math.round(a.hours * 60), 0);
+      .filter(
+        (a) =>
+          a.personId === visiblePerson.id &&
+          absenceCoversCivilIso(
+            {
+              date: new Date(`${a.date}T00:00:00.000Z`),
+              endDate: new Date(`${a.endDate}T00:00:00.000Z`),
+            },
+            todayIso,
+          ),
+      )
+      .reduce((acc, a) => {
+        const hours = effectiveAbsenceHoursOnDay(
+          {
+            date: new Date(`${a.date}T00:00:00.000Z`),
+            endDate: new Date(`${a.endDate}T00:00:00.000Z`),
+            hours: a.hours,
+            blockStartMinutes: a.blockStartMinutes,
+            blockEndMinutes: a.blockEndMinutes,
+          },
+          todayIso,
+          visiblePerson.workWindows,
+        );
+        return acc + Math.round(hours * 60);
+      }, 0);
     return Math.max(0, workMinutes - absenceMinutes);
   }, [props.absences, todayIso, todayWeekday, visiblePerson]);
 
@@ -217,7 +285,11 @@ export function DailyAttendanceClient(props: {
               mode="single"
               className="[--cell-size:--spacing(10)]"
               selected={selectedDate}
-              onSelect={(d) => d && setSelectedDate(d)}
+              onSelect={(d) => {
+                if (!d) return;
+                setSelectedDate(d);
+                setEditingAbsenceId(null);
+              }}
               modifiers={{
                 withSession: sessionDays,
                 withAbsence: absenceDays,
@@ -257,7 +329,7 @@ export function DailyAttendanceClient(props: {
             </div>
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 rounded bg-amber-500/20 border border-amber-500/40" />
-              <span>Festivo / vacaciones</span>
+              <span>Festivo de empresa</span>
             </div>
           </div>
         </CardContent>
@@ -266,7 +338,7 @@ export function DailyAttendanceClient(props: {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Fichaje del día {selectedIso}</CardTitle>
+            <CardTitle>Fichaje del día {formatCivilIsoDate(selectedIso)}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {!props.canManage ? (
@@ -391,78 +463,45 @@ export function DailyAttendanceClient(props: {
         {props.canManage && visiblePersonId ? (
           <Card>
             <CardHeader>
-              <CardTitle>Ausencias del día</CardTitle>
+              <CardTitle>Ausencias</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <Label>Inicio</Label>
-                  <Input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Fin</Label>
-                  <Input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Motivo</Label>
-                  <Input value={absenceReason} onChange={(e) => setAbsenceReason(e.target.value)} />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  disabled={pending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      try {
-                        const bs = timeInputToMinutes(blockStart);
-                        const be = timeInputToMinutes(blockEnd);
-                        if (bs == null || be == null || be <= bs) {
-                          throw new Error("Franja inválida para ausencia.");
-                        }
-                        await setAbsence({
-                          id: editingAbsenceId ?? undefined,
-                          personId: visiblePersonId,
-                          date: selectedIso,
-                          hours: 0,
-                          reason: absenceReason || undefined,
-                          blockStartMinutes: bs,
-                          blockEndMinutes: be,
-                        });
-                        toast.success("Ausencia guardada");
-                        setEditingAbsenceId(null);
-                        router.refresh();
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
+              <AbsenceForm
+                key={`${editingAbsenceId ?? "new"}-${selectedIso}`}
+                personId={visiblePersonId}
+                selectedDateIso={editingAbsence?.date ?? selectedIso}
+                editing={
+                  editingAbsence
+                    ? {
+                        id: editingAbsence.id,
+                        date: editingAbsence.date,
+                        endDate: editingAbsence.endDate,
+                        hours: editingAbsence.hours,
+                        reason: editingAbsence.reason ?? "",
+                        blockStartMinutes: editingAbsence.blockStartMinutes,
+                        blockEndMinutes: editingAbsence.blockEndMinutes,
                       }
-                    })
-                  }
-                >
-                  Guardar ausencia
-                </Button>
-                {editingAbsenceId ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setEditingAbsenceId(null);
-                      setAbsenceReason("");
-                    }}
-                  >
-                    Cancelar edición
-                  </Button>
-                ) : null}
-              </div>
+                    : null
+                }
+                pending={pending}
+                onPendingChange={(fn) => startTransition(fn)}
+                onSaved={() => {
+                  setEditingAbsenceId(null);
+                  router.refresh();
+                }}
+                onCancelEdit={() => setEditingAbsenceId(null)}
+              />
               <div className="max-h-48 overflow-y-auto space-y-1">
                 {absencesForDay.map((absence) => (
                   <p key={absence.id} className="text-sm text-muted-foreground">
-                    {absence.blockStartMinutes != null && absence.blockEndMinutes != null
-                      ? `${String(Math.floor(absence.blockStartMinutes / 60)).padStart(2, "0")}:${String(absence.blockStartMinutes % 60).padStart(2, "0")} - ${String(Math.floor(absence.blockEndMinutes / 60)).padStart(2, "0")}:${String(absence.blockEndMinutes % 60).padStart(2, "0")} (${absence.hours}h)`
-                      : `${absence.hours}h`}
-                    {absence.reason ? ` · ${absence.reason}` : ""}
+                    {formatAbsenceDetail(absence)}
                   </p>
                 ))}
               </div>
               <div className="border-t pt-3">
-                <p className="text-sm font-medium mb-2">Ausencias del mes ({monthPrefix})</p>
+                <p className="text-sm font-medium mb-2">
+                  Ausencias de {formatMonthYearEs(selectedIso)}
+                </p>
                 <div className="max-h-56 overflow-y-auto space-y-1">
                   {absencesForMonth.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sin ausencias registradas este mes.</p>
@@ -473,11 +512,7 @@ export function DailyAttendanceClient(props: {
                         className="flex items-center justify-between rounded border p-2 text-sm"
                       >
                         <span className="text-muted-foreground">
-                          {absence.date} ·{" "}
-                          {absence.blockStartMinutes != null && absence.blockEndMinutes != null
-                            ? `${String(Math.floor(absence.blockStartMinutes / 60)).padStart(2, "0")}:${String(absence.blockStartMinutes % 60).padStart(2, "0")} - ${String(Math.floor(absence.blockEndMinutes / 60)).padStart(2, "0")}:${String(absence.blockEndMinutes % 60).padStart(2, "0")} (${absence.hours}h)`
-                            : `${absence.hours}h`}
-                          {absence.reason ? ` · ${absence.reason}` : ""}
+                          {formatAbsenceDetail(absence)}
                         </span>
                         <div className="flex gap-1">
                           <Button
@@ -485,16 +520,7 @@ export function DailyAttendanceClient(props: {
                             variant="ghost"
                             onClick={() => {
                               setEditingAbsenceId(absence.id);
-                              setSelectedDate(new Date(`${absence.date}T00:00:00.000Z`));
-                              setAbsenceReason(absence.reason ?? "");
-                              if (absence.blockStartMinutes != null && absence.blockEndMinutes != null) {
-                                setBlockStart(
-                                  `${String(Math.floor(absence.blockStartMinutes / 60)).padStart(2, "0")}:${String(absence.blockStartMinutes % 60).padStart(2, "0")}`,
-                                );
-                                setBlockEnd(
-                                  `${String(Math.floor(absence.blockEndMinutes / 60)).padStart(2, "0")}:${String(absence.blockEndMinutes % 60).padStart(2, "0")}`,
-                                );
-                              }
+                              setSelectedDate(localDateFromCivilIso(absence.date));
                             }}
                           >
                             Editar
@@ -506,10 +532,10 @@ export function DailyAttendanceClient(props: {
                             onClick={() =>
                               startTransition(async () => {
                                 try {
-                                  await setAbsence({
+                                  await deleteAbsence({
+                                    id: absence.id,
                                     personId: visiblePersonId,
                                     date: absence.date,
-                                    hours: 0,
                                   });
                                   toast.success("Ausencia eliminada");
                                   if (editingAbsenceId === absence.id) setEditingAbsenceId(null);
@@ -535,17 +561,31 @@ export function DailyAttendanceClient(props: {
         {props.canManage ? (
           <Card>
             <CardHeader>
-              <CardTitle>Vacaciones / festivos</CardTitle>
+              <CardTitle>Festivos de empresa</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Calendario laboral común (navidad, puente, etc.). Las vacaciones de cada operario
+                se registran como ausencias, no aquí.
+              </p>
               <div className="grid md:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label>Inicio</Label>
-                  <Input type="date" value={holidayStartDate} onChange={(e) => setHolidayStartDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    lang="es-ES"
+                    value={holidayStartDate}
+                    onChange={(e) => setHolidayStartDate(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label>Fin</Label>
-                  <Input type="date" value={holidayEndDate} onChange={(e) => setHolidayEndDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    lang="es-ES"
+                    value={holidayEndDate}
+                    onChange={(e) => setHolidayEndDate(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="space-y-1">
@@ -603,7 +643,11 @@ export function DailyAttendanceClient(props: {
                 {holidaysSorted.map((holiday) => (
                   <div key={holiday.id} className="flex items-center justify-between rounded border p-2 text-sm">
                     <span>
-                      {holiday.startDate} - {holiday.endDate} · {holiday.name}
+                      {formatCivilIsoDate(holiday.startDate)}
+                      {holiday.startDate !== holiday.endDate
+                        ? ` — ${formatCivilIsoDate(holiday.endDate)}`
+                        : ""}{" "}
+                      · {holiday.name}
                     </span>
                     <div className="flex gap-1">
                       <Button

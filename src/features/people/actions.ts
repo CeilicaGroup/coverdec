@@ -7,16 +7,36 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { childLogger } from "@/lib/logger";
 import { replacePersonNaves } from "@/features/people/person-naves";
+import { ABSENCE_REASON_MAX_LENGTH } from "@/features/people/absence-constants";
+import {
+  FULL_DAY_BLOCK_END,
+  FULL_DAY_BLOCK_START,
+  absenceOverlapPrismaFilter,
+  totalScheduledHoursForAbsence,
+} from "@/features/people/absence-model";
+import {
+  isoWeekdayForSchedule,
+  parseUtcDateIso,
+} from "@/features/people/absence-schedule";
 
 const log = childLogger({ module: "people.actions" });
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const absenceReasonSchema = z
+  .string()
+  .trim()
+  .min(1, "El motivo es obligatorio")
+  .max(ABSENCE_REASON_MAX_LENGTH);
 
 const absenceSchema = z
   .object({
     id: z.string().min(1).optional(),
     personId: z.string().min(1),
-    date: z.string().min(8),
-    hours: z.number().min(0).max(24).optional(),
-    reason: z.string().optional(),
+    date: isoDate,
+    endDate: isoDate.optional(),
+    mode: z.enum(["block", "day", "range"]),
+    reason: absenceReasonSchema,
     blockStartMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
     blockEndMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
   })
@@ -30,94 +50,268 @@ const absenceSchema = z
         path: ["blockEndMinutes"],
       });
     }
+    if (data.mode === "range") {
+      if (!data.endDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica la fecha fin del rango",
+          path: ["endDate"],
+        });
+        return;
+      }
+      if (data.endDate < data.date) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "La fecha fin debe ser igual o posterior al inicio",
+          path: ["endDate"],
+        });
+      }
+    }
+    if (data.mode === "block") {
+      const hasBlock =
+        data.blockStartMinutes != null &&
+        data.blockEndMinutes != null &&
+        data.blockEndMinutes > data.blockStartMinutes;
+      if (!hasBlock) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica una franja horaria válida",
+          path: ["blockEndMinutes"],
+        });
+      }
+    }
   });
 
-function isoWeekdayForSchedule(d: Date): number {
-  const wd = d.getUTCDay();
-  if (wd === 0 || wd === 6) return 5;
-  return wd;
+const deleteAbsenceSchema = z.object({
+  id: z.string().min(1).optional(),
+  personId: z.string().min(1),
+  date: isoDate,
+});
+
+function revalidateAbsencePaths() {
+  revalidatePath("/dashboard/personal");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
+  revalidatePath("/dashboard/disponibilidad");
+  revalidatePath("/dashboard/fichaje-diario");
+}
+
+async function loadPersonWorkWindows(personId: string) {
+  const person = await prisma.person.findUnique({
+    where: { id: personId },
+    include: { workWindows: true },
+  });
+  if (!person) throw new Error("Persona no encontrada");
+  return person;
+}
+
+async function resolveBlockAbsenceHours(
+  personId: string,
+  date: Date,
+  blockStart: number,
+  blockEnd: number,
+): Promise<number> {
+  const person = await loadPersonWorkWindows(personId);
+  const { getWindowsForDate } = await import(
+    "@/features/planning/engine/slots/person-schedule"
+  );
+  const { minutesBlockedInWindows } = await import("@/features/people/absence-overlap");
+
+  const byDay = new Map<number, { startMinutes: number; endMinutes: number }[]>();
+  for (const w of person.workWindows) {
+    const list = byDay.get(w.dayOfWeek) ?? [];
+    list.push({ startMinutes: w.startMinutes, endMinutes: w.endMinutes });
+    byDay.set(w.dayOfWeek, list);
+  }
+  const weekly = [...byDay.entries()].map(([dayOfWeek, windows]) => ({
+    dayOfWeek,
+    windows: windows.sort((a, b) => a.startMinutes - b.startMinutes),
+  }));
+
+  const dow = isoWeekdayForSchedule(date);
+  const windows = getWindowsForDate(dow, weekly, undefined);
+  const lostMin = minutesBlockedInWindows(windows, blockStart, blockEnd);
+  if (lostMin <= 0) {
+    throw new Error("La franja no intersecta con el horario laboral de ese día");
+  }
+  return Math.round((lostMin / 60) * 100) / 100;
+}
+
+async function assertNoAbsenceOverlap(args: {
+  personId: string;
+  startDate: Date;
+  endDate: Date;
+  excludeId?: string;
+}) {
+  const overlapping = await prisma.absence.findMany({
+    where: {
+      personId: args.personId,
+      ...absenceOverlapPrismaFilter(args.startDate, args.endDate),
+      ...(args.excludeId ? { NOT: { id: args.excludeId } } : {}),
+    },
+    select: { id: true, date: true, endDate: true },
+  });
+  if (overlapping.length > 0) {
+    throw new Error(
+      "Ya existe una ausencia que solapa con esas fechas. Edítala o elimínala primero.",
+    );
+  }
+}
+
+export async function deleteAbsence(input: z.infer<typeof deleteAbsenceSchema>) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  const data = deleteAbsenceSchema.parse(input);
+  const date = parseUtcDateIso(data.date);
+
+  if (data.id) {
+    await prisma.absence.deleteMany({ where: { id: data.id, personId: data.personId } });
+  } else {
+    await prisma.absence.deleteMany({ where: { personId: data.personId, date } });
+  }
+
+  revalidateAbsencePaths();
 }
 
 export async function setAbsence(input: z.infer<typeof absenceSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = absenceSchema.parse(input);
-  const date = new Date(data.date);
-  date.setUTCHours(0, 0, 0, 0);
+  const reason = data.reason.trim();
+  const date = parseUtcDateIso(data.date);
 
-  const hasBlock =
-    data.blockStartMinutes != null &&
-    data.blockEndMinutes != null &&
-    data.blockEndMinutes > data.blockStartMinutes;
-
-  const existingAbsences = await prisma.absence.findMany({
-    where: { personId: data.personId, date },
-    select: { id: true, blockStartMinutes: true, blockEndMinutes: true },
-  });
-
-  const rawHours = data.hours ?? 0;
-
-  if (rawHours <= 0 && !hasBlock) {
-    if (data.id) {
-      await prisma.absence.deleteMany({ where: { id: data.id, personId: data.personId } });
-    } else {
-      await prisma.absence.deleteMany({ where: { personId: data.personId, date } });
+  if (data.mode === "range") {
+    const endDate = parseUtcDateIso(data.endDate!);
+    if (data.endDate! < data.date) {
+      throw new Error("Rango de fechas inválido");
     }
-    revalidatePath("/dashboard/personal");
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/semana");
-    revalidatePath("/dashboard/persona");
-    revalidatePath("/dashboard/disponibilidad");
+    const dayCount =
+      Math.round((endDate.getTime() - date.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (dayCount > 366) {
+      throw new Error("El rango no puede superar 366 días");
+    }
+
+    const person = await loadPersonWorkWindows(data.personId);
+    await assertNoAbsenceOverlap({
+      personId: data.personId,
+      startDate: date,
+      endDate,
+      excludeId: data.id,
+    });
+
+    const hours = totalScheduledHoursForAbsence(
+      {
+        date,
+        endDate,
+        hours: 0,
+        blockStartMinutes: FULL_DAY_BLOCK_START,
+        blockEndMinutes: FULL_DAY_BLOCK_END,
+      },
+      person.workWindows,
+    );
+
+    if (data.id) {
+      await prisma.absence.update({
+        where: { id: data.id },
+        data: {
+          personId: data.personId,
+          date,
+          endDate,
+          hours,
+          reason,
+          blockStartMinutes: FULL_DAY_BLOCK_START,
+          blockEndMinutes: FULL_DAY_BLOCK_END,
+        },
+      });
+    } else {
+      await prisma.absence.create({
+        data: {
+          personId: data.personId,
+          date,
+          endDate,
+          hours,
+          reason,
+          blockStartMinutes: FULL_DAY_BLOCK_START,
+          blockEndMinutes: FULL_DAY_BLOCK_END,
+        },
+      });
+    }
+
+    revalidateAbsencePaths();
     return;
   }
 
-  let hours = rawHours > 0 ? rawHours : 8;
-  let blockStart: number | null = null;
-  let blockEnd: number | null = null;
-
-  if (hasBlock) {
-    if (!data.id && existingAbsences.length > 0) {
-      throw new Error("Ya existe una ausencia para esa persona y día. Edita la existente para evitar solapes.");
-    }
-    if (data.id) {
-      const sameRecord = existingAbsences.find((a) => a.id === data.id);
-      if (!sameRecord && existingAbsences.length > 0) {
-        throw new Error("Ya existe una ausencia para esa persona y día. No se permiten franjas solapadas.");
-      }
-    }
-
-    blockStart = data.blockStartMinutes!;
-    blockEnd = data.blockEndMinutes!;
-    const person = await prisma.person.findUnique({
-      where: { id: data.personId },
-      include: { workWindows: true },
+  if (data.mode === "day") {
+    const person = await loadPersonWorkWindows(data.personId);
+    await assertNoAbsenceOverlap({
+      personId: data.personId,
+      startDate: date,
+      endDate: date,
+      excludeId: data.id,
     });
-    if (!person) throw new Error("Persona no encontrada");
 
-    const { getWindowsForDate } = await import(
-      "@/features/planning/engine/slots/person-schedule"
+    const hours = totalScheduledHoursForAbsence(
+      {
+        date,
+        endDate: date,
+        hours: 0,
+        blockStartMinutes: FULL_DAY_BLOCK_START,
+        blockEndMinutes: FULL_DAY_BLOCK_END,
+      },
+      person.workWindows,
     );
-    const { minutesBlockedInWindows } = await import("@/features/people/absence-overlap");
 
-    const byDay = new Map<number, { startMinutes: number; endMinutes: number }[]>();
-    for (const w of person.workWindows) {
-      const list = byDay.get(w.dayOfWeek) ?? [];
-      list.push({ startMinutes: w.startMinutes, endMinutes: w.endMinutes });
-      byDay.set(w.dayOfWeek, list);
+    if (data.id) {
+      await prisma.absence.update({
+        where: { id: data.id },
+        data: {
+          personId: data.personId,
+          date,
+          endDate: date,
+          hours,
+          reason,
+          blockStartMinutes: FULL_DAY_BLOCK_START,
+          blockEndMinutes: FULL_DAY_BLOCK_END,
+        },
+      });
+    } else {
+      await prisma.absence.create({
+        data: {
+          personId: data.personId,
+          date,
+          endDate: date,
+          hours,
+          reason,
+          blockStartMinutes: FULL_DAY_BLOCK_START,
+          blockEndMinutes: FULL_DAY_BLOCK_END,
+        },
+      });
     }
-    const weekly = [...byDay.entries()].map(([dayOfWeek, windows]) => ({
-      dayOfWeek,
-      windows: windows.sort((a, b) => a.startMinutes - b.startMinutes),
-    }));
-
-    const dow = isoWeekdayForSchedule(date);
-    const windows = getWindowsForDate(dow, weekly, undefined);
-    const lostMin = minutesBlockedInWindows(windows, blockStart, blockEnd);
-    if (lostMin <= 0) {
-      throw new Error("La franja no intersecta con el horario laboral de ese día");
-    }
-    hours = Math.round((lostMin / 60) * 100) / 100;
+    revalidateAbsencePaths();
+    return;
   }
+
+  if (data.mode !== "block") {
+    throw new Error("Modo de ausencia no válido");
+  }
+
+  const blockStart = data.blockStartMinutes!;
+  const blockEnd = data.blockEndMinutes!;
+
+  await assertNoAbsenceOverlap({
+    personId: data.personId,
+    startDate: date,
+    endDate: date,
+    excludeId: data.id,
+  });
+
+  const hours = await resolveBlockAbsenceHours(
+    data.personId,
+    date,
+    blockStart,
+    blockEnd,
+  );
 
   if (data.id) {
     await prisma.absence.update({
@@ -125,8 +319,9 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
       data: {
         personId: data.personId,
         date,
+        endDate: date,
         hours,
-        reason: data.reason?.trim() ? data.reason.trim() : null,
+        reason,
         blockStartMinutes: blockStart,
         blockEndMinutes: blockEnd,
       },
@@ -136,18 +331,15 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
       data: {
         personId: data.personId,
         date,
+        endDate: date,
         hours,
-        reason: data.reason?.trim() ? data.reason.trim() : null,
+        reason,
         blockStartMinutes: blockStart,
         blockEndMinutes: blockEnd,
       },
     });
   }
-  revalidatePath("/dashboard/personal");
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/semana");
-  revalidatePath("/dashboard/persona");
-  revalidatePath("/dashboard/disponibilidad");
+  revalidateAbsencePaths();
 }
 
 const specialtySchema = z.object({

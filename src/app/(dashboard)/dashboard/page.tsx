@@ -26,6 +26,7 @@ import {
 import { formatHours, formatShortDate } from "@/lib/format";
 import type { ProcessCode } from "@/types/process";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
+import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absence-model";
 import {
   computePersonDayCapacityHours,
   personScheduleContextFromPerson,
@@ -600,16 +601,17 @@ function computeCapacity(
     let cap = 0;
     for (const person of people) {
       const schedule = personScheduleContextFromPerson(person);
-      const absence = absences.find(
-        (a) =>
-          a.personId === person.id &&
-          a.date.toISOString().slice(0, 10) === key,
+      const absenceHours = sumEffectiveAbsenceHoursForPersonOnDay(
+        absences,
+        person.id,
+        key,
+        person.workWindows,
       );
       cap += computePersonDayCapacityHours({
         day,
         weekly: schedule.weekly,
         overrides: schedule.overrides,
-        absenceHours: absence?.hours ?? 0,
+        absenceHours,
         isHoliday,
       });
     }

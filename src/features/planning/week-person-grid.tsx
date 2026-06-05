@@ -18,6 +18,7 @@ import { computeTaskProgress } from "@/features/planning/task-progress";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
+import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear, formatHours, formatTimeRangeFromStartAndHours } from "@/lib/format";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
@@ -238,7 +239,7 @@ interface WeekPersonGridProps {
   planTask: WeekPersonTaskSummary;
   actualTask: WeekPersonTaskSummary;
   holidayDates: Set<string>;
-  absences: { personId: string; date: Date; reason: string | null }[];
+  absences: { personId: string; date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
@@ -347,7 +348,7 @@ function WeekPersonRow({
   actualItemsByTask: Map<string, { id: string; label: string }[]>;
   actualRunningByTask: Map<string, boolean>;
   completedByTask: Map<string, boolean>;
-  absences: { date: Date; reason: string | null }[];
+  absences: { date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
@@ -363,9 +364,7 @@ function WeekPersonRow({
       {days.map((d) => {
         const key = d.toISOString().slice(0, 10);
         const tasks = cells.get(key) ?? [];
-        const isAbsent = absences.some(
-          (a) => a.date.toISOString().slice(0, 10) === key,
-        );
+        const isAbsent = absences.some((a) => absenceCoversCivilIso(a, key));
         return (
           <div
             key={key}

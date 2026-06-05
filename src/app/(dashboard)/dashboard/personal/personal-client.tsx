@@ -46,7 +46,9 @@ interface WorkWindowRow {
 }
 
 interface AbsenceRow {
+  id: string;
   date: string;
+  endDate: string;
   hours: number;
   reason: string | null;
   blockStartMinutes: number | null;
