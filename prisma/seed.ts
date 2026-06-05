@@ -1,9 +1,9 @@
-import { PrismaClient, Role } from "../src/generated/prisma";
+import { ElementTypology, PrismaClient, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 import {
-  buildTasksFromFrame,
-  formatLampFrameUnitLabel,
+  buildTasksFromElement,
+  formatLampElementUnitLabel,
 } from "../src/features/projects/lamp-tasks";
 
 const prisma = new PrismaClient();
@@ -96,10 +96,11 @@ const PEOPLE = [
   },
 ];
 
-const FRAME_TYPES = [
+const ELEMENT_TYPES = [
   {
     code: "TELA",
     name: "Panel de tela",
+    typology: ElementTypology.TELA,
     description: "Bastidor con tela tensada, proceso completo pintura",
     processes: [
       { process: "CNC",         sequence: 0, hoursPerUnit: 0.5,  fixedHours: 1.0 },
@@ -113,6 +114,7 @@ const FRAME_TYPES = [
   {
     code: "ESPUMADO",
     name: "Panel espumado",
+    typology: ElementTypology.BASTIDOR,
     description: "Bastidor con espumado, más horas de lijado",
     processes: [
       { process: "CNC",         sequence: 0, hoursPerUnit: 0.4,  fixedHours: 0.5 },
@@ -126,6 +128,7 @@ const FRAME_TYPES = [
   {
     code: "COMPOSITE",
     name: "Composite / chapa",
+    typology: ElementTypology.BASTIDOR,
     description: "Panel de composite o chapa, sin pintura",
     processes: [
       { process: "CORTE_MANUAL", sequence: 0, hoursPerUnit: 0.3, fixedHours: 0 },
@@ -136,6 +139,7 @@ const FRAME_TYPES = [
   {
     code: "HAIR",
     name: "Hair espejo",
+    typology: ElementTypology.ILUMINACION,
     description: "Elemento Hair con pegado de espejo y perfiles",
     processes: [
       { process: "ENSAMBLAJE",    sequence: 0, hoursPerUnit: 1.0, fixedHours: 0 },
@@ -147,6 +151,7 @@ const FRAME_TYPES = [
   {
     code: "SOL",
     name: "Elemento Sol",
+    typology: ElementTypology.ILUMINACION,
     description: "Elemento decorativo Sol",
     processes: [
       { process: "CNC",        sequence: 0, hoursPerUnit: 0.3,  fixedHours: 0.5 },
@@ -163,9 +168,9 @@ const PROJECTS = [
     client: "DRUNI",
     deliveryDate: new Date("2026-07-15T00:00:00.000Z"),
     lamps: [
-      { name: "Panel tela fachada", frameTypeCode: "TELA",      surfaceM2: 4.5, units: 2 },
-      { name: "Composite lateral",  frameTypeCode: "COMPOSITE",  surfaceM2: 2.0, units: 1 },
-      { name: "Hair espejo caja",   frameTypeCode: "HAIR",       surfaceM2: 1.5, units: 1 },
+      { name: "Panel tela fachada", elementTypeCode: "TELA",      surfaceM2: 4.5, units: 2 },
+      { name: "Composite lateral",  elementTypeCode: "COMPOSITE",  surfaceM2: 2.0, units: 1 },
+      { name: "Hair espejo caja",   elementTypeCode: "HAIR",       surfaceM2: 1.5, units: 1 },
     ],
   },
   {
@@ -174,8 +179,8 @@ const PROJECTS = [
     client: "DRUNI",
     deliveryDate: new Date("2026-08-01T00:00:00.000Z"),
     lamps: [
-      { name: "Panel espumado frontal", frameTypeCode: "ESPUMADO",  surfaceM2: 5.0, units: 2 },
-      { name: "Composite mostrador",    frameTypeCode: "COMPOSITE",  surfaceM2: 1.8, units: 2 },
+      { name: "Panel espumado frontal", elementTypeCode: "ESPUMADO",  surfaceM2: 5.0, units: 2 },
+      { name: "Composite mostrador",    elementTypeCode: "COMPOSITE",  surfaceM2: 1.8, units: 2 },
     ],
   },
   {
@@ -184,8 +189,8 @@ const PROJECTS = [
     client: "DRUNI",
     deliveryDate: new Date("2026-08-20T00:00:00.000Z"),
     lamps: [
-      { name: "Tela fachada principal", frameTypeCode: "TELA",      surfaceM2: 6.0, units: 1 },
-      { name: "Hair lateral",           frameTypeCode: "HAIR",       surfaceM2: 2.0, units: 2 },
+      { name: "Tela fachada principal", elementTypeCode: "TELA",      surfaceM2: 6.0, units: 1 },
+      { name: "Hair lateral",           elementTypeCode: "HAIR",       surfaceM2: 2.0, units: 2 },
     ],
   },
   {
@@ -194,9 +199,9 @@ const PROJECTS = [
     client: "DRUNI",
     deliveryDate: new Date("2026-09-05T00:00:00.000Z"),
     lamps: [
-      { name: "Espumado cabecera",    frameTypeCode: "ESPUMADO",  surfaceM2: 4.0, units: 1 },
-      { name: "Composite zócalo",     frameTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 1 },
-      { name: "Sol decorativo",       frameTypeCode: "SOL",        surfaceM2: 1.2, units: 3 },
+      { name: "Espumado cabecera",    elementTypeCode: "ESPUMADO",  surfaceM2: 4.0, units: 1 },
+      { name: "Composite zócalo",     elementTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 1 },
+      { name: "Sol decorativo",       elementTypeCode: "SOL",        surfaceM2: 1.2, units: 3 },
     ],
   },
   {
@@ -205,8 +210,8 @@ const PROJECTS = [
     client: "DRUNI",
     deliveryDate: new Date("2026-09-30T00:00:00.000Z"),
     lamps: [
-      { name: "Tela fachada",     frameTypeCode: "TELA",      surfaceM2: 5.5, units: 1 },
-      { name: "Hair espejo",      frameTypeCode: "HAIR",       surfaceM2: 1.8, units: 2 },
+      { name: "Tela fachada",     elementTypeCode: "TELA",      surfaceM2: 5.5, units: 1 },
+      { name: "Hair espejo",      elementTypeCode: "HAIR",       surfaceM2: 1.8, units: 2 },
     ],
   },
   {
@@ -215,8 +220,8 @@ const PROJECTS = [
     client: "ARENAL",
     deliveryDate: new Date("2026-10-15T00:00:00.000Z"),
     lamps: [
-      { name: "Espumado frontal",    frameTypeCode: "ESPUMADO",  surfaceM2: 7.0, units: 1 },
-      { name: "Sol entrada",         frameTypeCode: "SOL",        surfaceM2: 1.5, units: 2 },
+      { name: "Espumado frontal",    elementTypeCode: "ESPUMADO",  surfaceM2: 7.0, units: 1 },
+      { name: "Sol entrada",         elementTypeCode: "SOL",        surfaceM2: 1.5, units: 2 },
     ],
   },
   {
@@ -225,8 +230,8 @@ const PROJECTS = [
     client: "BYD",
     deliveryDate: new Date("2026-11-01T00:00:00.000Z"),
     lamps: [
-      { name: "Espumado showroom",   frameTypeCode: "ESPUMADO",  surfaceM2: 6.0, units: 1 },
-      { name: "Composite columna",   frameTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 2 },
+      { name: "Espumado showroom",   elementTypeCode: "ESPUMADO",  surfaceM2: 6.0, units: 1 },
+      { name: "Composite columna",   elementTypeCode: "COMPOSITE",  surfaceM2: 3.0, units: 2 },
     ],
   },
   {
@@ -235,9 +240,9 @@ const PROJECTS = [
     client: "PUNTO",
     deliveryDate: new Date("2026-11-20T00:00:00.000Z"),
     lamps: [
-      { name: "Tela escaparate",  frameTypeCode: "TELA",      surfaceM2: 3.5, units: 2 },
-      { name: "Hair elemento",    frameTypeCode: "HAIR",       surfaceM2: 1.2, units: 1 },
-      { name: "Sol decorativo",   frameTypeCode: "SOL",        surfaceM2: 0.8, units: 4 },
+      { name: "Tela escaparate",  elementTypeCode: "TELA",      surfaceM2: 3.5, units: 2 },
+      { name: "Hair elemento",    elementTypeCode: "HAIR",       surfaceM2: 1.2, units: 1 },
+      { name: "Sol decorativo",   elementTypeCode: "SOL",        surfaceM2: 0.8, units: 4 },
     ],
   },
 ];
@@ -262,7 +267,7 @@ const HOLIDAYS_2026 = [
 
 type SeedLampInput = {
   name: string;
-  frameTypeCode: string;
+  elementTypeCode: string;
   surfaceM2: number;
   units: number;
 };
@@ -270,11 +275,11 @@ type SeedLampInput = {
 async function seedLampWithTasks(
   projectId: string,
   lamp: SeedLampInput,
-  frameType: { id: string; name: string },
+  elementType: { id: string; name: string },
   naveId: string,
   existingLampId?: string,
 ) {
-  const blueprints = await buildTasksFromFrame(frameType.id, lamp.surfaceM2);
+  const blueprints = await buildTasksFromElement(elementType.id, lamp.surfaceM2);
   if (blueprints.length === 0) return;
 
   await prisma.$transaction(async (tx) => {
@@ -283,30 +288,30 @@ async function seedLampWithTasks(
       : await tx.lamp.create({
           data: {
             projectId,
-            frameTypeId: frameType.id,
+            elementTypeId: elementType.id,
             name: lamp.name,
             surfaceM2: lamp.surfaceM2,
             units: lamp.units,
           },
         });
 
-    let physicalFrameIndex = 0;
+    let physicalElementIndex = 0;
 
     for (let unitIndex = 1; unitIndex <= lamp.units; unitIndex += 1) {
-      const label = formatLampFrameUnitLabel(
-        frameType.name,
+      const label = formatLampElementUnitLabel(
+        elementType.name,
         unitIndex,
         lamp.units,
       );
 
-      let lampFrame = await tx.lampFrame.findFirst({
-        where: { lampId: created.id, frameTypeId: frameType.id, label },
+      let lampElement = await tx.lampElement.findFirst({
+        where: { lampId: created.id, elementTypeId: elementType.id, label },
       });
-      if (!lampFrame) {
-        lampFrame = await tx.lampFrame.create({
+      if (!lampElement) {
+        lampElement = await tx.lampElement.create({
           data: {
             lampId: created.id,
-            frameTypeId: frameType.id,
+            elementTypeId: elementType.id,
             label,
             surfaceM2: lamp.surfaceM2,
             units: 1,
@@ -315,10 +320,10 @@ async function seedLampWithTasks(
       }
 
       const existingTaskCount = await tx.task.count({
-        where: { lampFrameId: lampFrame.id },
+        where: { lampElementId: lampElement.id },
       });
       if (existingTaskCount > 0) {
-        physicalFrameIndex += 1;
+        physicalElementIndex += 1;
         continue;
       }
 
@@ -326,15 +331,15 @@ async function seedLampWithTasks(
         data: blueprints.map((bp) => ({
           projectId,
           lampId: created.id,
-          lampFrameId: lampFrame.id,
+          lampElementId: lampElement.id,
           process: bp.process,
           estimatedHours: bp.estimatedHours,
-          order: bp.order + physicalFrameIndex * 1000,
+          order: bp.order + physicalElementIndex * 1000,
           naveId,
         })),
       });
 
-      physicalFrameIndex += 1;
+      physicalElementIndex += 1;
     }
   });
 }
@@ -363,21 +368,25 @@ async function main() {
   }
   const firstNave = await prisma.nave.findFirstOrThrow({ orderBy: { codigo: "asc" } });
 
-  console.log("Seeding frame types...");
-  const frameTypeByCode = new Map<string, { id: string; name: string }>();
-  for (const ft of FRAME_TYPES) {
-    const { processes, ...ftData } = ft;
-    const created = await prisma.frameType.upsert({
-      where: { code: ftData.code },
-      update: { name: ftData.name, description: ftData.description },
-      create: ftData,
+  console.log("Seeding element types...");
+  const elementTypeByCode = new Map<string, { id: string; name: string }>();
+  for (const et of ELEMENT_TYPES) {
+    const { processes, ...etData } = et;
+    const created = await prisma.elementType.upsert({
+      where: { code: etData.code },
+      update: {
+        name: etData.name,
+        description: etData.description,
+        typology: etData.typology,
+      },
+      create: etData,
     });
-    frameTypeByCode.set(ftData.code, created);
-    for (const fp of processes) {
-      await prisma.frameTypeProcess.upsert({
-        where: { frameTypeId_process: { frameTypeId: created.id, process: fp.process } },
-        update: { hoursPerUnit: fp.hoursPerUnit, fixedHours: fp.fixedHours, sequence: fp.sequence },
-        create: { frameTypeId: created.id, ...fp },
+    elementTypeByCode.set(etData.code, created);
+    for (const ep of processes) {
+      await prisma.elementTypeProcess.upsert({
+        where: { elementTypeId_process: { elementTypeId: created.id, process: ep.process } },
+        update: { hoursPerUnit: ep.hoursPerUnit, fixedHours: ep.fixedHours, sequence: ep.sequence },
+        create: { elementTypeId: created.id, ...ep },
       });
     }
   }
@@ -391,8 +400,8 @@ async function main() {
       create: projData,
     });
     for (const lamp of lamps) {
-      const frameType = frameTypeByCode.get(lamp.frameTypeCode);
-      if (!frameType) continue;
+      const elementType = elementTypeByCode.get(lamp.elementTypeCode);
+      if (!elementType) continue;
       const exists = await prisma.lamp.findFirst({
         where: { projectId: project.id, name: lamp.name },
       });
@@ -402,13 +411,13 @@ async function main() {
         await seedLampWithTasks(
           project.id,
           lamp,
-          frameType,
+          elementType,
           firstNave.id,
           exists.id,
         );
         continue;
       }
-      await seedLampWithTasks(project.id, lamp, frameType, firstNave.id);
+      await seedLampWithTasks(project.id, lamp, elementType, firstNave.id);
     }
     console.log(`  ${project.name} (${lamps.length} lámparas)`);
   }

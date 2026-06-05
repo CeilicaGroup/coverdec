@@ -165,10 +165,7 @@ export function groupTasksByBastidor<
             id: t.lampFrame.id,
             label: t.lampFrame.label,
             surfaceM2: t.lampFrame.surfaceM2,
-            elementType: {
-              id: t.lampFrame.frameType.id,
-              name: t.lampFrame.frameType.name,
-            },
+            elementType: t.lampFrame.elementType,
           }
         : null),
   }));

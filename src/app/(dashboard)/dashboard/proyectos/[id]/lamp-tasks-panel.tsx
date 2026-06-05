@@ -297,8 +297,8 @@ export function LampTasksPanel({
                             </td>
                             {group.unitCount > 1 ? (
                               <td className="py-1.5 px-2 text-muted-foreground">
-                                {t.lampFrame?.label ??
-                                  t.lampFrame?.frameType.name ??
+                                {t.lampElement?.label ??
+                                  t.lampElement?.elementType.name ??
                                   "—"}
                               </td>
                             ) : null}
@@ -490,9 +490,9 @@ export function LampTasksPanel({
                   code={editTask.process}
                   definition={processStylesByCode[editTask.process]}
                 />
-                {editTask.lampFrame?.label ? (
+                {editTask.lampElement?.label ? (
                   <span className="text-xs text-muted-foreground">
-                    {editTask.lampFrame.label}
+                    {editTask.lampElement.label}
                   </span>
                 ) : null}
               </div>

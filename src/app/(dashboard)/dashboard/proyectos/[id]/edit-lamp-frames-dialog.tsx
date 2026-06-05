@@ -27,7 +27,7 @@ import {
   scaleBlueprintHoursForUnits,
   type FrameProcessInput,
 } from "@/features/projects/lamp-tasks";
-import type { LampFrameConfig } from "@/features/projects/sync-lamp-frames";
+import type { LampElementConfig } from "@/features/projects/sync-lamp-elements";
 import { formatHours } from "@/lib/format";
 import { toast } from "sonner";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
@@ -45,16 +45,16 @@ interface DraftFrame {
   units: string;
 }
 
-function newDraftFrame(config?: LampFrameConfig): DraftFrame {
+function newDraftFrame(config?: LampElementConfig): DraftFrame {
   return {
     clientId: crypto.randomUUID(),
-    frameTypeId: config?.frameTypeId ?? "",
+    frameTypeId: config?.elementTypeId ?? "",
     surfaceM2: config ? String(config.surfaceM2) : "",
     units: config ? String(config.units) : "1",
   };
 }
 
-function configsToDraft(frames: LampFrameConfig[]): DraftFrame[] {
+function configsToDraft(frames: LampElementConfig[]): DraftFrame[] {
   if (frames.length === 0) return [newDraftFrame()];
   return frames.map((f) => newDraftFrame(f));
 }
@@ -81,7 +81,7 @@ export function EditLampFramesDialog({
 }: {
   lampId: string;
   lampName: string;
-  initialFrames: LampFrameConfig[];
+  initialFrames: LampElementConfig[];
   frameTypes: FrameTypeOption[];
 }) {
   const router = useRouter();
@@ -180,7 +180,7 @@ export function EditLampFramesDialog({
                 await updateLampFrames({
                   lampId,
                   frames: parsedFrames.map(({ row, medida, units }) => ({
-                    frameTypeId: row.frameTypeId,
+                    elementTypeId: row.frameTypeId,
                     surfaceM2: medida,
                     units,
                   })),

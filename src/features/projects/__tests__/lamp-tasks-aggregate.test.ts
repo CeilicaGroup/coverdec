@@ -4,7 +4,8 @@ import {
   groupTasksByBastidor,
   scaleBlueprintHoursForUnits,
 } from "@/features/projects/lamp-tasks";
-import { lampFramesToConfig } from "@/features/projects/sync-lamp-frames";
+import { ElementTypology } from "@/generated/prisma";
+import { lampElementsToConfig } from "@/features/projects/sync-lamp-elements";
 
 describe("scaleBlueprintHoursForUnits", () => {
   it("multiplies hours when units > 1", () => {
@@ -46,12 +47,24 @@ describe("aggregateTasksByProcess", () => {
   });
 });
 
-describe("lampFramesToConfig", () => {
-  it("groups physical frames by frame type", () => {
-    const configs = lampFramesToConfig([
-      { elementTypeId: "ft1", surfaceM2: 4 },
-      { elementTypeId: "ft1", surfaceM2: 4 },
-      { elementTypeId: "ft2", surfaceM2: 2 },
+describe("lampElementsToConfig", () => {
+  it("groups physical elements by element type", () => {
+    const configs = lampElementsToConfig([
+      {
+        elementTypeId: "ft1",
+        surfaceM2: 4,
+        elementType: { typology: ElementTypology.BASTIDOR },
+      },
+      {
+        elementTypeId: "ft1",
+        surfaceM2: 4,
+        elementType: { typology: ElementTypology.BASTIDOR },
+      },
+      {
+        elementTypeId: "ft2",
+        surfaceM2: 2,
+        elementType: { typology: ElementTypology.ILUMINACION },
+      },
     ]);
     expect(configs).toHaveLength(2);
     const sol = configs.find((c) => c.elementTypeId === "ft1");
@@ -62,7 +75,7 @@ describe("lampFramesToConfig", () => {
 
 describe("groupTasksByBastidor", () => {
   it("groups units under the same frame type", () => {
-    const frameType = { id: "ft1", name: "Elemento Sol" };
+    const elementType = { id: "ft1", name: "Elemento Sol" };
     const groups = groupTasksByBastidor([
       {
         order: 0,
@@ -70,7 +83,7 @@ describe("groupTasksByBastidor", () => {
           id: "lf1",
           label: "Elemento Sol 1",
           surfaceM2: 4,
-          frameType,
+          elementType,
         },
       },
       {
@@ -79,7 +92,7 @@ describe("groupTasksByBastidor", () => {
           id: "lf2",
           label: "Elemento Sol 2",
           surfaceM2: 4,
-          frameType,
+          elementType,
         },
       },
     ]);

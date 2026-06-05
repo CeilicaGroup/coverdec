@@ -56,12 +56,12 @@ export async function applyBastidorRows(
     summary.processesCreated = processResult.created;
 
     for (const entry of grouped.values()) {
-      const existing = await tx.frameType.findUnique({
+      const existing = await tx.elementType.findUnique({
         where: { code: entry.code },
         select: { id: true },
       });
 
-      const frameType = await tx.frameType.upsert({
+      const elementType = await tx.elementType.upsert({
         where: { code: entry.code },
         update: { name: entry.name },
         create: { code: entry.code, name: entry.name },
@@ -72,13 +72,13 @@ export async function applyBastidorRows(
 
       let sequence = 0;
       for (const [proc, hoursPerUnit] of entry.processes) {
-        await tx.frameTypeProcess.upsert({
+        await tx.elementTypeProcess.upsert({
           where: {
-            elementTypeId_process: { elementTypeId: frameType.id, process: proc },
+            elementTypeId_process: { elementTypeId: elementType.id, process: proc },
           },
           update: { sequence, hoursPerUnit },
           create: {
-            elementTypeId: frameType.id,
+            elementTypeId: elementType.id,
             process: proc,
             sequence,
             hoursPerUnit,

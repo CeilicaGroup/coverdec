@@ -180,7 +180,7 @@ export interface PlanningWeekAssignmentInput {
     projectId: string;
     lampId: string;
     lamp: PlanningAssignmentSlice["task"]["lamp"];
-    lampFrame?: PlanningAssignmentSlice["task"]["lampFrame"];
+    lampElement?: PlanningAssignmentSlice["task"]["lampElement"];
     project: { name: string };
   };
 }
@@ -211,7 +211,7 @@ export function toPlanningAssignmentSlices(
       projectId: a.task.projectId,
       lampId: a.task.lampId,
       lamp: a.task.lamp,
-      lampElement: a.task.lampFrame,
+      lampElement: a.task.lampElement,
       project: { name: a.task.project.name },
     },
   }));
@@ -289,8 +289,8 @@ export interface ActualHourEntry {
     projectId: string;
     lampId: string;
     isCompleted: boolean;
-    lampFrame?: { label: string | null; frameType?: { name: string } | null } | null;
-    lamp?: { frameType?: { name: string } | null } | null;
+    lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
+    lamp?: { elementType?: { name: string } | null } | null;
   } | null;
   project: { id: string; name: string } | null;
   lamp: { id: string; name: string } | null;
@@ -374,7 +374,7 @@ export async function getActualHoursForWeek({
           projectId: e.task.projectId,
           lampId: e.task.lampId,
           isCompleted: e.task.isCompleted,
-          lampElement: e.task.lampFrame,
+          lampElement: e.task.lampElement,
           lamp: e.task.lamp,
         }
       : null,

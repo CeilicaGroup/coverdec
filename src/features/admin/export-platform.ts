@@ -163,7 +163,7 @@ async function fillTasksSheet(
       projectCode: task.project.code,
       projectName: task.project.name,
       lampName: task.lamp.name,
-      lampFrameLabel: toNullable(task.lampFrame?.label),
+      lampFrameLabel: toNullable(task.lampElement?.label),
       process: task.process,
       estimatedHours: task.estimatedHours,
       pendingHours: Math.max(0, task.estimatedHours - (doneByTaskId.get(task.id) ?? 0)),
@@ -224,17 +224,17 @@ async function fillFramesSheet(
 
   for (const item of elementTypeProcesses) {
     sheet.addRow({
-      elementTypeId: item.frameType.id,
-      frameTypeCode: item.frameType.code,
-      frameTypeName: item.frameType.name,
-      isActive: item.frameType.isActive,
+      elementTypeId: item.elementType.id,
+      frameTypeCode: item.elementType.code,
+      frameTypeName: item.elementType.name,
+      isActive: item.elementType.isActive,
       process: item.process,
       sequence: item.sequence,
       hoursPerUnit: item.hoursPerUnit,
       fixedHours: item.fixedHours,
       notes: toNullable(item.notes),
-      frameTypeCreatedAt: item.frameType.createdAt,
-      frameTypeUpdatedAt: item.frameType.updatedAt,
+      frameTypeCreatedAt: item.elementType.createdAt,
+      frameTypeUpdatedAt: item.elementType.updatedAt,
     });
   }
 }
