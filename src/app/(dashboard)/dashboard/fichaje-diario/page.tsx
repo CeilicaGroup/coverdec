@@ -68,7 +68,7 @@ export default async function FichajeDiarioPage() {
       orderBy: { date: "asc" },
     }),
     prisma.holiday.findMany({
-      select: { id: true, startDate: true, endDate: true, name: true, region: true },
+      select: { id: true, startDate: true, endDate: true, name: true },
       orderBy: { startDate: "asc" },
     }),
     prisma.attendanceSession.findFirst({
@@ -107,7 +107,6 @@ export default async function FichajeDiarioPage() {
           startDate: h.startDate.toISOString().slice(0, 10),
           endDate: h.endDate.toISOString().slice(0, 10),
           name: h.name,
-          region: h.region,
         }))}
         openSession={
           openSession

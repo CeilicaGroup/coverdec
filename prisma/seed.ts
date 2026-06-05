@@ -527,7 +527,6 @@ async function main() {
         startDate: d,
         endDate: d,
         name,
-        region: "Silla 46460",
       },
     });
   }

@@ -21,7 +21,6 @@ const createHolidaySchema = z
     startDate: isoDate,
     endDate: isoDate,
     name: z.string().min(1).max(200),
-    region: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
     const s = parseUtcDate(data.startDate).getTime();
@@ -41,7 +40,6 @@ const updateHolidaySchema = z
     startDate: isoDate,
     endDate: isoDate,
     name: z.string().min(1).max(200),
-    region: z.string().max(200).optional(),
   })
   .superRefine((data, ctx) => {
     const s = parseUtcDate(data.startDate).getTime();
@@ -65,17 +63,12 @@ export async function createHoliday(input: z.infer<typeof createHolidaySchema>) 
   const data = createHolidaySchema.parse(input);
   const startDate = utcDayStart(parseUtcDate(data.startDate));
   const endDate = utcDayStart(parseUtcDate(data.endDate));
-  const region =
-    data.region != null && data.region.trim().length > 0
-      ? data.region.trim()
-      : "Silla 46460";
 
   await prisma.holiday.create({
     data: {
       startDate,
       endDate,
       name: data.name.trim(),
-      region,
     },
   });
 
@@ -92,10 +85,6 @@ export async function updateHoliday(input: z.infer<typeof updateHolidaySchema>) 
   const data = updateHolidaySchema.parse(input);
   const startDate = utcDayStart(parseUtcDate(data.startDate));
   const endDate = utcDayStart(parseUtcDate(data.endDate));
-  const region =
-    data.region != null && data.region.trim().length > 0
-      ? data.region.trim()
-      : "Silla 46460";
 
   await prisma.holiday.update({
     where: { id: data.id },
@@ -103,7 +92,6 @@ export async function updateHoliday(input: z.infer<typeof updateHolidaySchema>) 
       startDate,
       endDate,
       name: data.name.trim(),
-      region,
     },
   });
 

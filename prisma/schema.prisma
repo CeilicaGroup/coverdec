@@ -509,7 +509,6 @@ model Holiday {
   startDate DateTime
   endDate   DateTime
   name      String
-  region    String   @default("Silla 46460")
 
   @@index([startDate, endDate])
 }

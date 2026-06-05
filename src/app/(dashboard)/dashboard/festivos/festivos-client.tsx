@@ -30,7 +30,6 @@ export interface FestivoRow {
   startDate: string;
   endDate: string;
   name: string;
-  region: string;
 }
 
 function formatRange(r: FestivoRow): string {
@@ -52,13 +51,11 @@ export function FestivosClient({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [name, setName] = useState("");
-  const [region, setRegion] = useState("");
 
   const [editing, setEditing] = useState<FestivoRow | null>(null);
   const [eStart, setEStart] = useState("");
   const [eEnd, setEEnd] = useState("");
   const [eName, setEName] = useState("");
-  const [eRegion, setERegion] = useState("");
 
   const sorted = useMemo(
     () => [...rows].sort((a, b) => a.startDate.localeCompare(b.startDate)),
@@ -70,7 +67,6 @@ export function FestivosClient({
     setEStart(r.startDate);
     setEEnd(r.endDate);
     setEName(r.name);
-    setERegion(r.region);
   }
 
   function submitCreate() {
@@ -88,11 +84,9 @@ export function FestivosClient({
           startDate,
           endDate,
           name: name.trim(),
-          region: region.trim() || undefined,
         });
         toast.success("Rango festivo guardado");
         setName("");
-        setRegion("");
         setStartDate("");
         setEndDate("");
         router.refresh();
@@ -119,7 +113,6 @@ export function FestivosClient({
           startDate: eStart,
           endDate: eEnd,
           name: eName.trim(),
-          region: eRegion.trim() || undefined,
         });
         toast.success("Actualizado");
         setEditing(null);
@@ -175,15 +168,6 @@ export function FestivosClient({
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="festivo-region">Región (opcional)</Label>
-              <Input
-                id="festivo-region"
-                placeholder="Silla 46460"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-              />
-            </div>
           </div>
           <Button type="button" size="sm" onClick={submitCreate} disabled={pending}>
             Guardar
@@ -197,7 +181,6 @@ export function FestivosClient({
             <TableRow>
               <TableHead>Rango</TableHead>
               <TableHead>Nombre</TableHead>
-              <TableHead>Región</TableHead>
               {canManage ? <TableHead className="w-28 text-right">Acciones</TableHead> : null}
             </TableRow>
           </TableHeader>
@@ -205,7 +188,7 @@ export function FestivosClient({
             {sorted.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canManage ? 4 : 3}
+                  colSpan={canManage ? 3 : 2}
                   className="text-center text-muted-foreground py-8 text-sm"
                 >
                   No hay festivos en el rango mostrado.
@@ -216,7 +199,6 @@ export function FestivosClient({
                 <TableRow key={r.id}>
                   <TableCell className="text-xs">{formatRange(r)}</TableCell>
                   <TableCell className="text-sm">{r.name}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.region}</TableCell>
                   {canManage ? (
                     <TableCell className="text-right space-x-1">
                       <Button
@@ -269,10 +251,6 @@ export function FestivosClient({
               <div className="space-y-2">
                 <Label>Nombre</Label>
                 <Input value={eName} onChange={(e) => setEName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Región</Label>
-                <Input value={eRegion} onChange={(e) => setERegion(e.target.value)} />
               </div>
               <DialogFooter>
                 <Button type="button" onClick={submitEdit} disabled={pending}>

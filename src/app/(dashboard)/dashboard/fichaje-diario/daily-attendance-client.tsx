@@ -103,7 +103,6 @@ export function DailyAttendanceClient(props: {
   const [holidayStartDate, setHolidayStartDate] = useState(isoDay(new Date()));
   const [holidayEndDate, setHolidayEndDate] = useState(isoDay(new Date()));
   const [holidayName, setHolidayName] = useState("");
-  const [holidayRegion, setHolidayRegion] = useState("");
   const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null);
 
   const selectedIso = isoDay(selectedDate);
@@ -549,15 +548,9 @@ export function DailyAttendanceClient(props: {
                   <Input type="date" value={holidayEndDate} onChange={(e) => setHolidayEndDate(e.target.value)} />
                 </div>
               </div>
-              <div className="grid md:grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label>Nombre</Label>
-                  <Input value={holidayName} onChange={(e) => setHolidayName(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Región</Label>
-                  <Input value={holidayRegion} onChange={(e) => setHolidayRegion(e.target.value)} />
-                </div>
+              <div className="space-y-1">
+                <Label>Nombre</Label>
+                <Input value={holidayName} onChange={(e) => setHolidayName(e.target.value)} />
               </div>
               <div className="flex gap-2">
                 <Button
@@ -571,7 +564,6 @@ export function DailyAttendanceClient(props: {
                             startDate: holidayStartDate,
                             endDate: holidayEndDate,
                             name: holidayName.trim(),
-                            region: holidayRegion.trim() || undefined,
                           });
                           toast.success("Festivo actualizado");
                         } else {
@@ -579,13 +571,11 @@ export function DailyAttendanceClient(props: {
                             startDate: holidayStartDate,
                             endDate: holidayEndDate,
                             name: holidayName.trim(),
-                            region: holidayRegion.trim() || undefined,
                           });
                           toast.success("Festivo creado");
                         }
                         setEditingHolidayId(null);
                         setHolidayName("");
-                        setHolidayRegion("");
                         setHolidayStartDate(selectedIso);
                         setHolidayEndDate(selectedIso);
                         router.refresh();
@@ -603,7 +593,6 @@ export function DailyAttendanceClient(props: {
                     onClick={() => {
                       setEditingHolidayId(null);
                       setHolidayName("");
-                      setHolidayRegion("");
                     }}
                   >
                     Cancelar
@@ -625,7 +614,6 @@ export function DailyAttendanceClient(props: {
                           setHolidayStartDate(holiday.startDate);
                           setHolidayEndDate(holiday.endDate);
                           setHolidayName(holiday.name);
-                          setHolidayRegion(holiday.region);
                         }}
                       >
                         Editar
