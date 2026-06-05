@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateProject } from "@/features/projects/actions";
+import { ProjectKind } from "@/generated/prisma";
+import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
 import { toast } from "sonner";
 
 export interface EditableProject {
@@ -33,6 +35,7 @@ export interface EditableProject {
   obra: string | null;
   deliveryDate: Date | null;
   isBillable: boolean;
+  kind: ProjectKind;
   notes: string | null;
   responsibleUserId?: string | null;
 }
@@ -59,6 +62,7 @@ export function EditProjectDialog({
   const [obra, setObra] = useState(project.obra ?? "");
   const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
   const [isBillable, setIsBillable] = useState(project.isBillable);
+  const [kind, setKind] = useState<ProjectKind>(project.kind);
   const [notes, setNotes] = useState(project.notes ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     project.responsibleUserId ?? null,
@@ -71,6 +75,7 @@ export function EditProjectDialog({
     setObra(project.obra ?? "");
     setDeliveryDate(toDateInputValue(project.deliveryDate));
     setIsBillable(project.isBillable);
+    setKind(project.kind);
     setNotes(project.notes ?? "");
     setResponsibleUserId(project.responsibleUserId ?? null);
   }, [open, project]);
@@ -115,6 +120,7 @@ export function EditProjectDialog({
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
+                  kind,
                   responsibleUserId: responsibleUserId ?? undefined,
                   notes: notes || undefined,
                 });
@@ -157,6 +163,24 @@ export function EditProjectDialog({
               rows={2}
               className="resize-none"
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo de proyecto</Label>
+            <Select
+              value={kind}
+              onValueChange={(value) => setKind((value ?? ProjectKind.PRODUCCION) as ProjectKind)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>{PROJECT_KIND_LABELS[kind]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_KINDS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {PROJECT_KIND_LABELS[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Responsable del proyecto</Label>

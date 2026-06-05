@@ -22,6 +22,8 @@ import {
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
 import { ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
+import { isManualEstimateLamp } from "@/lib/manual-lamp";
+import { isManualEstimateProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
@@ -150,7 +152,7 @@ export default async function ProjectDetailPage({
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={project.name}
-        description={`${project.code} · ${project.client ?? project.obra ?? "Sin cliente"}`}
+        description={`${project.code} · ${PROJECT_KIND_LABELS[project.kind]} · ${project.client ?? project.obra ?? "Sin cliente"}`}
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {canManage ? (
@@ -164,6 +166,7 @@ export default async function ProjectDetailPage({
                     obra: project.obra,
                     deliveryDate: project.deliveryDate,
                     isBillable: project.isBillable,
+                    kind: project.kind,
                     notes: project.notes,
                     responsibleUserId: project.responsibleUserId,
                   }}
@@ -202,6 +205,7 @@ export default async function ProjectDetailPage({
           {canManage ? (
             <AddLampForm
               projectId={project.id}
+              projectKind={project.kind}
               elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,
@@ -223,28 +227,37 @@ export default async function ProjectDetailPage({
         <CardContent className="p-0">
           {project.lamps.length === 0 ? (
             <p className="text-center text-muted-foreground py-8 text-sm">
-              Aún sin lámparas. Añade una con elemento y medida para generar las tareas.
+              {isManualEstimateProjectKind(project.kind)
+                ? "Aún sin lámparas. Puedes crear una por elementos o asignarle un total de horas."
+                : "Aún sin lámparas. Añade una con elemento y medida para generar las tareas."}
             </p>
           ) : (
             <div className="divide-y">
               {lamps.map((l) => {
+                const manualLamp = isManualEstimateLamp(l);
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
+                const lampEstimated = l.tasks.reduce((a, t) => a + t.estimatedHours, 0);
                 const editableElements =
-                  l.elements.length > 0
+                  !manualLamp && l.elements.length > 0
                     ? lampElementsToConfig(l.elements)
-                    : fallbackLampConfig({
-                        elementTypeId: l.elementTypeId,
-                        surfaceM2: l.surfaceM2,
-                        units: l.units,
-                        elementType: { typology: l.elementType.typology },
-                      });
-                const elementSummary =
-                  editableElements.length > 0
+                    : !manualLamp && l.elementTypeId && l.elementType
+                      ? fallbackLampConfig({
+                          elementTypeId: l.elementTypeId,
+                          surfaceM2: l.surfaceM2,
+                          units: l.units,
+                          elementType: { typology: l.elementType.typology },
+                        })
+                      : [];
+                const elementSummary = manualLamp
+                  ? lampEstimated > 0
+                    ? `${formatHours(lampEstimated)} estimadas`
+                    : "Sin horas asignadas"
+                  : editableElements.length > 0
                     ? editableElements
                         .map((cfg) => {
                           const name =
                             l.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
-                              ?.elementType.name ?? l.elementType.name;
+                              ?.elementType.name ?? l.elementType?.name ?? "Elemento";
                           const parts = [
                             ELEMENT_TYPOLOGY_LABELS[cfg.typology],
                             name,
@@ -254,16 +267,16 @@ export default async function ProjectDetailPage({
                           return parts.join(" · ");
                         })
                         .join(" / ")
-                    : l.elementType.name;
+                    : (l.elementType?.name ?? "—");
                 return (
                   <div key={l.id}>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
                       <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
                       <div className="text-xs text-muted-foreground min-w-0">
-                        Elementos:{" "}
+                        {manualLamp ? "Horas" : "Elementos"}:{" "}
                         <span className="text-foreground">{elementSummary}</span>
                       </div>
-                      {canManage ? (
+                      {canManage && !manualLamp ? (
                         <EditLampElementsDialog
                           key={`${l.id}-${l.updatedAt.toISOString()}`}
                           lampId={l.id}

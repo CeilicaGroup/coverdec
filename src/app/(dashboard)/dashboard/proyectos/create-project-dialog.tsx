@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createProject } from "@/features/projects/actions";
+import { ProjectKind } from "@/generated/prisma";
+import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
 import { toast } from "sonner";
 
 export function CreateProjectDialog({
@@ -38,6 +40,7 @@ export function CreateProjectDialog({
   const [obra, setObra] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [isBillable, setIsBillable] = useState(true);
+  const [kind, setKind] = useState<ProjectKind>(ProjectKind.PRODUCCION);
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(null);
 
   return (
@@ -61,6 +64,7 @@ export function CreateProjectDialog({
                   obra: obra || undefined,
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
+                  kind,
                   responsibleUserId: responsibleUserId ?? undefined,
                 });
                 toast.success("Proyecto creado");
@@ -94,6 +98,24 @@ export function CreateProjectDialog({
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo de proyecto</Label>
+            <Select
+              value={kind}
+              onValueChange={(value) => setKind((value ?? ProjectKind.PRODUCCION) as ProjectKind)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>{PROJECT_KIND_LABELS[kind]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_KINDS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {PROJECT_KIND_LABELS[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Responsable del proyecto</Label>

@@ -5,7 +5,23 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { ElementTypology, ProjectPlanningPreset, Role } from "@/generated/prisma";
+import {
+  ElementTypology,
+  ProjectKind,
+  ProjectPlanningPreset,
+  Role,
+} from "@/generated/prisma";
+import {
+  createLampInputSchema,
+  lampElementInputSchema,
+  resolveCreateLampMode,
+} from "@/features/projects/create-lamp-input";
+import { MANUAL_ESTIMATION_PROCESS } from "@/lib/manual-lamp";
+import {
+  assertLampNameAllowed,
+  isPrismaUniqueViolation,
+  lampNameFields,
+} from "@/features/projects/lamp-name-validation";
 import {
   projectPlanningStrategySchema,
   PROJECT_PLANNING_PRESETS,
@@ -48,6 +64,7 @@ const projectSchema = z.object({
   obra: z.string().optional(),
   deliveryDate: z.string().optional(),
   isBillable: z.boolean().default(true),
+  kind: z.nativeEnum(ProjectKind).default(ProjectKind.PRODUCCION),
   responsibleUserId: z.string().min(1).optional(),
   notes: z.string().optional(),
   planningPreset: z.nativeEnum(ProjectPlanningPreset).optional(),
@@ -77,6 +94,7 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
       obra: data.obra,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : undefined,
       isBillable: data.isBillable,
+      kind: data.kind,
       responsibleUserId: data.responsibleUserId || null,
       notes: data.notes,
       planningPreset: preset,
@@ -108,6 +126,7 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
       obra: data.obra || null,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
       isBillable: data.isBillable,
+      kind: data.kind,
       responsibleUserId: data.responsibleUserId || null,
       notes: data.notes?.trim() ? data.notes.trim() : null,
       planningPreset: data.planningPreset ?? undefined,
@@ -125,18 +144,32 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
   return { id: data.projectId };
 }
 
-const lampElementInputSchema = z.object({
-  typology: z.nativeEnum(ElementTypology),
-  elementTypeId: z.string().min(1),
-  surfaceM2: z.number().positive(),
-  units: z.number().int().positive(),
-});
+async function persistLampName(
+  args: {
+    projectId: string;
+    name: string;
+    excludeLampId?: string;
+    confirmSimilarName?: boolean;
+  },
+  persist: (fields: ReturnType<typeof lampNameFields>) => Promise<void>,
+) {
+  await assertLampNameAllowed(prisma, args);
+  const fields = lampNameFields(args.name);
+  if (!fields.nameKey) {
+    throw new Error("El nombre de la lámpara no es válido.");
+  }
 
-const lampSchema = z.object({
-  projectId: z.string().min(1),
-  name: z.string().min(1),
-  elements: z.array(lampElementInputSchema).min(1),
-});
+  try {
+    await persist(fields);
+  } catch (error) {
+    if (isPrismaUniqueViolation(error)) {
+      throw new Error(
+        "Ya existe una lámpara con ese nombre en este proyecto.",
+      );
+    }
+    throw error;
+  }
+}
 
 function assertUniqueElementTypes(elements: { elementTypeId: string }[]) {
   const ids = elements.map((e) => e.elementTypeId);
@@ -145,14 +178,67 @@ function assertUniqueElementTypes(elements: { elementTypeId: string }[]) {
   }
 }
 
-export async function createLamp(input: z.infer<typeof lampSchema>) {
+export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = lampSchema.parse(input);
-  assertUniqueElementTypes(data.elements);
+  const data = createLampInputSchema.parse(input);
+
+  const project = await prisma.project.findFirst({
+    where: { id: data.projectId },
+    select: { id: true, kind: true },
+  });
+  if (!project) throw new Error("Proyecto no encontrado");
+
+  const mode = resolveCreateLampMode(project.kind, data);
   const taskNaveId = await getDefaultTaskNaveId();
 
-  const elementTypeIds = [...new Set(data.elements.map((e) => e.elementTypeId))];
+  if (mode === "manual") {
+    let lampId = "";
+    await persistLampName(
+      {
+        projectId: data.projectId,
+        name: data.name,
+        confirmSimilarName: data.confirmSimilarName,
+      },
+      async (fields) => {
+        const lamp = await prisma.$transaction(async (tx) => {
+          const created = await tx.lamp.create({
+            data: {
+              projectId: data.projectId,
+              name: fields.name,
+              nameKey: fields.nameKey,
+            },
+          });
+
+          if (data.estimatedHours != null) {
+            await tx.task.create({
+              data: {
+                projectId: data.projectId,
+                lampId: created.id,
+                process: MANUAL_ESTIMATION_PROCESS,
+                estimatedHours: data.estimatedHours,
+                order: 0,
+                naveId: taskNaveId,
+              },
+            });
+          }
+
+          return created;
+        });
+        lampId = lamp.id;
+      },
+    );
+
+    log.info({ lampId, mode: "manual" }, "lamp created");
+    revalidatePath("/dashboard/proyectos");
+    revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+    return { id: lampId };
+  }
+
+  const elements = data.elements!;
+  assertUniqueElementTypes(elements);
+
+  const elementTypeIds = [...new Set(elements.map((e) => e.elementTypeId))];
   const elementTypes = await prisma.elementType.findMany({
     where: { id: { in: elementTypeIds } },
     select: { id: true, name: true, typology: true },
@@ -163,14 +249,14 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
     throw new Error("Alguno de los elementos seleccionados no existe.");
   }
 
-  for (const row of data.elements) {
+  for (const row of elements) {
     if (typologyById.get(row.elementTypeId) !== row.typology) {
       throw new Error("La tipología no coincide con el tipo de elemento elegido.");
     }
   }
 
   const elementBlueprints = await Promise.all(
-    data.elements.map(async (element) => ({
+    elements.map(async (element) => ({
       element,
       blueprints: await buildTasksFromElement(element.elementTypeId, element.surfaceM2),
     })),
@@ -181,80 +267,98 @@ export async function createLamp(input: z.infer<typeof lampSchema>) {
     );
   }
 
-  const primary = data.elements[0]!;
-  const totalUnits = data.elements.reduce((sum, e) => sum + e.units, 0);
+  const primary = elements[0]!;
+  const totalUnits = elements.reduce((sum, e) => sum + e.units, 0);
 
-  const lamp = await prisma.$transaction(async (tx) => {
-    const created = await tx.lamp.create({
-      data: {
-        projectId: data.projectId,
-        name: data.name,
-        elementTypeId: primary.elementTypeId,
-        surfaceM2: primary.surfaceM2,
-        units: totalUnits,
-      },
-    });
-
-    const tasksToCreate: Array<{
-      projectId: string;
-      lampId: string;
-      lampElementId: string;
-      process: string;
-      estimatedHours: number;
-      order: number;
-      naveId: string;
-    }> = [];
-
-    let physicalElementIndex = 0;
-
-    for (const { element, blueprints } of elementBlueprints) {
-      if (blueprints.length === 0) continue;
-
-      const elementName = elementNameById.get(element.elementTypeId) ?? "Elemento";
-
-      for (let unitIndex = 1; unitIndex <= element.units; unitIndex++) {
-        const lampElement = await tx.lampElement.create({
+  let catalogLampId = "";
+  await persistLampName(
+    {
+      projectId: data.projectId,
+      name: data.name,
+      confirmSimilarName: data.confirmSimilarName,
+    },
+    async (fields) => {
+      const lamp = await prisma.$transaction(async (tx) => {
+        const created = await tx.lamp.create({
           data: {
-            lampId: created.id,
-            elementTypeId: element.elementTypeId,
-            label: formatLampElementUnitLabel(elementName, unitIndex, element.units),
-            surfaceM2: element.surfaceM2,
-            units: 1,
+            projectId: data.projectId,
+            name: fields.name,
+            nameKey: fields.nameKey,
+            elementTypeId: primary.elementTypeId,
+            surfaceM2: primary.surfaceM2,
+            units: totalUnits,
           },
         });
 
-        for (const bp of blueprints) {
-          tasksToCreate.push({
-            projectId: data.projectId,
-            lampId: created.id,
-            lampElementId: lampElement.id,
-            process: bp.process,
-            estimatedHours: bp.estimatedHours,
-            order: bp.order + physicalElementIndex * 1000,
-            naveId: taskNaveId,
-          });
+        const tasksToCreate: Array<{
+          projectId: string;
+          lampId: string;
+          lampElementId: string;
+          process: string;
+          estimatedHours: number;
+          order: number;
+          naveId: string;
+        }> = [];
+
+        let physicalElementIndex = 0;
+
+        for (const { element, blueprints } of elementBlueprints) {
+          if (blueprints.length === 0) continue;
+
+          const elementName =
+            elementNameById.get(element.elementTypeId) ?? "Elemento";
+
+          for (let unitIndex = 1; unitIndex <= element.units; unitIndex++) {
+            const lampElement = await tx.lampElement.create({
+              data: {
+                lampId: created.id,
+                elementTypeId: element.elementTypeId,
+                label: formatLampElementUnitLabel(
+                  elementName,
+                  unitIndex,
+                  element.units,
+                ),
+                surfaceM2: element.surfaceM2,
+                units: 1,
+              },
+            });
+
+            for (const bp of blueprints) {
+              tasksToCreate.push({
+                projectId: data.projectId,
+                lampId: created.id,
+                lampElementId: lampElement.id,
+                process: bp.process,
+                estimatedHours: bp.estimatedHours,
+                order: bp.order + physicalElementIndex * 1000,
+                naveId: taskNaveId,
+              });
+            }
+
+            physicalElementIndex += 1;
+          }
         }
 
-        physicalElementIndex += 1;
-      }
-    }
+        if (tasksToCreate.length > 0) {
+          await tx.task.createMany({ data: tasksToCreate });
+        }
 
-    if (tasksToCreate.length > 0) {
-      await tx.task.createMany({ data: tasksToCreate });
-    }
+        return created;
+      });
+      catalogLampId = lamp.id;
+    },
+  );
 
-    return created;
-  });
-
-  log.info({ lampId: lamp.id }, "lamp created with tasks");
+  log.info({ lampId: catalogLampId }, "lamp created with tasks");
   revalidatePath("/dashboard/proyectos");
   revalidatePath(`/dashboard/proyectos/${data.projectId}`);
-  return { id: lamp.id };
+  return { id: catalogLampId };
 }
 
 const renameLampSchema = z.object({
   lampId: z.string().min(1),
   name: z.string().min(1).max(120),
+  confirmSimilarName: z.boolean().optional(),
 });
 
 const updateLampElementsSchema = z.object({
@@ -323,9 +427,31 @@ export async function updateLampFrames(input: {
 export async function renameLamp(input: z.infer<typeof renameLampSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const { lampId, name } = renameLampSchema.parse(input);
-  await prisma.lamp.update({ where: { id: lampId }, data: { name: name.trim() } });
+  const data = renameLampSchema.parse(input);
+
+  const lamp = await prisma.lamp.findFirst({
+    where: { id: data.lampId },
+    select: { id: true, projectId: true },
+  });
+  if (!lamp) throw new Error("Lámpara no encontrada");
+
+  await persistLampName(
+    {
+      projectId: lamp.projectId,
+      name: data.name,
+      excludeLampId: lamp.id,
+      confirmSimilarName: data.confirmSimilarName,
+    },
+    async (fields) => {
+      await prisma.lamp.update({
+        where: { id: lamp.id },
+        data: { name: fields.name, nameKey: fields.nameKey },
+      });
+    },
+  );
+
   revalidatePath("/dashboard/proyectos");
+  revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
 }
 
 const updateTaskHoursSchema = z.object({
@@ -366,10 +492,12 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
   });
   if (!lamp) throw new Error("Lámpara no encontrada");
 
-  const primaryLampElement = await prisma.lampElement.findFirst({
-    where: { lampId: lamp.id, elementTypeId: lamp.elementTypeId },
-    select: { id: true },
-  });
+  const primaryLampElement = lamp.elementTypeId
+    ? await prisma.lampElement.findFirst({
+        where: { lampId: lamp.id, elementTypeId: lamp.elementTypeId },
+        select: { id: true },
+      })
+    : null;
 
   if (primaryLampElement) {
     const exists = await prisma.task.count({

@@ -83,6 +83,12 @@ enum ProjectPlanningPreset {
   MIN_COSTE
 }
 
+enum ProjectKind {
+  PRODUCCION
+  PROTOTIPO
+  PRESUPUESTO
+}
+
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
@@ -340,6 +346,7 @@ model Project {
   deliveryDate DateTime?
   isBillable   Boolean   @default(true)
   isActive     Boolean   @default(true)
+  kind         ProjectKind @default(PRODUCCION)
   planningPreset ProjectPlanningPreset @default(EQUILIBRADO)
   planningCostPriority Int @default(50)
   planningStability Int @default(50)
@@ -360,9 +367,10 @@ model Project {
 model Lamp {
   id            String   @id @default(cuid())
   projectId     String
-  elementTypeId String
+  elementTypeId String?
   code          String?
   name          String
+  nameKey       String
   width         Float?
   height        Float?
   depth         Float?
@@ -373,10 +381,12 @@ model Lamp {
   updatedAt     DateTime @updatedAt
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  elementType  ElementType   @relation(fields: [elementTypeId], references: [id])
+  elementType  ElementType?  @relation(fields: [elementTypeId], references: [id])
   elements     LampElement[]
   tasks        Task[]
   timeEntries  TimeEntry[]
+
+  @@unique([projectId, nameKey])
 }
 
 model LampElement {

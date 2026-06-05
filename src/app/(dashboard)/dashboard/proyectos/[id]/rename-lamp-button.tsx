@@ -6,6 +6,10 @@ import { Check, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { renameLamp } from "@/features/projects/actions";
+import {
+  isOperationCancelled,
+  withSimilarLampNameConfirmation,
+} from "@/features/projects/lamp-name-client";
 import { toast } from "sonner";
 
 export function RenameLampButton({
@@ -63,10 +67,17 @@ export function RenameLampButton({
           if (!name.trim()) return;
           startTransition(async () => {
             try {
-              await renameLamp({ lampId, name: name.trim() });
+              await withSimilarLampNameConfirmation("rename", async (confirmSimilarName) => {
+                await renameLamp({
+                  lampId,
+                  name: name.trim(),
+                  confirmSimilarName,
+                });
+              });
               setEditing(false);
               router.refresh();
             } catch (err) {
+              if (isOperationCancelled(err)) return;
               toast.error(err instanceof Error ? err.message : "Error");
             }
           });

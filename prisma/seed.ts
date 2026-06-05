@@ -5,6 +5,7 @@ import {
   buildTasksFromElement,
   formatLampElementUnitLabel,
 } from "../src/features/projects/lamp-tasks";
+import { lampNameFields } from "../src/features/projects/lamp-name-validation";
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,7 @@ const PROCESSES = [
   { code: "PEGADO_ESPEJO",label: "Pegado espejo",     factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#EDE9FE", fgColor: "#5B21B6", borderColor: "#5B21B6" },
   { code: "CORTE_MANUAL", label: "Corte manual",      factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
   { code: "LIMPIEZA",     label: "Limpieza",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#E0F2FE", fgColor: "#0369A1", borderColor: "#0369A1" },
+  { code: "ESTIMACION_MANUAL", label: "Estimación manual", factor: 1, setupHours: 0, waitHours: 0, bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
 ];
 
 const PEOPLE = [
@@ -289,7 +291,7 @@ async function seedLampWithTasks(
           data: {
             projectId,
             elementTypeId: elementType.id,
-            name: lamp.name,
+            ...lampNameFields(lamp.name),
             surfaceM2: lamp.surfaceM2,
             units: lamp.units,
           },

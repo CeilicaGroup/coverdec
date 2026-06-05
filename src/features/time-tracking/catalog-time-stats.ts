@@ -230,5 +230,6 @@ export async function resolveElementTypeProcessFromTaskId(
   });
   if (!task) return null;
   const elementTypeId = task.lampElement?.elementTypeId ?? task.lamp.elementTypeId;
+  if (!elementTypeId) return null;
   return { elementTypeId, process: task.process };
 }

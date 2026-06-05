@@ -26,6 +26,10 @@ import {
   GlobalProjectPresetControl,
 } from "./project-strategy-controls";
 import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
+import {
+  PROJECT_KIND_BADGE_CLASS,
+  PROJECT_KIND_LABELS,
+} from "@/lib/project-kind";
 
 export default async function ProyectosPage({
   searchParams,
@@ -112,6 +116,7 @@ export default async function ProyectosPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Proyecto</TableHead>
+                <TableHead>Tipo</TableHead>
                 <TableHead>Cliente / Obra</TableHead>
                 <TableHead>Riesgo</TableHead>
                 <TableHead>Entrega</TableHead>
@@ -140,6 +145,14 @@ export default async function ProyectosPage({
                         {p.name}
                       </Link>
                       <div className="text-[10px] font-mono text-muted-foreground">{p.code}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={PROJECT_KIND_BADGE_CLASS[p.kind]}
+                      >
+                        {PROJECT_KIND_LABELS[p.kind]}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-xs">
                       {p.client ?? p.obra ?? "—"}
@@ -184,6 +197,7 @@ export default async function ProyectosPage({
                             obra: p.obra,
                             deliveryDate: p.deliveryDate,
                             isBillable: p.isBillable,
+                            kind: p.kind,
                             notes: p.notes,
                             responsibleUserId: p.responsibleUserId,
                             isActive: p.isActive,
