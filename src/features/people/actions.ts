@@ -152,7 +152,7 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
 
 const specialtySchema = z.object({
   process: z.string().min(1),
-  mode: z.enum(["responsable", "apoyo", "otra"]),
+  mode: z.enum(["responsable", "apoyo"]),
 });
 
 const savePersonSchema = z

@@ -73,20 +73,28 @@ interface PersonWithSpecs {
   absences: AbsenceRow[];
 }
 
-type SpecMode = "ninguno" | "responsable" | "apoyo" | "otra";
+type SpecMode = "ninguno" | "responsable" | "apoyo";
 
 const SPECIALTY_SECTIONS = [
-  { key: "responsable" as const, title: "Responsable" },
-  { key: "apoyo" as const, title: "Apoyo / sustituto" },
-  { key: "otra" as const, title: "Otras tareas" },
+  {
+    key: "responsable" as const,
+    title: "Responsable",
+    description:
+      "Rol principal en ese proceso. El planning asigna primero a los responsables antes que al resto del equipo cualificado.",
+  },
+  {
+    key: "apoyo" as const,
+    title: "Apoyo / sustituto",
+    description:
+      "Puede ejecutar el proceso cuando el responsable no está disponible. El planning puede asignarle trabajo, pero con menor prioridad.",
+  },
 ] as const;
 
 type SpecialtySectionKey = (typeof SPECIALTY_SECTIONS)[number]["key"];
 
 function modeFromSpecialty(s: PersonSpecialty): SpecMode {
   if (s.isPrimary) return "responsable";
-  if (s.isFallback) return "apoyo";
-  return "otra";
+  return "apoyo";
 }
 
 function emptySpecMap(processDefs: ProcessDefOption[]): Record<string, SpecMode> {
@@ -124,7 +132,6 @@ export function PersonalTeamClient({
   const [pendingAdd, setPendingAdd] = useState<Record<SpecialtySectionKey, string>>({
     responsable: "",
     apoyo: "",
-    otra: "",
   });
 
   const [filterNave, setFilterNave] = useState<string>("all");
@@ -263,8 +270,7 @@ export function PersonalTeamClient({
       <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {displayedPeople.map((p) => {
           const primary = p.specialties.filter((s) => s.isPrimary);
-          const fallback = p.specialties.filter((s) => s.isFallback);
-          const others = p.specialties.filter((s) => !s.isPrimary && !s.isFallback);
+          const fallback = p.specialties.filter((s) => !s.isPrimary);
           return (
             <Card
               key={p.id}
@@ -359,18 +365,6 @@ export function PersonalTeamClient({
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {fallback.map((s) => (
-                        <ProcessBadge key={s.id} code={s.process} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {others.length > 0 && (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-1">
-                      Otras tareas
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {others.map((s) => (
                         <ProcessBadge key={s.id} code={s.process} />
                       ))}
                     </div>
@@ -509,7 +503,12 @@ export function PersonalTeamClient({
             ) : null}
             <div className="space-y-2 border-t pt-3">
               <Label>Especialidades por proceso</Label>
-              <div className="grid gap-3 md:grid-cols-3">
+              <p className="text-xs text-muted-foreground">
+                Indica en qué procesos puede trabajar cada persona y con qué prioridad
+                debe asignarlas el planning. Las horas de cada tarea vienen del catálogo;
+                aquí solo defines quién puede ejecutarlas.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
                 {SPECIALTY_SECTIONS.map((section) => {
                   const current = processDefs.filter(
                     (d) => specMap[d.code] === section.key,
@@ -519,8 +518,13 @@ export function PersonalTeamClient({
                   );
                   return (
                   <div key={section.key} className="border rounded-md p-3 space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {section.title}
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {section.title}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug">
+                        {section.description}
+                      </p>
                     </div>
                     <div className="space-y-1 max-h-[140px] overflow-y-auto pr-1">
                       {current.length === 0 ? (

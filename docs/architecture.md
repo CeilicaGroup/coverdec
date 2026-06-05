@@ -45,7 +45,7 @@ Variable de entorno: `PLANNING_SOLVER_URL` (en Docker dev: `http://planning-solv
 
 El módulo greedy legado ([`scheduler.ts`](src/features/planning/engine/scheduler.ts)) permanece solo para tests de regresión en Node.
 
-Reglas principales cubiertas por el motor: orden de tareas (entrega, prioridad, lámpara, `order` dentro de la lámpara), **precedencia por lámpara** (solo una tarea activa por bastidor; la siguiente empieza cuando la anterior queda totalmente asignada en la pasada), especialidad primaria o apoyo, tope de día laborable por persona, ausencias y festivos, partición de tareas largas en varios días.
+Reglas principales cubiertas por el motor: orden de tareas (entrega, prioridad, lámpara, `order` dentro de la lámpara), **precedencia por lámpara** (solo una tarea activa por bastidor; la siguiente empieza cuando la anterior queda totalmente asignada en la pasada), especialidad **responsable** (`primary`) frente a **apoyo** (`fallback`), tope de día laborable por persona, ausencias y festivos, partición de tareas largas en varios días.
 
 ## Proyectos, lámparas y tareas
 

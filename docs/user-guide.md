@@ -26,6 +26,17 @@
 2. **Timer**: proyecto (y opcionalmente lámpara/proceso) → Iniciar → Parar.
 3. **Manual**: fecha/hora inicio, horas, proyecto.
 
+## Personal y especialidades
+
+En **Personal** cada operario tiene procesos clasificados en dos niveles:
+
+| Nivel | Uso habitual | Impacto en el planning |
+| --- | --- | --- |
+| **Responsable** | Rol principal del proceso (p. ej. pintura, CNC). | El motor asigna primero a los responsables. |
+| **Apoyo / sustituto** | Puede cubrir el proceso cuando el responsable no está (ausencia, saturación) o tiene competencia secundaria. | Candidato secundario: recibe trabajo si hace falta cubrir huecos. |
+
+**Tiempos:** ninguna categoría modifica las horas estimadas de las tareas (vienen del catálogo y del bastidor). Solo influyen en **quién** puede ser asignado y en **qué orden de preferencia**.
+
 ## Fábrica
 
 Lista importada desde Excel; cambia **Estado** con el desplegable (requiere rol jefe/admin).
