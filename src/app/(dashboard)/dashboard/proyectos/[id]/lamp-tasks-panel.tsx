@@ -26,6 +26,7 @@ import { formatHours } from "@/lib/format";
 import type { ProcessCode } from "@/types/process";
 import {
   aggregateTasksByProcess,
+  dryWaitHoursForProcess,
   groupTasksByBastidor,
   type TaskHoursAggregate,
 } from "@/features/projects/lamp-tasks";
@@ -439,9 +440,8 @@ function AggregatedTaskTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, idx) => {
-          const prev = idx > 0 ? rows[idx - 1] : null;
-          const waitAfter = prev ? (waitHoursByProcess[prev.process] ?? 0) : 0;
+        {rows.map((row) => {
+          const waitAfter = dryWaitHoursForProcess(row.process, waitHoursByProcess);
           const matching = groupTasks.filter((task) => task.process === row.process);
           const naveSummary = summarizeNaveIds(
             matching.map((task) => task.naveId),
@@ -766,10 +766,10 @@ export function LampTasksPanel({
                     {[...groupTasks]
                       .sort((a, b) => a.order - b.order)
                       .map((t, idx, groupSorted) => {
-                        const prev = idx > 0 ? groupSorted[idx - 1] : null;
-                        const waitAfter = prev
-                          ? (waitHoursByProcess[prev.process] ?? 0)
-                          : 0;
+                        const waitAfter = dryWaitHoursForProcess(
+                          t.process,
+                          waitHoursByProcess,
+                        );
                         return (
                           <tr key={t.id} className="border-t border-border/50">
                             <td className="py-1.5 px-3 text-muted-foreground">

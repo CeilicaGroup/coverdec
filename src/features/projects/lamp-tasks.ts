@@ -54,6 +54,14 @@ export type BastidorTaskGroup<T> = ElementTaskGroup<T> & {
   frameTypeName: string;
 };
 
+/** Horas de secado estándar del proceso (catálogo), independientes del orden en la lámpara. */
+export function dryWaitHoursForProcess(
+  process: ProcessCode,
+  waitHoursByProcess: Record<string, number>,
+): number {
+  return waitHoursByProcess[process] ?? 0;
+}
+
 /** Suma horas de tareas repetidas (misma lámpara/bastidor, varias unidades). */
 export function aggregateTasksByProcess<
   T extends {

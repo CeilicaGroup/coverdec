@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateTasksByProcess,
+  dryWaitHoursForProcess,
   groupTasksByBastidor,
   scaleBlueprintHoursForUnits,
 } from "@/features/projects/lamp-tasks";
@@ -17,6 +18,19 @@ describe("scaleBlueprintHoursForUnits", () => {
       { process: "CNC", estimatedHours: 6.8, order: 0 },
       { process: "ENSAMBLAJE", estimatedHours: 12.8, order: 1 },
     ]);
+  });
+});
+
+describe("dryWaitHoursForProcess", () => {
+  it("returns catalog wait hours for the process, not a predecessor", () => {
+    const waitHoursByProcess = {
+      IMPRIMACION: 12,
+      PINTURA: 12,
+      CNC: 0,
+    };
+    expect(dryWaitHoursForProcess("PINTURA", waitHoursByProcess)).toBe(12);
+    expect(dryWaitHoursForProcess("CNC", waitHoursByProcess)).toBe(0);
+    expect(dryWaitHoursForProcess("ENSAMBLAJE", waitHoursByProcess)).toBe(0);
   });
 });
 
