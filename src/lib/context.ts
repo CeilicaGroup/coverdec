@@ -1,20 +1,19 @@
 import { redirect } from "next/navigation";
+import { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import {
   redirectToLoginWithStaleSession,
   requireSessionOrRedirect,
 } from "@/lib/auth-server";
 import { getDefaultDashboardPath } from "@/lib/dashboard-path";
-import { personNaveIds } from "@/features/people/person-naves";
-import type { Role } from "@/generated/prisma";
 
 export interface DashboardContext {
   userId: string;
   role: Role;
   personId: string | null;
-  /** Admin: active nave filter; null = all. Operario/jefe: always null (aggregated view). */
+  /** Nave activa para planificar. Admin puede dejarla en null (= vista global). Jefe: siempre una nave activa. */
   naveId: string | null;
-  /** Naves the user can access (from linked Person.personNaves, or all active for admin). */
+  /** Naves accesibles: todas las activas (admin/jefe) o las de la persona (operario). */
   naveIds: string[];
 }
 
@@ -23,36 +22,83 @@ export async function requireDashboardContext(): Promise<DashboardContext> {
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: {
-      person: { include: { personNaves: true } },
+      person: {
+        include: {
+          personNaves: {
+            include: { nave: { select: { id: true, codigo: true } } },
+          },
+        },
+      },
     },
   });
   if (!user) return redirectToLoginWithStaleSession();
 
-  if (user.role === "ADMIN") {
-    const activeNaves = await prisma.nave.findMany({
-      where: { isActive: true },
-      select: { id: true },
-      orderBy: { codigo: "asc" },
-    });
-    const allIds = activeNaves.map((n) => n.id);
-    const naveId = user.activeNaveId ?? null;
+  const activeNaveIds = await loadActiveNaveIds();
+
+  if (user.role === Role.ADMIN) {
+    const naveId =
+      user.activeNaveId && activeNaveIds.includes(user.activeNaveId)
+        ? user.activeNaveId
+        : null;
     return {
       userId: user.id,
       role: user.role,
       personId: user.personId,
       naveId,
-      naveIds: naveId ? [naveId] : allIds,
+      naveIds: naveId ? [naveId] : activeNaveIds,
     };
   }
 
-  const naveIds = personNaveIds(user.person);
+  if (user.role === Role.JEFE_PRODUCCION) {
+    const naveId = resolvePlanningNaveId(user.activeNaveId, activeNaveIds);
+    return {
+      userId: user.id,
+      role: user.role,
+      personId: user.personId,
+      naveId,
+      naveIds: activeNaveIds,
+    };
+  }
+
+  const personNaveIds = orderedPersonNaveIds(user.person);
+  const naveId = resolvePlanningNaveId(user.activeNaveId, personNaveIds);
   return {
     userId: user.id,
     role: user.role,
     personId: user.personId,
-    naveId: naveIds.length === 1 ? naveIds[0]! : null,
-    naveIds,
+    naveId,
+    naveIds: personNaveIds,
   };
+}
+
+async function loadActiveNaveIds(): Promise<string[]> {
+  const rows = await prisma.nave.findMany({
+    where: { isActive: true },
+    select: { id: true },
+    orderBy: { codigo: "asc" },
+  });
+  return rows.map((n) => n.id);
+}
+
+function orderedPersonNaveIds(
+  person: {
+    personNaves: { naveId: string; nave: { codigo: string } }[];
+  } | null | undefined,
+): string[] {
+  if (!person?.personNaves.length) return [];
+  return [...person.personNaves]
+    .sort((a, b) => a.nave.codigo.localeCompare(b.nave.codigo))
+    .map((pn) => pn.naveId);
+}
+
+/** Nave para planificar: la elegida, o la primera disponible si hay alguna. */
+function resolvePlanningNaveId(
+  activeNaveId: string | null,
+  naveIds: string[],
+): string | null {
+  if (naveIds.length === 0) return null;
+  if (activeNaveId && naveIds.includes(activeNaveId)) return activeNaveId;
+  return naveIds[0]!;
 }
 
 export function requireRole(

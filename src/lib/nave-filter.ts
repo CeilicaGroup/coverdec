@@ -11,6 +11,7 @@ export function resolveNaveFilter(ctx: DashboardContext): NaveFilter {
     if (ctx.naveId) return { mode: "single", ids: [ctx.naveId] };
     return { mode: "all" };
   }
+  if (ctx.naveId) return { mode: "single", ids: [ctx.naveId] };
   if (ctx.naveIds.length === 0) return { mode: "multi", ids: [] };
   if (ctx.naveIds.length === 1) return { mode: "single", ids: [ctx.naveIds[0]!] };
   return { mode: "multi", ids: ctx.naveIds };
@@ -24,5 +25,6 @@ export function naveIdsFromFilter(filter: NaveFilter): string[] | null {
 /** `null` = todas las naves (admin sin filtro); `[]` = ninguna; otherwise IDs concretos. */
 export function naveScopeFromContext(ctx: DashboardContext): string[] | null {
   if (ctx.role === "ADMIN" && ctx.naveId === null) return null;
+  if (ctx.naveId) return [ctx.naveId];
   return ctx.naveIds;
 }

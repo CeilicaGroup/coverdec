@@ -250,7 +250,7 @@ export function UsuariosAdminClient({
                 Esta relación se gestiona desde Personal.
               </p>
             </div>
-            {naves.length > 0 && form.role !== "ADMIN" && (
+            {naves.length > 0 && form.role === "OPERARIO" && (
               <div className="space-y-2">
                 <Label>Naves</Label>
                 <div className="grid grid-cols-2 gap-2 border rounded-md p-3">

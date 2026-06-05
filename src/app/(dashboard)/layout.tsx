@@ -28,16 +28,24 @@ export default async function DashboardLayout({
   });
   if (!user) return redirectToLoginWithStaleSession();
 
-  const naves = await prisma.nave.findMany({
+  const allNaves = await prisma.nave.findMany({
     where: { isActive: true },
     orderBy: { codigo: "asc" },
     select: { id: true, codigo: true, nombre: true },
   });
 
-  const canSwitchNave = user.role === "ADMIN";
-  const personNaveList = user.person?.personNaves.map((pn) => pn.nave) ?? [];
+  const canSwitchNave =
+    user.role === Role.ADMIN || user.role === Role.JEFE_PRODUCCION;
+  const personNaveList = [...(user.person?.personNaves.map((pn) => pn.nave) ?? [])].sort(
+    (a, b) => a.codigo.localeCompare(b.codigo),
+  );
+  const shellNaves =
+    user.role === Role.ADMIN || user.role === Role.JEFE_PRODUCCION
+      ? allNaves
+      : allNaves.filter((n) => personNaveList.some((pn) => pn.id === n.id));
   const activeNave = canSwitchNave
-    ? (naves.find((n) => n.id === user.activeNaveId) ?? null)
+    ? (shellNaves.find((n) => n.id === user.activeNaveId) ??
+        (user.role === Role.JEFE_PRODUCCION ? (shellNaves[0] ?? null) : null))
     : null;
 
   const cookieStore = await cookies();
@@ -55,7 +63,7 @@ export default async function DashboardLayout({
     <DashboardShell
       user={{ id: user.id, name: user.name, role: user.role, email: user.email }}
       person={user.person ? { iniciales: user.person.iniciales, color: user.person.color } : null}
-      naves={naves}
+      naves={shellNaves}
       activeNave={activeNave}
       assignedNaves={canSwitchNave ? [] : personNaveList}
       planningViewMode={planningViewMode}

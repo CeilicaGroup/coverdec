@@ -126,7 +126,8 @@ export function DashboardShell({
   const isOperario = user.role === "OPERARIO";
   const canSeeRestricted = !isOperario;
   const isAdmin = user.role === "ADMIN";
-  const canSwitchNave = isAdmin;
+  const isJefeProduccion = user.role === "JEFE_PRODUCCION";
+  const canSwitchNave = isAdmin || isJefeProduccion;
 
   return (
     <div className="flex min-h-screen w-full bg-secondary/30">
@@ -178,9 +179,9 @@ export function DashboardShell({
                       onChange={(e) => onSwitchNave(e.target.value)}
                       className="w-full text-[11px] font-mono bg-secondary border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     >
-                      {canSeeRestricted && (
+                      {isAdmin ? (
                         <option value="">— Todas las naves —</option>
-                      )}
+                      ) : null}
                       {naves.map((n) => (
                         <option key={n.id} value={n.id}>
                           {n.codigo} · {n.nombre}

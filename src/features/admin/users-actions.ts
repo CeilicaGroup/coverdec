@@ -18,7 +18,7 @@ async function applyPersonNavesForUser(
   role: Role,
   naveIds: string[],
 ) {
-  if (role === Role.ADMIN) return;
+  if (role === Role.ADMIN || role === Role.JEFE_PRODUCCION) return;
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { personId: true },
@@ -65,7 +65,7 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
       },
     });
 
-    if (data.role !== Role.ADMIN && data.naveIds?.length) {
+    if (data.role === Role.OPERARIO && data.naveIds?.length) {
       await applyPersonNavesForUser(user.id, data.role, data.naveIds);
     }
     if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
@@ -128,7 +128,7 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
       });
     }
 
-    if (data.role !== Role.ADMIN) {
+    if (data.role === Role.OPERARIO) {
       await applyPersonNavesForUser(
         data.userId,
         data.role,
