@@ -601,6 +601,7 @@ export function LampTasksPanel({
   const [addGroupKey, setAddGroupKey] = useState<string | null>(null);
   const [addProcess, setAddProcess] = useState("");
   const [addHours, setAddHours] = useState("");
+  const [addNaveId, setAddNaveId] = useState("");
 
   const allProcessCodes = Object.keys(waitHoursByProcess);
   const availableProcesses = allProcessCodes.filter(
@@ -618,6 +619,25 @@ export function LampTasksPanel({
   );
 
   const bastidorGroups = useMemo(() => groupTasksByBastidor(sorted), [sorted]);
+
+  function defaultNaveIdForExtraTask(groupKey: string | null): string {
+    if (groupKey) {
+      return elementTypeDefaultNaves[groupKey] ?? naves[0]?.id ?? "";
+    }
+    if (bastidorGroups.length === 1) {
+      return elementTypeDefaultNaves[bastidorGroups[0]!.key] ?? naves[0]?.id ?? "";
+    }
+    return naves[0]?.id ?? "";
+  }
+
+  function openAddExtraDialog(groupKey: string | null, processes: string[]) {
+    setAddGroupKey(groupKey);
+    setAddProcess(processes[0] ?? "");
+    setAddHours("");
+    setAddNaveId(defaultNaveIdForExtraTask(groupKey));
+    setAddOpen(true);
+  }
+
   const navesById = useMemo(() => {
     const map = new Map(naves.map((nave) => [nave.id, nave]));
     for (const task of sorted) {
@@ -627,7 +647,6 @@ export function LampTasksPanel({
     }
     return map;
   }, [naves, sorted]);
-
   const hasMultipleBastidores = bastidorGroups.length > 1;
   const showViewToggle =
     hasMultipleBastidores || bastidorGroups.some((g) => g.unitCount > 1);
@@ -694,7 +713,6 @@ export function LampTasksPanel({
             naveIds: groupTasks.map((task) => task.naveId),
             elementTypeDefaultNaveId: groupDefaultNaveId,
           });
-
           return (
             <section key={group.key}>
               <ElementSectionBar
@@ -705,12 +723,7 @@ export function LampTasksPanel({
                 canManage={canManage}
                 canAddExtra={groupAvailableProcesses.length > 0}
                 showAssignNave={canManage && naves.length > 0}
-                onAddExtra={() => {
-                  setAddGroupKey(group.key);
-                  setAddProcess(groupAvailableProcesses[0] ?? "");
-                  setAddHours("");
-                  setAddOpen(true);
-                }}
+                onAddExtra={() => openAddExtraDialog(group.key, groupAvailableProcesses)}
                 onAssignNave={() => setNaveDialogGroupKey(group.key)}
               />
 
@@ -980,12 +993,7 @@ export function LampTasksPanel({
             variant="ghost"
             size="sm"
             className="h-7 gap-1 text-xs"
-            onClick={() => {
-              setAddGroupKey(null);
-              setAddProcess(availableProcesses[0] ?? "");
-              setAddHours("");
-              setAddOpen(true);
-            }}
+            onClick={() => openAddExtraDialog(null, availableProcesses)}
           >
             <Plus className="size-3" />
             Añadir proceso extra
@@ -1089,6 +1097,10 @@ export function LampTasksPanel({
                 toast.error("Completa proceso y horas");
                 return;
               }
+              if (naves.length > 0 && !addNaveId) {
+                toast.error("Selecciona una nave");
+                return;
+              }
               startTransition(async () => {
                 try {
                   await addExtraTask({
@@ -1096,6 +1108,7 @@ export function LampTasksPanel({
                     process: addProcess,
                     estimatedHours: h,
                     ...(addGroupKey ? { elementGroupKey: addGroupKey } : {}),
+                    ...(addNaveId ? { naveId: addNaveId } : {}),
                   });
                   toast.success("Proceso añadido");
                   setAddOpen(false);
@@ -1138,6 +1151,19 @@ export function LampTasksPanel({
                 onChange={(e) => setAddHours(e.target.value)}
               />
             </div>
+            {naves.length > 0 ? (
+              <div className="space-y-2">
+                <Label>Nave</Label>
+                <NavePicker
+                  value={addNaveId}
+                  naves={naves}
+                  navesById={navesById}
+                  disabled={pending}
+                  className="w-full"
+                  onChange={setAddNaveId}
+                />
+              </div>
+            ) : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>
                 Añadir

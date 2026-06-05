@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/types/process";
 import { getErrorMessage } from "@/lib/error-message";
@@ -101,15 +102,50 @@ function typologyNaveLabel(
   return row?.defaultNave ? naveLabel(row.defaultNave) : null;
 }
 
-function catalogNaveDisplay(
-  frame: FrameRow,
-  typologyNaves: TypologyNaveRow[],
-): string {
-  if (frame.defaultNave) return naveLabel(frame.defaultNave);
-  const inherited = typologyNaveLabel(frame.typology, typologyNaves);
-  return inherited
-    ? `${inherited} (tipología ${ELEMENT_TYPOLOGY_LABELS[frame.typology]})`
-    : "—";
+function CatalogNaveDisplay({
+  frame,
+  typologyNaves,
+}: {
+  frame: FrameRow;
+  typologyNaves: TypologyNaveRow[];
+}) {
+  const typologyNave = typologyNaveLabel(frame.typology, typologyNaves);
+  const inheritsTypology = frame.defaultNaveId == null;
+
+  if (inheritsTypology) {
+    return (
+      <div className="space-y-0.5">
+        <span className="text-xs text-muted-foreground">
+          {typologyNave ?? "—"}
+        </span>
+        {typologyNave ? (
+          <p className="text-[10px] leading-none text-muted-foreground">
+            Por defecto de tipología
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <span className="text-xs text-foreground">
+        {naveLabel(frame.defaultNave)}
+      </span>
+      <p
+        className={cn(
+          "text-[10px] leading-none font-medium text-amber-700 dark:text-amber-400",
+        )}
+      >
+        Personalizada
+      </p>
+      {typologyNave ? (
+        <p className="text-[10px] leading-none text-muted-foreground">
+          Tipología: {typologyNave}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 type DialogMode = "create" | "edit";
@@ -374,8 +410,8 @@ export function CatalogoCatalogClient({
                         {ELEMENT_TYPOLOGY_LABELS[f.typology]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {catalogNaveDisplay(f, typologyNaves)}
+                    <TableCell>
+                      <CatalogNaveDisplay frame={f} typologyNaves={typologyNaves} />
                     </TableCell>
                     <TableCell>
                       {f.isActive ? (

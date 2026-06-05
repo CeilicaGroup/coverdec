@@ -538,6 +538,7 @@ const addExtraTaskSchema = z.object({
   process: z.string().min(1),
   estimatedHours: z.number().positive(),
   elementGroupKey: z.string().min(1).optional(),
+  naveId: z.string().min(1).optional(),
 });
 
 export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
@@ -554,6 +555,18 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
   const { fallbackNaveId, elementTypeDefaultNaves } =
     await loadTaskNaveContext(prisma);
 
+  async function resolveExtraTaskNaveId(elementTypeId: string | null) {
+    if (data.naveId) {
+      await assertActiveNaveId(data.naveId);
+      return data.naveId;
+    }
+    return resolveNaveForElementType(
+      elementTypeId,
+      elementTypeDefaultNaves,
+      fallbackNaveId,
+    );
+  }
+
   if (data.elementGroupKey) {
     const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
     const exists = await prisma.task.count({
@@ -567,11 +580,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       throw new Error("Ese proceso ya existe en este elemento.");
     }
 
-    const naveId = resolveNaveForElementType(
-      elementTypeId,
-      elementTypeDefaultNaves,
-      fallbackNaveId,
-    );
+    const naveId = await resolveExtraTaskNaveId(elementTypeId);
 
     await prisma.$transaction(async (tx) => {
       let order = await getNextTaskOrder(tx, lamp.id);
@@ -644,11 +653,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     if (exists > 0) throw new Error("Ese proceso ya existe en esta lámpara.");
   }
 
-  const naveId = resolveNaveForElementType(
-    lamp.elementTypeId,
-    elementTypeDefaultNaves,
-    fallbackNaveId,
-  );
+  const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId);
 
   await prisma.$transaction(async (tx) => {
     const order = await getNextTaskOrder(tx, lamp.id);
