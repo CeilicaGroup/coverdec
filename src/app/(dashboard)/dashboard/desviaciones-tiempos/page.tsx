@@ -8,14 +8,14 @@ import { DesviacionesTiemposClient } from "./desviaciones-client";
 export default async function DesviacionesTiemposPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ frameTypeId?: string; process?: string }>;
+  searchParams?: Promise<{ elementTypeId?: string; process?: string }>;
 }) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const params = (await searchParams) ?? {};
   const highlightKey =
-    params.frameTypeId && params.process
-      ? `${params.frameTypeId}:${params.process}`
+    params.elementTypeId && params.process
+      ? `${params.elementTypeId}:${params.process}`
       : undefined;
 
   const [{ policy, rows, alertCount }, processStylesMap] = await Promise.all([

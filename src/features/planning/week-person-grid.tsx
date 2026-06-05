@@ -8,7 +8,7 @@ import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
-import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 import {
   getNavePersonnel,
   getPlanningForWeek,
@@ -124,7 +124,7 @@ export function buildPlanGrid(
       process: a.process,
       project: a.task.project.name,
       lamp: a.task.lamp?.name ?? null,
-      bastidor: getTaskLampFrameLabel(a.task),
+      bastidor: getTaskLampElementLabel(a.task),
       startedAt: null,
       endedAt: null,
       notes: null,
@@ -166,7 +166,7 @@ export function buildActualGrid(
       process: e.process ?? "—",
       project: e.project?.name ?? "—",
       lamp: e.lamp?.name ?? null,
-      bastidor: e.task ? getTaskLampFrameLabel(e.task) : null,
+      bastidor: e.task ? getTaskLampElementLabel(e.task) : null,
       startedAt: e.startedAt.toISOString(),
       endedAt: e.endedAt?.toISOString() ?? null,
       notes: e.notes,

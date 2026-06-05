@@ -148,7 +148,7 @@ async function fillTasksSheet(
       updatedAt: true,
       project: { select: { code: true, name: true } },
       lamp: { select: { name: true } },
-      lampFrame: { select: { label: true } },
+      lampElement: { select: { label: true } },
       nave: { select: { codigo: true } },
     },
   });
@@ -183,7 +183,7 @@ async function fillFramesSheet(
   filters: ExportFilters,
 ): Promise<void> {
   const sheet = addWorksheet(workbook, "Bastidores", [
-    { header: "BastidorID", key: "frameTypeId", width: 28 },
+    { header: "BastidorID", key: "elementTypeId", width: 28 },
     { header: "BastidorCodigo", key: "frameTypeCode", width: 20 },
     { header: "BastidorNombre", key: "frameTypeName", width: 28 },
     { header: "Activo", key: "isActive", width: 10 },
@@ -196,20 +196,20 @@ async function fillFramesSheet(
     { header: "Actualizado", key: "frameTypeUpdatedAt", width: 20, style: { numFmt: DATE_FORMAT } },
   ]);
 
-  const where: Prisma.FrameTypeProcessWhereInput | undefined =
+  const where: Prisma.ElementTypeProcessWhereInput | undefined =
     filters.from || filters.to
-      ? { frameType: { createdAt: { gte: filters.from, lte: filters.to } } }
+      ? { elementType: { createdAt: { gte: filters.from, lte: filters.to } } }
       : undefined;
-  const frameTypeProcesses = await prisma.frameTypeProcess.findMany({
+  const elementTypeProcesses = await prisma.elementTypeProcess.findMany({
     where,
-    orderBy: [{ frameType: { createdAt: "asc" } }, { frameTypeId: "asc" }, { sequence: "asc" }, { id: "asc" }],
+    orderBy: [{ elementType: { createdAt: "asc" } }, { elementTypeId: "asc" }, { sequence: "asc" }, { id: "asc" }],
     select: {
       process: true,
       sequence: true,
       hoursPerUnit: true,
       fixedHours: true,
       notes: true,
-      frameType: {
+      elementType: {
         select: {
           id: true,
           code: true,
@@ -222,9 +222,9 @@ async function fillFramesSheet(
     },
   });
 
-  for (const item of frameTypeProcesses) {
+  for (const item of elementTypeProcesses) {
     sheet.addRow({
-      frameTypeId: item.frameType.id,
+      elementTypeId: item.frameType.id,
       frameTypeCode: item.frameType.code,
       frameTypeName: item.frameType.name,
       isActive: item.frameType.isActive,

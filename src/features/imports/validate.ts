@@ -38,7 +38,7 @@ export async function enrichBastidorPreview(
     codes.add(code);
   }
 
-  const existing = await prisma.frameType.findMany({
+  const existing = await prisma.elementType.findMany({
     where: { code: { in: [...codes] } },
     select: { code: true },
   });

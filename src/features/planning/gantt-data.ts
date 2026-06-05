@@ -8,7 +8,7 @@ import {
   slotToStartMinutes,
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-timeline";
-import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 
 export type { GanttTimelineBlock } from "@/features/planning/gantt-timeline";
 
@@ -392,7 +392,7 @@ function buildTasksWithEstimates(
         endSlot: range.endSlot,
         timelineBlocks,
         personIds: schedule.personIds,
-        lampFrameLabel: getTaskLampFrameLabel(t),
+        lampFrameLabel: getTaskLampElementLabel(t),
         operators: schedule.operators,
       });
     }

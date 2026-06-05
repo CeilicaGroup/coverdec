@@ -8,22 +8,28 @@ export interface TaskBlueprint {
   order: number;
 }
 
-export interface FrameProcessInput {
+export interface ElementProcessInput {
   process: ProcessCode;
   hoursPerUnit: number;
   fixedHours: number;
   sequence: number;
 }
 
+/** @deprecated Use ElementProcessInput */
+export type FrameProcessInput = ElementProcessInput;
+
 /** Etiqueta de una unidad física (p. ej. «Panel tela 1», «Panel tela 2»). */
-export function formatLampFrameUnitLabel(
-  frameName: string,
+export function formatLampElementUnitLabel(
+  elementName: string,
   unitIndex: number,
   totalUnits: number,
 ): string {
-  if (totalUnits > 1) return `${frameName} ${unitIndex}`;
-  return frameName;
+  if (totalUnits > 1) return `${elementName} ${unitIndex}`;
+  return elementName;
 }
+
+/** @deprecated Use formatLampElementUnitLabel */
+export const formatLampFrameUnitLabel = formatLampElementUnitLabel;
 
 export interface TaskHoursAggregate {
   process: ProcessCode;
@@ -35,13 +41,18 @@ export interface TaskHoursAggregate {
   taskIds: string[];
 }
 
-export interface BastidorTaskGroup<T> {
+export interface ElementTaskGroup<T> {
   key: string;
-  frameTypeName: string;
+  elementTypeName: string;
   surfaceM2: number | null;
   unitCount: number;
   tasks: T[];
 }
+
+/** @deprecated Use ElementTaskGroup */
+export type BastidorTaskGroup<T> = ElementTaskGroup<T> & {
+  frameTypeName: string;
+};
 
 /** Suma horas de tareas repetidas (misma lámpara/bastidor, varias unidades). */
 export function aggregateTasksByProcess<
@@ -79,52 +90,92 @@ export function aggregateTasksByProcess<
   return [...byProcess.values()].sort((a, b) => a.minOrder - b.minOrder);
 }
 
-export function groupTasksByBastidor<
+export function groupTasksByElement<
   T extends {
     order: number;
-    lampFrame: {
+    lampElement: {
       id: string;
       label: string | null;
       surfaceM2: number | null;
-      frameType: { id: string; name: string };
+      elementType: { id: string; name: string };
     } | null;
   },
->(tasks: T[]): BastidorTaskGroup<T>[] {
+>(tasks: T[]): ElementTaskGroup<T>[] {
   const groups = new Map<
     string,
-    BastidorTaskGroup<T> & { unitFrameIds: Set<string> }
+    ElementTaskGroup<T> & { unitElementIds: Set<string> }
   >();
 
   for (const task of tasks) {
-    const lf = task.lampFrame;
-    const key = lf ? lf.frameType.id : "__sin_bastidor__";
-    const frameTypeName = lf?.frameType.name ?? "Sin bastidor";
+    const le = task.lampElement;
+    const key = le ? le.elementType.id : "__sin_elemento__";
+    const elementTypeName = le?.elementType.name ?? "Sin elemento";
     const existing = groups.get(key);
     if (existing) {
       existing.tasks.push(task);
-      if (lf && !existing.unitFrameIds.has(lf.id)) {
-        existing.unitFrameIds.add(lf.id);
+      if (le && !existing.unitElementIds.has(le.id)) {
+        existing.unitElementIds.add(le.id);
         existing.unitCount += 1;
       }
     } else {
       groups.set(key, {
         key,
-        frameTypeName,
-        surfaceM2: lf?.surfaceM2 ?? null,
-        unitCount: lf ? 1 : 0,
-        unitFrameIds: lf ? new Set([lf.id]) : new Set(),
+        elementTypeName,
+        surfaceM2: le?.surfaceM2 ?? null,
+        unitCount: le ? 1 : 0,
+        unitElementIds: le ? new Set([le.id]) : new Set(),
         tasks: [task],
       });
     }
   }
 
   return [...groups.values()]
-    .map(({ unitFrameIds: _ids, ...group }) => group)
+    .map(({ unitElementIds: _ids, ...group }) => group)
     .sort(
       (a, b) =>
         Math.min(...a.tasks.map((t) => t.order)) -
         Math.min(...b.tasks.map((t) => t.order)),
     );
+}
+
+/** @deprecated Use groupTasksByElement */
+export function groupTasksByBastidor<
+  T extends {
+    order: number;
+    lampFrame?: {
+      id: string;
+      label: string | null;
+      surfaceM2: number | null;
+      elementType: { id: string; name: string };
+    } | null;
+    lampElement?: {
+      id: string;
+      label: string | null;
+      surfaceM2: number | null;
+      elementType: { id: string; name: string };
+    } | null;
+  },
+>(tasks: T[]): Array<ElementTaskGroup<T> & { frameTypeName: string }> {
+  const normalized = tasks.map((t) => ({
+    ...t,
+    lampElement:
+      t.lampElement ??
+      (t.lampFrame
+        ? {
+            id: t.lampFrame.id,
+            label: t.lampFrame.label,
+            surfaceM2: t.lampFrame.surfaceM2,
+            elementType: {
+              id: t.lampFrame.frameType.id,
+              name: t.lampFrame.frameType.name,
+            },
+          }
+        : null),
+  }));
+  return groupTasksByElement(normalized).map((g) => ({
+    ...g,
+    frameTypeName: g.elementTypeName,
+  }));
 }
 
 export function scaleBlueprintHoursForUnits(
@@ -139,7 +190,7 @@ export function scaleBlueprintHoursForUnits(
 }
 
 export function computeTaskBlueprintsFromProcesses(
-  processes: FrameProcessInput[],
+  processes: ElementProcessInput[],
   surfaceM2: number,
 ): TaskBlueprint[] {
   const sorted = [...processes].sort((a, b) => a.sequence - b.sequence);
@@ -157,16 +208,16 @@ export function computeTaskBlueprintsFromProcesses(
   return blueprints;
 }
 
-export async function buildTasksFromFrame(
-  frameTypeId: string,
+export async function buildTasksFromElement(
+  elementTypeId: string,
   surfaceM2: number,
 ): Promise<TaskBlueprint[]> {
-  const frameProcesses = await prisma.frameTypeProcess.findMany({
-    where: { frameTypeId },
+  const elementProcesses = await prisma.elementTypeProcess.findMany({
+    where: { elementTypeId },
     orderBy: { sequence: "asc" },
   });
   return computeTaskBlueprintsFromProcesses(
-    frameProcesses.map((fp) => ({
+    elementProcesses.map((fp) => ({
       process: fp.process as ProcessCode,
       hoursPerUnit: fp.hoursPerUnit,
       fixedHours: fp.fixedHours,
@@ -175,6 +226,9 @@ export async function buildTasksFromFrame(
     surfaceM2,
   );
 }
+
+/** @deprecated Use buildTasksFromElement */
+export const buildTasksFromFrame = buildTasksFromElement;
 
 export function adjustPendingOnEstimateChange(
   estimatedHours: number,

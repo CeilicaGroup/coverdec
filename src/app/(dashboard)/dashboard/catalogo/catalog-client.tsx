@@ -35,9 +35,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import { deleteFrameType, setFrameTypeActive, upsertFrameType } from "@/features/catalog/actions";
+import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/types/process";
 import { getErrorMessage } from "@/lib/error-message";
+import { ElementTypology } from "@/generated/prisma";
+import { ELEMENT_TYPOLOGIES, ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -59,6 +61,7 @@ interface FrameRow {
   code: string;
   name: string;
   description: string | null;
+  typology: ElementTypology;
   isActive: boolean;
   processes: FrameProcessRow[];
   lampCount: number;
@@ -105,6 +108,7 @@ export function CatalogoCatalogClient({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [rows, setRows] = useState<ProcessFormRow[]>([]);
+  const [typology, setTypology] = useState<ElementTypology>(ElementTypology.BASTIDOR);
 
   const activeCount = useMemo(() => frames.filter((f) => f.isActive).length, [frames]);
 
@@ -114,6 +118,7 @@ export function CatalogoCatalogClient({
     setCodeLocked(false);
     setName("");
     setDescription("");
+    setTypology(ElementTypology.BASTIDOR);
     const used = new Set<ProcessCode>();
     const first = defaultProcessRow(processDefs, used);
     setRows(first ? [first] : []);
@@ -126,6 +131,7 @@ export function CatalogoCatalogClient({
     setCodeLocked(true);
     setName(frame.name);
     setDescription(frame.description ?? "");
+    setTypology(frame.typology);
     setRows(
       frame.processes.length > 0
         ? frame.processes.map((p) => ({
@@ -189,14 +195,15 @@ export function CatalogoCatalogClient({
             return;
           }
         }
-        await upsertFrameType({
+        await upsertElementType({
           code: code.trim().toUpperCase(),
           name: name.trim(),
           description: description.trim() || undefined,
+          typology,
           isActive: true,
           processes,
         });
-        toast.success(mode === "create" ? "Bastidor creado" : "Bastidor actualizado");
+        toast.success(mode === "create" ? "Elemento creado" : "Elemento actualizado");
         setDialogOpen(false);
         router.refresh();
       } catch (e) {
@@ -211,8 +218,8 @@ export function CatalogoCatalogClient({
     }
     startTransition(async () => {
       try {
-        await setFrameTypeActive({ frameTypeId: frame.id, isActive: false });
-        toast.success("Bastidor archivado");
+        await setElementTypeActive({ elementTypeId: frame.id, isActive: false });
+        toast.success("Elemento archivado");
         router.refresh();
       } catch (e) {
         toast.error(getErrorMessage(e));
@@ -223,8 +230,8 @@ export function CatalogoCatalogClient({
   function restore(frame: FrameRow) {
     startTransition(async () => {
       try {
-        await setFrameTypeActive({ frameTypeId: frame.id, isActive: true });
-        toast.success("Bastidor reactivado");
+        await setElementTypeActive({ elementTypeId: frame.id, isActive: true });
+        toast.success("Elemento reactivado");
         router.refresh();
       } catch (e) {
         toast.error(getErrorMessage(e));
@@ -241,20 +248,20 @@ export function CatalogoCatalogClient({
 
   function hardDelete(frame: FrameRow) {
     if (frame.lampCount > 0) {
-      toast.error("Hay lámparas vinculadas. Solo puedes archivar el bastidor.");
+      toast.error("Hay lámparas vinculadas. Solo puedes archivar el elemento.");
       return;
     }
     if (
       !globalThis.confirm(
-        `¿Eliminar definitivamente el bastidor «${frame.name}» (${frame.code})?`,
+        `¿Eliminar definitivamente el elemento «${frame.name}» (${frame.code})?`,
       )
     ) {
       return;
     }
     startTransition(async () => {
       try {
-        await deleteFrameType({ frameTypeId: frame.id });
-        toast.success("Bastidor eliminado");
+        await deleteElementType({ elementTypeId: frame.id });
+        toast.success("Elemento eliminado");
         router.refresh();
       } catch (e) {
         toast.error(formatActionError(e));
@@ -265,13 +272,13 @@ export function CatalogoCatalogClient({
   return (
     <>
       <PageHeader
-        title="Catálogo de bastidores"
+        title="Catálogo de elementos"
         description={`${activeCount} activos · ${frames.length} en total · hr/m² por proceso`}
         actions={
           canManage ? (
             <Button size="sm" className="gap-1" onClick={openCreate}>
               <Plus className="size-3.5" />
-              Nuevo bastidor
+              Nuevo elemento
             </Button>
           ) : undefined
         }
@@ -284,6 +291,7 @@ export function CatalogoCatalogClient({
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Tipología</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Procesos</TableHead>
                 {canManage ? <TableHead className="w-[152px] text-right">Acciones</TableHead> : null}
@@ -293,10 +301,10 @@ export function CatalogoCatalogClient({
               {frames.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={canManage ? 5 : 4}
+                    colSpan={canManage ? 6 : 5}
                     className="text-center text-muted-foreground py-6"
                   >
-                    Catálogo vacío. Importa PRODUCCION.xlsx o crea un bastidor.
+                    Catálogo vacío. Importa PRODUCCION.xlsx o crea un elemento.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -307,6 +315,11 @@ export function CatalogoCatalogClient({
                   >
                     <TableCell className="font-mono text-xs">{f.code}</TableCell>
                     <TableCell className="font-semibold">{f.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-[10px] font-medium">
+                        {ELEMENT_TYPOLOGY_LABELS[f.typology]}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       {f.isActive ? (
                         <Badge variant="outline">Activo</Badge>
@@ -351,7 +364,7 @@ export function CatalogoCatalogClient({
                           size="icon"
                           className="size-8"
                           onClick={() => openEdit(f)}
-                          aria-label="Editar bastidor"
+                          aria-label="Editar elemento"
                         >
                           <Pencil className="size-3.5" />
                         </Button>
@@ -362,7 +375,7 @@ export function CatalogoCatalogClient({
                             size="icon"
                             className="size-8 text-muted-foreground"
                             onClick={() => archive(f)}
-                            aria-label="Archivar bastidor"
+                            aria-label="Archivar elemento"
                           >
                             <Archive className="size-3.5" />
                           </Button>
@@ -386,10 +399,10 @@ export function CatalogoCatalogClient({
                           onClick={() => hardDelete(f)}
                           title={
                             f.lampCount > 0
-                              ? "Solo archivar: hay lámparas que usan este bastidor"
+                              ? "Solo archivar: hay lámparas que usan este elemento"
                               : "Eliminar del todo"
                           }
-                          aria-label="Eliminar bastidor"
+                            aria-label="Eliminar elemento"
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
@@ -407,7 +420,7 @@ export function CatalogoCatalogClient({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {mode === "create" ? "Nuevo bastidor" : "Editar bastidor"}
+              {mode === "create" ? "Nuevo elemento" : "Editar elemento"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-1">
@@ -430,6 +443,29 @@ export function CatalogoCatalogClient({
                 disabled={pending}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Tipología</Label>
+              <Select
+                value={typology}
+                onValueChange={(v) => setTypology(v as ElementTypology)}
+                disabled={pending}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue
+                    placeholder="Tipología"
+                  >
+                    {ELEMENT_TYPOLOGY_LABELS[typology]}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {ELEMENT_TYPOLOGIES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {ELEMENT_TYPOLOGY_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Descripción (opcional)</Label>

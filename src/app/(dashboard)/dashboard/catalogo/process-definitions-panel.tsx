@@ -57,7 +57,7 @@ function toBadgeStyle(p: ProcessRow): ProcessBadgeStyle {
 
 const USAGE_LABELS: { key: keyof ProcessDefinitionUsage; label: string }[] = [
   { key: "tasks", label: "Tareas" },
-  { key: "frameTypeProcesses", label: "Procesos en bastidores" },
+  { key: "elementTypeProcesses", label: "Procesos en elementos" },
   { key: "personSpecialties", label: "Especialidades de personal" },
   { key: "timeEntries", label: "Registros de horas" },
   { key: "productionOrders", label: "Órdenes de producción" },
@@ -222,7 +222,7 @@ export function ProcessDefinitionsPanel({
         <div>
           <CardTitle>Procesos de producción</CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Catálogo global: espera entre procesos, orden y estilo. Los bastidores referencian estos códigos.
+            Catálogo global: espera entre procesos, orden y estilo. Los tipos de elemento referencian estos códigos.
           </p>
         </div>
         {canManage ? (

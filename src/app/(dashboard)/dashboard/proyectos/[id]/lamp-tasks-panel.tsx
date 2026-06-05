@@ -54,12 +54,12 @@ interface LampTaskRow {
   order: number;
   notes: string | null;
   naveId: string | null;
-  lampFrame:
+  lampElement:
     | {
         id: string;
         label: string | null;
         surfaceM2: number | null;
-        frameType: { id: string; name: string };
+        elementType: { id: string; name: string };
       }
     | null;
 }

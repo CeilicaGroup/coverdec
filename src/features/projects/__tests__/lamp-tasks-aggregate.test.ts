@@ -49,12 +49,12 @@ describe("aggregateTasksByProcess", () => {
 describe("lampFramesToConfig", () => {
   it("groups physical frames by frame type", () => {
     const configs = lampFramesToConfig([
-      { frameTypeId: "ft1", surfaceM2: 4 },
-      { frameTypeId: "ft1", surfaceM2: 4 },
-      { frameTypeId: "ft2", surfaceM2: 2 },
+      { elementTypeId: "ft1", surfaceM2: 4 },
+      { elementTypeId: "ft1", surfaceM2: 4 },
+      { elementTypeId: "ft2", surfaceM2: 2 },
     ]);
     expect(configs).toHaveLength(2);
-    const sol = configs.find((c) => c.frameTypeId === "ft1");
+    const sol = configs.find((c) => c.elementTypeId === "ft1");
     expect(sol?.units).toBe(2);
     expect(sol?.surfaceM2).toBe(4);
   });
@@ -66,7 +66,7 @@ describe("groupTasksByBastidor", () => {
     const groups = groupTasksByBastidor([
       {
         order: 0,
-        lampFrame: {
+        lampElement: {
           id: "lf1",
           label: "Elemento Sol 1",
           surfaceM2: 4,
@@ -75,7 +75,7 @@ describe("groupTasksByBastidor", () => {
       },
       {
         order: 1000,
-        lampFrame: {
+        lampElement: {
           id: "lf2",
           label: "Elemento Sol 2",
           surfaceM2: 4,

@@ -77,7 +77,7 @@ export const notificationPayloadSchema = {
     doneHours: z.number().min(0),
   }),
   [NotificationType.TASK_TIME_DEVIATION_FROM_CATALOG]: basePayloadSchema.extend({
-    frameTypeId: z.string().min(1),
+    elementTypeId: z.string().min(1),
     process: z.string().min(1),
     frameTypeCode: z.string().min(1),
     frameTypeName: z.string().min(1),

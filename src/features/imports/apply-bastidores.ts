@@ -74,11 +74,11 @@ export async function applyBastidorRows(
       for (const [proc, hoursPerUnit] of entry.processes) {
         await tx.frameTypeProcess.upsert({
           where: {
-            frameTypeId_process: { frameTypeId: frameType.id, process: proc },
+            elementTypeId_process: { elementTypeId: frameType.id, process: proc },
           },
           update: { sequence, hoursPerUnit },
           create: {
-            frameTypeId: frameType.id,
+            elementTypeId: frameType.id,
             process: proc,
             sequence,
             hoursPerUnit,

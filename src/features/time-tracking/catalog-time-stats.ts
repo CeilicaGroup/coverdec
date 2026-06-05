@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 
 export interface CatalogTimeDeviationRow {
-  frameTypeId: string;
+  elementTypeId: string;
   frameTypeCode: string;
   frameTypeName: string;
   process: string;
@@ -91,21 +91,21 @@ function observedPerUnitFromTask(args: {
 }
 
 export async function computeCatalogDeviationForPair(args: {
-  frameTypeId: string;
+  elementTypeId: string;
   process: string;
   policy?: TimeDeviationPolicyValues;
 }): Promise<CatalogTimeDeviationRow | null> {
   const policy = args.policy ?? (await getTimeDeviationPolicy());
 
-  const frameProcess = await prisma.frameTypeProcess.findUnique({
+  const frameProcess = await prisma.elementTypeProcess.findUnique({
     where: {
-      frameTypeId_process: {
-        frameTypeId: args.frameTypeId,
+      elementTypeId_process: {
+        elementTypeId: args.elementTypeId,
         process: args.process,
       },
     },
     include: {
-      frameType: { select: { id: true, code: true, name: true } },
+      elementType: { select: { id: true, code: true, name: true } },
     },
   });
   if (!frameProcess) return null;
@@ -115,14 +115,14 @@ export async function computeCatalogDeviationForPair(args: {
       isCompleted: true,
       process: args.process,
       OR: [
-        { lamp: { frameTypeId: args.frameTypeId } },
-        { lampFrame: { frameTypeId: args.frameTypeId } },
+        { lamp: { elementTypeId: args.elementTypeId } },
+        { lampElement: { elementTypeId: args.elementTypeId } },
       ],
     },
     select: {
       updatedAt: true,
-      lamp: { select: { surfaceM2: true, frameTypeId: true } },
-      lampFrame: { select: { surfaceM2: true, frameTypeId: true } },
+      lamp: { select: { surfaceM2: true, elementTypeId: true } },
+      lampElement: { select: { surfaceM2: true, elementTypeId: true } },
       timeEntries: {
         where: { endedAt: { not: null }, hours: { gt: 0 } },
         select: { startedAt: true, endedAt: true, hours: true },
@@ -132,7 +132,7 @@ export async function computeCatalogDeviationForPair(args: {
 
   const allSamples: TaskRateSample[] = [];
   for (const task of completedTasks) {
-    const surfaceM2 = task.lampFrame?.surfaceM2 ?? task.lamp.surfaceM2;
+    const surfaceM2 = task.lampElement?.surfaceM2 ?? task.lamp.surfaceM2;
     if (surfaceM2 == null || surfaceM2 <= 1e-6) continue;
     const doneHours = task.timeEntries.reduce(
       (sum, e) => sum + resolveTimeEntryHours(e),
@@ -168,9 +168,10 @@ export async function computeCatalogDeviationForPair(args: {
     deviationPct >= policy.deviationThresholdPct;
 
   return {
-    frameTypeId: frameProcess.frameTypeId,
-    frameTypeCode: frameProcess.frameType.code,
-    frameTypeName: frameProcess.frameType.name,
+    elementTypeId: frameProcess.elementTypeId,
+    // Históricamente se llamaba "frameType"; tras PR-04 el join es "elementType".
+    frameTypeCode: frameProcess.elementType.code,
+    frameTypeName: frameProcess.elementType.name,
     process: frameProcess.process,
     catalogHoursPerUnit: frameProcess.hoursPerUnit,
     observedHoursPerUnit,
@@ -188,16 +189,16 @@ export async function listCatalogTimeDeviations(): Promise<{
   alertCount: number;
 }> {
   const policy = await getTimeDeviationPolicy();
-  const frameProcesses = await prisma.frameTypeProcess.findMany({
-    where: { frameType: { isActive: true } },
-    select: { frameTypeId: true, process: true },
-    orderBy: [{ frameType: { code: "asc" } }, { sequence: "asc" }],
+  const frameProcesses = await prisma.elementTypeProcess.findMany({
+    where: { elementType: { isActive: true } },
+    select: { elementTypeId: true, process: true },
+    orderBy: [{ elementType: { code: "asc" } }, { sequence: "asc" }],
   });
 
   const rows: CatalogTimeDeviationRow[] = [];
   for (const fp of frameProcesses) {
     const row = await computeCatalogDeviationForPair({
-      frameTypeId: fp.frameTypeId,
+      elementTypeId: fp.elementTypeId,
       process: fp.process,
       policy,
     });
@@ -216,18 +217,18 @@ export async function listCatalogTimeDeviations(): Promise<{
   };
 }
 
-export async function resolveFrameTypeProcessFromTaskId(
+export async function resolveElementTypeProcessFromTaskId(
   taskId: string,
-): Promise<{ frameTypeId: string; process: string } | null> {
+): Promise<{ elementTypeId: string; process: string } | null> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
       process: true,
-      lamp: { select: { frameTypeId: true } },
-      lampFrame: { select: { frameTypeId: true } },
+      lamp: { select: { elementTypeId: true } },
+      lampElement: { select: { elementTypeId: true } },
     },
   });
   if (!task) return null;
-  const frameTypeId = task.lampFrame?.frameTypeId ?? task.lamp.frameTypeId;
-  return { frameTypeId, process: task.process };
+  const elementTypeId = task.lampElement?.elementTypeId ?? task.lamp.elementTypeId;
+  return { elementTypeId, process: task.process };
 }

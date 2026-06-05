@@ -8,7 +8,7 @@ describe("resolveNotificationAction", () => {
       NotificationType.TASK_TIME_DEVIATION_FROM_CATALOG,
       {
         eventKey: "task-time-deviation:ft1:CNC",
-        frameTypeId: "ft1",
+        elementTypeId: "ft1",
         process: "CNC",
         frameTypeCode: "HAIR",
         frameTypeName: "Hair",
@@ -19,7 +19,7 @@ describe("resolveNotificationAction", () => {
       },
       {},
     );
-    expect(action?.href).toBe("/dashboard/desviaciones-tiempos?frameTypeId=ft1&process=CNC");
+    expect(action?.href).toBe("/dashboard/desviaciones-tiempos?elementTypeId=ft1&process=CNC");
     expect(action?.label).toContain("HAIR");
   });
 

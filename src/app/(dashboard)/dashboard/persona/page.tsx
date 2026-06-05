@@ -46,7 +46,7 @@ import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
-import { getTaskLampFrameLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
@@ -209,7 +209,7 @@ export default async function PersonaPage({
                               </div>
                             ) : null}
                             <TaskLampBastidor
-                              label={e.task ? getTaskLampFrameLabel(e.task) : null}
+                              label={e.task ? getTaskLampElementLabel(e.task) : null}
                             />
                           </TableCell>
                           <TableCell>
@@ -372,7 +372,7 @@ export default async function PersonaPage({
                             </div>
                           ) : null}
                           <TaskLampBastidor
-                            label={getTaskLampFrameLabel(item.assignment.task)}
+                            label={getTaskLampElementLabel(item.assignment.task)}
                           />
                         </TableCell>
                         <TableCell>

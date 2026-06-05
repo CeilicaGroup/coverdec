@@ -152,7 +152,7 @@ export function DesviacionesTiemposClient({
             <TableBody>
               {rows.map((row) => {
                 const style = processStyles[row.process];
-                const rowKey = `${row.frameTypeId}:${row.process}`;
+                const rowKey = `${row.elementTypeId}:${row.process}`;
                 const isHighlighted = highlightKey === rowKey;
                 return (
                   <TableRow

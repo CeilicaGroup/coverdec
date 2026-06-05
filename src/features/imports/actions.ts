@@ -163,7 +163,7 @@ export async function getImportCatalogOptions() {
       orderBy: { label: "asc" },
       select: { code: true, label: true },
     }),
-    prisma.frameType.findMany({
+    prisma.elementType.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, code: true },

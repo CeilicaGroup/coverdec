@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { Role } from "@/generated/prisma";
+import { ElementTypology, Role } from "@/generated/prisma";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 
 const processRowSchema = z.object({
@@ -13,11 +13,12 @@ const processRowSchema = z.object({
   fixedHours: z.number().nonnegative().default(0),
 });
 
-const frameUpsertSchema = z
+const elementUpsertSchema = z
   .object({
     code: z.string().min(1),
     name: z.string().min(1),
     description: z.string().optional(),
+    typology: z.nativeEnum(ElementTypology),
     isActive: z.boolean().default(true),
     processes: z.array(processRowSchema).default([]),
   })
@@ -37,10 +38,10 @@ const frameUpsertSchema = z
     }
   });
 
-export async function upsertFrameType(input: z.infer<typeof frameUpsertSchema>) {
+export async function upsertElementType(input: z.infer<typeof elementUpsertSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = frameUpsertSchema.parse(input);
+  const data = elementUpsertSchema.parse(input);
 
   const codes = [...new Set(data.processes.map((p) => p.process))];
   if (codes.length > 0) {
@@ -55,26 +56,28 @@ export async function upsertFrameType(input: z.infer<typeof frameUpsertSchema>) 
     }
   }
 
-  const frame = await prisma.frameType.upsert({
+  const element = await prisma.elementType.upsert({
     where: { code: data.code },
     update: {
       name: data.name,
       description: data.description ?? null,
+      typology: data.typology,
       isActive: data.isActive,
     },
     create: {
       code: data.code,
       name: data.name,
       description: data.description ?? null,
+      typology: data.typology,
       isActive: data.isActive,
     },
   });
 
   for (let i = 0; i < data.processes.length; i++) {
     const p = data.processes[i];
-    await prisma.frameTypeProcess.upsert({
+    await prisma.elementTypeProcess.upsert({
       where: {
-        frameTypeId_process: { frameTypeId: frame.id, process: p.process },
+        elementTypeId_process: { elementTypeId: element.id, process: p.process },
       },
       update: {
         sequence: i,
@@ -82,7 +85,7 @@ export async function upsertFrameType(input: z.infer<typeof frameUpsertSchema>) 
         fixedHours: p.fixedHours,
       },
       create: {
-        frameTypeId: frame.id,
+        elementTypeId: element.id,
         process: p.process,
         sequence: i,
         hoursPerUnit: p.hoursPerUnit,
@@ -93,50 +96,50 @@ export async function upsertFrameType(input: z.infer<typeof frameUpsertSchema>) 
 
   const keep = data.processes.map((p) => p.process);
   if (keep.length > 0) {
-    await prisma.frameTypeProcess.deleteMany({
-      where: { frameTypeId: frame.id, process: { notIn: keep } },
+    await prisma.elementTypeProcess.deleteMany({
+      where: { elementTypeId: element.id, process: { notIn: keep } },
     });
   } else {
-    await prisma.frameTypeProcess.deleteMany({ where: { frameTypeId: frame.id } });
+    await prisma.elementTypeProcess.deleteMany({ where: { elementTypeId: element.id } });
   }
 
   revalidatePath("/dashboard/catalogo");
-  return frame;
+  return element;
 }
 
 const setActiveSchema = z.object({
-  frameTypeId: z.string().min(1),
+  elementTypeId: z.string().min(1),
   isActive: z.boolean(),
 });
 
-export async function setFrameTypeActive(input: z.infer<typeof setActiveSchema>) {
+export async function setElementTypeActive(input: z.infer<typeof setActiveSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = setActiveSchema.parse(input);
-  await prisma.frameType.update({
-    where: { id: data.frameTypeId },
+  await prisma.elementType.update({
+    where: { id: data.elementTypeId },
     data: { isActive: data.isActive },
   });
   revalidatePath("/dashboard/catalogo");
 }
 
-const deleteFrameSchema = z.object({ frameTypeId: z.string().min(1) });
+const deleteElementSchema = z.object({ elementTypeId: z.string().min(1) });
 
-export async function deleteFrameType(input: z.infer<typeof deleteFrameSchema>) {
+export async function deleteElementType(input: z.infer<typeof deleteElementSchema>) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const { frameTypeId } = deleteFrameSchema.parse(input);
+  const { elementTypeId } = deleteElementSchema.parse(input);
 
-  const lamps = await prisma.lamp.count({ where: { frameTypeId } });
+  const lamps = await prisma.lamp.count({ where: { elementTypeId } });
   if (lamps > 0) {
     throw new Error(
-      "ARCHIVE_ONLY: Hay lámparas que usan este bastidor. Solo se puede archivar.",
+      "ARCHIVE_ONLY: Hay lámparas que usan este elemento. Solo se puede archivar.",
     );
   }
 
   await prisma.$transaction([
-    prisma.frameTypeProcess.deleteMany({ where: { frameTypeId } }),
-    prisma.frameType.delete({ where: { id: frameTypeId } }),
+    prisma.elementTypeProcess.deleteMany({ where: { elementTypeId } }),
+    prisma.elementType.delete({ where: { id: elementTypeId } }),
   ]);
   revalidatePath("/dashboard/catalogo");
 }
@@ -216,7 +219,7 @@ export async function createProcessDefinition(
 
 export interface ProcessDefinitionUsage {
   tasks: number;
-  frameTypeProcesses: number;
+  elementTypeProcesses: number;
   personSpecialties: number;
   timeEntries: number;
   productionOrders: number;
@@ -226,10 +229,10 @@ export interface ProcessDefinitionUsage {
 async function loadProcessDefinitionUsage(
   code: string,
 ): Promise<ProcessDefinitionUsage> {
-  const [tasks, frameTypeProcesses, personSpecialties, timeEntries, productionOrders, planningAssignments] =
+  const [tasks, elementTypeProcesses, personSpecialties, timeEntries, productionOrders, planningAssignments] =
     await Promise.all([
       prisma.task.count({ where: { process: code } }),
-      prisma.frameTypeProcess.count({ where: { process: code } }),
+      prisma.elementTypeProcess.count({ where: { process: code } }),
       prisma.personSpecialty.count({ where: { process: code } }),
       prisma.timeEntry.count({ where: { process: code } }),
       prisma.productionOrder.count({ where: { process: code } }),
@@ -237,7 +240,7 @@ async function loadProcessDefinitionUsage(
     ]);
   return {
     tasks,
-    frameTypeProcesses,
+    elementTypeProcesses,
     personSpecialties,
     timeEntries,
     productionOrders,
@@ -248,7 +251,7 @@ async function loadProcessDefinitionUsage(
 function totalProcessUsage(usage: ProcessDefinitionUsage): number {
   return (
     usage.tasks +
-    usage.frameTypeProcesses +
+    usage.elementTypeProcesses +
     usage.personSpecialties +
     usage.timeEntries +
     usage.productionOrders +

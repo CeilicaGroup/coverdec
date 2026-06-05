@@ -104,8 +104,8 @@ export async function getPlanningForWeek({
         task: {
           include: {
             project: true,
-            lamp: { include: { frameType: { select: { name: true } } } },
-            lampFrame: { include: { frameType: { select: { name: true } } } },
+            lamp: { include: { elementType: { select: { name: true } } } },
+            lampElement: { include: { elementType: { select: { name: true } } } },
           },
         },
       },
@@ -211,7 +211,7 @@ export function toPlanningAssignmentSlices(
       projectId: a.task.projectId,
       lampId: a.task.lampId,
       lamp: a.task.lamp,
-      lampFrame: a.task.lampFrame,
+      lampElement: a.task.lampFrame,
       project: { name: a.task.project.name },
     },
   }));
@@ -333,10 +333,10 @@ export async function getActualHoursForWeek({
           projectId: true,
           lampId: true,
           isCompleted: true,
-          lampFrame: {
-            select: { label: true, frameType: { select: { name: true } } },
+          lampElement: {
+            select: { label: true, elementType: { select: { name: true } } },
           },
-          lamp: { select: { frameType: { select: { name: true } } } },
+          lamp: { select: { elementType: { select: { name: true } } } },
         },
       },
     },
@@ -374,7 +374,7 @@ export async function getActualHoursForWeek({
           projectId: e.task.projectId,
           lampId: e.task.lampId,
           isCompleted: e.task.isCompleted,
-          lampFrame: e.task.lampFrame,
+          lampElement: e.task.lampFrame,
           lamp: e.task.lamp,
         }
       : null,
@@ -513,14 +513,14 @@ export async function getGanttPlanningAssignments(
             select: {
               id: true,
               name: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
-          lampFrame: {
+          lampElement: {
             select: {
               id: true,
               label: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
         },
@@ -592,14 +592,14 @@ export async function getGanttActualAssignments(
             select: {
               id: true,
               name: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
-          lampFrame: {
+          lampElement: {
             select: {
               id: true,
               label: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
         },
@@ -668,15 +668,15 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
             select: {
               id: true,
               name: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
-          lampFrameId: true,
-          lampFrame: {
+          lampElementId: true,
+          lampElement: {
             select: {
               id: true,
               label: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true } },
             },
           },
         },

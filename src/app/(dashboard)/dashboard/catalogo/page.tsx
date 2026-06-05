@@ -9,7 +9,7 @@ export default async function CatalogoPage() {
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
 
   const [framesRaw, processDefs] = await Promise.all([
-    prisma.frameType.findMany({
+    prisma.elementType.findMany({
       where: {},
       include: {
         processes: { orderBy: { sequence: "asc" } },

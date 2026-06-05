@@ -1,5 +1,5 @@
 // Schema CoverDec MVP
-// Person, ProcessDefinition, FrameType, Holiday son globales.
+// Person, ProcessDefinition, ElementType, Holiday son globales.
 // Planning y PlanningPolicy son por nave. El resto es global.
 
 generator client {
@@ -91,12 +91,12 @@ model Nave {
   nombre   String
   isActive Boolean @default(true)
 
-  tasks          Task[]
-  activeUsers    User[]          @relation("ActiveNave")
-  personNaves    PersonNave[]
-  plannings      Planning[]      @relation("NavePlannings")
-  planningPolicy PlanningPolicy? @relation("NavePolicy")
-  notifications  Notification[]
+  tasks               Task[]
+  activeUsers         User[]          @relation("ActiveNave")
+  personNaves         PersonNave[]
+  plannings           Planning[]      @relation("NavePlannings")
+  planningPolicy      PlanningPolicy? @relation("NavePolicy")
+  notifications       Notification[]
 }
 
 /// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
@@ -279,45 +279,54 @@ model ProcessDefinition {
   borderColor String
   canFragment Boolean @default(true)
 
-  frameTypeProcesses  FrameTypeProcess[]
-  tasks               Task[]
+  elementTypeProcesses ElementTypeProcess[]
+  tasks                Task[]
   personSpecialties   PersonSpecialty[]
   planningAssignments PlanningAssignment[]
   timeEntries         TimeEntry[]
   productionOrders    ProductionOrder[]
 }
 
-// ---------- Catálogo de bastidores ----------
+// ---------- Catálogo de elementos ----------
 
-model FrameType {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  baseUnit    String   @default("m2")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  processes  FrameTypeProcess[]
-  lamps      Lamp[]
-  lampFrames LampFrame[]
+enum ElementTypology {
+  TELA
+  BASTIDOR
+  ILUMINACION
 }
 
-model FrameTypeProcess {
-  id           String  @id @default(cuid())
-  frameTypeId  String
-  process      String
-  sequence     Int     @default(0)
-  hoursPerUnit Float
-  fixedHours   Float   @default(0)
-  notes        String?
+model ElementType {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  name          String
+  description   String?
+  typology      ElementTypology @default(BASTIDOR)
+  baseUnit      String          @default("m2")
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  frameType  FrameType         @relation(fields: [frameTypeId], references: [id], onDelete: Cascade)
-  definition ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  processes    ElementTypeProcess[]
+  lamps        Lamp[]
+  lampElements LampElement[]
 
-  @@unique([frameTypeId, process])
-  @@index([frameTypeId, sequence])
+  @@index([typology, isActive])
+}
+
+model ElementTypeProcess {
+  id            String  @id @default(cuid())
+  elementTypeId String
+  process       String
+  sequence      Int     @default(0)
+  hoursPerUnit  Float
+  fixedHours    Float   @default(0)
+  notes         String?
+
+  elementType ElementType       @relation(fields: [elementTypeId], references: [id], onDelete: Cascade)
+  definition  ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([elementTypeId, process])
+  @@index([elementTypeId, sequence])
 }
 
 // ---------- Proyectos y producción ----------
@@ -349,51 +358,51 @@ model Project {
 }
 
 model Lamp {
-  id          String   @id @default(cuid())
-  projectId   String
-  frameTypeId String
-  code        String?
-  name        String
-  width       Float?
-  height      Float?
-  depth       Float?
-  units       Int      @default(1)
-  surfaceM2   Float?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  projectId     String
+  elementTypeId String
+  code          String?
+  name          String
+  width         Float?
+  height        Float?
+  depth         Float?
+  units         Int      @default(1)
+  surfaceM2     Float?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  frameType   FrameType   @relation(fields: [frameTypeId], references: [id])
-  frames      LampFrame[]
-  tasks       Task[]
-  timeEntries TimeEntry[]
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  elementType  ElementType   @relation(fields: [elementTypeId], references: [id])
+  elements     LampElement[]
+  tasks        Task[]
+  timeEntries  TimeEntry[]
 }
 
-model LampFrame {
-  id          String   @id @default(cuid())
-  lampId      String
-  frameTypeId String
-  label       String?
-  surfaceM2   Float?
-  units       Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model LampElement {
+  id            String   @id @default(cuid())
+  lampId        String
+  elementTypeId String
+  label         String?
+  surfaceM2     Float?
+  units         Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  lamp      Lamp      @relation(fields: [lampId], references: [id], onDelete: Cascade)
-  frameType FrameType @relation(fields: [frameTypeId], references: [id])
-  tasks     Task[]
+  lamp        Lamp        @relation(fields: [lampId], references: [id], onDelete: Cascade)
+  elementType ElementType @relation(fields: [elementTypeId], references: [id])
+  tasks       Task[]
 
-  @@unique([lampId, frameTypeId, label])
+  @@unique([lampId, elementTypeId, label])
   @@index([lampId])
-  @@index([frameTypeId])
+  @@index([elementTypeId])
 }
 
 model Task {
   id             String   @id @default(cuid())
   projectId      String
   lampId         String
-  lampFrameId    String?
+  lampElementId  String?
   process        String
   estimatedHours Float
   isCompleted    Boolean  @default(false)
@@ -405,13 +414,13 @@ model Task {
 
   project           Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   lamp              Lamp                 @relation(fields: [lampId], references: [id], onDelete: Cascade)
-  lampFrame         LampFrame?           @relation(fields: [lampFrameId], references: [id], onDelete: SetNull)
+  lampElement       LampElement?         @relation(fields: [lampElementId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition    @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
   nave              Nave                 @relation(fields: [naveId], references: [id])
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
 
-  @@index([lampFrameId])
+  @@index([lampElementId])
 }
 
 // ---------- Planning ----------

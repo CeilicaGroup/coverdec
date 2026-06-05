@@ -15,13 +15,13 @@ import {
   riskFromDelivery,
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
-import { EditLampFramesDialog } from "./edit-lamp-frames-dialog";
+import { EditLampElementsDialog } from "./edit-lamp-elements-dialog";
 import { LampTasksPanel } from "./lamp-tasks-panel";
 import {
   fallbackLampConfig,
-  lampFramesToConfig,
-} from "@/features/projects/sync-lamp-frames";
-import { LampNaveAssign } from "./lamp-nave-assign";
+  lampElementsToConfig,
+} from "@/features/projects/sync-lamp-elements";
+import { ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
@@ -41,29 +41,29 @@ export default async function ProjectDetailPage({
     include: {
       lamps: {
         include: {
-          frameType: true,
-          frames: {
+          elementType: true,
+          elements: {
             orderBy: { createdAt: "asc" },
             select: {
-              frameTypeId: true,
+              elementTypeId: true,
               surfaceM2: true,
-              frameType: { select: { name: true } },
+              elementType: { select: { name: true, typology: true } },
             },
           },
-              tasks: {
-                orderBy: { order: "asc" },
-                include: {
-                  nave: { select: { id: true } },
-                  lampFrame: {
-                    select: {
-                      id: true,
-                      label: true,
-                      surfaceM2: true,
-                      frameType: { select: { id: true, name: true } },
-                    },
-                  },
+          tasks: {
+            orderBy: { order: "asc" },
+            include: {
+              nave: { select: { id: true, codigo: true, nombre: true } },
+              lampElement: {
+                select: {
+                  id: true,
+                  label: true,
+                  surfaceM2: true,
+                  elementType: { select: { id: true, name: true } },
                 },
               },
+            },
+          },
         },
         orderBy: { name: "asc" },
       },
@@ -92,8 +92,8 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [frameTypes, processDefs, naves, responsibleUsers] = await Promise.all([
-    prisma.frameType.findMany({
+  const [elementTypes, processDefs, naves, responsibleUsers] = await Promise.all([
+    prisma.elementType.findMany({
       where: { isActive: true },
       include: {
         processes: {
@@ -202,9 +202,10 @@ export default async function ProjectDetailPage({
           {canManage ? (
             <AddLampForm
               projectId={project.id}
-              frameTypes={frameTypes.map((f) => ({
+              elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,
+                typology: f.typology,
                 processes: f.processes.map((p) => ({
                   process: p.process,
                   hoursPerUnit: p.hoursPerUnit,
@@ -222,48 +223,56 @@ export default async function ProjectDetailPage({
         <CardContent className="p-0">
           {project.lamps.length === 0 ? (
             <p className="text-center text-muted-foreground py-8 text-sm">
-              Aún sin lámparas. Añade una con bastidor y medida para generar las tareas.
+              Aún sin lámparas. Añade una con elemento y medida para generar las tareas.
             </p>
           ) : (
             <div className="divide-y">
               {lamps.map((l) => {
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
-                const lampNaveId = l.tasks.find((t) => t.naveId)?.naveId ?? null;
-                const editableFrames =
-                  l.frames.length > 0
-                    ? lampFramesToConfig(l.frames)
-                    : fallbackLampConfig(l);
-                const bastidorSummary =
-                  editableFrames.length > 0
-                    ? editableFrames
+                const editableElements =
+                  l.elements.length > 0
+                    ? lampElementsToConfig(l.elements)
+                    : fallbackLampConfig({
+                        elementTypeId: l.elementTypeId,
+                        surfaceM2: l.surfaceM2,
+                        units: l.units,
+                        elementType: { typology: l.elementType.typology },
+                      });
+                const elementSummary =
+                  editableElements.length > 0
+                    ? editableElements
                         .map((cfg) => {
                           const name =
-                            l.frames.find((f) => f.frameTypeId === cfg.frameTypeId)
-                              ?.frameType.name ??
-                            l.frameType.name;
-                          const parts = [name, `${cfg.surfaceM2} m²`];
+                            l.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
+                              ?.elementType.name ?? l.elementType.name;
+                          const parts = [
+                            ELEMENT_TYPOLOGY_LABELS[cfg.typology],
+                            name,
+                            `${cfg.surfaceM2} m²`,
+                          ];
                           if (cfg.units > 1) parts.push(`${cfg.units} uds`);
                           return parts.join(" · ");
                         })
                         .join(" / ")
-                    : l.frameType.name;
+                    : l.elementType.name;
                 return (
                   <div key={l.id}>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
                       <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
                       <div className="text-xs text-muted-foreground min-w-0">
-                        Bastidores:{" "}
-                        <span className="text-foreground">{bastidorSummary}</span>
+                        Elementos:{" "}
+                        <span className="text-foreground">{elementSummary}</span>
                       </div>
                       {canManage ? (
-                        <EditLampFramesDialog
+                        <EditLampElementsDialog
                           key={`${l.id}-${l.updatedAt.toISOString()}`}
                           lampId={l.id}
                           lampName={l.name}
-                          initialFrames={editableFrames}
-                          frameTypes={frameTypes.map((f) => ({
+                          initialElements={editableElements}
+                          elementTypes={elementTypes.map((f) => ({
                             id: f.id,
                             name: f.name,
+                            typology: f.typology,
                             processes: f.processes.map((p) => ({
                               process: p.process,
                               hoursPerUnit: p.hoursPerUnit,
@@ -280,13 +289,6 @@ export default async function ProjectDetailPage({
                       <div className="text-xs font-mono ml-auto">
                         Pendiente: <span className="font-semibold">{formatHours(lampPending)}</span>
                       </div>
-                      {canManage && naves.length > 0 ? (
-                        <LampNaveAssign
-                          lampId={l.id}
-                          currentNaveId={lampNaveId}
-                          naves={naves}
-                        />
-                      ) : null}
                       {canManage ? (
                         <DeleteLampButton lampId={l.id} lampName={l.name} />
                       ) : null}

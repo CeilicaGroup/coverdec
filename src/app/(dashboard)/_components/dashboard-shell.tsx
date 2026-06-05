@@ -80,7 +80,7 @@ const NAV_SECTIONS = [
     naveScoped: false,
     items: [
       { href: "/dashboard/proyectos", label: "Proyectos", icon: ClipboardList, operarioHidden: true },
-      { href: "/dashboard/catalogo", label: "Bastidores", icon: Settings, operarioHidden: true },
+      { href: "/dashboard/catalogo", label: "Elementos", icon: Settings, operarioHidden: true },
       { href: "/dashboard/personal", label: "Personal", icon: Users, operarioHidden: true },
     ],
   },

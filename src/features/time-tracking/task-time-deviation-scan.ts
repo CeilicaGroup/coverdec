@@ -5,28 +5,28 @@ import {
   computeCatalogDeviationForPair,
   getTimeDeviationPolicy,
   listCatalogTimeDeviations,
-  resolveFrameTypeProcessFromTaskId,
+  resolveElementTypeProcessFromTaskId,
 } from "./catalog-time-stats";
 
 const log = childLogger({ module: "time-tracking.task-time-deviation-scan" });
 
-function scopeKey(frameTypeId: string, process: string): string {
-  return `task-time-deviation:${frameTypeId}:${process}`;
+function scopeKey(elementTypeId: string, process: string): string {
+  return `task-time-deviation:${elementTypeId}:${process}`;
 }
 
 export async function evaluateCatalogTimeDeviation(args: {
-  frameTypeId: string;
+  elementTypeId: string;
   process: string;
 }): Promise<void> {
   const policy = await getTimeDeviationPolicy();
   const row = await computeCatalogDeviationForPair({
-    frameTypeId: args.frameTypeId,
+    elementTypeId: args.elementTypeId,
     process: args.process,
     policy,
   });
   if (!row) return;
 
-  const key = scopeKey(args.frameTypeId, args.process);
+  const key = scopeKey(args.elementTypeId, args.process);
 
   if (row.isAlert && row.observedHoursPerUnit != null && row.deviationPct != null) {
     await emitNotification({
@@ -35,7 +35,7 @@ export async function evaluateCatalogTimeDeviation(args: {
       body: `${row.frameTypeCode} · ${row.process}: media observada ${row.observedHoursPerUnit.toFixed(2)} h/m² vs catálogo ${row.catalogHoursPerUnit.toFixed(2)} h/m² (${row.deviationPct.toFixed(0)}% desviación, ${row.sampleCount} muestras).`,
       payload: {
         eventKey: key,
-        frameTypeId: row.frameTypeId,
+        elementTypeId: row.elementTypeId,
         process: row.process,
         frameTypeCode: row.frameTypeCode,
         frameTypeName: row.frameTypeName,
@@ -47,7 +47,7 @@ export async function evaluateCatalogTimeDeviation(args: {
       scopeKey: key,
     });
     log.info(
-      { frameTypeId: args.frameTypeId, process: args.process, deviationPct: row.deviationPct },
+      { elementTypeId: args.elementTypeId, process: args.process, deviationPct: row.deviationPct },
       "catalog time deviation alert emitted",
     );
     return;
@@ -60,7 +60,7 @@ export async function evaluateCatalogTimeDeviation(args: {
 }
 
 export async function evaluateCatalogTimeDeviationForTask(taskId: string): Promise<void> {
-  const pair = await resolveFrameTypeProcessFromTaskId(taskId);
+  const pair = await resolveElementTypeProcessFromTaskId(taskId);
   if (!pair) return;
   await evaluateCatalogTimeDeviation(pair);
 }
@@ -69,17 +69,17 @@ export async function scanTaskTimeDeviations(): Promise<void> {
   const { rows } = await listCatalogTimeDeviations();
   const activeKeys = new Set<string>();
   for (const row of rows) {
-    const key = scopeKey(row.frameTypeId, row.process);
+    const key = scopeKey(row.elementTypeId, row.process);
     if (row.isAlert) {
       activeKeys.add(key);
       await evaluateCatalogTimeDeviation({
-        frameTypeId: row.frameTypeId,
+        elementTypeId: row.elementTypeId,
         process: row.process,
       });
     }
   }
 
-  const allKeys = rows.map((r) => scopeKey(r.frameTypeId, r.process));
+  const allKeys = rows.map((r) => scopeKey(r.elementTypeId, r.process));
   const resolved = allKeys.filter((k) => !activeKeys.has(k));
   if (resolved.length > 0) {
     await resolveNotificationStates({

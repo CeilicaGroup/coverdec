@@ -46,8 +46,8 @@ function assignment(
       process: "PINT",
       isCompleted: false,
       project: { id: "proj", name: "Proyecto" },
-      lamp: { id: "l1", name: "L1", frameType: { name: "Bastidor 1" } },
-      lampFrame: null,
+      lamp: { id: "l1", name: "L1", elementType: { name: "Bastidor 1" } },
+      lampElement: null,
     },
   };
 }

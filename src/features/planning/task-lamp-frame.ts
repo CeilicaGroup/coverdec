@@ -1,11 +1,11 @@
-export interface TaskLampFrameSource {
+export interface TaskLampElementSource {
   lampFrame?: { label: string | null; frameType?: { name: string } | null } | null;
   lamp?: { frameType?: { name: string } | null } | null;
 }
 
 /** Etiqueta del bastidor asignado a la tarea (frame concreto dentro de la lámpara). */
-export function getTaskLampFrameLabel(
-  source: TaskLampFrameSource | null | undefined,
+export function getTaskLampElementLabel(
+  source: TaskLampElementSource | null | undefined,
 ): string | null {
   if (!source) return null;
   return (

@@ -46,7 +46,7 @@ export function resolveNotificationAction(
         };
       }
       const params = new URLSearchParams({
-        frameTypeId: p.frameTypeId,
+        elementTypeId: p.elementTypeId,
         process: p.process,
       });
       return {
