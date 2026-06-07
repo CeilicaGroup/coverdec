@@ -130,8 +130,8 @@ def test_lijado_starts_monday_after_ensamblaje_finishes():
 
     With early_start objective, starting Monday afternoon (after ENS) is
     preferred over waiting for Tuesday even though it requires a two-day split.
-    The span-based gap penalty ensures the split spans at most one day (Mon→Tue),
-    not a wider scatter (Mon→Thu or later).
+    Worker task continuity ensures LIJADO fragments are not interleaved with
+    other work on the same operator.
     """
     painter = EnginePerson(
         id="tetiana",
@@ -444,6 +444,75 @@ def test_partial_unscheduled_with_candidates_is_not_no_candidate():
     assert not any("NO_CANDIDATE:" in w.reason for w in result.warnings)
     assert result.unscheduledHours > 0
     assert len(result.assignments) > 0
+
+
+def _assert_no_task_interleaving(task_ids: list[str]) -> None:
+    """Once a worker switches away from a task, that task must not resume."""
+    completed: set[str] = set()
+    active: str | None = None
+    for tid in task_ids:
+        if tid in completed:
+            raise AssertionError(
+                f"Task {tid} interleaved: resumed after another task was started"
+            )
+        if active is not None and tid != active:
+            completed.add(active)
+            active = tid
+        elif active is None:
+            active = tid
+
+
+def test_worker_no_task_interleaving():
+    """A worker must finish task A before starting task B (no A→B→A patterns)."""
+    worker = EnginePerson(
+        id="op1",
+        iniciales="OP",
+        primary=["CNC"],
+        fallback=[],
+        capacityHours=8,
+        hourlyRate=14.75,
+        overtimeHourlyRate=22.13,
+    )
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[worker],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-a",
+                    order=0,
+                    process="CNC",
+                    pendingHours=10,
+                ),
+                EngineTask(
+                    id="task-b",
+                    projectId="p2",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-b",
+                    order=0,
+                    process="CNC",
+                    pendingHours=2,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["op1"]),
+        ),
+    )
+    assert result.unscheduledHours == 0
+    worker_assignments = sorted(
+        [a for a in result.assignments if a.personId == "op1"],
+        key=lambda a: (a.date, a.startSlot),
+    )
+    assert worker_assignments
+    _assert_no_task_interleaving([a.taskId for a in worker_assignments])
 
 
 def test_health_endpoint():

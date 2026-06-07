@@ -98,6 +98,21 @@ def _build_expanded(
 
 
 @dataclass(frozen=True)
+class WorkSegment:
+    """One contiguous productive run within a worker day (e.g. morning or afternoon)."""
+
+    index: int
+    compressed_start: int  # inclusive index into week_q / ui_slot
+    compressed_end: int  # exclusive
+    exp_start: int  # inclusive index into full wq_exp
+    exp_end: int  # exclusive
+
+    @property
+    def cap(self) -> int:
+        return self.compressed_end - self.compressed_start
+
+
+@dataclass(frozen=True)
 class WorkerDayTimeline:
     """Compressed slot index i <-> week_q[i] (solver time) + ui_slot[i] (output only).
 
@@ -260,3 +275,55 @@ class WorkerDayTimeline:
 
     def is_afternoon_exp(self, local_exp: int) -> bool:
         return self.ui_start_exp(local_exp) >= AFTERNOON_UI_OFFSET
+
+    def work_segments(self) -> tuple[WorkSegment, ...]:
+        """Split the day at schedule breaks (e.g. lunch) into productive segments."""
+        if not self.week_q:
+            return ()
+
+        segments: list[WorkSegment] = []
+        seg_start = 0
+        exp_offset = 0
+
+        for i in range(1, len(self.week_q)):
+            if self.week_q[i] == self.week_q[i - 1] + 1:
+                continue
+            gap_size = self.week_q[i] - self.week_q[i - 1] - 1
+            exp_start = seg_start + exp_offset
+            exp_end = exp_start + (i - seg_start)
+            segments.append(
+                WorkSegment(
+                    index=len(segments),
+                    compressed_start=seg_start,
+                    compressed_end=i,
+                    exp_start=exp_start,
+                    exp_end=exp_end,
+                )
+            )
+            exp_offset += gap_size
+            seg_start = i
+
+        exp_start = seg_start + exp_offset
+        exp_end = exp_start + (len(self.week_q) - seg_start)
+        segments.append(
+            WorkSegment(
+                index=len(segments),
+                compressed_start=seg_start,
+                compressed_end=len(self.week_q),
+                exp_start=exp_start,
+                exp_end=exp_end,
+            )
+        )
+        return tuple(segments)
+
+    def compressed_to_exp(self, compressed_index: int) -> int | None:
+        for segment in self.work_segments():
+            if segment.compressed_start <= compressed_index < segment.compressed_end:
+                return segment.exp_start + (compressed_index - segment.compressed_start)
+        return None
+
+    def segment_for_compressed(self, compressed_index: int) -> WorkSegment | None:
+        for segment in self.work_segments():
+            if segment.compressed_start <= compressed_index < segment.compressed_end:
+                return segment
+        return None

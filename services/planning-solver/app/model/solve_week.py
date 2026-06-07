@@ -41,6 +41,7 @@ from app.model.timeline import (
     QUARTERS_PER_DAY,
     QUARTERS_PER_HOUR,
     WorkerDayTimeline,
+    WorkSegment,
     _build_expanded,
     minute_to_week_quarter,
 )
@@ -110,17 +111,9 @@ class SchedulerWeights:
                     (e.g. a task scheduled across 3 slots pays 2 × weight).
                     Pushes the solver to consolidate work into fewer, longer
                     blocks rather than scattering 15-min slivers across days.
-    early_start     weight on how early each task starts on the absolute week
-                    timeline (week_quarter_start). One term per task, not per slot.
-    gap_penalty     weight on the day-span of each (task, worker) assignment:
-                    span = last_active_day_index − first_active_day_index.
-                    Correctly penalises non-adjacent splits (Mon+Thu → span=3)
-                    more than adjacent ones (Mon+Tue → span=1), unlike a
-                    pair-wise approach that gives 0 for non-adjacent pairs.
-                    At default 10.0 (10,000 units/day), a 1-day span costs
-                    10,000, which is lower than the early_start saving of a
-                    1-day earlier first start (~20,400 units), so
-                    afternoon→next-morning splits win over next-day-only.
+    early_start     weight on how early each task's first active slot starts and
+                    how early its last active slot ends on the week timeline.
+                    One start + one end term per task (not per fragment).
     # project_priority  (future) weight on priority-score bonus per scheduled quarter
     """
 
@@ -137,7 +130,6 @@ class SchedulerWeights:
     stability: float = 0.5
     split_penalty: float = 1.0
     early_start: float = 0.3
-    gap_penalty: float = 10.0   # weight on inter-fragment day-gaps per (task, worker)
 
     # Future (set to 0 until project-priority scores are available)
     project_priority: float = 0.0
@@ -165,7 +157,7 @@ class LampEdge(NamedTuple):
 
 @dataclass
 class TaskSlot:
-    """Pure domain info for one (task × worker × day) candidate slot."""
+    """Pure domain info for one (task × worker × day × segment) candidate slot."""
 
     task_id: str
     person_id: str
@@ -174,6 +166,7 @@ class TaskSlot:
     day_index: int
     process: str
     timeline: WorkerDayTimeline
+    segment: WorkSegment
     demand_q: int  # total pending quarters for this task
     urgency: int  # 1/2/4 based on delivery date proximity
 
@@ -185,12 +178,12 @@ class TaskSlot:
 
 @dataclass
 class SlotVars:
-    """CP-SAT variables for one (task × worker × day) slot."""
+    """CP-SAT variables for one (task × worker × day × segment) slot."""
 
     slot: TaskSlot
     presence: cp_model.BoolVar  # 1 iff this slot is used
-    start: cp_model.IntVar  # local compressed-slot index
-    size: cp_model.IntVar  # quarters assigned (0 if absent)
+    start: cp_model.IntVar  # index into timeline.wq_exp (expanded day axis)
+    size: cp_model.IntVar  # productive quarters assigned (0 if absent)
     end: cp_model.IntVar
     worker_iv: cp_model.IntervalVar  # for worker NoOverlap
     lamp_iv: cp_model.IntervalVar  # week-quarter view for lamp NoOverlap
@@ -210,6 +203,12 @@ def _add_days(d: date, n: int) -> date:
 def _iso_weekday(d: date) -> int:
     """Monday = 1 … Sunday = 7 (matches schedule deadlineDay convention)."""
     return d.isoweekday()
+
+
+def _slot_tag(sv: SlotVars) -> str:
+    """Unique CP-SAT variable prefix for one (task, worker, day, segment) slot."""
+    s = sv.slot
+    return f"{s.task_id}_{s.person_id}_{s.day_index}_{s.segment.index}"
 
 
 def _urgency(task: EngineTask, week_start: date) -> int:
@@ -552,66 +551,69 @@ def _build_variables(
                 if tl is None or tl.cap <= 0:
                     continue
 
-                cap_exp = len(tl.wq_exp) if tl.wq_exp else tl.cap
-                tag = f"{task.id}_{person.id}_{day_idx}"
+                for segment in tl.work_segments():
+                    if segment.cap <= 0:
+                        continue
 
-                presence = model.NewBoolVar(f"p_{tag}")
-                start = model.NewIntVar(0, max(0, cap_exp - 1), f"s_{tag}")
-                size = model.NewIntVar(0, cap_exp, f"z_{tag}")
-                end = model.NewIntVar(0, cap_exp, f"e_{tag}")
-                worker_iv = model.NewOptionalIntervalVar(
-                    start, size, end, presence, f"wiv_{tag}"
-                )
+                    cap_exp = len(tl.wq_exp)
+                    tag = f"{task.id}_{person.id}_{day_idx}_{segment.index}"
 
-                effective = model.NewIntVar(0, cap_exp, f"eff_{tag}")
-                model.Add(effective == size).OnlyEnforceIf(presence)
-                model.Add(effective == 0).OnlyEnforceIf(presence.Not())
-                # Prevent presence=1, size=0 (would let the objective exploit a
-                # zero-cost "phantom" start without scheduling any real work).
-                model.Add(size >= 1).OnlyEnforceIf(presence)
-
-                slot = TaskSlot(
-                    task_id=task.id,
-                    person_id=person.id,
-                    lamp_id=task.lampId,
-                    day=day,
-                    day_index=day_idx,
-                    process=task.process,
-                    timeline=tl,
-                    demand_q=demand,
-                    urgency=urgency,
-                )
-                lamp_iv = _make_lamp_interval(
-                    model,
-                    _temp_sv(slot, presence, start, size, end, worker_iv, effective),
-                    tag,
-                )
-
-                sv = SlotVars(
-                    slot=slot,
-                    presence=presence,
-                    start=start,
-                    size=size,
-                    end=end,
-                    worker_iv=worker_iv,
-                    lamp_iv=lamp_iv,
-                    effective=effective,
-                )
-
-                # Prevent tasks from spanning schedule breaks (lunch etc.)
-                for gap_start, gap_size in tl.gaps:
-                    gap_iv = model.NewFixedSizeIntervalVar(
-                        gap_start, gap_size, f"gap_{tag}_{gap_start}"
+                    presence = model.NewBoolVar(f"p_{tag}")
+                    start = model.NewIntVar(
+                        segment.exp_start, max(segment.exp_start, segment.exp_end - 1), f"s_{tag}"
                     )
-                    model.AddNoOverlap([worker_iv, gap_iv])
+                    size = model.NewIntVar(0, segment.cap, f"z_{tag}")
+                    end = model.NewIntVar(0, cap_exp, f"e_{tag}")
+                    worker_iv = model.NewOptionalIntervalVar(
+                        start, size, end, presence, f"wiv_{tag}"
+                    )
 
-                mv.all_slots.append(sv)
-                mv.by_task.setdefault(task.id, []).append(sv)
-                mv.worker_day_ivs.setdefault((person.id, day_idx), []).append(worker_iv)
-                mv.lamp_day_ivs.setdefault((task.lampId, day_idx), []).append(lamp_iv)
-                mv.load_by_person_day.setdefault((person.id, day_idx), []).append(
-                    effective
-                )
+                    effective = model.NewIntVar(0, segment.cap, f"eff_{tag}")
+                    model.Add(effective == size).OnlyEnforceIf(presence)
+                    model.Add(effective == 0).OnlyEnforceIf(presence.Not())
+                    model.Add(size >= 1).OnlyEnforceIf(presence)
+                    model.Add(start + size <= segment.exp_end).OnlyEnforceIf(presence)
+
+                    slot = TaskSlot(
+                        task_id=task.id,
+                        person_id=person.id,
+                        lamp_id=task.lampId,
+                        day=day,
+                        day_index=day_idx,
+                        process=task.process,
+                        timeline=tl,
+                        segment=segment,
+                        demand_q=demand,
+                        urgency=urgency,
+                    )
+                    lamp_iv = _make_lamp_interval(
+                        model,
+                        _temp_sv(slot, presence, start, size, end, worker_iv, effective),
+                        tag,
+                    )
+
+                    sv = SlotVars(
+                        slot=slot,
+                        presence=presence,
+                        start=start,
+                        size=size,
+                        end=end,
+                        worker_iv=worker_iv,
+                        lamp_iv=lamp_iv,
+                        effective=effective,
+                    )
+
+                    mv.all_slots.append(sv)
+                    mv.by_task.setdefault(task.id, []).append(sv)
+                    mv.worker_day_ivs.setdefault((person.id, day_idx), []).append(
+                        worker_iv
+                    )
+                    mv.lamp_day_ivs.setdefault((task.lampId, day_idx), []).append(
+                        lamp_iv
+                    )
+                    mv.load_by_person_day.setdefault((person.id, day_idx), []).append(
+                        effective
+                    )
 
     return mv
 
@@ -698,6 +700,12 @@ def _add_constraints(
     # ── 5. canFragment=False: at most one active slot per task ───────────────
     _add_no_fragment_constraints(model, data, mv)
 
+    # ── 6. Worker task continuity: no interleaving between task fragments ──
+    _add_worker_task_continuity_constraints(model, mv)
+
+    # ── 7. Fill earlier day segments before later ones (morning before PM) ──
+    _add_segment_order_constraints(model, mv)
+
     return unscheduled
 
 
@@ -727,10 +735,21 @@ def _find_slot_var(
     task_id: str,
     person_id: str,
     day_idx: int,
+    compressed_start: int | None = None,
 ) -> SlotVars | None:
-    for sv in mv.by_task.get(task_id, []):
-        if sv.slot.person_id == person_id and sv.slot.day_index == day_idx:
-            return sv
+    matches = [
+        sv
+        for sv in mv.by_task.get(task_id, [])
+        if sv.slot.person_id == person_id and sv.slot.day_index == day_idx
+    ]
+    if compressed_start is not None:
+        for sv in matches:
+            segment = sv.slot.segment
+            if segment.compressed_start <= compressed_start < segment.compressed_end:
+                return sv
+        return None
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -750,12 +769,15 @@ def _inject_busy_slots(
         local_start = _match_ui_start(tl, busy.startSlot, busy.hours)
         if local_start is None:
             continue
+        exp_start = tl.compressed_to_exp(local_start)
+        if exp_start is None:
+            continue
         size_q = round(busy.hours * QUARTERS_PER_HOUR)
         if size_q <= 0:
             continue
         tag = f"busy_{busy.personId}_{day_idx}_{idx}"
         busy_iv = model.NewFixedSizeIntervalVar(
-            local_start, size_q, f"biv_{tag}"
+            exp_start, size_q, f"biv_{tag}"
         )
         mv.worker_day_ivs.setdefault((busy.personId, day_idx), []).append(busy_iv)
 
@@ -775,12 +797,17 @@ def _apply_fixed_assignments(
         local_start = _match_ui_start(tl, fixed.startSlot, fixed.hours)
         if local_start is None:
             continue
+        exp_start = tl.compressed_to_exp(local_start)
+        if exp_start is None:
+            continue
         size_q = round(fixed.hours * QUARTERS_PER_HOUR)
-        sv = _find_slot_var(mv, fixed.taskId, fixed.personId, day_idx)
+        sv = _find_slot_var(
+            mv, fixed.taskId, fixed.personId, day_idx, compressed_start=local_start
+        )
         if sv is None:
             continue
         model.Add(sv.presence == 1)
-        model.Add(sv.start == local_start)
+        model.Add(sv.start == exp_start)
         model.Add(sv.size == size_q)
 
 
@@ -873,11 +900,17 @@ def _add_lamp_ordering(
 
         # Latest week-quarter end of any pred slot
         pred_end = model.NewIntVar(0, HORIZON_Q + 1, f"pend_{edge.predecessor_id}")
+        pred_end_terms: list = []
         for sv in pred_slots:
-            wqe = _wq_end_exclusive(
-                model, sv, f"pe_{sv.slot.task_id}_{sv.slot.day_index}"
-            )
-            model.Add(pred_end >= wqe).OnlyEnforceIf(sv.presence)
+            wqe = _wq_end_exclusive(model, sv, f"pe_{_slot_tag(sv)}")
+            contrib = model.NewIntVar(0, HORIZON_Q + 1, f"pec_{_slot_tag(sv)}")
+            model.Add(contrib == wqe).OnlyEnforceIf(sv.presence)
+            model.Add(contrib == 0).OnlyEnforceIf(sv.presence.Not())
+            pred_end_terms.append(contrib)
+        if pred_end_terms:
+            model.AddMaxEquality(pred_end, pred_end_terms)
+        else:
+            model.Add(pred_end == 0)
 
         # earliest succ can start = pred_end + dry_q (when done); else blocked
         earliest = model.NewIntVar(0, HORIZON_Q + 1, f"early_{edge.successor_id}")
@@ -885,7 +918,7 @@ def _add_lamp_ordering(
         model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(pred_done.Not())
 
         for sv in succ_slots:
-            wqs = _wq_start(model, sv, f"ss_{sv.slot.task_id}_{sv.slot.day_index}")
+            wqs = _wq_start(model, sv, f"ss_{_slot_tag(sv)}")
             model.Add(wqs >= earliest).OnlyEnforceIf(sv.presence)
             # If pred not done, succ can't be scheduled at all
             model.Add(sv.presence == 0).OnlyEnforceIf(pred_done.Not())
@@ -902,9 +935,7 @@ def _add_min_week_quarter(
         if min_wq <= 0:
             continue
         for sv in mv.by_task.get(task.id, []):
-            wqs = _wq_start(
-                model, sv, f"mn_{sv.slot.task_id}_{sv.slot.day_index}"
-            )
+            wqs = _wq_start(model, sv, f"mn_{_slot_tag(sv)}")
             model.Add(wqs >= min_wq).OnlyEnforceIf(sv.presence)
 
 
@@ -962,17 +993,12 @@ def _build_objective(
     if w_split > 0:
         _add_split_terms(model, data, mv, w_split, terms)
 
-    # ── Tier 2: Gap penalty (prevent fragmented interleaving) ────────────────
-    w_gap = _scale(w.gap_penalty)
-    if w_gap > 0:
-        _add_gap_terms(model, data, mv, w_gap, terms)
-
     # ── Tier 1: Project priority by delivery proximity ───────────────────────
     w_prio = _scale(w.project_priority)
     if w_prio > 0:
         _add_project_priority_terms(model, data, mv, w_prio, terms)
 
-    # ── Tier 2: Early-start nudge ────────────────────────────────────────────
+    # ── Tier 2: Early-start / early-finish nudge ─────────────────────────────
     w_es = _scale(w.early_start)
     if w_es > 0:
         _add_early_start_terms(model, data, mv, w_es, terms)
@@ -1011,9 +1037,7 @@ def _add_deadline_terms(
             continue
 
         end_vars = [
-            _wq_end_exclusive(
-                model, sv, f"le_{lamp_id}_{sv.slot.task_id}_{sv.slot.day_index}"
-            )
+            _wq_end_exclusive(model, sv, f"le_{lamp_id}_{_slot_tag(sv)}")
             for sv in lamp_slots
         ]
         lamp_end = model.NewIntVar(0, HORIZON_Q + 1, f"lend_{lamp_id}")
@@ -1124,7 +1148,7 @@ def _add_stability_terms(
         prev = data.prev_q.get(key, 0)
         if prev <= 0:
             continue
-        diff = model.NewIntVar(0, sv.slot.timeline.cap, f"stab_{key}")
+        diff = model.NewIntVar(0, sv.slot.timeline.cap, f"stab_{_slot_tag(sv)}")
         model.Add(diff >= sv.effective - prev)
         model.Add(diff >= prev - sv.effective)
         terms.append(TIER_COST * w * diff)
@@ -1167,32 +1191,39 @@ def _add_split_terms(
     terms: list,
 ) -> None:
     """
-    Penalise splitting a task across more slots than necessary.
+    Penalise splitting a task across more worker-days than necessary.
 
-    For each task we count how many slots are active: sum(presence_i).
-    The first slot is "free" — we only penalise the extras beyond 1.
+    Morning + afternoon on the same (task, worker, day) count as one block
+    (the lunch break is not a voluntary split).  Only crossing to another
+    calendar day incurs an extra-block penalty:
 
-        extra_blocks = max(0, sum(presence_i) − 1)
-
-    Minimising this pushes the solver toward fewer, larger blocks.
-
-    Note: the coverage constraint already forces enough total quarters to be
-    assigned, so the solver can't cheat by merging blocks at the cost of
-    leaving work unscheduled — the only way to reduce extra_blocks is to
-    genuinely consolidate work into longer contiguous runs.
+        extra_blocks = max(0, active_worker_days − 1)
     """
     for task in data.tasks:
         slots = mv.by_task.get(task.id, [])
         if len(slots) < 2:
-            continue  # can't split if there's only one candidate slot
+            continue
 
-        # Number of active slots for this task (0 … len(slots))
-        n_active = model.NewIntVar(0, len(slots), f"nact_{task.id}")
-        model.Add(n_active == sum(sv.presence for sv in slots))
+        by_worker_day: dict[tuple[str, int], list[SlotVars]] = defaultdict(list)
+        for sv in slots:
+            by_worker_day[(sv.slot.person_id, sv.slot.day_index)].append(sv)
 
-        # extra = n_active − 1, clamped to 0 (free if task uses exactly 1 slot)
-        extra = model.NewIntVar(0, len(slots) - 1, f"xtra_{task.id}")
-        model.Add(extra >= n_active - 1)
+        if len(by_worker_day) < 2:
+            continue
+
+        day_active: list[cp_model.BoolVar] = []
+        for (person_id, day_idx), day_slots in by_worker_day.items():
+            day_pres = model.NewBoolVar(f"dayp_{task.id}_{person_id}_{day_idx}")
+            pres_sum = sum(sv.presence for sv in day_slots)
+            model.Add(pres_sum >= 1).OnlyEnforceIf(day_pres)
+            model.Add(pres_sum == 0).OnlyEnforceIf(day_pres.Not())
+            day_active.append(day_pres)
+
+        n_active_days = model.NewIntVar(0, len(day_active), f"ndays_{task.id}")
+        model.Add(n_active_days == sum(day_active))
+
+        extra = model.NewIntVar(0, len(day_active) - 1, f"xtra_{task.id}")
+        model.Add(extra >= n_active_days - 1)
         model.Add(extra >= 0)
 
         terms.append(TIER_COST * w * extra)
@@ -1205,25 +1236,55 @@ def _add_early_start_terms(
     w: int,
     terms: list,
 ) -> None:
-    """Penalise each active slot's start position on the week timeline.
-
-    By penalising *every* fragment (not just the task's first start), early_start
-    combines naturally with gap_penalty: the solver prefers fewer, earlier blocks
-    because each extra fragment adds its own wq_start cost.  A task split into
-    slots at quarters 5+20+40 costs 65w; the same task in one block at quarter 5
-    costs 5w — the solver consolidates.
-    """
-    for sv in mv.all_slots:
-        wq = sv.slot.timeline.wq_exp
-        if not wq:
+    """Penalise how early each task starts and finishes on the week timeline."""
+    horizon = HORIZON_Q + 1
+    for task in data.tasks:
+        slots = mv.by_task.get(task.id, [])
+        if not slots:
             continue
-        tag = f"{sv.slot.task_id}_{sv.slot.person_id}_{sv.slot.day_index}"
-        start_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eswq_{tag}")
-        model.AddElement(sv.start, list(wq), start_wq)
-        eff_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eseff_{tag}")
-        model.Add(eff_wq == start_wq).OnlyEnforceIf(sv.presence)
-        model.Add(eff_wq == 0).OnlyEnforceIf(sv.presence.Not())
-        terms.append(TIER_COST * w * eff_wq)
+
+        min_vars: list = []
+        max_vars: list = []
+        for sv in slots:
+            wq = sv.slot.timeline.wq_exp
+            if not wq:
+                continue
+            tag = _slot_tag(sv)
+            start_wq = model.NewIntVar(0, horizon, f"eswq_{tag}")
+            model.AddElement(sv.start, list(wq), start_wq)
+            start_fv = model.NewIntVar(0, horizon, f"esfv_{tag}")
+            model.Add(start_fv == start_wq).OnlyEnforceIf(sv.presence)
+            model.Add(start_fv == horizon).OnlyEnforceIf(sv.presence.Not())
+            min_vars.append(start_fv)
+
+            end_wq = _wq_end_exclusive(model, sv, f"eswe_{tag}")
+            end_fv = model.NewIntVar(0, horizon, f"efv_{tag}")
+            model.Add(end_fv == end_wq).OnlyEnforceIf(sv.presence)
+            model.Add(end_fv == 0).OnlyEnforceIf(sv.presence.Not())
+            max_vars.append(end_fv)
+
+        if not min_vars:
+            continue
+
+        first_start = model.NewIntVar(0, horizon, f"es_first_{task.id}")
+        model.AddMinEquality(first_start, min_vars)
+        last_end = model.NewIntVar(0, horizon, f"es_last_{task.id}")
+        model.AddMaxEquality(last_end, max_vars)
+
+        n_active = model.NewIntVar(0, len(slots), f"esan_{task.id}")
+        model.Add(n_active == sum(sv.presence for sv in slots))
+        active = model.NewBoolVar(f"esact_{task.id}")
+        model.Add(n_active >= 1).OnlyEnforceIf(active)
+        model.Add(n_active == 0).OnlyEnforceIf(active.Not())
+
+        eff_start = model.NewIntVar(0, horizon, f"eseff_{task.id}")
+        model.Add(eff_start == first_start).OnlyEnforceIf(active)
+        model.Add(eff_start == 0).OnlyEnforceIf(active.Not())
+        eff_end = model.NewIntVar(0, horizon, f"efe_{task.id}")
+        model.Add(eff_end == last_end).OnlyEnforceIf(active)
+        model.Add(eff_end == 0).OnlyEnforceIf(active.Not())
+        terms.append(TIER_COST * w * eff_start)
+        terms.append(TIER_COST * w * eff_end)
 
 
 def _delivery_urgency_score(task: EngineTask, week_start: date) -> int:
@@ -1294,61 +1355,106 @@ def _add_no_fragment_constraints(
             model.Add(sum(sv.presence for sv in slots) <= 1)
 
 
-def _add_gap_terms(
+def _add_worker_task_continuity_constraints(
     model: cp_model.CpModel,
-    data: ProblemData,
     mv: ModelVars,
-    w: int,
-    terms: list,
 ) -> None:
-    """Penalise the day-span of each (task, worker) assignment.
+    """Once a worker starts a task, they must finish it before starting another.
 
-    For each (task, worker) pair that has slots on multiple days, computes:
-        span = last_active_day_index − first_active_day_index
-    and adds w * span to the objective.
-
-    This correctly handles non-adjacent splits (e.g. Mon+Thu gives span=3,
-    not 0 as the old pair-wise approach would give when intermediate days are
-    absent).  Single-day assignments contribute span=0.
+    For each worker and each pair of distinct tasks assigned to them, enforce
+    that one task's timeline ends before the other's begins — no interleaving
+    of fragments across the week-quarter axis.
     """
-    H = len(data.days)  # number of schedulable days (5)
-
-    by_task_person: dict[tuple[str, str], list[SlotVars]] = defaultdict(list)
+    by_person: dict[str, dict[str, list[SlotVars]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for sv in mv.all_slots:
-        by_task_person[(sv.slot.task_id, sv.slot.person_id)].append(sv)
+        by_person[sv.slot.person_id][sv.slot.task_id].append(sv)
 
-    for (task_id, person_id), slots in by_task_person.items():
-        if len(slots) < 2:
+    horizon = HORIZON_Q + 1
+
+    for person_id, task_slots in by_person.items():
+        task_ids = list(task_slots.keys())
+        if len(task_ids) < 2:
             continue
 
-        # Build per-slot min/max day-index contributions.
-        # When present: contribute the actual day_index.
-        # For the minimum: absent slots contribute H (won't win the min).
-        # For the maximum: absent slots contribute 0 (won't win the max).
-        min_vars: list = []
-        max_vars: list = []
-        for sv in slots:
-            di = sv.slot.day_index
-            fv = model.NewIntVar(0, H, f"fday_{task_id}_{person_id}_{di}")
-            model.Add(fv == di).OnlyEnforceIf(sv.presence)
-            model.Add(fv == H).OnlyEnforceIf(sv.presence.Not())
-            min_vars.append(fv)
+        bounds: dict[str, tuple[cp_model.IntVar, cp_model.IntVar, cp_model.BoolVar]] = {}
+        for task_id, slots in task_slots.items():
+            tag = f"{person_id}_{task_id}"
 
-            lv = model.NewIntVar(0, H, f"lday_{task_id}_{person_id}_{di}")
-            model.Add(lv == di).OnlyEnforceIf(sv.presence)
-            model.Add(lv == 0).OnlyEnforceIf(sv.presence.Not())
-            max_vars.append(lv)
+            n_active = model.NewIntVar(0, len(slots), f"nact_{tag}")
+            model.Add(n_active == sum(sv.presence for sv in slots))
 
-        first_day = model.NewIntVar(0, H, f"fday_min_{task_id}_{person_id}")
-        last_day = model.NewIntVar(0, H, f"lday_max_{task_id}_{person_id}")
-        model.AddMinEquality(first_day, min_vars)
-        model.AddMaxEquality(last_day, max_vars)
+            active = model.NewBoolVar(f"act_{tag}")
+            model.Add(n_active >= 1).OnlyEnforceIf(active)
+            model.Add(n_active == 0).OnlyEnforceIf(active.Not())
 
-        # span ≥ last − first (minimisation drives it to exactly max(0, last−first)).
-        # When all absent: last=0, first=H → last−first ≤ 0, so span=0.
-        span = model.NewIntVar(0, H, f"span_{task_id}_{person_id}")
-        model.Add(span >= last_day - first_day)
-        terms.append(TIER_COST * w * span)
+            min_vars: list = []
+            max_vars: list = []
+            for sv in slots:
+                s_tag = f"{tag}_{sv.slot.segment.index}"
+                wqs = _wq_start(model, sv, f"f_{s_tag}")
+                wqe = _wq_end_exclusive(model, sv, f"l_{s_tag}")
+
+                fv = model.NewIntVar(0, horizon, f"fwq_{s_tag}")
+                model.Add(fv == wqs).OnlyEnforceIf(sv.presence)
+                model.Add(fv == horizon).OnlyEnforceIf(sv.presence.Not())
+                min_vars.append(fv)
+
+                lv = model.NewIntVar(0, horizon, f"lwq_{s_tag}")
+                model.Add(lv == wqe).OnlyEnforceIf(sv.presence)
+                model.Add(lv == 0).OnlyEnforceIf(sv.presence.Not())
+                max_vars.append(lv)
+
+            first_wq = model.NewIntVar(0, horizon, f"first_{tag}")
+            last_wq = model.NewIntVar(0, horizon, f"last_{tag}")
+            model.AddMinEquality(first_wq, min_vars)
+            model.AddMaxEquality(last_wq, max_vars)
+            bounds[task_id] = (first_wq, last_wq, active)
+
+        for i, task_a in enumerate(task_ids):
+            for task_b in task_ids[i + 1 :]:
+                first_a, last_a, active_a = bounds[task_a]
+                first_b, last_b, active_b = bounds[task_b]
+
+                both = model.NewBoolVar(f"both_{person_id}_{task_a}_{task_b}")
+                model.AddBoolAnd([active_a, active_b]).OnlyEnforceIf(both)
+                model.AddBoolOr([active_a.Not(), active_b.Not()]).OnlyEnforceIf(
+                    both.Not()
+                )
+
+                a_before_b = model.NewBoolVar(f"ab_{person_id}_{task_a}_{task_b}")
+                model.Add(last_a <= first_b).OnlyEnforceIf([both, a_before_b])
+                model.Add(last_b <= first_a).OnlyEnforceIf([both, a_before_b.Not()])
+
+
+def _add_segment_order_constraints(
+    model: cp_model.CpModel,
+    mv: ModelVars,
+) -> None:
+    """When a task uses two segments on the same worker-day, fill the earlier one first.
+
+    E.g. a 6.5h task must take the full 6h morning before using the afternoon,
+    but it may skip straight to the afternoon if the morning slot is unused.
+    """
+    by_task_worker_day: dict[tuple[str, str, int], list[SlotVars]] = defaultdict(list)
+    for sv in mv.all_slots:
+        key = (sv.slot.task_id, sv.slot.person_id, sv.slot.day_index)
+        by_task_worker_day[key].append(sv)
+
+    for (task_id, person_id, day_idx), day_slots in by_task_worker_day.items():
+        if len(day_slots) < 2:
+            continue
+        ordered = sorted(day_slots, key=lambda sv: sv.slot.segment.compressed_start)
+        for prev, curr in zip(ordered, ordered[1:]):
+            both = model.NewBoolVar(
+                f"segpair_{task_id}_{person_id}_{day_idx}_{prev.slot.segment.index}_{curr.slot.segment.index}"
+            )
+            model.AddBoolAnd([prev.presence, curr.presence]).OnlyEnforceIf(both)
+            model.AddBoolOr([prev.presence.Not(), curr.presence.Not()]).OnlyEnforceIf(
+                both.Not()
+            )
+            model.Add(prev.size == prev.slot.segment.cap).OnlyEnforceIf(both)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1414,6 +1520,7 @@ def solve_week(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.max_solve_seconds
+    solver.parameters.num_search_workers = 1
     status = solver.Solve(model)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):

@@ -421,7 +421,9 @@ export function ProcessDefinitionsPanel({
                 <span className="space-y-0.5">
                   <span className="text-sm font-medium leading-none">No fragmentar</span>
                   <span className="block text-xs text-muted-foreground">
-                    Las tareas de este proceso se asignan en un único bloque sin dividir entre días.
+                    Las tareas de este proceso deben hacerse en un único bloque continuo
+                    (sin dividir entre mañana/tarde ni entre días). Más estricto que la
+                    regla general de continuidad del operario.
                   </span>
                 </span>
               </label>

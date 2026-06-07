@@ -219,11 +219,17 @@ def test_early_start_schedules_successor_next_day_not_later():
     assert min(ens_dates) <= tuesday, (
         f"ENSAMBLAJE should start by Tuesday, got {min(ens_dates)}"
     )
-    # And it must start at 08:00 (startSlot = 0.0)
-    ens_starts = [a.startSlot for a in result.assignments if a.taskId == "ens-1"]
-    assert min(ens_starts) < 0.1, (
-        f"ENSAMBLAJE should start at 08:00 (slot 0), got {min(ens_starts)}"
-    )
+    first_ens_date = min(ens_dates)
+    first_ens = [a for a in result.assignments if a.taskId == "ens-1" and a.date == first_ens_date]
+    first_start = min(a.startSlot for a in first_ens)
+    if first_ens_date == monday:
+        assert any(a.isAfternoon for a in first_ens), (
+            "ENSAMBLAJE should use Monday afternoon right after CNC finishes"
+        )
+    else:
+        assert first_start < 0.1, (
+            f"ENSAMBLAJE should start at 08:00 (slot 0), got {first_start}"
+        )
 
 
 def test_afternoon_used_when_morning_full():
@@ -237,9 +243,9 @@ def test_afternoon_used_when_morning_full():
         hourlyRate=14.75,
         overtimeHourlyRate=22.13,
     )
-    # Two tasks for the same worker and process, each on their own lamp.
-    # task-A uses 6h (entire morning). task-B (2h) should land in Monday afternoon
-    # rather than being pushed to Tuesday, since the afternoon is available.
+    monday = date(2026, 5, 4)
+    # Pin task-a to the full Monday morning so task-b must use the free afternoon
+    # (worker continuity forbids inserting task-b between fragments of task-a).
     result = run_solve(
         SolveRequest(
             weekStart=WEEK_START,
@@ -271,13 +277,71 @@ def test_afternoon_used_when_morning_full():
                 wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
             ),
             schedules=[PersonScheduleInput(personId="op1", weekly=WEEKLY, overrides=[])],
+            fixedAssignments=[
+                FixedAssignment(
+                    taskId="task-a",
+                    personId="op1",
+                    date=monday,
+                    startSlot=0.0,
+                    endSlot=6.0,
+                    hours=6.0,
+                    process="CNC",
+                ),
+            ],
         ),
     )
     assert result.unscheduledHours == 0
-    monday = date(2026, 5, 4)
     b_on_monday = [a for a in result.assignments if a.taskId == "task-b" and a.date == monday]
     assert b_on_monday, "task-b should use Monday afternoon when Monday morning is full"
     assert any(a.isAfternoon for a in b_on_monday), "task-b Monday slot should be in the afternoon"
+
+
+def test_task_remainder_uses_afternoon_same_day():
+    """6.5h on one day should fill the morning (6h) and spill into the afternoon (0.5h)."""
+    worker = EnginePerson(
+        id="op1",
+        iniciales="OP",
+        primary=["CNC"],
+        fallback=[],
+        capacityHours=8,
+        hourlyRate=14.75,
+        overtimeHourlyRate=22.13,
+    )
+    monday = date(2026, 5, 4)
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[worker],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="CNC",
+                    pendingHours=6.5,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=[PersonScheduleInput(personId="op1", weekly=WEEKLY, overrides=[])],
+        ),
+    )
+    assert result.unscheduledHours == 0
+    monday_assignments = [a for a in result.assignments if a.date == monday]
+    assert monday_assignments, "All 6.5h should fit on Monday (morning + afternoon)"
+    assert sum(a.hours for a in monday_assignments) >= 6.4
+    morning = [a for a in monday_assignments if not a.isAfternoon]
+    afternoon = [a for a in monday_assignments if a.isAfternoon]
+    assert morning and sum(a.hours for a in morning) >= 5.9, "Morning should be full (6h)"
+    assert afternoon and sum(a.hours for a in afternoon) >= 0.4, (
+        "Remainder after a full morning must use the afternoon, not the next day"
+    )
+    assert not any(a.date > monday for a in result.assignments)
 
 
 def test_canFragment_false_schedules_single_slot():

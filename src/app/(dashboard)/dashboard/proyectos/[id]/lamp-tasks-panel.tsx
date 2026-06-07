@@ -440,7 +440,7 @@ function AggregatedTaskTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => {
+        {rows.map((row, idx) => {
           const waitAfter = dryWaitHoursForProcess(row.process, waitHoursByProcess);
           const matching = groupTasks.filter((task) => task.process === row.process);
           const naveSummary = summarizeNaveIds(
