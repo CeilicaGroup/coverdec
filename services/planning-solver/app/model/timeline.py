@@ -327,3 +327,167 @@ class WorkerDayTimeline:
             if segment.compressed_start <= compressed_index < segment.compressed_end:
                 return segment
         return None
+
+
+@dataclass(frozen=True)
+class WeekQuarterRef:
+    """One productive 15-min quarter on a worker's week timeline."""
+
+    week_q: int
+    ui_slot: float
+    day_index: int
+    day: date
+
+
+@dataclass(frozen=True)
+class DailyAssignmentSlice:
+    """One calendar-day slice of a contiguous work block."""
+
+    day: date
+    day_index: int
+    start_slot: float
+    end_slot: float
+    hours: float
+    is_afternoon: bool
+
+
+@dataclass(frozen=True)
+class WorkerWeekTimeline:
+    """Contiguous productive quarters for one worker across the planning week."""
+
+    person_id: str
+    quarters: tuple[WeekQuarterRef, ...]
+    start_wqs: tuple[int, ...]
+    # end_exclusive[i][d] = week_q after d productive quarters from index i
+    end_exclusive: tuple[tuple[int, ...], ...]
+
+    @property
+    def cap(self) -> int:
+        return len(self.quarters)
+
+    @staticmethod
+    def build_from_days(day_timelines: list[WorkerDayTimeline]) -> WorkerWeekTimeline:
+        if not day_timelines:
+            return WorkerWeekTimeline("", (), (), ())
+        person_id = day_timelines[0].person_id
+        quarters: list[WeekQuarterRef] = []
+        for tl in sorted(day_timelines, key=lambda d: d.day_index):
+            if tl.cap <= 0:
+                continue
+            for idx in range(tl.cap):
+                quarters.append(
+                    WeekQuarterRef(
+                        week_q=tl.week_q[idx],
+                        ui_slot=tl.ui_slot[idx],
+                        day_index=tl.day_index,
+                        day=tl.day,
+                    )
+                )
+        return WorkerWeekTimeline.build_from_quarters(person_id, tuple(quarters))
+
+    @staticmethod
+    def build_from_quarters(
+        person_id: str,
+        quarters: tuple[WeekQuarterRef, ...],
+    ) -> WorkerWeekTimeline:
+        cap = len(quarters)
+        start_wqs = tuple(q.week_q for q in quarters)
+        end_rows: list[tuple[int, ...]] = []
+        for i in range(cap):
+            row = [quarters[i].week_q]
+            for d in range(1, cap + 1):
+                if i + d <= cap:
+                    row.append(quarters[i + d - 1].week_q + 1)
+                else:
+                    row.append(quarters[-1].week_q + 1 if cap > 0 else 0)
+            end_rows.append(tuple(row))
+        return WorkerWeekTimeline(person_id, quarters, start_wqs, tuple(end_rows))
+
+    def segment_start_indices(self) -> tuple[int, ...]:
+        """Indices where a new work segment begins (day or morning/afternoon)."""
+        if self.cap <= 0:
+            return ()
+        starts: list[int] = [0]
+        for i in range(1, self.cap):
+            prev = self.quarters[i - 1]
+            curr = self.quarters[i]
+            if curr.day_index != prev.day_index or curr.week_q != prev.week_q + 1:
+                starts.append(i)
+        return tuple(starts)
+
+    def end_wq_for(self, start: int, duration_q: int) -> int | None:
+        if duration_q <= 0 or start < 0 or start >= self.cap:
+            return None
+        if start + duration_q > self.cap:
+            return None
+        if duration_q >= len(self.end_exclusive[start]):
+            return None
+        return self.end_exclusive[start][duration_q]
+
+    def same_day_span(self, start: int, duration_q: int) -> bool:
+        if duration_q <= 0 or start < 0 or start + duration_q > self.cap:
+            return False
+        first = self.quarters[start].day_index
+        last = self.quarters[start + duration_q - 1].day_index
+        return first == last
+
+    def quarters_by_day(self, start: int, duration_q: int) -> dict[int, list[WeekQuarterRef]]:
+        grouped: dict[int, list[WeekQuarterRef]] = {}
+        for ref in self.quarters[start : start + duration_q]:
+            grouped.setdefault(ref.day_index, []).append(ref)
+        return grouped
+
+    def to_daily_slices(self, start: int, duration_q: int) -> list[DailyAssignmentSlice]:
+        if duration_q <= 0 or start < 0 or start + duration_q > self.cap:
+            return []
+        slices: list[DailyAssignmentSlice] = []
+        refs = list(self.quarters[start : start + duration_q])
+        run_start = 0
+        for i in range(1, len(refs) + 1):
+            split = (
+                i == len(refs)
+                or refs[i].day_index != refs[i - 1].day_index
+                or refs[i].week_q != refs[i - 1].week_q + 1
+            )
+            if not split:
+                continue
+            chunk = refs[run_start:i]
+            first = chunk[0]
+            last = chunk[-1]
+            slices.append(
+                DailyAssignmentSlice(
+                    day=first.day,
+                    day_index=first.day_index,
+                    start_slot=first.ui_slot,
+                    end_slot=last.ui_slot + 0.25,
+                    hours=len(chunk) / QUARTERS_PER_HOUR,
+                    is_afternoon=first.ui_slot >= AFTERNOON_UI_OFFSET,
+                )
+            )
+            run_start = i
+        return slices
+
+    def find_start_index(
+        self,
+        day_index: int,
+        start_slot: float,
+        hours: float,
+    ) -> int | None:
+        """Match a fixed/busy assignment to a block start index."""
+        size_q = round(hours * QUARTERS_PER_HOUR)
+        if size_q <= 0:
+            return None
+        best: int | None = None
+        best_dist = 1e9
+        for i, ref in enumerate(self.quarters):
+            if ref.day_index != day_index:
+                continue
+            if i + size_q > self.cap:
+                continue
+            if not self.same_day_span(i, size_q):
+                continue
+            dist = abs(ref.ui_slot - start_slot)
+            if dist < best_dist:
+                best_dist = dist
+                best = i
+        return best
