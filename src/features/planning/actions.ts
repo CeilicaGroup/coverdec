@@ -7,8 +7,8 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import {
   generatePlanning,
-  hasFuturePlannings,
   hasRegistrosFromWeek,
+  listFuturePlannings,
   publishPlanning,
   undoPlanning,
 } from "@/features/planning/service";
@@ -145,24 +145,33 @@ export async function publishPlanningAction(input: { planningId: string }) {
   return { ok: true };
 }
 
-const undoSchema = z.object({ weekStart: z.string().min(8) });
+const undoSchema = z.object({
+  weekStart: z.string().min(8),
+  includeFutureWeeks: z.boolean().optional(),
+});
 
-export async function undoPlanningAction(input: { weekStart: string }) {
+export async function undoPlanningAction(input: {
+  weekStart: string;
+  includeFutureWeeks?: boolean;
+}) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-  const { weekStart } = undoSchema.parse(input);
-  await undoPlanning({
+  const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
+  const result = await undoPlanning({
     naveId: ctx.naveId,
     weekStart: new Date(weekStart),
+    includeFutureWeeks,
   });
   revalidatePath("/dashboard", "layout");
-  return { ok: true };
+  return result;
 }
 
 export async function getPlanningUndoState(weekStartIso: string): Promise<{
   canUndo: boolean;
   hasFuturePlannings: boolean;
+  futurePlanningWeeks: string[];
+  hasPublishedFuture: boolean;
   hasRegistros: boolean;
   isPublished: boolean;
 }> {
@@ -171,6 +180,8 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
     return {
       canUndo: false,
       hasFuturePlannings: false,
+      futurePlanningWeeks: [],
+      hasPublishedFuture: false,
       hasRegistros: false,
       isPublished: false,
     };
@@ -187,18 +198,22 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
     return {
       canUndo: false,
       hasFuturePlannings: false,
+      futurePlanningWeeks: [],
+      hasPublishedFuture: false,
       hasRegistros: false,
       isPublished: false,
     };
   }
 
-  const [future, registros] = await Promise.all([
-    hasFuturePlannings(ctx.naveId, weekStart),
+  const [futurePlannings, registros] = await Promise.all([
+    listFuturePlannings(ctx.naveId, weekStart),
     hasRegistrosFromWeek(ctx.naveId, weekStart),
   ]);
   return {
-    canUndo: !future && !registros,
-    hasFuturePlannings: future,
+    canUndo: !registros,
+    hasFuturePlannings: futurePlannings.length > 0,
+    futurePlanningWeeks: futurePlannings.map((p) => p.weekStart.toISOString()),
+    hasPublishedFuture: futurePlannings.some((p) => p.status === "PUBLISHED"),
     hasRegistros: registros,
     isPublished: planning.status === "PUBLISHED",
   };

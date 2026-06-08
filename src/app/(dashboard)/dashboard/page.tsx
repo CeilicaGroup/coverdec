@@ -202,6 +202,8 @@ export default async function ResumenPage({
                   planningStatus={planning?.status ?? planningMeta?.status ?? null}
                   canUndo={undoState.canUndo}
                   hasFuturePlannings={undoState.hasFuturePlannings}
+                  futurePlanningWeeks={undoState.futurePlanningWeeks}
+                  hasPublishedFuture={undoState.hasPublishedFuture}
                   hasRegistros={undoState.hasRegistros}
                   isPublished={undoState.isPublished}
                   role={ctx.role}

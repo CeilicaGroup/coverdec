@@ -17,16 +17,18 @@ Modelo **compartido**: un mismo equipo productivo atiende varias empresas del gr
 
 ## Motor de planning (OR-Tools CP-SAT)
 
-El reparto semanal usa un **microservicio Python** ([`services/planning-solver/`](services/planning-solver/)) con **OR-Tools CP-SAT**: intervalos opcionales por tarea/persona/día, sin solapamiento en persona ni lámpara, precedencia por bastidor, **tiempos de secado** (`ProcessDefinition.waitHours`) y objetivo multi-criterio ponderado por [`PlanningPolicy`](prisma/schema.prisma) (panel **Estrategia** en el resumen).
+El reparto semanal usa un **microservicio Python** ([`services/planning-solver/`](services/planning-solver/)) con **OR-Tools CP-SAT** en modelo por **bloques contiguos** (un bloque opcional por tarea/operario; fin derivado del calendario). Restricciones duras: sin solapamiento en operario ni lámpara, precedencia por bastidor, **tiempos de secado** (`ProcessDefinition.waitHours`) y objetivo multi-criterio ponderado por [`PlanningPolicy`](prisma/schema.prisma) (panel **Estrategia** en el resumen).
 
 ### Objetivos y restricciones (qué mueve el plan)
 
 | Concepto | Tipo | Efecto |
 |----------|------|--------|
-| `ProcessDefinition.deadlineDay` | Restricción dura | No planificar ese proceso después del día de la semana (ej. imprimación ≤ miércoles). |
+| `minWeekQuarter` (precalculado en Node) | Restricción dura (dominio) | La tarea no puede empezar antes del fin del predecesor (+ secado), incluyendo semanas anteriores. Se calcula en `load-engine-input.ts` / `prior-week-planning.ts`. |
+| `canFragment=false` | Restricción dura | La tarea se asigna en un solo día y un solo operario. |
 | `Project.deliveryDate` | Objetivo suave (`wLate`) | Penaliza acabar la lámpara después de la fecha de entrega del proyecto. |
-| Precedencia por lámpara | Restricción dura | La tarea N+1 no empieza hasta que N esté totalmente asignada. |
+| Precedencia por lámpara | Restricción dura | La tarea N+1 no empieza hasta que N esté totalmente asignada en la semana. |
 | `waitHours` del proceso anterior | Restricción dura | Espera mínima entre procesos consecutivos (ej. 12 h tras imprimación). |
+| Continuidad del operario | Restricción dura (`NoOverlap`) | Un operario no intercala tareas (sin patrones A→B→A). |
 | `wUnscheduled` | Objetivo suave (tier 0) | Minimizar horas pendientes sin asignar en la semana. |
 | `wLaborCost` | Objetivo suave (tier 2) | Minimizar coste de horas normales y extra. |
 | `wLoadBalance` / `wMove` | Objetivo suave (tier 2) | Equilibrar carga entre operarios / estabilidad vs plan anterior. |

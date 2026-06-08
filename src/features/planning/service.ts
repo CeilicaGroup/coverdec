@@ -269,11 +269,25 @@ export async function hasFuturePlannings(
   return count > 0;
 }
 
+export async function listFuturePlannings(
+  naveId: string,
+  weekStart: Date,
+): Promise<Array<{ weekStart: Date; status: PlanningStatus }>> {
+  const monday = getMondayOf(weekStart);
+  return prisma.planning.findMany({
+    where: { naveId, weekStart: { gt: monday } },
+    orderBy: { weekStart: "asc" },
+    select: { weekStart: true, status: true },
+  });
+}
+
 export async function undoPlanning(args: {
   naveId: string;
   weekStart: Date;
-}): Promise<void> {
+  includeFutureWeeks?: boolean;
+}): Promise<{ deletedCount: number }> {
   const weekStart = getMondayOf(args.weekStart);
+  const includeFutureWeeks = args.includeFutureWeeks ?? false;
   const { year, week } = isoWeek(weekStart);
 
   const existing = await prisma.planning.findUnique({
@@ -285,9 +299,9 @@ export async function undoPlanning(args: {
     throw new Error("No hay planning para esta semana.");
   }
 
-  if (await hasFuturePlannings(args.naveId, weekStart)) {
+  if (!includeFutureWeeks && (await hasFuturePlannings(args.naveId, weekStart))) {
     throw new Error(
-      "No se puede deshacer: hay plannings de semanas posteriores. Elimínalos primero.",
+      "No se puede deshacer: hay plannings de semanas posteriores. Elimínalos primero o deshaz también las semanas posteriores.",
     );
   }
 
@@ -297,17 +311,37 @@ export async function undoPlanning(args: {
     );
   }
 
-  await prisma.$transaction(
+  const deletedCount = await prisma.$transaction(
     async (tx) => {
+      if (includeFutureWeeks) {
+        const result = await tx.planning.deleteMany({
+          where: {
+            naveId: args.naveId,
+            weekStart: { gte: weekStart },
+          },
+        });
+        return result.count;
+      }
+
       await tx.planning.delete({ where: { id: existing.id } });
+      return 1;
     },
     { timeout: PLANNING_WRITE_TX_MS },
   );
 
   log.info(
-    { naveId: args.naveId, year, week, planningId: existing.id },
+    {
+      naveId: args.naveId,
+      year,
+      week,
+      planningId: existing.id,
+      includeFutureWeeks,
+      deletedCount,
+    },
     "planning undone",
   );
+
+  return { deletedCount };
 }
 
 export {

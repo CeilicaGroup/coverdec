@@ -2,6 +2,7 @@ import { CalendarDays } from "lucide-react";
 import { requireDashboardContext } from "@/lib/context";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
+  businessDaysInMonth,
   formatMonthYearEs,
   monthCalendarWeeks,
   monthStartEnd,
@@ -9,9 +10,16 @@ import {
 } from "@/lib/civil-date";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import {
+  countDistinctProjectsInActualEntries,
+  countDistinctProjectsInAssignments,
+  getActualHoursForDateRange,
   getHolidaysForRange,
   getPlanningForDateRange,
+  getPlanningsInDateRange,
+  summarizeActualByDay,
+  summarizeMonthFromDaySummaries,
   summarizePlanningByDay,
+  summarizeWeekRowsFromCalendar,
 } from "@/features/planning/queries";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,11 +29,22 @@ import { ViewToggle } from "../../_components/view-toggle";
 import { CalendarScaleToggle } from "../../_components/calendar-scale-toggle";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { MonthCalendarGrid } from "./month-calendar-grid";
+import { MonthStatsBar } from "./month-stats-bar";
 import { getMondayOf } from "@/lib/week";
 
 function civilIsoToUtcDate(iso: string): Date {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!));
+}
+
+function maxHoursInSummaries(
+  summaries: Map<string, { totalHours: number }>,
+): number {
+  let max = 0;
+  for (const summary of summaries.values()) {
+    if (summary.totalHours > max) max = summary.totalHours;
+  }
+  return max;
 }
 
 export default async function MesPage({
@@ -42,15 +61,31 @@ export default async function MesPage({
   const naveScope = naveScopeFromContext(ctx);
   const monthLabel = formatMonthYearEs(monthStartIso);
   const monthParam = monthStartIso;
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const rangeStart = civilIsoToUtcDate(startIso);
   const rangeEnd = civilIsoToUtcDate(endIso);
   rangeEnd.setUTCHours(23, 59, 59, 999);
 
-  const [holidays, assignments] = await Promise.all([
+  const [holidays, assignments, actualEntries, planningsInRange] = await Promise.all([
     getHolidaysForRange(rangeStart, rangeEnd),
     view === "plan"
       ? getPlanningForDateRange({
+          naveScope,
+          rangeStart,
+          rangeEnd,
+          viewMode,
+        })
+      : Promise.resolve([]),
+    view === "actual"
+      ? getActualHoursForDateRange({
+          naveScope,
+          rangeStart,
+          rangeEnd,
+        })
+      : Promise.resolve([]),
+    view === "plan"
+      ? getPlanningsInDateRange({
           naveScope,
           rangeStart,
           rangeEnd,
@@ -64,22 +99,50 @@ export default async function MesPage({
     rangeStart,
     rangeEnd,
   );
-  const summariesByDay =
-    view === "plan" ? summarizePlanningByDay(assignments) : new Map();
+  const businessDays = businessDaysInMonth(monthStartIso, holidayDates);
   const weeks = monthCalendarWeeks(monthStartIso);
+
+  const summariesByDay =
+    view === "plan"
+      ? summarizePlanningByDay(assignments)
+      : summarizeActualByDay(actualEntries);
+
+  const weekRows = summarizeWeekRowsFromCalendar(
+    weeks,
+    summariesByDay,
+    view === "plan" ? planningsInRange : [],
+  );
+
+  const monthStats = summarizeMonthFromDaySummaries({
+    summariesByDay,
+    businessDays: businessDays.length,
+    calendarWeeks: weeks.length,
+    weeksWithPlanning: planningsInRange.length,
+    projectCount:
+      view === "plan"
+        ? countDistinctProjectsInAssignments(assignments)
+        : countDistinctProjectsInActualEntries(actualEntries),
+  });
+
+  const maxDayHours = maxHoursInSummaries(summariesByDay);
 
   const weekIsoForToggle = getMondayOf(civilIsoToUtcDate(startIso))
     .toISOString()
     .slice(0, 10);
 
-  const hasAnyPlanning = assignments.length > 0;
-  const noPublished = view === "plan" && !hasAnyPlanning;
+  const hasAnyData =
+    view === "plan" ? assignments.length > 0 : actualEntries.length > 0;
+  const noPublished = view === "plan" && !hasAnyData;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Vista mensual · ${monthLabel}`}
-        description="Resumen de planning por día laborable. Pulsa un día para ver la semana."
+        description={
+          view === "actual"
+            ? "Resumen de horas registradas por día laborable. Pulsa un día para abrir la semana."
+            : "Resumen de planning por día laborable con carga por operario y proyecto. Pulsa un día para abrir la semana."
+        }
         actions={
           <div className="flex items-center gap-2">
             <CalendarScaleToggle
@@ -102,35 +165,37 @@ export default async function MesPage({
         <PlanningEmptyNotice hiddenDraft={false} noPublished={noPublished} />
       )}
 
-      {view === "plan" && !hasAnyPlanning && !noPublished && (
+      {view === "plan" && !hasAnyData && !noPublished && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           No hay planning generado para este mes. Vuelve al Resumen y pulsa «Generar planning».
         </div>
       )}
 
-      {view === "actual" && (
+      {view === "actual" && !hasAnyData && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-          La vista mensual de registros reales estará disponible próximamente. Usa la vista semanal
-          para consultar registros por día.
+          No hay registros de horas en los días laborables de este mes.
         </div>
       )}
+
+      {hasAnyData && <MonthStatsBar stats={monthStats} view={view} />}
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="size-4" />
-            {view === "plan" ? "Calendario mensual · planning" : "Calendario mensual"}
+            {view === "plan" ? "Calendario mensual · planning" : "Calendario mensual · registros"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {view === "plan" && (
-            <MonthCalendarGrid
-              weeks={weeks}
-              summariesByDay={summariesByDay}
-              holidayDates={holidayDates}
-              view={view}
-            />
-          )}
+          <MonthCalendarGrid
+            weeks={weeks}
+            summariesByDay={summariesByDay}
+            weekRows={weekRows}
+            holidayDates={holidayDates}
+            view={view}
+            todayIso={todayIso}
+            maxDayHours={maxDayHours}
+          />
         </CardContent>
       </Card>
     </div>

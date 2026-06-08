@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   generatePlanningAction,
@@ -38,6 +39,7 @@ import {
   type PlanningHorizonMode,
 } from "@/features/planning/planning-horizon-schema";
 import { addWeeks, maxWeeksForMode } from "@/features/planning/planning-horizon";
+import { formatWeekRange } from "@/lib/week";
 import type { PlanningStatus, Role } from "@/generated/prisma";
 
 export interface GenerateButtonProject {
@@ -75,6 +77,8 @@ export function GenerateButton({
   planningStatus,
   canUndo,
   hasFuturePlannings,
+  futurePlanningWeeks,
+  hasPublishedFuture,
   hasRegistros,
   isPublished,
   role,
@@ -85,6 +89,8 @@ export function GenerateButton({
   planningStatus: PlanningStatus | null;
   canUndo: boolean;
   hasFuturePlannings: boolean;
+  futurePlanningWeeks: string[];
+  hasPublishedFuture: boolean;
   hasRegistros: boolean;
   isPublished: boolean;
   role: Role;
@@ -93,6 +99,8 @@ export function GenerateButton({
   const [pending, startTransition] = useTransition();
   const [undoing, startUndoTransition] = useTransition();
   const [publishing, setPublishing] = useState(false);
+  const [undoDialogOpen, setUndoDialogOpen] = useState(false);
+  const [includeFutureWeeks, setIncludeFutureWeeks] = useState(true);
   const [horizonKind, setHorizonKind] = useState<HorizonModeKind>("WEEK");
   const [projectId, setProjectId] = useState("");
   const [untilIso, setUntilIso] = useState("");
@@ -227,17 +235,24 @@ export function GenerateButton({
     });
   };
 
-  const onUndo = () => {
-    const message = isPublished
-      ? "El planning está publicado. ¿Deshacerlo? Se eliminará y las horas de las asignaciones volverán a pendiente en las tareas."
-      : "¿Deshacer el planning de esta semana? Se restaurarán las horas pendientes de las tareas.";
-    if (!confirm(message)) {
-      return;
-    }
+  const onUndoClick = () => {
+    setIncludeFutureWeeks(hasFuturePlannings);
+    setUndoDialogOpen(true);
+  };
+
+  const onConfirmUndo = () => {
     startUndoTransition(async () => {
       try {
-        await undoPlanningAction({ weekStart });
-        toast.success("Planning deshecho");
+        const result = await undoPlanningAction({
+          weekStart,
+          includeFutureWeeks: hasFuturePlannings ? includeFutureWeeks : false,
+        });
+        setUndoDialogOpen(false);
+        toast.success(
+          result.deletedCount === 1
+            ? "Planning deshecho"
+            : `Planning deshecho (${result.deletedCount} semanas)`,
+        );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Error al deshacer planning");
       }
@@ -258,22 +273,27 @@ export function GenerateButton({
 
   const undoBlockedReason = (() => {
     if (canUndo) return null;
-    if (hasFuturePlannings) {
-      return "Hay plannings de semanas posteriores. Deshaz primero esas semanas para poder deshacer esta.";
-    }
     if (hasRegistros) {
       return "Hay registros de horas en esta semana o en semanas posteriores. Usa Regenerar para ajustar el plan sin perder registros.";
     }
     return "No se puede deshacer el planning de esta semana.";
   })();
 
+  const futureWeekLabels = futurePlanningWeeks.map((iso) =>
+    formatWeekRange(new Date(iso)),
+  );
+
   const undoButton = (
     <Button
-      onClick={onUndo}
+      onClick={onUndoClick}
       disabled={!canUndo || undoing || pending}
       variant="outline"
       className="gap-2"
-      title={undoBlockedReason ? undefined : "Restaura horas pendientes y elimina el planning de esta semana"}
+      title={
+        undoBlockedReason
+          ? undefined
+          : "Restaura horas pendientes y elimina el planning de esta semana"
+      }
     >
       {undoing ? (
         <Loader2 className="size-4 animate-spin" />
@@ -289,6 +309,76 @@ export function GenerateButton({
 
   return (
     <>
+      <Dialog open={undoDialogOpen} onOpenChange={setUndoDialogOpen}>
+        <DialogContent className="w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deshacer planning</DialogTitle>
+            <DialogDescription>
+              {isPublished
+                ? "El planning de esta semana está publicado. Al deshacerlo se eliminará y las horas de las asignaciones volverán a quedar pendientes en las tareas."
+                : "Se eliminará el planning de esta semana y las horas asignadas volverán a quedar pendientes en las tareas."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {hasFuturePlannings && (
+            <div className="space-y-3 rounded-md border bg-muted/40 p-3">
+              <p className="text-sm">
+                Hay {futurePlanningWeeks.length}{" "}
+                {futurePlanningWeeks.length === 1 ? "semana posterior" : "semanas posteriores"}{" "}
+                con planning:
+              </p>
+              <ul className="list-inside list-disc text-sm text-muted-foreground">
+                {futureWeekLabels.map((label) => (
+                  <li key={label}>{label}</li>
+                ))}
+              </ul>
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <Checkbox
+                  checked={includeFutureWeeks}
+                  onCheckedChange={(checked) => setIncludeFutureWeeks(checked === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Deshacer también las semanas posteriores
+                  {(isPublished || hasPublishedFuture) && (
+                    <span className="mt-1 block text-muted-foreground">
+                      Incluye plannings publicados si los hay.
+                    </span>
+                  )}
+                </span>
+              </label>
+              {!includeFutureWeeks && (
+                <p className="text-xs text-muted-foreground">
+                  No puedes deshacer solo esta semana mientras existan plannings posteriores.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUndoDialogOpen(false)}
+              disabled={undoing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={onConfirmUndo}
+              disabled={undoing || (hasFuturePlannings && !includeFutureWeeks)}
+              className="gap-2"
+            >
+              {undoing ? <Loader2 className="size-4 animate-spin" /> : null}
+              {hasFuturePlannings && includeFutureWeeks
+                ? `Deshacer ${futurePlanningWeeks.length + 1} semanas`
+                : "Deshacer"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={warningsOpen} onOpenChange={setWarningsOpen}>
         <DialogContent className="w-full max-w-lg">
           <DialogHeader>

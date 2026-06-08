@@ -900,6 +900,9 @@ def _add_split_terms(
     terms: list,
 ) -> None:
     for task in data.tasks:
+        # canFragment=false already caps active blocks to one via hard constraint.
+        if not task.canFragment:
+            continue
         blocks = mv.by_task.get(task.id, [])
         if len(blocks) < 2:
             continue

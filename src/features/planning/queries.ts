@@ -1225,21 +1225,289 @@ export interface PlanningRangeAssignment {
   date: Date;
   hours: number;
   personId: string;
+  process: string;
   person: {
     id: string;
     iniciales: string;
     color: string;
   };
   task: {
+    id: string;
     projectId: string;
     project: { name: string };
   };
 }
 
+export interface DayTaskHours {
+  taskId: string;
+  process: string;
+  personIniciales: string;
+  hours: number;
+}
+
+export interface DayProjectDetail {
+  id: string;
+  name: string;
+  hours: number;
+  tasks: DayTaskHours[];
+}
+
 export interface DayPlanningSummary {
   totalHours: number;
+  assignmentCount: number;
   people: Array<{ id: string; iniciales: string; color: string }>;
+  peopleHours: Array<{ id: string; iniciales: string; color: string; hours: number }>;
   projectCount: number;
+  topProjects: Array<{ id: string; name: string; hours: number }>;
+  projects: DayProjectDetail[];
+  processes: string[];
+  processHours: Array<{ process: string; hours: number }>;
+}
+
+export interface MonthPlanningStats {
+  totalHours: number;
+  plannedDays: number;
+  businessDays: number;
+  peopleCount: number;
+  projectCount: number;
+  weeksWithPlanning: number;
+  calendarWeeks: number;
+}
+
+export interface WeekRowSummary {
+  weekMondayIso: string;
+  weekNumber: number;
+  year: number;
+  totalHours: number;
+  status: PlanningStatus | null;
+}
+
+interface DayWorkSlice {
+  dateIso: string;
+  hours: number;
+  personId: string;
+  person: { id: string; iniciales: string; color: string };
+  projectId: string;
+  projectName: string;
+  process: string;
+  taskId: string;
+}
+
+function buildDaySummaries(
+  slices: ReadonlyArray<DayWorkSlice>,
+): Map<string, DayPlanningSummary> {
+  const byDay = new Map<string, DayPlanningSummary>();
+
+  for (const slice of slices) {
+    let summary = byDay.get(slice.dateIso);
+    if (!summary) {
+      summary = {
+        totalHours: 0,
+        assignmentCount: 0,
+        people: [],
+        peopleHours: [],
+        projectCount: 0,
+        topProjects: [],
+        projects: [],
+        processes: [],
+        processHours: [],
+      };
+      byDay.set(slice.dateIso, summary);
+    }
+    summary.totalHours += slice.hours;
+    summary.assignmentCount += 1;
+
+    if (!summary.people.some((p) => p.id === slice.personId)) {
+      summary.people.push(slice.person);
+    }
+    if (!summary.processes.includes(slice.process)) {
+      summary.processes.push(slice.process);
+    }
+  }
+
+  for (const [iso, summary] of byDay) {
+    const daySlices = slices.filter((s) => s.dateIso === iso);
+    const projectIds = new Set(daySlices.map((s) => s.projectId));
+    summary.projectCount = projectIds.size;
+
+    const hoursByProject = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        hours: number;
+        tasks: Map<string, DayTaskHours>;
+      }
+    >();
+    const hoursByPerson = new Map<
+      string,
+      { id: string; iniciales: string; color: string; hours: number }
+    >();
+    const hoursByProcess = new Map<string, number>();
+
+    for (const s of daySlices) {
+      let project = hoursByProject.get(s.projectId);
+      if (!project) {
+        project = {
+          id: s.projectId,
+          name: s.projectName,
+          hours: 0,
+          tasks: new Map(),
+        };
+        hoursByProject.set(s.projectId, project);
+      }
+      project.hours += s.hours;
+
+      const taskKey = `${s.taskId}:${s.personId}`;
+      const existingTask = project.tasks.get(taskKey);
+      if (existingTask) {
+        existingTask.hours += s.hours;
+      } else {
+        project.tasks.set(taskKey, {
+          taskId: s.taskId,
+          process: s.process,
+          personIniciales: s.person.iniciales,
+          hours: s.hours,
+        });
+      }
+
+      const existingPerson = hoursByPerson.get(s.personId);
+      if (existingPerson) {
+        existingPerson.hours += s.hours;
+      } else {
+        hoursByPerson.set(s.personId, {
+          id: s.person.id,
+          iniciales: s.person.iniciales,
+          color: s.person.color,
+          hours: s.hours,
+        });
+      }
+
+      hoursByProcess.set(s.process, (hoursByProcess.get(s.process) ?? 0) + s.hours);
+    }
+
+    summary.projects = [...hoursByProject.values()]
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        hours: project.hours,
+        tasks: [...project.tasks.values()].sort((a, b) => b.hours - a.hours),
+      }))
+      .sort((a, b) => b.hours - a.hours);
+    summary.topProjects = summary.projects
+      .slice(0, 2)
+      .map(({ id, name, hours }) => ({ id, name, hours }));
+    summary.peopleHours = [...hoursByPerson.values()].sort((a, b) => b.hours - a.hours);
+    summary.processHours = [...hoursByProcess.entries()]
+      .map(([process, hours]) => ({ process, hours }))
+      .sort((a, b) => b.hours - a.hours);
+    summary.processes = summary.processHours.map((p) => p.process);
+    byDay.set(iso, summary);
+  }
+
+  return byDay;
+}
+
+export function summarizeMonthFromDaySummaries(args: {
+  summariesByDay: Map<string, DayPlanningSummary>;
+  businessDays: number;
+  calendarWeeks: number;
+  weeksWithPlanning: number;
+  projectCount: number;
+}): MonthPlanningStats {
+  let totalHours = 0;
+  let plannedDays = 0;
+  const people = new Set<string>();
+
+  for (const summary of args.summariesByDay.values()) {
+    if (summary.totalHours <= 0) continue;
+    plannedDays += 1;
+    totalHours += summary.totalHours;
+    for (const p of summary.people) people.add(p.id);
+  }
+
+  return {
+    totalHours,
+    plannedDays,
+    businessDays: args.businessDays,
+    peopleCount: people.size,
+    projectCount: args.projectCount,
+    weeksWithPlanning: args.weeksWithPlanning,
+    calendarWeeks: args.calendarWeeks,
+  };
+}
+
+export function countDistinctProjectsInAssignments(
+  assignments: ReadonlyArray<{ task: { projectId: string } }>,
+): number {
+  return new Set(assignments.map((a) => a.task.projectId)).size;
+}
+
+export function countDistinctProjectsInActualEntries(
+  entries: ReadonlyArray<{ project: { id: string } | null; task: { projectId: string } | null }>,
+): number {
+  const ids = new Set<string>();
+  for (const e of entries) {
+    const id = e.project?.id ?? e.task?.projectId;
+    if (id) ids.add(id);
+  }
+  return ids.size;
+}
+
+export function summarizeWeekRowsFromCalendar(
+  weeks: Array<Array<{ iso: string } | null>>,
+  summariesByDay: Map<string, DayPlanningSummary>,
+  plannings: Array<{ weekStart: Date; status: PlanningStatus }> = [],
+): Map<string, WeekRowSummary> {
+  const planningByMonday = new Map<string, PlanningStatus>();
+  for (const planning of plannings) {
+    const iso = getMondayOf(planning.weekStart).toISOString().slice(0, 10);
+    planningByMonday.set(iso, planning.status);
+  }
+
+  const byMonday = new Map<string, WeekRowSummary>();
+
+  for (const week of weeks) {
+    let weekMondayIso: string | null = null;
+    let totalHours = 0;
+
+    for (const cell of week) {
+      if (!cell) continue;
+      if (!weekMondayIso) {
+        weekMondayIso = getMondayOf(new Date(`${cell.iso}T00:00:00.000Z`))
+          .toISOString()
+          .slice(0, 10);
+      }
+      totalHours += summariesByDay.get(cell.iso)?.totalHours ?? 0;
+    }
+
+    if (!weekMondayIso) continue;
+
+    const monday = getMondayOf(new Date(`${weekMondayIso}T00:00:00.000Z`));
+    const { year, week: weekNumber } = isoWeek(monday);
+    byMonday.set(weekMondayIso, {
+      weekMondayIso,
+      weekNumber,
+      year,
+      totalHours,
+      status: planningByMonday.get(weekMondayIso) ?? null,
+    });
+  }
+
+  for (const planning of plannings) {
+    const weekMondayIso = getMondayOf(planning.weekStart).toISOString().slice(0, 10);
+    if (byMonday.has(weekMondayIso)) continue;
+    const { year, week: weekNumber } = isoWeek(planning.weekStart);
+    byMonday.set(weekMondayIso, {
+      weekMondayIso,
+      weekNumber,
+      year,
+      totalHours: 0,
+      status: planning.status,
+    });
+  }
+
+  return byMonday;
 }
 
 export async function getPlanningForDateRange({
@@ -1272,11 +1540,13 @@ export async function getPlanningForDateRange({
       date: true,
       hours: true,
       personId: true,
+      process: true,
       person: {
         select: { id: true, iniciales: true, color: true },
       },
       task: {
         select: {
+          id: true,
           projectId: true,
           project: { select: { name: true } },
         },
@@ -1288,40 +1558,172 @@ export async function getPlanningForDateRange({
   return rows;
 }
 
+export async function getPlanningsInDateRange({
+  naveScope,
+  rangeStart,
+  rangeEnd,
+  viewMode = "published_only",
+}: {
+  naveScope: string[] | null;
+  rangeStart: Date;
+  rangeEnd: Date;
+  viewMode?: PlanningViewMode;
+}): Promise<Array<{ weekStart: Date; status: PlanningStatus }>> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const naveIn = naveScope !== null ? { in: naveScope } : undefined;
+  const planningStatus =
+    viewMode === "published_only"
+      ? { status: PlanningStatus.PUBLISHED }
+      : {};
+
+  return prisma.planning.findMany({
+    where: {
+      weekStart: { lte: rangeEnd },
+      weekEnd: { gte: rangeStart },
+      ...(naveIn ? { naveId: naveIn } : {}),
+      ...planningStatus,
+    },
+    select: { weekStart: true, status: true },
+    orderBy: { weekStart: "asc" },
+  });
+}
+
+export async function getActualHoursForDateRange({
+  naveScope,
+  rangeStart,
+  rangeEnd,
+}: {
+  naveScope: string[] | null;
+  rangeStart: Date;
+  rangeEnd: Date;
+}): Promise<ActualHourEntry[]> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+
+  const rangeEndExclusive = new Date(rangeEnd.getTime() + 86_400_000);
+
+  const entries = await prisma.timeEntry.findMany({
+    where: {
+      startedAt: { gte: rangeStart, lt: rangeEndExclusive },
+      OR: [
+        { endedAt: { not: null }, hours: { gt: 0 } },
+        { endedAt: null },
+      ],
+      user: {
+        personId: { not: null },
+        ...(naveScope !== null
+          ? { person: { personNaves: { some: { naveId: { in: naveScope } } } } }
+          : {}),
+      },
+    },
+    include: {
+      user: { include: { person: { include: { user: { select: { name: true } } } } } },
+      project: { select: { id: true, name: true } },
+      lamp: { select: { id: true, name: true } },
+      task: {
+        select: {
+          id: true,
+          process: true,
+          projectId: true,
+          lampId: true,
+          isCompleted: true,
+          lampElement: {
+            select: { label: true, elementType: { select: { name: true } } },
+          },
+          lamp: { select: { elementType: { select: { name: true } } } },
+        },
+      },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+
+  const startIso = rangeStart.toISOString().slice(0, 10);
+  const endIso = rangeEnd.toISOString().slice(0, 10);
+  const mapped: ActualHourEntry[] = [];
+
+  for (const e of entries) {
+    const date = e.startedAt.toISOString().slice(0, 10);
+    if (date < startIso || date > endIso) continue;
+
+    const endedAt = e.endedAt ?? null;
+    const isRunning = endedAt == null;
+    const hours = resolveTimeEntryHours(e);
+    if (hours <= 0 || !e.user.person) continue;
+
+    mapped.push({
+      id: e.id,
+      userId: e.userId,
+      date,
+      startedAt: e.startedAt,
+      endedAt,
+      hours,
+      isRunning,
+      process: e.process,
+      notes: e.notes,
+      personId: e.user.personId,
+      person: {
+        id: e.user.person.id,
+        nombre: e.user.person.user?.name ?? e.user.person.iniciales,
+        iniciales: e.user.person.iniciales,
+        color: e.user.person.color,
+      },
+      taskId: e.taskId,
+      task: e.task
+        ? {
+            id: e.task.id,
+            process: e.task.process,
+            projectId: e.task.projectId,
+            lampId: e.task.lampId,
+            isCompleted: e.task.isCompleted,
+            lampElement: e.task.lampElement,
+            lamp: e.task.lamp,
+          }
+        : null,
+      project: e.project,
+      lamp: e.lamp,
+    });
+  }
+
+  return mapped;
+}
+
 export function summarizePlanningByDay(
   assignments: ReadonlyArray<PlanningRangeAssignment>,
 ): Map<string, DayPlanningSummary> {
-  const byDay = new Map<string, DayPlanningSummary>();
+  return buildDaySummaries(
+    assignments.map((a) => ({
+      dateIso: a.date.toISOString().slice(0, 10),
+      hours: a.hours,
+      personId: a.personId,
+      person: a.person,
+      projectId: a.task.projectId,
+      projectName: a.task.project.name,
+      process: a.process,
+      taskId: a.task.id,
+    })),
+  );
+}
 
-  for (const a of assignments) {
-    const iso = a.date.toISOString().slice(0, 10);
-    let summary = byDay.get(iso);
-    if (!summary) {
-      summary = { totalHours: 0, people: [], projectCount: 0 };
-      byDay.set(iso, summary);
-    }
-    summary.totalHours += a.hours;
-
-    if (!summary.people.some((p) => p.id === a.personId)) {
-      summary.people.push({
-        id: a.person.id,
-        iniciales: a.person.iniciales,
-        color: a.person.color,
-      });
-    }
-  }
-
-  for (const [iso, summary] of byDay) {
-    const projectIds = new Set(
-      assignments
-        .filter((a) => a.date.toISOString().slice(0, 10) === iso)
-        .map((a) => a.task.projectId),
-    );
-    summary.projectCount = projectIds.size;
-    byDay.set(iso, summary);
-  }
-
-  return byDay;
+export function summarizeActualByDay(
+  entries: ReadonlyArray<ActualHourEntry>,
+): Map<string, DayPlanningSummary> {
+  return buildDaySummaries(
+    entries
+      .filter((e) => e.person != null && e.hours > 0)
+      .map((e) => ({
+        dateIso: e.date,
+        hours: e.hours,
+        personId: e.person!.id,
+        person: {
+          id: e.person!.id,
+          iniciales: e.person!.iniciales,
+          color: e.person!.color,
+        },
+        projectId: e.project?.id ?? e.task?.projectId ?? e.id,
+        projectName: e.project?.name ?? "Sin proyecto",
+        process: e.process ?? e.task?.process ?? "—",
+        taskId: e.taskId ?? e.task?.id ?? `${e.id}-task`,
+      })),
+  );
 }
 
 export { DAY_MS };
