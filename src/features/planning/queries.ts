@@ -829,6 +829,47 @@ function buildAssignedByProject(
   return assignedByProject;
 }
 
+function buildAssignedHoursByTaskId(
+  planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
+): Map<string, number> {
+  const byTask = new Map<string, number>();
+  if (!planning) return byTask;
+  for (const a of planning.assignments) {
+    byTask.set(a.taskId, (byTask.get(a.taskId) ?? 0) + a.hours);
+  }
+  return byTask;
+}
+
+function buildPlannedEndByProjectFromPlanning(
+  planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
+): Map<string, Date> {
+  const byProject = new Map<string, Date>();
+  if (!planning) return byProject;
+  for (const a of planning.assignments) {
+    const pid = a.task.projectId;
+    const cur = byProject.get(pid);
+    if (!cur || a.date > cur) byProject.set(pid, a.date);
+  }
+  return byProject;
+}
+
+function pendingToPlanHoursForTask(
+  task: {
+    id: string;
+    estimatedHours: number;
+    doneHours: number;
+    isCompleted: boolean;
+  },
+  priorPlannedHoursByTask: Map<string, number>,
+  assignedThisWeekByTask: Map<string, number>,
+): number {
+  if (task.isCompleted) return 0;
+  const remaining = Math.max(0, task.estimatedHours - task.doneHours);
+  const prior = priorPlannedHoursByTask.get(task.id) ?? 0;
+  const assigned = assignedThisWeekByTask.get(task.id) ?? 0;
+  return Math.max(0, remaining - prior - assigned);
+}
+
 function pendingProcessesForProject(
   tasks: {
     process: string;
@@ -872,58 +913,59 @@ export function summarizeAllActiveProjects(
   projects: Awaited<ReturnType<typeof getActiveProjectsWithLoad>>,
   planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
   priorPlannedHoursByProject: Map<string, number> = new Map(),
+  options: {
+    priorPlannedHoursByTask?: Map<string, number>;
+    priorPlannedEndByProject?: Map<string, Date>;
+  } = {},
 ): ActiveProjectRow[] {
   const assignedByProject = buildAssignedByProject(planning);
-
-  const plannedEndByProject = new Map<string, Date>();
-  if (planning) {
-    for (const a of planning.assignments) {
-      const pid = a.task.projectId;
-      const cur = plannedEndByProject.get(pid);
-      if (!cur || a.date > cur) plannedEndByProject.set(pid, a.date);
-    }
-  }
+  const assignedThisWeekByTask = buildAssignedHoursByTaskId(planning);
+  const plannedEndThisWeekByProject = buildPlannedEndByProjectFromPlanning(planning);
+  const priorPlannedHoursByTask = options.priorPlannedHoursByTask ?? new Map();
+  const priorPlannedEndByProject = options.priorPlannedEndByProject ?? new Map();
 
   const rows: ActiveProjectRow[] = [];
 
   for (const p of projects) {
     const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
     const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
-    const remainingWorkHours = remainingWorkHoursForProject(
-      p.tasks.map((task) => ({
-        estimatedHours: task.estimatedHours,
-        isCompleted: task.isCompleted,
-        pendingToPlanHours: task.pendingHours,
-        remainingWorkHours: task.pendingHours,
-      })),
+    const openTasks = p.tasks.filter(
+      (t) => !t.isCompleted && Math.max(0, t.estimatedHours - t.doneHours) > 1e-6,
+    );
+    const remainingWorkHours = openTasks.reduce(
+      (acc, t) => acc + Math.max(0, t.estimatedHours - t.doneHours),
+      0,
     );
     if (remainingWorkHours <= 0) continue;
 
     const assignedThisWeek = assignedByProject.get(p.id) ?? 0;
     const priorPlannedHours = priorPlannedHoursByProject.get(p.id) ?? 0;
-    const lastPlannedDate = plannedEndByProject.get(p.id) ?? null;
+    const lastPlannedDate =
+      [priorPlannedEndByProject.get(p.id), plannedEndThisWeekByProject.get(p.id)]
+        .filter((d): d is Date => d != null)
+        .reduce<Date | null>(
+          (max, d) => (!max || d > max ? d : max),
+          null,
+        );
 
     const weekMetrics = aggregateWeekTaskMetrics(
-      p.tasks
-        .filter((t) =>
-          !isTaskClosedForPlanning({
-            estimatedHours: t.estimatedHours,
-            isCompleted: t.isCompleted,
-            pendingToPlanHours: t.pendingHours,
-            remainingWorkHours: t.pendingHours,
-          })
-        )
-        .map((t) =>
-          computeWeekTaskMetrics({
-            estimatedHours: t.estimatedHours,
-            doneHours: t.doneHours,
-            priorPlannedHours: 0,
-            assignedThisWeekHours: 0,
-            pendingHours: t.pendingHours,
-          }),
-        ),
+      openTasks.map((t) => {
+        const priorTask = priorPlannedHoursByTask.get(t.id) ?? 0;
+        const assignedTask = assignedThisWeekByTask.get(t.id) ?? 0;
+        const pendingToPlan = pendingToPlanHoursForTask(
+          t,
+          priorPlannedHoursByTask,
+          assignedThisWeekByTask,
+        );
+        return computeWeekTaskMetrics({
+          estimatedHours: t.estimatedHours,
+          doneHours: t.doneHours,
+          priorPlannedHours: priorTask,
+          assignedThisWeekHours: assignedTask,
+          pendingHours: pendingToPlan,
+        });
+      }),
     );
-    const weekScopeHours = weekMetrics.pendingHours + assignedThisWeek;
 
     const progress = computeWeekProgress({
       estimatedHours,
@@ -933,11 +975,19 @@ export function summarizeAllActiveProjects(
     });
 
     const pendingProcesses = pendingProcessesForProject(
-      p.tasks.map((task) => ({
-        ...task,
-        pendingToPlanHours: task.pendingHours,
-        remainingWorkHours: task.pendingHours,
-      })),
+      openTasks.map((task) => {
+        const pendingToPlan = pendingToPlanHoursForTask(
+          task,
+          priorPlannedHoursByTask,
+          assignedThisWeekByTask,
+        );
+        const remaining = Math.max(0, task.estimatedHours - task.doneHours);
+        return {
+          ...task,
+          pendingToPlanHours: pendingToPlan,
+          remainingWorkHours: remaining,
+        };
+      }),
     );
 
     rows.push({
@@ -953,7 +1003,7 @@ export function summarizeAllActiveProjects(
       doneHours,
       pendingHours: weekMetrics.pendingHours,
       remainingWorkHours,
-      weekScopeHours,
+      weekScopeHours: weekMetrics.weekScopeHours,
       assignedThisWeek,
       progressPct: progress.progressBasePct,
       expectedProgressPct: progress.progressEndPct,
@@ -1001,40 +1051,29 @@ export function summarizeUnassignedProjects(
   projects: Awaited<ReturnType<typeof getActiveProjectsWithLoad>>,
   planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
   priorPlannedHoursByProject: Map<string, number> = new Map(),
+  options: {
+    priorPlannedHoursByTask?: Map<string, number>;
+  } = {},
 ): UnassignedProjectRow[] {
   const assignedByProject = buildAssignedByProject(planning);
+  const assignedThisWeekByTask = buildAssignedHoursByTaskId(planning);
+  const priorPlannedHoursByTask = options.priorPlannedHoursByTask ?? new Map();
   const rows: UnassignedProjectRow[] = [];
 
   for (const p of projects) {
     const estimatedHours = p.tasks.reduce((a, t) => a + t.estimatedHours, 0);
     const doneHours = p.tasks.reduce((a, t) => a + t.doneHours, 0);
-    const openTasks = p.tasks.filter((t) =>
-      !isTaskClosedForPlanning({
-        estimatedHours: t.estimatedHours,
-        isCompleted: t.isCompleted,
-        pendingToPlanHours: t.pendingHours,
-        remainingWorkHours: t.pendingHours,
-      })
+    const openTasks = p.tasks.filter(
+      (t) => !t.isCompleted && Math.max(0, t.estimatedHours - t.doneHours) > 1e-6,
     );
-    const pendingHours = openTasks.reduce((a, t) => a + t.pendingHours, 0);
-    const remainingWorkHours = remainingWorkHoursForProject(
-      p.tasks.map((task) => ({
-        estimatedHours: task.estimatedHours,
-        isCompleted: task.isCompleted,
-        pendingToPlanHours: task.pendingHours,
-        remainingWorkHours: task.pendingHours,
-      })),
+    const remainingWorkHours = openTasks.reduce(
+      (acc, t) => acc + Math.max(0, t.estimatedHours - t.doneHours),
+      0,
     );
     if (remainingWorkHours <= 0) continue;
 
     const assignedThisWeek = assignedByProject.get(p.id) ?? 0;
-    const hasPlanning = planning != null;
-
-    // Sin planning: todo lo pendiente está sin asignar. Con planning: sin horas esta semana.
-    if (hasPlanning && assignedThisWeek > 0) continue;
-
     const priorPlannedHours = priorPlannedHoursByProject.get(p.id) ?? 0;
-    const weekScopeHours = pendingHours + assignedThisWeek;
     const progress = computeWeekProgress({
       estimatedHours,
       doneHours,
@@ -1042,12 +1081,36 @@ export function summarizeUnassignedProjects(
       assignedThisWeekHours: assignedThisWeek,
     });
 
+    // Ya planificado al cierre de semanas anteriores (incl. borradores).
+    if (progress.progressBasePct >= 100) continue;
+
+    const pendingHours = openTasks.reduce(
+      (acc, t) =>
+        acc +
+        pendingToPlanHoursForTask(t, priorPlannedHoursByTask, assignedThisWeekByTask),
+      0,
+    );
+    if (pendingHours <= 1e-6 && assignedThisWeek <= 1e-6) continue;
+
+    const hasPlanning = planning != null;
+    if (hasPlanning && assignedThisWeek > 0) continue;
+
+    const weekScopeHours = pendingHours + assignedThisWeek;
+
     const pendingProcesses = pendingProcessesForProject(
-      p.tasks.map((task) => ({
-        ...task,
-        pendingToPlanHours: task.pendingHours,
-        remainingWorkHours: task.pendingHours,
-      })),
+      openTasks.map((task) => {
+        const pendingToPlan = pendingToPlanHoursForTask(
+          task,
+          priorPlannedHoursByTask,
+          assignedThisWeekByTask,
+        );
+        const remaining = Math.max(0, task.estimatedHours - task.doneHours);
+        return {
+          ...task,
+          pendingToPlanHours: pendingToPlan,
+          remainingWorkHours: remaining,
+        };
+      }),
     );
 
     rows.push({
@@ -1155,6 +1218,110 @@ export function summarizePlanning(
     byPerson.set(a.personId, (byPerson.get(a.personId) ?? 0) + a.hours);
   }
   return { totalHours: total, byDay, byPerson };
+}
+
+export interface PlanningRangeAssignment {
+  id: string;
+  date: Date;
+  hours: number;
+  personId: string;
+  person: {
+    id: string;
+    iniciales: string;
+    color: string;
+  };
+  task: {
+    projectId: string;
+    project: { name: string };
+  };
+}
+
+export interface DayPlanningSummary {
+  totalHours: number;
+  people: Array<{ id: string; iniciales: string; color: string }>;
+  projectCount: number;
+}
+
+export async function getPlanningForDateRange({
+  naveScope,
+  rangeStart,
+  rangeEnd,
+  viewMode = "published_only",
+}: {
+  naveScope: string[] | null;
+  rangeStart: Date;
+  rangeEnd: Date;
+  viewMode?: PlanningViewMode;
+}): Promise<PlanningRangeAssignment[]> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const naveIn = naveScope !== null ? { in: naveScope } : undefined;
+  const planningStatus =
+    viewMode === "published_only"
+      ? { status: PlanningStatus.PUBLISHED }
+      : {};
+
+  const rows = await prisma.planningAssignment.findMany({
+    where: {
+      date: { gte: rangeStart, lte: rangeEnd },
+      ...(naveIn
+        ? { planning: { naveId: naveIn, ...planningStatus } }
+        : { planning: planningStatus }),
+    },
+    select: {
+      id: true,
+      date: true,
+      hours: true,
+      personId: true,
+      person: {
+        select: { id: true, iniciales: true, color: true },
+      },
+      task: {
+        select: {
+          projectId: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [{ date: "asc" }, { startSlot: "asc" }],
+  });
+
+  return rows;
+}
+
+export function summarizePlanningByDay(
+  assignments: ReadonlyArray<PlanningRangeAssignment>,
+): Map<string, DayPlanningSummary> {
+  const byDay = new Map<string, DayPlanningSummary>();
+
+  for (const a of assignments) {
+    const iso = a.date.toISOString().slice(0, 10);
+    let summary = byDay.get(iso);
+    if (!summary) {
+      summary = { totalHours: 0, people: [], projectCount: 0 };
+      byDay.set(iso, summary);
+    }
+    summary.totalHours += a.hours;
+
+    if (!summary.people.some((p) => p.id === a.personId)) {
+      summary.people.push({
+        id: a.person.id,
+        iniciales: a.person.iniciales,
+        color: a.person.color,
+      });
+    }
+  }
+
+  for (const [iso, summary] of byDay) {
+    const projectIds = new Set(
+      assignments
+        .filter((a) => a.date.toISOString().slice(0, 10) === iso)
+        .map((a) => a.task.projectId),
+    );
+    summary.projectCount = projectIds.size;
+    byDay.set(iso, summary);
+  }
+
+  return byDay;
 }
 
 export { DAY_MS };

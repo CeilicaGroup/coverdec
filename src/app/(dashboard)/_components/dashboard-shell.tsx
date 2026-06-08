@@ -59,6 +59,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/dashboard", label: "Resumen", icon: LayoutGrid, exact: true, operarioHidden: true },
       { href: "/dashboard/semana", label: "Vista semana", icon: CalendarDays },
+      { href: "/dashboard/mes", label: "Vista mes", icon: CalendarDays },
       { href: "/dashboard/persona", label: "Por persona", icon: Users },
       { href: "/dashboard/proyecto", label: "Por proyecto", icon: ClipboardList },
       { href: "/dashboard/gantt", label: "Gantt", icon: LineChart, operarioHidden: true },

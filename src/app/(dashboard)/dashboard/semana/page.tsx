@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { ViewToggle } from "../../_components/view-toggle";
+import { CalendarScaleToggle } from "../../_components/calendar-scale-toggle";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
@@ -96,6 +97,12 @@ export default async function SemanaPage({
         description={formatWeekRange(weekStart)}
         actions={
           <div className="flex items-center gap-2">
+            <CalendarScaleToggle
+              scale="week"
+              weekIso={weekIso}
+              monthParam={`${weekIso.slice(0, 7)}-01`}
+              view={view}
+            />
             <ViewToggle basePath="/dashboard/semana" view={view} week={weekIso} />
             <WeekNav
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}

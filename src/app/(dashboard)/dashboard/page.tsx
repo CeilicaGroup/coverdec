@@ -71,6 +71,7 @@ import {
 import { GlobalProjectPresetControl } from "./proyectos/project-strategy-controls";
 import { getPlanningUndoState } from "@/features/planning/actions";
 import {
+  buildPlannedEndByProjectId,
   buildPriorPlannedHoursByProjectId,
   buildPriorPlannedHoursByTaskId,
   getPriorPlanningAssignments,
@@ -111,6 +112,7 @@ export default async function ResumenPage({
       ? getPriorPlanningAssignments({
           naveId: ctx.naveId,
           beforeWeekStart: weekStart,
+          includeDraftPriorWeeks: true,
         })
       : Promise.resolve([]),
     listCatalogTimeDeviations(),
@@ -133,6 +135,10 @@ export default async function ResumenPage({
     projects,
     priorPlannedHoursByTask,
   );
+  const priorPlannedEndByProject = buildPlannedEndByProjectId(
+    projects,
+    priorAssignments,
+  );
 
   const summary = summarizePlanning(planning);
   const usedByDay = mergeHoursByDay(summary.byDay, crossNaveHours.byDay);
@@ -142,15 +148,21 @@ export default async function ResumenPage({
   );
   const capacity = computeCapacity(days, people, holidayDates, absences);
 
+  const projectSummaryOptions = {
+    priorPlannedHoursByTask,
+    priorPlannedEndByProject,
+  };
   const allProjects = summarizeAllActiveProjects(
     projects,
     planning,
     priorPlannedHoursByProject,
+    projectSummaryOptions,
   );
   const unassignedProjects = summarizeUnassignedProjects(
     projects,
     planning,
     priorPlannedHoursByProject,
+    { priorPlannedHoursByTask },
   );
 
   const unassignedHours = unassignedProjects.reduce(
@@ -193,6 +205,11 @@ export default async function ResumenPage({
                   hasRegistros={undoState.hasRegistros}
                   isPublished={undoState.isPublished}
                   role={ctx.role}
+                  activeProjects={projects.map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    pendingHours: p.tasks.reduce((a, t) => a + t.pendingHours, 0),
+                  }))}
                 />
               </>
             ) : (

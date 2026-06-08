@@ -82,6 +82,7 @@ export async function generatePlanning(
   const priorWeekAssignments = await getPriorPlanningAssignments({
     naveId: args.naveId,
     beforeWeekStart: weekStart,
+    includeDraftPriorWeeks: true,
   });
 
   const engineInput = await loadSolverInput({
@@ -109,6 +110,12 @@ export async function generatePlanning(
     if (deferredHours > 0) {
       throw new Error(
         `Hay ${deferredHours.toFixed(1)}h pendientes que no pueden empezar en esta semana (tiempos de secado o cadena de procesos). Planifica una semana posterior o revisa el orden de las tareas.`,
+      );
+    }
+    const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
+    if (priorHours > UNSCHEDULED_FAIL_THRESHOLD_HOURS) {
+      throw new Error(
+        "No quedan horas por planificar en esta semana: el trabajo ya está cubierto en borradores de semanas anteriores. Revisa esas semanas en el calendario o deshaz/regenera desde la semana donde empezó el planning.",
       );
     }
     throw new Error(
@@ -302,5 +309,10 @@ export async function undoPlanning(args: {
     "planning undone",
   );
 }
+
+export {
+  clearFutureDraftPlannings,
+  hasPublishedFuturePlannings,
+} from "@/features/planning/planning-horizon";
 
 export { getMondayOf, isoWeek };

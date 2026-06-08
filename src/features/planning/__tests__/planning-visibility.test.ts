@@ -51,7 +51,9 @@ describe("buildPriorPlanningWhere", () => {
   it("solo incluye plannings publicados de semanas anteriores", () => {
     const before = new Date("2026-05-13T00:00:00.000Z");
     const where = buildPriorPlanningWhere("nave-1", before);
-    expect(where.planning.status).toBe(PlanningStatus.PUBLISHED);
+    expect(where.planning).toMatchObject({
+      status: PlanningStatus.PUBLISHED,
+    });
     expect(where.planning.naveId).toBe("nave-1");
     expect(where.planning.weekStart).toEqual({
       lt: new Date("2026-05-11T00:00:00.000Z"),

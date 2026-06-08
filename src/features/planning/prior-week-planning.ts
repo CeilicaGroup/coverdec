@@ -44,6 +44,39 @@ export function buildPriorPlannedHoursByTaskId(
   return byTask;
 }
 
+export function buildPlannedEndByProjectId(
+  projects: { id: string; tasks: { id: string }[] }[],
+  assignments: Pick<PriorPlanningAssignment, "taskId" | "date">[],
+): Map<string, Date> {
+  const taskToProject = new Map<string, string>();
+  for (const p of projects) {
+    for (const t of p.tasks) {
+      taskToProject.set(t.id, p.id);
+    }
+  }
+  const byProject = new Map<string, Date>();
+  for (const a of assignments) {
+    const projectId = taskToProject.get(a.taskId);
+    if (!projectId) continue;
+    const cur = byProject.get(projectId);
+    if (!cur || a.date > cur) byProject.set(projectId, a.date);
+  }
+  return byProject;
+}
+
+export function mergePlannedEndByProject(
+  ...maps: Map<string, Date>[]
+): Map<string, Date> {
+  const merged = new Map<string, Date>();
+  for (const map of maps) {
+    for (const [projectId, date] of map) {
+      const cur = merged.get(projectId);
+      if (!cur || date > cur) merged.set(projectId, date);
+    }
+  }
+  return merged;
+}
+
 export function buildPriorPlannedHoursByProjectId(
   projects: { id: string; tasks: { id: string }[] }[],
   priorPlannedHoursByTask: Map<string, number>,
@@ -288,12 +321,19 @@ export function buildNextChainAfterPriorTaskByTaskId(args: {
 export function buildPriorPlanningWhere(
   naveId: string,
   beforeWeekStart: Date,
+  options?: { includeDraftPriorWeeks?: boolean },
 ) {
+  const base = {
+    naveId,
+    weekStart: { lt: getMondayOf(beforeWeekStart) },
+  };
+  if (options?.includeDraftPriorWeeks) {
+    return { planning: base };
+  }
   return {
     planning: {
-      naveId,
+      ...base,
       status: PlanningStatus.PUBLISHED,
-      weekStart: { lt: getMondayOf(beforeWeekStart) },
     },
   };
 }
@@ -301,9 +341,13 @@ export function buildPriorPlanningWhere(
 export async function getPriorPlanningAssignments(args: {
   naveId: string;
   beforeWeekStart: Date;
+  /** Incluye borradores de semanas anteriores (encadenamiento multi-semana). */
+  includeDraftPriorWeeks?: boolean;
 }): Promise<PriorPlanningAssignment[]> {
   const rows = await prisma.planningAssignment.findMany({
-    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart),
+    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart, {
+      includeDraftPriorWeeks: args.includeDraftPriorWeeks,
+    }),
     select: { taskId: true, date: true, endSlot: true, hours: true },
     orderBy: [{ date: "asc" }, { endSlot: "asc" }],
   });

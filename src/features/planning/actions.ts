@@ -12,33 +12,123 @@ import {
   publishPlanning,
   undoPlanning,
 } from "@/features/planning/service";
-import type { PlanFrom } from "@/features/planning/plan-from";
+import {
+  addWeeks,
+  clearFutureDraftPlannings,
+  countPendingPlanningHours,
+  hasPublishedFuturePlannings,
+  isMultiWeekMode,
+  relevantPendingHours,
+  shouldContinueHorizon,
+} from "@/features/planning/planning-horizon";
+import { planningHorizonModeSchema } from "@/features/planning/planning-horizon-schema";
 import { Role } from "@/generated/prisma";
-
-const planFromSchema = z.enum(["WEEK_START", "TODAY", "TOMORROW", "NOW"]);
 
 const generateSchema = z.object({
   weekStart: z.string().min(8),
-  planFrom: planFromSchema.default("WEEK_START"),
+  horizonMode: planningHorizonModeSchema,
 });
 
 export async function generatePlanningAction(input: {
   weekStart: string;
-  planFrom?: string;
+  horizonMode: z.input<typeof planningHorizonModeSchema>;
 }) {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-  const { weekStart, planFrom } = generateSchema.parse(input);
+  const { weekStart, horizonMode } = generateSchema.parse(input);
   const result = await generatePlanning({
     naveId: ctx.naveId,
     weekStart: new Date(weekStart),
     replaceDraft: true,
-    planFrom: planFrom as PlanFrom,
+    planFrom: "WEEK_START",
     planFromAt: new Date(),
   });
   revalidatePath("/dashboard", "layout");
   return result;
+}
+
+export async function prepareHorizonGenerationAction(input: {
+  weekStart: string;
+  horizonMode: z.input<typeof planningHorizonModeSchema>;
+}) {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+
+  const { weekStart, horizonMode } = generateSchema.parse(input);
+  const anchor = getMondayOf(new Date(weekStart));
+
+  if (isMultiWeekMode(horizonMode)) {
+    if (await hasPublishedFuturePlannings(ctx.naveId, anchor)) {
+      throw new Error(
+        "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
+      );
+    }
+    await clearFutureDraftPlannings(ctx.naveId, anchor);
+  }
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+export async function getPlanningHorizonProgressAction(input: {
+  weekStart: string;
+  horizonMode: z.input<typeof planningHorizonModeSchema>;
+  weeksGenerated: number;
+  totalPendingBeforeHours: number;
+  projectPendingBeforeHours: number;
+}) {
+  const ctx = await requireDashboardContext();
+  if (!ctx.naveId) {
+    return {
+      totalPendingHours: 0,
+      projectPendingHours: 0,
+      shouldContinue: false,
+      stallReason: undefined as string | undefined,
+    };
+  }
+
+  const parsed = generateSchema.parse({
+    weekStart: input.weekStart,
+    horizonMode: input.horizonMode,
+  });
+  const anchor = getMondayOf(new Date(parsed.weekStart));
+  const projectId =
+    parsed.horizonMode.kind === "PROJECT" ? parsed.horizonMode.projectId : undefined;
+
+  const snapshot = await countPendingPlanningHours({
+    naveId: ctx.naveId,
+    beforeWeekStart: addWeeks(anchor, input.weeksGenerated),
+    projectId,
+  });
+
+  const projectPending =
+    projectId != null
+      ? (snapshot.projectPendingHours.get(projectId) ?? 0)
+      : 0;
+
+  const progress = shouldContinueHorizon({
+    mode: parsed.horizonMode,
+    anchorWeekStart: anchor,
+    weeksGenerated: input.weeksGenerated,
+    totalPendingBeforeHours: input.totalPendingBeforeHours,
+    totalPendingAfterHours: snapshot.totalPendingHours,
+    projectPendingBeforeHours: input.projectPendingBeforeHours,
+    projectPendingAfterHours: projectPending,
+  });
+
+  return {
+    totalPendingHours: snapshot.totalPendingHours,
+    projectPendingHours: projectPending,
+    shouldContinue: progress.shouldContinue,
+    stallReason: progress.stallReason,
+    relevantPendingHours: relevantPendingHours(
+      parsed.horizonMode,
+      snapshot.totalPendingHours,
+      projectPending,
+    ),
+  };
 }
 
 const publishSchema = z.object({ planningId: z.string().min(1) });

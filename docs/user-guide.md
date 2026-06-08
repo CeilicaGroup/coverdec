@@ -15,8 +15,8 @@
 ## Flujo semanal típico (jefe)
 
 1. **Resumen**: elige semana con las flechas del calendario.
-2. Pulsa **Generar planning** (borrador). Revisa avisos de tareas no asignadas.
-3. Revisa **Vista semana**, **Por persona**, **Por proyecto** y **Disponibilidad**.
+2. Pulsa **Generar planning** (borrador). En **Alcance** puedes elegir: esta semana, 1 mes (4 semanas), hasta acabar todos los proyectos, hasta acabar un proyecto concreto, o hasta una fecha. Revisa avisos de tareas no asignadas.
+3. Revisa **Vista semana** o **Vista mes** (calendario mensual con resumen por día; pulsa un día para abrir la semana), **Por persona**, **Por proyecto** y **Disponibilidad**.
 4. **Publicar** cuando el borrador sea válido.
 5. En **Por persona**, pulsa **Imprimir** para reparto en nave (ausencias y fichas por operario).
 

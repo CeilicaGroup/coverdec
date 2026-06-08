@@ -43,6 +43,12 @@ import {
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import {
+  buildPlannedEndByProjectId,
+  buildPriorPlannedHoursByTaskId,
+  getPriorPlanningAssignments,
+  mergePlannedEndByProject,
+} from "@/features/planning/prior-week-planning";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -75,7 +81,7 @@ export default async function ProyectoPage({
     getProcessDefinitionsByCode(),
   ]);
 
-  const [planning, actualEntries] = await Promise.all([
+  const [planning, actualEntries, priorAssignments] = await Promise.all([
     getPlanningForWeek({
       naveScope,
       weekStart,
@@ -85,8 +91,16 @@ export default async function ProyectoPage({
       naveScope,
       weekStart,
     }),
+    ctx.naveId
+      ? getPriorPlanningAssignments({
+          naveId: ctx.naveId,
+          beforeWeekStart: weekStart,
+          includeDraftPriorWeeks: true,
+        })
+      : Promise.resolve([]),
   ]);
   const assignments = toPlanningAssignmentSlices(planning?.assignments ?? []);
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(priorAssignments);
 
   const planningMeta =
     view === "plan"
@@ -105,14 +119,19 @@ export default async function ProyectoPage({
 
   // Build per-project data
   const byProject = new Map<string, PlanningAssignmentSlice[]>();
-  const plannedEndByProject = new Map<string, Date>();
+  const plannedEndThisWeekByProject = new Map<string, Date>();
   for (const a of assignments) {
     const list = byProject.get(a.task.projectId) ?? [];
     list.push(a);
     byProject.set(a.task.projectId, list);
-    const cur = plannedEndByProject.get(a.task.projectId);
-    if (!cur || a.date > cur) plannedEndByProject.set(a.task.projectId, a.date);
+    const cur = plannedEndThisWeekByProject.get(a.task.projectId);
+    if (!cur || a.date > cur) plannedEndThisWeekByProject.set(a.task.projectId, a.date);
   }
+  const priorPlannedEndByProject = buildPlannedEndByProjectId(projects, priorAssignments);
+  const plannedEndByProject = mergePlannedEndByProject(
+    priorPlannedEndByProject,
+    plannedEndThisWeekByProject,
+  );
 
   const actualByProject = new Map<string, ActualHourEntry[]>();
   for (const e of actualEntries) {
@@ -126,7 +145,10 @@ export default async function ProyectoPage({
     ...byProject.keys(),
     ...actualByProject.keys(),
   ]);
-  const plannedByTask = buildPlannedHoursByTask(assignments);
+  const plannedByTask = mergePlannedHoursByTask(
+    buildPlannedHoursByTask(assignments),
+    priorPlannedHoursByTask,
+  );
   const plannedDueByTask = buildPlannedDueHoursByTask(assignments, todayIso);
   const actualByTask = buildActualHoursByTask(actualEntries);
   const completedByTask = buildCompletedByTask(assignments, actualEntries);
@@ -137,7 +159,14 @@ export default async function ProyectoPage({
     .map((p) => ({
       project: p,
       risk: riskFromPlannedEnd(p.deliveryDate, plannedEndByProject.get(p.id) ?? null),
-      pending: p.tasks.reduce((acc, t) => acc + Math.max(0, t.estimatedHours - t.doneHours), 0),
+      pending: p.tasks.reduce((acc, t) => {
+        const remaining = Math.max(0, t.estimatedHours - t.doneHours);
+        const prior = priorPlannedHoursByTask.get(t.id) ?? 0;
+        const thisWeek = (byProject.get(p.id) ?? [])
+          .filter((a) => a.task.id === t.id)
+          .reduce((sum, a) => sum + a.hours, 0);
+        return acc + Math.max(0, remaining - prior - thisWeek);
+      }, 0),
       scheduledHours: (byProject.get(p.id) ?? []).reduce((acc, a) => acc + a.hours, 0),
       actualHours: (actualByProject.get(p.id) ?? []).reduce((acc, e) => acc + e.hours, 0),
     }))
@@ -572,6 +601,17 @@ function buildPlannedHoursByTask(assignments: PlanningAssignmentSlice[]): Map<st
     map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
   }
   return map;
+}
+
+function mergePlannedHoursByTask(
+  thisWeek: Map<string, number>,
+  prior: Map<string, number>,
+): Map<string, number> {
+  const merged = new Map(thisWeek);
+  for (const [taskId, hours] of prior) {
+    merged.set(taskId, (merged.get(taskId) ?? 0) + hours);
+  }
+  return merged;
 }
 
 function buildPlannedDueHoursByTask(
