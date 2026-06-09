@@ -12,6 +12,8 @@
 #   SOLVER_MAX_SECONDS=60
 #   LOG_LEVEL=info
 #   PORT=3000
+#   RESEND_API_KEY=<clave Resend>          # worker: canal email
+#   NOTIFICATION_FROM_EMAIL=<remitente>    # worker: canal email
 #
 # Arrancar:
 #   docker compose up -d --build
@@ -95,8 +97,11 @@ services:
       NODE_ENV: production
       DATABASE_URL: >-
         postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-coverdec}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NOTIFICATION_CRON_TZ: ${NOTIFICATION_CRON_TZ:-Europe/Madrid}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-}
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:alerts@coverdec.local}
