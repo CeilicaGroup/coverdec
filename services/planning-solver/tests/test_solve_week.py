@@ -515,6 +515,58 @@ def test_worker_no_task_interleaving():
     _assert_no_task_interleaving([a.taskId for a in worker_assignments])
 
 
+def test_manual_estimation_assigns_without_specialty():
+    """Budget/prototype lamps by hours use ESTIMACION_MANUAL; any nave worker may take them."""
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="ESTIMACION_MANUAL")],
+            people=[
+                EnginePerson(
+                    id="op-a",
+                    iniciales="OA",
+                    primary=["CNC"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+                EnginePerson(
+                    id="op-b",
+                    iniciales="OB",
+                    primary=["LIJADO"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="manual-1",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 5, 15),
+                    lampId="l1",
+                    order=0,
+                    process="ESTIMACION_MANUAL",
+                    pendingHours=4,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=1, wLoadBalance=1, wMove=1, wLaborCost=1
+            ),
+            schedules=_schedules(["op-a", "op-b"]),
+        ),
+    )
+
+    assert not any("NO_CANDIDATE:" in w.reason for w in result.warnings)
+    assert result.unscheduledHours == 0
+    total = sum(a.hours for a in result.assignments)
+    assert abs(total - 4) < 0.1
+    assert len(result.assignments) > 0
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from app.main import app

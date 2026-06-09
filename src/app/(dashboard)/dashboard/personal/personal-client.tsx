@@ -34,6 +34,7 @@ import { PersonScheduleDialog } from "./person-schedule-dialog";
 import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { getErrorMessage } from "@/lib/error-message";
+import { MANUAL_ESTIMATION_PROCESS } from "@/lib/manual-lamp";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -118,6 +119,10 @@ export function PersonalTeamClient({
   users?: UserSummary[];
 }) {
   const router = useRouter();
+  const editableProcessDefs = useMemo(
+    () => processDefs.filter((d) => d.code !== MANUAL_ESTIMATION_PROCESS),
+    [processDefs],
+  );
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
@@ -130,7 +135,7 @@ export function PersonalTeamClient({
   const [naveIds, setNaveIds] = useState<string[]>([]);
   const [userId, setUserId] = useState<string>("none");
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
-    emptySpecMap(processDefs),
+    emptySpecMap(editableProcessDefs),
   );
   const [pendingAdd, setPendingAdd] = useState<Record<SpecialtySectionKey, string>>({
     responsable: "",
@@ -155,7 +160,7 @@ export function PersonalTeamClient({
     setIsActive(true);
     setNaveIds([]);
     setUserId("none");
-    setSpecMap(emptySpecMap(processDefs));
+    setSpecMap(emptySpecMap(editableProcessDefs));
     setOpen(true);
   }
 
@@ -170,8 +175,9 @@ export function PersonalTeamClient({
     setNaveIds(p.naveIds);
     const linked = users.find((u) => u.personId === p.id);
     setUserId(linked?.id ?? "none");
-    const next = emptySpecMap(processDefs);
+    const next = emptySpecMap(editableProcessDefs);
     for (const s of p.specialties) {
+      if (s.process === MANUAL_ESTIMATION_PROCESS) continue;
       next[s.process] = modeFromSpecialty(s);
     }
     setSpecMap(next);
@@ -198,7 +204,7 @@ export function PersonalTeamClient({
           toast.error("Selecciona un usuario");
           return;
         }
-        const specialties = processDefs
+        const specialties = editableProcessDefs
           .map((d) => {
             const m = specMap[d.code] ?? "ninguno";
             if (m === "ninguno") return null;
@@ -514,10 +520,10 @@ export function PersonalTeamClient({
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 {SPECIALTY_SECTIONS.map((section) => {
-                  const current = processDefs.filter(
+                  const current = editableProcessDefs.filter(
                     (d) => specMap[d.code] === section.key,
                   );
-                  const available = processDefs.filter(
+                  const available = editableProcessDefs.filter(
                     (d) => specMap[d.code] === "ninguno",
                   );
                   return (

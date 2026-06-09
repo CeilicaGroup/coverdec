@@ -37,6 +37,8 @@ En **Personal** cada operario tiene procesos clasificados en dos niveles:
 
 **Tiempos:** ninguna categoría modifica las horas estimadas de las tareas (vienen del catálogo y del bastidor). Solo influyen en **quién** puede ser asignado y en **qué orden de preferencia**.
 
+**Lámparas por horas (presupuesto/prototipo):** si creas una lámpara con un total de horas en lugar de elementos, el planning puede asignarla a **cualquier operario activo de la nave**. No hace falta marcar la especialidad «Estimación manual» en Personal.
+
 ## Fábrica
 
 Lista importada desde Excel; cambia **Estado** con el desplegable (requiere rol jefe/admin).
