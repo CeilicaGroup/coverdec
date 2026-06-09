@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
@@ -189,7 +190,7 @@ export function EditLampFramesDialog({
                 setOpen(false);
                 router.refresh();
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Error");
+                toast.error(reportMutationError("Error", err));
               }
             });
           }}

@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -72,7 +73,7 @@ export function DesviacionesTiemposClient({
         });
         toast.success("Política actualizada");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudo guardar");
+        toast.error(reportMutationError("No se pudo guardar", err));
       }
     });
   };

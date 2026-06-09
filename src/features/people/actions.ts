@@ -18,6 +18,8 @@ import {
   isoWeekdayForSchedule,
   parseUtcDateIso,
 } from "@/features/people/absence-schedule";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const log = childLogger({ module: "people.actions" });
 
@@ -92,6 +94,7 @@ function revalidateAbsencePaths() {
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/mes");
   revalidatePath("/dashboard/persona");
   revalidatePath("/dashboard/disponibilidad");
   revalidatePath("/dashboard/fichaje-diario");
@@ -159,7 +162,10 @@ async function assertNoAbsenceOverlap(args: {
   }
 }
 
-export async function deleteAbsence(input: z.infer<typeof deleteAbsenceSchema>) {
+export async function deleteAbsence(
+  input: z.infer<typeof deleteAbsenceSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("people.deleteAbsence", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = deleteAbsenceSchema.parse(input);
@@ -172,9 +178,13 @@ export async function deleteAbsence(input: z.infer<typeof deleteAbsenceSchema>) 
   }
 
   revalidateAbsencePaths();
+  });
 }
 
-export async function setAbsence(input: z.infer<typeof absenceSchema>) {
+export async function setAbsence(
+  input: z.infer<typeof absenceSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("people.setAbsence", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = absenceSchema.parse(input);
@@ -340,6 +350,7 @@ export async function setAbsence(input: z.infer<typeof absenceSchema>) {
     });
   }
   revalidateAbsencePaths();
+  });
 }
 
 const specialtySchema = z.object({
@@ -372,7 +383,10 @@ const savePersonSchema = z
     }
   });
 
-export async function savePerson(input: z.infer<typeof savePersonSchema>) {
+export async function savePerson(
+  input: z.infer<typeof savePersonSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("people.savePerson", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = savePersonSchema.parse(input);
@@ -432,10 +446,6 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
       await tx.user.update({ where: { id: data.userId }, data: { personId } });
     });
   } catch (e: unknown) {
-    log.error(
-      { err: e, op: "savePerson", personId: data.id ?? null },
-      "save person failed",
-    );
     if (
       typeof e === "object" &&
       e !== null &&
@@ -448,11 +458,15 @@ export async function savePerson(input: z.infer<typeof savePersonSchema>) {
   }
 
   revalidatePath("/dashboard/personal");
+  });
 }
 
 const deletePersonSchema = z.object({ personId: z.string().min(1) });
 
-export async function deletePerson(input: z.infer<typeof deletePersonSchema>) {
+export async function deletePerson(
+  input: z.infer<typeof deletePersonSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("people.deletePerson", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const { personId } = deletePersonSchema.parse(input);
@@ -473,6 +487,7 @@ export async function deletePerson(input: z.infer<typeof deletePersonSchema>) {
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard/semana");
   revalidatePath("/dashboard/persona");
+  });
 }
 
 const workWindowSchema = z.object({

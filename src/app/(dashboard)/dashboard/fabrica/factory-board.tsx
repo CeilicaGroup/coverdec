@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,7 +124,7 @@ export function FactoryBoard({ items }: { items: FactoryItemRow[] }) {
                           });
                           toast.success("Estado actualizado");
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Error");
+                          toast.error(reportMutationError("Error", err));
                         }
                       });
                     }}

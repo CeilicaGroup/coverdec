@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -245,18 +246,19 @@ export function TimeEntryInlineActions({
                 onClick={() =>
                   startTransition(async () => {
                     if (!editingEntry) return;
-                    try {
-                      await updateEntry({
+                    const result = await updateEntry({
                         entryId: editingEntry.id,
                         startedAt: fromDatetimeLocalInputValue(editStart),
                         endedAt: fromDatetimeLocalInputValue(editEnd),
                         notes: editNotes || undefined,
                       });
+                      const outcome = handleActionResult("time-entry.update", result);
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
+                      }
                       toast.success("Registro actualizado");
                       setOpenEdit(false);
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Error");
-                    }
                   })
                 }
               >
@@ -312,18 +314,19 @@ export function TimeEntryInlineActions({
                 disabled={pending}
                 onClick={() =>
                   startTransition(async () => {
-                    try {
-                      await createManualEntryForTask({
+                    const result = await createManualEntryForTask({
                         ...createPayload,
                         startedAt: fromDatetimeLocalInputValue(createStart),
                         endedAt: fromDatetimeLocalInputValue(createEnd),
                         notes: createNotes || undefined,
                       });
+                      const outcome = handleActionResult("time-entry.create", result);
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
+                      }
                       toast.success("Registro creado");
                       setOpenCreate(false);
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Error");
-                    }
                   })
                 }
               >
@@ -369,12 +372,13 @@ export function TimeEntryInlineActions({
                       disabled={pending}
                       onClick={() =>
                         startTransition(async () => {
-                          try {
-                            await deleteEntry({ entryId: entry.id });
+                            const result = await deleteEntry({ entryId: entry.id });
+                            const outcome = handleActionResult("time-entry.delete", result);
+                            if (!outcome.success) {
+                              toast.error(outcome.message);
+                              return;
+                            }
                             toast.success("Registro eliminado");
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : "Error");
-                          }
                         })
                       }
                     >

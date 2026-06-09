@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
@@ -79,20 +80,21 @@ export function FestivosClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await createHoliday({
+      const result = await createHoliday({
           startDate,
           endDate,
           name: name.trim(),
         });
-        toast.success("Rango festivo guardado");
-        setName("");
-        setStartDate("");
-        setEndDate("");
-        router.refresh();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+      const outcome = handleActionResult("festivos.create", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Rango festivo guardado");
+      setName("");
+      setStartDate("");
+      setEndDate("");
+      router.refresh();
     });
   }
 
@@ -107,31 +109,33 @@ export function FestivosClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await updateHoliday({
+      const result = await updateHoliday({
           id: editing.id,
           startDate: eStart,
           endDate: eEnd,
           name: eName.trim(),
         });
-        toast.success("Actualizado");
-        setEditing(null);
-        router.refresh();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+      const outcome = handleActionResult("festivos.update", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Actualizado");
+      setEditing(null);
+      router.refresh();
     });
   }
 
   function remove(id: string) {
     startTransition(async () => {
-      try {
-        await deleteHoliday({ id });
-        toast.success("Eliminado");
-        router.refresh();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+      const result = await deleteHoliday({ id });
+      const outcome = handleActionResult("festivos.delete", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Eliminado");
+      router.refresh();
     });
   }
 

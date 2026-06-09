@@ -5,10 +5,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
-import { childLogger } from "@/lib/logger";
 import { utcDayStart } from "@/lib/holidays";
-
-const log = childLogger({ module: "holidays.actions" });
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -57,7 +56,10 @@ const deleteHolidaySchema = z.object({
   id: z.string().min(1),
 });
 
-export async function createHoliday(input: z.infer<typeof createHolidaySchema>) {
+export async function createHoliday(
+  input: z.infer<typeof createHolidaySchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("holidays.createHoliday", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = createHolidaySchema.parse(input);
@@ -75,11 +77,16 @@ export async function createHoliday(input: z.infer<typeof createHolidaySchema>) 
   revalidatePath("/dashboard/festivos");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/mes");
   revalidatePath("/dashboard/disponibilidad");
   revalidatePath("/dashboard/gantt");
+  });
 }
 
-export async function updateHoliday(input: z.infer<typeof updateHolidaySchema>) {
+export async function updateHoliday(
+  input: z.infer<typeof updateHolidaySchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("holidays.updateHoliday", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = updateHolidaySchema.parse(input);
@@ -98,25 +105,27 @@ export async function updateHoliday(input: z.infer<typeof updateHolidaySchema>) 
   revalidatePath("/dashboard/festivos");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/mes");
   revalidatePath("/dashboard/disponibilidad");
   revalidatePath("/dashboard/gantt");
+  });
 }
 
-export async function deleteHoliday(input: z.infer<typeof deleteHolidaySchema>) {
+export async function deleteHoliday(
+  input: z.infer<typeof deleteHolidaySchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("holidays.deleteHoliday", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = deleteHolidaySchema.parse(input);
 
-  try {
-    await prisma.holiday.delete({ where: { id: data.id } });
-  } catch (err) {
-    log.warn({ err, holidayId: data.id }, "deleteHoliday failed");
-    throw err instanceof Error ? err : new Error("No se pudo eliminar el festivo");
-  }
+  await prisma.holiday.delete({ where: { id: data.id } });
 
   revalidatePath("/dashboard/festivos");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/mes");
   revalidatePath("/dashboard/disponibilidad");
   revalidatePath("/dashboard/gantt");
+  });
 }

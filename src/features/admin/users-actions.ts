@@ -9,7 +9,8 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { replacePersonNaves } from "@/features/people/person-naves";
 import { Role } from "@/generated/prisma";
 import { ensureDefaultSubscriptions } from "@/features/notifications/service";
-import { getErrorMessage } from "@/lib/error-message";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const naveIdsSchema = z.array(z.string().min(1));
 
@@ -42,8 +43,10 @@ const createUserSchema = z.object({
   naveIds: naveIdsSchema.optional(),
 });
 
-export async function createUser(input: z.infer<typeof createUserSchema>) {
-  try {
+export async function createUser(
+  input: z.infer<typeof createUserSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("admin.createUser", async () => {
     const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN]);
     const data = createUserSchema.parse(input);
@@ -74,14 +77,7 @@ export async function createUser(input: z.infer<typeof createUserSchema>) {
 
     revalidatePath("/dashboard/admin/usuarios");
     revalidatePath("/dashboard/personal");
-
-    return { ok: true as const };
-  } catch (error) {
-    return {
-      ok: false as const,
-      error: getErrorMessage(error, "No se pudo crear el usuario."),
-    };
-  }
+  });
 }
 
 const updateUserSchema = z.object({
@@ -93,8 +89,10 @@ const updateUserSchema = z.object({
   naveIds: naveIdsSchema.optional(),
 });
 
-export async function updateUser(input: z.infer<typeof updateUserSchema>) {
-  try {
+export async function updateUser(
+  input: z.infer<typeof updateUserSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("admin.updateUser", async () => {
     const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN]);
     const data = updateUserSchema.parse(input);
@@ -141,12 +139,5 @@ export async function updateUser(input: z.infer<typeof updateUserSchema>) {
 
     revalidatePath("/dashboard/admin/usuarios");
     revalidatePath("/dashboard/personal");
-
-    return { ok: true as const };
-  } catch (error) {
-    return {
-      ok: false as const,
-      error: getErrorMessage(error, "No se pudo actualizar el usuario."),
-    };
-  }
+  });
 }

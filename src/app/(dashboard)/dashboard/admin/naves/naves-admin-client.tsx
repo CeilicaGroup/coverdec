@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Warehouse } from "lucide-react";
@@ -57,7 +58,7 @@ export function NavesAdminClient({
         setForm({ codigo: "", nombre: "" });
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(reportMutationError("Error", err));
       }
     });
   };
@@ -72,7 +73,7 @@ export function NavesAdminClient({
         setEditNave(null);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(reportMutationError("Error", err));
       }
     });
   };
@@ -83,7 +84,7 @@ export function NavesAdminClient({
         await toggleNaveActive(naveId, isActive);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(reportMutationError("Error", err));
       }
     });
   };

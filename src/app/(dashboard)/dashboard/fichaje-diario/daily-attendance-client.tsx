@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pause, Play } from "lucide-react";
@@ -355,13 +356,14 @@ export function DailyAttendanceClient(props: {
                     disabled={pending || props.openSession != null}
                     onClick={() =>
                       startTransition(async () => {
-                        try {
-                          await startAttendance();
-                          toast.success("Fichaje iniciado");
-                          router.refresh();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Error");
+                        const result = await startAttendance();
+                        const outcome = handleActionResult("fichaje.start", result);
+                        if (!outcome.success) {
+                          toast.error(outcome.message);
+                          return;
                         }
+                        toast.success("Fichaje iniciado");
+                        router.refresh();
                       })
                     }
                   >
@@ -372,13 +374,14 @@ export function DailyAttendanceClient(props: {
                     disabled={pending || props.openSession == null}
                     onClick={() =>
                       startTransition(async () => {
-                        try {
-                          await stopAttendance({ sessionId: props.openSession?.id });
-                          toast.success("Fichaje finalizado");
-                          router.refresh();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Error");
+                        const result = await stopAttendance({ sessionId: props.openSession?.id });
+                        const outcome = handleActionResult("fichaje.stop", result);
+                        if (!outcome.success) {
+                          toast.error(outcome.message);
+                          return;
                         }
+                        toast.success("Fichaje finalizado");
+                        router.refresh();
                       })
                     }
                   >
@@ -402,18 +405,19 @@ export function DailyAttendanceClient(props: {
                     disabled={pending || !visiblePersonId}
                     onClick={() =>
                       startTransition(async () => {
-                        try {
-                          await adminUpsertAttendanceSession({
+                        const result = await adminUpsertAttendanceSession({
                             personId: visiblePersonId!,
                             date: selectedIso,
                             startTime,
                             endTime,
                           });
-                          toast.success("Franja de fichaje guardada");
-                          router.refresh();
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Error");
+                        const outcome = handleActionResult("fichaje.adminUpsert", result);
+                        if (!outcome.success) {
+                          toast.error(outcome.message);
+                          return;
                         }
+                        toast.success("Franja de fichaje guardada");
+                        router.refresh();
                       })
                     }
                   >
@@ -440,13 +444,16 @@ export function DailyAttendanceClient(props: {
                         className="text-destructive"
                         onClick={() =>
                           startTransition(async () => {
-                            try {
-                              await adminDeleteAttendanceSession({ sessionId: session.id });
-                              toast.success("Fichaje eliminado");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Error");
+                            const result = await adminDeleteAttendanceSession({
+                              sessionId: session.id,
+                            });
+                            const outcome = handleActionResult("fichaje.adminDelete", result);
+                            if (!outcome.success) {
+                              toast.error(outcome.message);
+                              return;
                             }
+                            toast.success("Fichaje eliminado");
+                            router.refresh();
                           })
                         }
                       >
@@ -531,18 +538,19 @@ export function DailyAttendanceClient(props: {
                             className="text-destructive"
                             onClick={() =>
                               startTransition(async () => {
-                                try {
-                                  await deleteAbsence({
+                                const result = await deleteAbsence({
                                     id: absence.id,
                                     personId: visiblePersonId,
                                     date: absence.date,
                                   });
-                                  toast.success("Ausencia eliminada");
-                                  if (editingAbsenceId === absence.id) setEditingAbsenceId(null);
-                                  router.refresh();
-                                } catch (err) {
-                                  toast.error(err instanceof Error ? err.message : "Error");
+                                const outcome = handleActionResult("fichaje.absence.delete", result);
+                                if (!outcome.success) {
+                                  toast.error(outcome.message);
+                                  return;
                                 }
+                                toast.success("Ausencia eliminada");
+                                if (editingAbsenceId === absence.id) setEditingAbsenceId(null);
+                                router.refresh();
                               })
                             }
                           >
@@ -597,31 +605,32 @@ export function DailyAttendanceClient(props: {
                   disabled={pending || !holidayName.trim()}
                   onClick={() =>
                     startTransition(async () => {
-                      try {
-                        if (editingHolidayId) {
-                          await updateHoliday({
+                      const result = editingHolidayId
+                        ? await updateHoliday({
                             id: editingHolidayId,
                             startDate: holidayStartDate,
                             endDate: holidayEndDate,
                             name: holidayName.trim(),
-                          });
-                          toast.success("Festivo actualizado");
-                        } else {
-                          await createHoliday({
+                          })
+                        : await createHoliday({
                             startDate: holidayStartDate,
                             endDate: holidayEndDate,
                             name: holidayName.trim(),
                           });
-                          toast.success("Festivo creado");
-                        }
-                        setEditingHolidayId(null);
-                        setHolidayName("");
-                        setHolidayStartDate(selectedIso);
-                        setHolidayEndDate(selectedIso);
-                        router.refresh();
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
+                      const outcome = handleActionResult(
+                        editingHolidayId ? "fichaje.holiday.update" : "fichaje.holiday.create",
+                        result,
+                      );
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
                       }
+                      toast.success(editingHolidayId ? "Festivo actualizado" : "Festivo creado");
+                      setEditingHolidayId(null);
+                      setHolidayName("");
+                      setHolidayStartDate(selectedIso);
+                      setHolidayEndDate(selectedIso);
+                      router.refresh();
                     })
                   }
                 >
@@ -668,13 +677,14 @@ export function DailyAttendanceClient(props: {
                         className="text-destructive"
                         onClick={() =>
                           startTransition(async () => {
-                            try {
-                              await deleteHoliday({ id: holiday.id });
-                              toast.success("Festivo eliminado");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Error");
+                            const result = await deleteHoliday({ id: holiday.id });
+                            const outcome = handleActionResult("fichaje.holiday.delete", result);
+                            if (!outcome.success) {
+                              toast.error(outcome.message);
+                              return;
                             }
+                            toast.success("Festivo eliminado");
+                            router.refresh();
                           })
                         }
                       >

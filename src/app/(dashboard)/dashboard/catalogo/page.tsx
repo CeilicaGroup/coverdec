@@ -43,8 +43,21 @@ export default async function CatalogoPage() {
     }),
   ]);
 
-  const frames = framesRaw.map(({ _count, ...f }) => ({
-    ...f,
+  const frames = framesRaw.map(({ _count, processes, defaultNave, ...f }) => ({
+    id: f.id,
+    code: f.code,
+    name: f.name,
+    description: f.description,
+    typology: f.typology,
+    isActive: f.isActive,
+    defaultNaveId: f.defaultNaveId,
+    defaultNave,
+    processes: processes.map((p) => ({
+      id: p.id,
+      process: p.process,
+      hoursPerUnit: p.hoursPerUnit,
+      fixedHours: p.fixedHours,
+    })),
     lampCount: _count.lamps,
   }));
 

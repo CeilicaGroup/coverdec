@@ -35,6 +35,7 @@ import { deriveProcessColors } from "@/lib/color";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
+import { handleActionResult } from "@/lib/mutation-error";
 
 export interface ProcessRow {
   code: string;
@@ -64,19 +65,14 @@ const USAGE_LABELS: { key: keyof ProcessDefinitionUsage; label: string }[] = [
   { key: "planningAssignments", label: "Asignaciones de planning" },
 ];
 
-function isProcessInUseError(err: unknown): boolean {
+function isProcessInUseMessage(message: string): boolean {
   return (
-    err instanceof Error &&
-    (err.message.startsWith("PROCESS_IN_USE:") ||
-      err.message.includes("está en uso"))
+    message.startsWith("PROCESS_IN_USE:") || message.includes("está en uso")
   );
 }
 
-function formatDeleteError(err: unknown): string {
-  if (err instanceof Error && err.message.startsWith("PROCESS_IN_USE:")) {
-    return err.message.replace(/^PROCESS_IN_USE:\s*/, "").trim();
-  }
-  return getErrorMessage(err);
+function formatProcessInUseMessage(message: string): string {
+  return message.replace(/^PROCESS_IN_USE:\s*/, "").trim();
 }
 
 export function ProcessDefinitionsPanel({
@@ -144,21 +140,22 @@ export function ProcessDefinitionsPanel({
       return;
     }
     startTransition(async () => {
-      try {
-        await createProcessDefinition({
+      const result = await createProcessDefinition({
           code: cCode.trim(),
           label: cLabel.trim(),
           waitHours: wh,
         });
-        toast.success("Proceso creado");
-        setCreateOpen(false);
-        setCCode("");
-        setCLabel("");
-        setCWait("0");
-        router.refresh();
-      } catch (err) {
-        toast.error(getErrorMessage(err));
+      const outcome = handleActionResult("catalog.process.create", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Proceso creado");
+      setCreateOpen(false);
+      setCCode("");
+      setCLabel("");
+      setCWait("0");
+      router.refresh();
     });
   }
 
@@ -174,9 +171,8 @@ export function ProcessDefinitionsPanel({
       return;
     }
     startTransition(async () => {
-      try {
-        const colors = deriveProcessColors(eColor);
-        await updateProcessDefinition({
+      const colors = deriveProcessColors(eColor);
+      const result = await updateProcessDefinition({
           code: editing.code,
           waitHours: wh,
           label: eLabel.trim(),
@@ -185,34 +181,37 @@ export function ProcessDefinitionsPanel({
           borderColor: colors.borderColor,
           canFragment: eCanFragment,
         });
-        toast.success("Proceso actualizado");
-        setEditing(null);
-        router.refresh();
-      } catch (err) {
-        toast.error(getErrorMessage(err));
+      const outcome = handleActionResult("catalog.process.update", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Proceso actualizado");
+      setEditing(null);
+      router.refresh();
     });
   }
 
   function remove(row: ProcessRow) {
     if (!confirm(`¿Eliminar el proceso «${row.label}» (${row.code})?`)) return;
     startTransition(async () => {
-      try {
-        await deleteProcessDefinition({ code: row.code });
-        toast.success("Proceso eliminado");
-        router.refresh();
-      } catch (err) {
-        if (isProcessInUseError(err)) {
-          toast.error(formatDeleteError(err), {
+      const result = await deleteProcessDefinition({ code: row.code });
+      const outcome = handleActionResult("catalog.process.delete", result);
+      if (!outcome.success) {
+        if (isProcessInUseMessage(outcome.message)) {
+          toast.error(formatProcessInUseMessage(outcome.message), {
             action: {
               label: "Más información",
               onClick: () => loadUsageAndOpen(row),
             },
           });
         } else {
-          toast.error(formatDeleteError(err));
+          toast.error(outcome.message);
         }
+        return;
       }
+      toast.success("Proceso eliminado");
+      router.refresh();
     });
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { Loader2, Sparkles, CheckCircle2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -230,7 +231,7 @@ export function GenerateButton({
         );
       } catch (err) {
         setProgressLabel(null);
-        toast.error(err instanceof Error ? err.message : "Error generando planning");
+        toast.error(reportMutationError("Error generando planning", err));
       }
     });
   };
@@ -254,7 +255,7 @@ export function GenerateButton({
             : `Planning deshecho (${result.deletedCount} semanas)`,
         );
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error al deshacer planning");
+        toast.error(reportMutationError("Error al deshacer planning", err));
       }
     });
   };
@@ -266,7 +267,7 @@ export function GenerateButton({
       await publishPlanningAction({ planningId });
       toast.success("Planning publicado");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error publicando planning");
+      toast.error(reportMutationError("Error publicando planning", err));
     }
     setPublishing(false);
   };

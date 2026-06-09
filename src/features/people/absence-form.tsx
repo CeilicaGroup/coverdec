@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,8 +123,7 @@ export function AbsenceForm({
         return;
       }
       onPendingChange(async () => {
-        try {
-          await setAbsence({
+        const result = await setAbsence({
             id: editing?.id,
             personId,
             date: rangeStart,
@@ -131,33 +131,36 @@ export function AbsenceForm({
             mode: "range",
             reason: trimmedReason,
           });
-          toast.success(editing ? "Ausencia actualizada" : "Ausencia guardada");
-          setReason("");
-          setRangeEndDate(selectedDateIso);
-          onSaved();
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : "Error");
+        const outcome = handleActionResult("absence.set.range", result);
+        if (!outcome.success) {
+          toast.error(outcome.message);
+          return;
         }
+        toast.success(editing ? "Ausencia actualizada" : "Ausencia guardada");
+        setReason("");
+        setRangeEndDate(selectedDateIso);
+        onSaved();
       });
       return;
     }
 
     if (mode === "day") {
       onPendingChange(async () => {
-        try {
-          await setAbsence({
+        const result = await setAbsence({
             id: editing?.id,
             personId,
             date: editing?.date ?? selectedDateIso,
             mode: "day",
             reason: trimmedReason,
           });
-          toast.success(editing ? "Ausencia actualizada" : "Día completo registrado");
-          setReason("");
-          onSaved();
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : "Error");
+        const outcome = handleActionResult("absence.set.day", result);
+        if (!outcome.success) {
+          toast.error(outcome.message);
+          return;
         }
+        toast.success(editing ? "Ausencia actualizada" : "Día completo registrado");
+        setReason("");
+        onSaved();
       });
       return;
     }
@@ -169,8 +172,7 @@ export function AbsenceForm({
       return;
     }
     onPendingChange(async () => {
-      try {
-        await setAbsence({
+      const result = await setAbsence({
           id: editing?.id,
           personId,
           date: editing?.date ?? selectedDateIso,
@@ -179,12 +181,14 @@ export function AbsenceForm({
           blockStartMinutes: bs,
           blockEndMinutes: be,
         });
-        toast.success(editing ? "Ausencia actualizada" : "Franja horaria guardada");
-        setReason("");
-        onSaved();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+      const outcome = handleActionResult("absence.set.block", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success(editing ? "Ausencia actualizada" : "Franja horaria guardada");
+      setReason("");
+      onSaved();
     });
   }
 

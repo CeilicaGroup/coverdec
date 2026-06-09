@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Play, Square, CheckCircle2, ClipboardPenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -127,17 +128,18 @@ export function TaskQueuePanel({
                   onClick={() => {
                     if (!nextTask) return;
                     startTransition(async () => {
-                      try {
-                        await startTimer({
+                      const result = await startTimer({
                           projectId: nextTask.projectId,
                           lampId: nextTask.lampId,
                           taskId: nextTask.id,
                           process: nextTask.process,
                         });
-                        toast.success("Timer iniciado");
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
+                      const outcome = handleActionResult("task-queue.start", result);
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
                       }
+                      toast.success("Timer iniciado");
                     });
                   }}
                 >
@@ -152,12 +154,13 @@ export function TaskQueuePanel({
                   onClick={() => {
                     if (!openTimer) return;
                     startTransition(async () => {
-                      try {
-                        await stopTimer({ entryId: openTimer.id });
-                        toast.success("Timer parado");
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
+                      const result = await stopTimer({ entryId: openTimer.id });
+                      const outcome = handleActionResult("task-queue.stop", result);
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
                       }
+                      toast.success("Timer parado");
                     });
                   }}
                 >
@@ -172,12 +175,13 @@ export function TaskQueuePanel({
                   onClick={() => {
                     if (!nextTask) return;
                     startTransition(async () => {
-                      try {
-                        await completeTask({ taskId: nextTask.id });
-                        toast.success("Tarea completada");
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Error");
+                      const result = await completeTask({ taskId: nextTask.id });
+                      const outcome = handleActionResult("task-queue.complete", result);
+                      if (!outcome.success) {
+                        toast.error(outcome.message);
+                        return;
                       }
+                      toast.success("Tarea completada");
                     });
                   }}
                 >

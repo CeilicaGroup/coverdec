@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useTransition } from "react";
 import { CheckCircle2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -26,17 +27,20 @@ export function TaskCompletionAction({
       className="h-7 text-[11px]"
       onClick={() =>
         startTransition(async () => {
-          try {
-            if (isCompleted) {
-              await uncompleteTask({ taskId });
-              toast.success("Tarea marcada como no completada");
-            } else {
-              await completeTask({ taskId });
-              toast.success("Tarea completada");
-            }
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Error");
+          const result = isCompleted
+            ? await uncompleteTask({ taskId })
+            : await completeTask({ taskId });
+          const outcome = handleActionResult(
+            isCompleted ? "task.uncomplete" : "task.complete",
+            result,
+          );
+          if (!outcome.success) {
+            toast.error(outcome.message);
+            return;
           }
+          toast.success(
+            isCompleted ? "Tarea marcada como no completada" : "Tarea completada",
+          );
         })
       }
     >

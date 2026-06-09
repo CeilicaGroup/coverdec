@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/types/process";
-import { getErrorMessage } from "@/lib/error-message";
+import { handleActionResult } from "@/lib/mutation-error";
 import { ElementTypology } from "@/generated/prisma";
 import { ELEMENT_TYPOLOGIES, ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
 
@@ -267,23 +267,22 @@ export function CatalogoCatalogClient({
 
   function submitDialog() {
     startTransition(async () => {
-      try {
-        const processes = rows.map((r) => ({
+      const processes = rows.map((r) => ({
           process: r.process,
           hoursPerUnit: Number(r.hoursPerUnit),
           fixedHours: Number(r.fixedHours),
         }));
-        for (const r of rows) {
-          if (Number.isNaN(Number(r.hoursPerUnit)) || Number(r.hoursPerUnit) < 0) {
-            toast.error("Horas por unidad inválidas");
-            return;
-          }
-          if (Number.isNaN(Number(r.fixedHours)) || Number(r.fixedHours) < 0) {
-            toast.error("Horas fijas inválidas");
-            return;
-          }
+      for (const r of rows) {
+        if (Number.isNaN(Number(r.hoursPerUnit)) || Number(r.hoursPerUnit) < 0) {
+          toast.error("Horas por unidad inválidas");
+          return;
         }
-        await upsertElementType({
+        if (Number.isNaN(Number(r.fixedHours)) || Number(r.fixedHours) < 0) {
+          toast.error("Horas fijas inválidas");
+          return;
+        }
+      }
+      const result = await upsertElementType({
           code: code.trim().toUpperCase(),
           name: name.trim(),
           description: description.trim() || undefined,
@@ -292,12 +291,14 @@ export function CatalogoCatalogClient({
           defaultNaveId: defaultNaveId || null,
           processes,
         });
-        toast.success(mode === "create" ? "Elemento creado" : "Elemento actualizado");
-        setDialogOpen(false);
-        router.refresh();
-      } catch (e) {
-        toast.error(getErrorMessage(e, "Error al guardar"));
+      const outcome = handleActionResult("catalog.element.upsert", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success(mode === "create" ? "Elemento creado" : "Elemento actualizado");
+      setDialogOpen(false);
+      router.refresh();
     });
   }
 
@@ -306,33 +307,35 @@ export function CatalogoCatalogClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await setElementTypeActive({ elementTypeId: frame.id, isActive: false });
-        toast.success("Elemento archivado");
-        router.refresh();
-      } catch (e) {
-        toast.error(getErrorMessage(e));
+      const result = await setElementTypeActive({ elementTypeId: frame.id, isActive: false });
+      const outcome = handleActionResult("catalog.element.archive", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Elemento archivado");
+      router.refresh();
     });
   }
 
   function restore(frame: FrameRow) {
     startTransition(async () => {
-      try {
-        await setElementTypeActive({ elementTypeId: frame.id, isActive: true });
-        toast.success("Elemento reactivado");
-        router.refresh();
-      } catch (e) {
-        toast.error(getErrorMessage(e));
+      const result = await setElementTypeActive({ elementTypeId: frame.id, isActive: true });
+      const outcome = handleActionResult("catalog.element.restore", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Elemento reactivado");
+      router.refresh();
     });
   }
 
-  function formatActionError(err: unknown): string {
-    if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
-      return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
+  function formatArchiveOnlyMessage(message: string): string {
+    if (message.startsWith("ARCHIVE_ONLY:")) {
+      return message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
     }
-    return getErrorMessage(err);
+    return message;
   }
 
   function hardDelete(frame: FrameRow) {
@@ -348,13 +351,14 @@ export function CatalogoCatalogClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await deleteElementType({ elementTypeId: frame.id });
-        toast.success("Elemento eliminado");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const result = await deleteElementType({ elementTypeId: frame.id });
+      const outcome = handleActionResult("catalog.element.delete", result);
+      if (!outcome.success) {
+        toast.error(formatArchiveOnlyMessage(outcome.message));
+        return;
       }
+      toast.success("Elemento eliminado");
+      router.refresh();
     });
   }
 

@@ -15,15 +15,18 @@ import {
   computeTotalHours,
 } from "@/features/time-tracking/manual-ranges";
 import { computeTaskHourTotals } from "@/features/time-tracking/task-hours-derived";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const log = childLogger({ module: "time-tracking.actions" });
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/mes");
   revalidatePath("/dashboard/persona");
   revalidatePath("/dashboard/proyecto");
   revalidatePath("/dashboard/gantt");
-  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard/desviaciones-tiempos");
 }
 
 function assertCanEditEntry(ctx: Awaited<ReturnType<typeof requireDashboardContext>>, entryUserId: string) {
@@ -88,7 +91,10 @@ const startSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-export async function startTimer(input: z.infer<typeof startSchema>) {
+export async function startTimer(
+  input: z.infer<typeof startSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.startTimer", async () => {
   const ctx = await requireDashboardContext();
   const data = startSchema.parse(input);
   const open = await prisma.timeEntry.findFirst({
@@ -119,11 +125,15 @@ export async function startTimer(input: z.infer<typeof startSchema>) {
   });
   log.info({ userId: ctx.userId, projectId: data.projectId }, "timer started");
   revalidateHorasAndLoad();
+  });
 }
 
 const stopSchema = z.object({ entryId: z.string().min(1) });
 
-export async function stopTimer(input: z.infer<typeof stopSchema>) {
+export async function stopTimer(
+  input: z.infer<typeof stopSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.stopTimer", async () => {
   const ctx = await requireDashboardContext();
   const data = stopSchema.parse(input);
   const entry = await prisma.timeEntry.findFirst({
@@ -144,11 +154,15 @@ export async function stopTimer(input: z.infer<typeof stopSchema>) {
   });
   log.info({ entryId: entry.id, hours }, "timer stopped");
   revalidateHorasAndLoad();
+  });
 }
 
 const completeTaskSchema = z.object({ taskId: z.string().min(1) });
 
-export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
+export async function completeTask(
+  input: z.infer<typeof completeTaskSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.completeTask", async () => {
   const ctx = await requireDashboardContext();
   const data = completeTaskSchema.parse(input);
   await assertTaskAccessible(ctx, data.taskId);
@@ -178,9 +192,13 @@ export async function completeTask(input: z.infer<typeof completeTaskSchema>) {
   void evaluateCatalogTimeDeviationForTask(data.taskId).catch(() => {
     /* scanner errors must not block task completion */
   });
+  });
 }
 
-export async function uncompleteTask(input: z.infer<typeof completeTaskSchema>) {
+export async function uncompleteTask(
+  input: z.infer<typeof completeTaskSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.uncompleteTask", async () => {
   const ctx = await requireDashboardContext();
   const data = completeTaskSchema.parse(input);
   await assertTaskAccessible(ctx, data.taskId);
@@ -190,6 +208,7 @@ export async function uncompleteTask(input: z.infer<typeof completeTaskSchema>) 
   });
   log.info({ userId: ctx.userId, taskId: data.taskId }, "task uncompleted");
   revalidateHorasAndLoad();
+  });
 }
 
 const manualSchema = z.object({
@@ -202,7 +221,10 @@ const manualSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-export async function createManualEntry(input: z.infer<typeof manualSchema>) {
+export async function createManualEntry(
+  input: z.infer<typeof manualSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.createManualEntry", async () => {
   const ctx = await requireDashboardContext();
   const data = manualSchema.parse(input);
   await assertTaskAccessible(ctx, data.taskId);
@@ -233,6 +255,7 @@ export async function createManualEntry(input: z.infer<typeof manualSchema>) {
     });
   });
   revalidateHorasAndLoad();
+  });
 }
 
 const manualRangesSchema = z.object({
@@ -255,7 +278,8 @@ const manualRangesSchema = z.object({
 
 export async function createManualEntriesFromRanges(
   input: z.infer<typeof manualRangesSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.createManualEntriesFromRanges", async () => {
   const ctx = await requireDashboardContext();
   const data = manualRangesSchema.parse(input);
 
@@ -311,18 +335,22 @@ export async function createManualEntriesFromRanges(
     "manual ranges created",
   );
   revalidateHorasAndLoad();
+  });
 }
 
 const deleteSchema = z.object({ entryId: z.string().min(1) });
 
-export async function deleteEntry(input: z.infer<typeof deleteSchema>) {
+export async function deleteEntry(
+  input: z.infer<typeof deleteSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.deleteEntry", async () => {
   const ctx = await requireDashboardContext();
   const data = deleteSchema.parse(input);
   const entry = await prisma.timeEntry.findFirst({
     where: { id: data.entryId },
     select: { id: true, userId: true, taskId: true, hours: true, endedAt: true },
   });
-  if (!entry) return;
+  if (!entry) throw new Error("Registro no encontrado.");
   assertCanEditEntry(ctx, entry.userId);
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.delete({ where: { id: entry.id } });
@@ -355,6 +383,7 @@ export async function deleteEntry(input: z.infer<typeof deleteSchema>) {
     }
   });
   revalidateHorasAndLoad();
+  });
 }
 
 const updateEntrySchema = z.object({
@@ -364,7 +393,10 @@ const updateEntrySchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-export async function updateEntry(input: z.infer<typeof updateEntrySchema>) {
+export async function updateEntry(
+  input: z.infer<typeof updateEntrySchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.updateEntry", async () => {
   const ctx = await requireDashboardContext();
   const data = updateEntrySchema.parse(input);
   const startedAt = new Date(data.startedAt);
@@ -432,6 +464,7 @@ export async function updateEntry(input: z.infer<typeof updateEntrySchema>) {
     }
   });
   revalidateHorasAndLoad();
+  });
 }
 
 const createForTaskSchema = z.object({
@@ -446,7 +479,10 @@ const createForTaskSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-export async function createManualEntryForTask(input: z.infer<typeof createForTaskSchema>) {
+export async function createManualEntryForTask(
+  input: z.infer<typeof createForTaskSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.createManualEntryForTask", async () => {
   const ctx = await requireDashboardContext();
   const data = createForTaskSchema.parse(input);
   const targetUserId = await (async () => {
@@ -491,4 +527,5 @@ export async function createManualEntryForTask(input: z.infer<typeof createForTa
     });
   });
   revalidateHorasAndLoad();
+  });
 }

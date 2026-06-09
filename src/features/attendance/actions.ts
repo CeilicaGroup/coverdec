@@ -14,6 +14,8 @@ import {
   startAttendanceSchema,
   stopAttendanceSchema,
 } from "./validation";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const log = childLogger({ module: "attendance.actions" });
 const OPEN_TOO_LONG_MINUTES = 12 * 60;
@@ -67,7 +69,10 @@ async function emitOutsideWindowAlert(input: {
   });
 }
 
-export async function startAttendance(input?: { notes?: string }) {
+export async function startAttendance(
+  input?: { notes?: string },
+): Promise<ActionResult<void>> {
+  return runServerAction("attendance.start", async () => {
   const ctx = await requireDashboardContext();
   const data = startAttendanceSchema.parse(input ?? {});
   if (!ctx.personId) {
@@ -100,9 +105,13 @@ export async function startAttendance(input?: { notes?: string }) {
 
   log.info({ userId: ctx.userId }, "attendance started");
   revalidateAttendancePaths();
+  });
 }
 
-export async function stopAttendance(input?: { sessionId?: string; notes?: string }) {
+export async function stopAttendance(
+  input?: { sessionId?: string; notes?: string },
+): Promise<ActionResult<void>> {
+  return runServerAction("attendance.stop", async () => {
   const ctx = await requireDashboardContext();
   const data = stopAttendanceSchema.parse(input ?? {});
   const session = await prisma.attendanceSession.findFirst({
@@ -151,6 +160,7 @@ export async function stopAttendance(input?: { sessionId?: string; notes?: strin
 
   log.info({ userId: ctx.userId, sessionId: session.id, minutes }, "attendance stopped");
   revalidateAttendancePaths();
+  });
 }
 
 export async function getAttendanceRange(input: {
@@ -183,7 +193,8 @@ export async function adminUpsertAttendanceSession(input: {
   startTime: string;
   endTime: string;
   notes?: string;
-}) {
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.adminUpsert", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = adminUpsertAttendanceSchema.parse(input);
@@ -226,9 +237,13 @@ export async function adminUpsertAttendanceSession(input: {
   });
 
   revalidateAttendancePaths();
+  });
 }
 
-export async function adminDeleteAttendanceSession(input: { sessionId: string }) {
+export async function adminDeleteAttendanceSession(input: {
+  sessionId: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.adminDelete", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = adminDeleteAttendanceSchema.parse(input);
@@ -236,7 +251,7 @@ export async function adminDeleteAttendanceSession(input: { sessionId: string })
     where: { id: data.sessionId },
     select: { id: true, userId: true, personId: true, startedAt: true },
   });
-  if (!session) return;
+  if (!session) throw new Error("Sesión de fichaje no encontrada.");
   await prisma.attendanceSession.delete({ where: { id: session.id } });
   const day = isoDay(session.startedAt);
   await resolveNotificationStates({
@@ -256,4 +271,5 @@ export async function adminDeleteAttendanceSession(input: { sessionId: string })
     scopeKey: `attendance-incomplete:${session.userId}:${day}`,
   });
   revalidateAttendancePaths();
+  });
 }

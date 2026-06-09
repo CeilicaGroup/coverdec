@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Warehouse } from "lucide-react";
@@ -46,7 +47,7 @@ export function LampNaveAssign({
         setOpen(false);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(reportMutationError("Error", err));
       }
     });
   };

@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "../../_components/page-header";
@@ -183,8 +184,7 @@ export function PersonalTeamClient({
 
   function submit() {
     startTransition(async () => {
-      try {
-        const rate = Number(hourlyRate);
+      const rate = Number(hourlyRate);
         const otRate = Number(overtimeHourlyRate);
         if (Number.isNaN(rate) || rate < 0 || Number.isNaN(otRate) || otRate < 0) {
           toast.error("Tarifas horarias inválidas");
@@ -209,7 +209,7 @@ export function PersonalTeamClient({
           })
           .filter((x): x is NonNullable<typeof x> => x !== null);
 
-        await savePerson({
+        const result = await savePerson({
           id: editingId,
           iniciales,
           color,
@@ -221,12 +221,14 @@ export function PersonalTeamClient({
           userId,
           specialties,
         });
+        const outcome = handleActionResult("personal.savePerson", result);
+        if (!outcome.success) {
+          toast.error(outcome.message);
+          return;
+        }
         toast.success(editingId ? "Persona actualizada" : "Persona creada");
         setOpen(false);
         router.refresh();
-      } catch (e) {
-        toast.error(getErrorMessage(e, "Error al guardar"));
-      }
     });
   }
 

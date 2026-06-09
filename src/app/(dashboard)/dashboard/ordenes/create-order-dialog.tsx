@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -75,7 +76,7 @@ export function CreateOrderDialog({
                 router.refresh();
                 router.push(`/dashboard/ordenes/${result.id}`);
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Error");
+                toast.error(reportMutationError("Error", err));
               }
             });
           }}

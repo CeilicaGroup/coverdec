@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarOff } from "lucide-react";
@@ -58,14 +59,15 @@ export function PersonAbsenceDialog({
 
   function remove(absence: AbsenceRow) {
     startTransition(async () => {
-      try {
-        await deleteAbsence({ id: absence.id, personId, date: absence.date });
-        toast.success("Ausencia eliminada");
-        if (editingId === absence.id) setEditingId(null);
-        router.refresh();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+      const result = await deleteAbsence({ id: absence.id, personId, date: absence.date });
+      const outcome = handleActionResult("absence.delete", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
       }
+      toast.success("Ausencia eliminada");
+      if (editingId === absence.id) setEditingId(null);
+      router.refresh();
     });
   }
 

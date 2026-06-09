@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -101,8 +102,7 @@ export function ManualEntryForm({
           endedAt: fromDatetimeLocalInputValue(r.endedAt),
         }));
         startTransition(async () => {
-          try {
-            await createManualEntriesFromRanges({
+          const result = await createManualEntriesFromRanges({
               projectId,
               lampId: lampId || undefined,
               taskId,
@@ -111,11 +111,13 @@ export function ManualEntryForm({
               markCompleted,
               ranges: normalizedRanges,
             });
-            toast.success("Registro creado");
-            setNotes("");
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Error");
+          const outcome = handleActionResult("manual-entry.ranges", result);
+          if (!outcome.success) {
+            toast.error(outcome.message);
+            return;
           }
+          toast.success("Registro creado");
+          setNotes("");
         });
       }}
     >

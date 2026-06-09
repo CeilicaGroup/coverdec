@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
@@ -314,7 +315,7 @@ function ElementNaveDialog({
         onOpenChange(false);
         onUpdated();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error");
+        toast.error(reportMutationError("Error", err));
       }
     });
   };
@@ -1030,7 +1031,7 @@ export function LampTasksPanel({
                     setEditTask(null);
                     router.refresh();
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : "Error");
+                    toast.error(reportMutationError("Error", err));
                   }
                 });
               }}
@@ -1114,7 +1115,7 @@ export function LampTasksPanel({
                   setAddOpen(false);
                   router.refresh();
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Error");
+                  toast.error(reportMutationError("Error", err));
                 }
               });
             }}

@@ -7,6 +7,8 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { ElementTypology, Role } from "@/generated/prisma";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { getFallbackNaveId } from "@/features/projects/task-nave";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const processRowSchema = z.object({
   process: z.string().min(1),
@@ -40,7 +42,10 @@ const elementUpsertSchema = z
     }
   });
 
-export async function upsertElementType(input: z.infer<typeof elementUpsertSchema>) {
+export async function upsertElementType(
+  input: z.infer<typeof elementUpsertSchema>,
+): Promise<ActionResult<{ id: string; code: string }>> {
+  return runServerAction("catalog.upsertElementType", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = elementUpsertSchema.parse(input);
@@ -118,7 +123,8 @@ export async function upsertElementType(input: z.infer<typeof elementUpsertSchem
   }
 
   revalidatePath("/dashboard/catalogo");
-  return element;
+  return { id: element.id, code: element.code };
+  });
 }
 
 const setActiveSchema = z.object({
@@ -133,7 +139,8 @@ const updateTypologyNaveSchema = z.object({
 
 export async function updateTypologyDefaultNave(
   input: z.infer<typeof updateTypologyNaveSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.updateTypologyDefaultNave", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = updateTypologyNaveSchema.parse(input);
@@ -154,9 +161,13 @@ export async function updateTypologyDefaultNave(
 
   revalidatePath("/dashboard/catalogo");
   revalidatePath("/dashboard/proyectos");
+  });
 }
 
-export async function setElementTypeActive(input: z.infer<typeof setActiveSchema>) {
+export async function setElementTypeActive(
+  input: z.infer<typeof setActiveSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.setElementTypeActive", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = setActiveSchema.parse(input);
@@ -165,11 +176,15 @@ export async function setElementTypeActive(input: z.infer<typeof setActiveSchema
     data: { isActive: data.isActive },
   });
   revalidatePath("/dashboard/catalogo");
+  });
 }
 
 const deleteElementSchema = z.object({ elementTypeId: z.string().min(1) });
 
-export async function deleteElementType(input: z.infer<typeof deleteElementSchema>) {
+export async function deleteElementType(
+  input: z.infer<typeof deleteElementSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.deleteElementType", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const { elementTypeId } = deleteElementSchema.parse(input);
@@ -186,6 +201,7 @@ export async function deleteElementType(input: z.infer<typeof deleteElementSchem
     prisma.elementType.delete({ where: { id: elementTypeId } }),
   ]);
   revalidatePath("/dashboard/catalogo");
+  });
 }
 
 const updateProcessSchema = z.object({
@@ -200,7 +216,8 @@ const updateProcessSchema = z.object({
 
 export async function updateProcessDefinition(
   input: z.infer<typeof updateProcessSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.updateProcessDefinition", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = updateProcessSchema.parse(input);
@@ -223,6 +240,7 @@ export async function updateProcessDefinition(
   revalidatePath("/dashboard/proyecto");
   revalidatePath("/dashboard/gantt");
   revalidatePath("/dashboard/personal");
+  });
 }
 
 const createProcessSchema = z.object({
@@ -238,7 +256,8 @@ const createProcessSchema = z.object({
 
 export async function createProcessDefinition(
   input: z.infer<typeof createProcessSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.createProcessDefinition", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = createProcessSchema.parse(input);
@@ -259,6 +278,7 @@ export async function createProcessDefinition(
   revalidatePath("/dashboard/catalogo");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/personal");
+  });
 }
 
 export interface ProcessDefinitionUsage {
@@ -322,7 +342,8 @@ const deleteProcessSchema = z.object({
 
 export async function deleteProcessDefinition(
   input: z.infer<typeof deleteProcessSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.deleteProcessDefinition", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = deleteProcessSchema.parse(input);
@@ -339,4 +360,5 @@ export async function deleteProcessDefinition(
   revalidatePath("/dashboard/catalogo");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/personal");
+  });
 }

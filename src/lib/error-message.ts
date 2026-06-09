@@ -4,6 +4,9 @@ const GENERIC_NEXT_ERROR_PATTERNS = [
   /An unexpected response was received from the server/i,
 ];
 
+export const GENERIC_RSC_REFRESH_MESSAGE =
+  "No se pudo refrescar la pantalla tras guardar. Recarga la página (F5). Si el problema continúa, revisa los logs del servidor (referencia digest en la consola del navegador).";
+
 const ERROR_MESSAGE_TRANSLATIONS: Record<string, string> = {
   YOU_ARE_NOT_ALLOWED_TO_SET_USERS_PASSWORD:
     "No tienes permisos para cambiar la contraseña de otros usuarios.",
@@ -75,5 +78,15 @@ export function getErrorMessage(error: unknown, fallback = "Error"): string {
     candidate.trim(),
   );
   const useful = candidates.find(isUsefulMessage);
-  return useful ?? fallback;
+  if (useful) return useful;
+
+  if (
+    candidates.some((candidate) =>
+      GENERIC_NEXT_ERROR_PATTERNS.some((pattern) => pattern.test(candidate)),
+    )
+  ) {
+    return GENERIC_RSC_REFRESH_MESSAGE;
+  }
+
+  return fallback;
 }

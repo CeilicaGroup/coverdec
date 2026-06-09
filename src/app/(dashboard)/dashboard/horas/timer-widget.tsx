@@ -1,5 +1,6 @@
 "use client";
 
+import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useState, useTransition } from "react";
 import { Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,12 +61,13 @@ export function TimerWidget({
           className="gap-2"
           onClick={() => {
             startTransition(async () => {
-              try {
-                await stopTimer({ entryId: openTimer.id });
-                toast.success("Timer parado");
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Error");
+              const result = await stopTimer({ entryId: openTimer.id });
+              const outcome = handleActionResult("timer.stop", result);
+              if (!outcome.success) {
+                toast.error(outcome.message);
+                return;
               }
+              toast.success("Timer parado");
             });
           }}
         >
@@ -97,17 +99,18 @@ export function TimerWidget({
           return;
         }
         startTransition(async () => {
-          try {
-            await startTimer({
+          const result = await startTimer({
               projectId,
               lampId: lampId || undefined,
               taskId,
               process: process || undefined,
             });
-            toast.success("Timer iniciado");
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Error");
+          const outcome = handleActionResult("timer.start", result);
+          if (!outcome.success) {
+            toast.error(outcome.message);
+            return;
           }
+          toast.success("Timer iniciado");
         });
       }}
     >

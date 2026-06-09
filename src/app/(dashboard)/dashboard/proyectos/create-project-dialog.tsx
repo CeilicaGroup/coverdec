@@ -1,5 +1,6 @@
 "use client";
 
+import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -72,7 +73,7 @@ export function CreateProjectDialog({
                 router.refresh();
                 router.push(`/dashboard/proyectos/${r.id}`);
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Error");
+                toast.error(reportMutationError("Error", err));
               }
             });
           }}
