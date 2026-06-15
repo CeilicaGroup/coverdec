@@ -9,6 +9,7 @@ import { getPlanningWeights } from "@/features/planning/queries";
 import { projectStrategyToWeights } from "@/features/planning/policy-schema";
 import {
   computePlanFromBounds,
+  relaxFirstSchedulableDayForChain,
   type PlanFrom,
 } from "@/features/planning/plan-from";
 import {
@@ -236,7 +237,7 @@ export async function loadSolverInput(args: {
   const weekStart = toUtcDay(args.weekStart);
   const planFromAt = args.planFromAt ?? new Date();
   const planFrom = args.planFrom ?? "WEEK_START";
-  const { firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
+  let { firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
     computePlanFromBounds(weekStart, planFrom, planFromAt);
 
   const { year, week } = isoWeek(weekStart);
@@ -394,6 +395,95 @@ export async function loadSolverInput(args: {
       .map((task) => task.id),
   );
 
+  const holidayDates = new Set<string>();
+  for (const h of holidaysRaw) {
+    let t = utcDayStart(h.startDate).getTime();
+    const endT = utcDayStart(h.endDate).getTime();
+    while (t <= endT) {
+      holidayDates.add(new Date(t).toISOString().slice(0, 10));
+      t += DAY_MS;
+    }
+  }
+
+  const engineTasksBase = tasksRaw
+    .map((t) => ({
+      task: {
+        ...t,
+        pendingToPlanHours:
+          planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
+        remainingWorkHours:
+          planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
+      },
+      pending: effectivePendingHours(
+        {
+          estimatedHours: t.estimatedHours,
+          isCompleted: t.isCompleted,
+          pendingToPlanHours:
+            planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
+          remainingWorkHours:
+            planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
+        },
+        {
+        priorPlannedHours: priorPlannedHoursByTask.get(t.id) ?? 0,
+        },
+      ),
+    }))
+    .filter(({ pending }) => pending > 0)
+    .map(({ task: t, pending }) => {
+      const projectWeights = projectStrategyToWeights({
+        preset: t.project.planningPreset,
+        costPriority: t.project.planningCostPriority,
+        stability: t.project.planningStability,
+        deadlineBoost: t.project.planningDeadlineBoost,
+      });
+      return {
+      id: t.id,
+      projectId: t.projectId,
+      projectPriority: Math.round((projectWeights.wPriority / 5) * 100),
+      deadlineCurveExponent: planningPolicy?.deadlineCurveExponent ?? 2,
+      overduePenaltyMultiplier: planningPolicy?.overduePenaltyMultiplier ?? 2.5,
+      projectDeliveryDate: t.project.deliveryDate ?? null,
+      lampId: t.lampId,
+      order: t.order,
+      process: t.process,
+      pendingHours: pending,
+      canFragment: processCanFragment.get(t.process) ?? true,
+      };
+    });
+
+  const engineTaskIds = new Set(engineTasksBase.map((t) => t.id));
+  const priorEnds = buildLastAssignmentEndByTaskId(
+    args.priorWeekAssignments ?? [],
+  );
+  const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
+    computeMinWeekQuarterByTaskId({
+      weekStart,
+      tasks: tasksRaw.map((task) => ({
+        id: task.id,
+        lampId: task.lampId,
+        order: task.order,
+        process: task.process,
+        estimatedHours: task.estimatedHours,
+        pendingToPlanHours:
+          planningTotalsByTaskId.get(task.id)?.pendingToPlanHours ?? 0,
+        remainingWorkHours:
+          planningTotalsByTaskId.get(task.id)?.remainingWorkHours ?? 0,
+      })),
+      engineTaskIds,
+      priorEnds,
+      waitHoursByProcess: new Map(
+        processes.map((p) => [p.code, p.waitHours]),
+      ),
+      holidayDates,
+    });
+
+  ({ firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
+    relaxFirstSchedulableDayForChain(
+      firstSchedulableDayIndex,
+      firstSchedulableWeekQuarter,
+      minWeekQuarterByTask.values(),
+    ));
+
   const fixedAssignments = buildFixedAssignmentsForRegenerate(
     args.previousAssignments ?? [],
     taskById,
@@ -482,88 +572,6 @@ export async function loadSolverInput(args: {
       overtimeHourlyRate: Number(p.overtimeHourlyRate),
     };
   });
-
-  const engineTasksBase = tasksRaw
-    .map((t) => ({
-      task: {
-        ...t,
-        pendingToPlanHours:
-          planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
-        remainingWorkHours:
-          planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
-      },
-      pending: effectivePendingHours(
-        {
-          estimatedHours: t.estimatedHours,
-          isCompleted: t.isCompleted,
-          pendingToPlanHours:
-            planningTotalsByTaskId.get(t.id)?.pendingToPlanHours ?? 0,
-          remainingWorkHours:
-            planningTotalsByTaskId.get(t.id)?.remainingWorkHours ?? 0,
-        },
-        {
-        priorPlannedHours: priorPlannedHoursByTask.get(t.id) ?? 0,
-        },
-      ),
-    }))
-    .filter(({ pending }) => pending > 0)
-    .map(({ task: t, pending }) => {
-      const projectWeights = projectStrategyToWeights({
-        preset: t.project.planningPreset,
-        costPriority: t.project.planningCostPriority,
-        stability: t.project.planningStability,
-        deadlineBoost: t.project.planningDeadlineBoost,
-      });
-      return {
-      id: t.id,
-      projectId: t.projectId,
-      projectPriority: Math.round((projectWeights.wPriority / 5) * 100),
-      deadlineCurveExponent: planningPolicy?.deadlineCurveExponent ?? 2,
-      overduePenaltyMultiplier: planningPolicy?.overduePenaltyMultiplier ?? 2.5,
-      projectDeliveryDate: t.project.deliveryDate ?? null,
-      lampId: t.lampId,
-      order: t.order,
-      process: t.process,
-      pendingHours: pending,
-      canFragment: processCanFragment.get(t.process) ?? true,
-      };
-    });
-
-  const holidayDates = new Set<string>();
-  for (const h of holidaysRaw) {
-    let t = utcDayStart(h.startDate).getTime();
-    const endT = utcDayStart(h.endDate).getTime();
-    while (t <= endT) {
-      holidayDates.add(new Date(t).toISOString().slice(0, 10));
-      t += DAY_MS;
-    }
-  }
-
-  const engineTaskIds = new Set(engineTasksBase.map((t) => t.id));
-  const priorEnds = buildLastAssignmentEndByTaskId(
-    args.priorWeekAssignments ?? [],
-  );
-  const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
-    computeMinWeekQuarterByTaskId({
-      weekStart,
-      tasks: tasksRaw.map((task) => ({
-        id: task.id,
-        lampId: task.lampId,
-        order: task.order,
-        process: task.process,
-        estimatedHours: task.estimatedHours,
-        pendingToPlanHours:
-          planningTotalsByTaskId.get(task.id)?.pendingToPlanHours ?? 0,
-        remainingWorkHours:
-          planningTotalsByTaskId.get(task.id)?.remainingWorkHours ?? 0,
-      })),
-      engineTaskIds,
-      priorEnds,
-      waitHoursByProcess: new Map(
-        processes.map((p) => [p.code, p.waitHours]),
-      ),
-      holidayDates,
-    });
 
   const engineTasks: EngineTask[] = engineTasksBase
     .filter((t) => !deferredPastHorizon.has(t.id))

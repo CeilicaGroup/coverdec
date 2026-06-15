@@ -187,6 +187,7 @@ export function GenerateButton({
             weeksGenerated,
             totalPendingBeforeHours: totalPendingBefore,
             projectPendingBeforeHours: projectPendingBefore,
+            lastWeekOutstandingHours: result.unscheduledHours,
           });
 
           totalPendingBefore = progress.totalPendingHours;

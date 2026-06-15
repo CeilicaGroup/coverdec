@@ -92,6 +92,20 @@ describe("planning-horizon", () => {
     expect(result.stallReason).toBe("no_progress");
   });
 
+  it("continues when last week had outstanding deferred hours despite unchanged pending", () => {
+    const result = shouldContinueHorizon({
+      mode: { kind: "ALL_PROJECTS" },
+      anchorWeekStart: anchor,
+      weeksGenerated: 1,
+      totalPendingBeforeHours: 50,
+      totalPendingAfterHours: 50,
+      projectPendingBeforeHours: 0,
+      projectPendingAfterHours: 0,
+      lastWeekOutstandingHours: 12,
+    });
+    expect(result.shouldContinue).toBe(true);
+  });
+
   it("UNTIL_DATE stops when next week is past target", () => {
     const result = shouldContinueHorizon({
       mode: { kind: "UNTIL_DATE", untilIso: "2026-06-12" },

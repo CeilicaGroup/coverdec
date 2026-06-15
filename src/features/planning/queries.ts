@@ -231,6 +231,54 @@ const personInclude = {
   personNaves: { include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
 } as const;
 
+type PersonWithNaveInclude = Awaited<
+  ReturnType<
+    typeof prisma.person.findMany<{ include: typeof personInclude }>
+  >
+>[number];
+
+export interface NavePersonnel {
+  id: string;
+  alias: string | null;
+  iniciales: string;
+  color: string;
+  hourlyRate: number;
+  overtimeHourlyRate: number;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  specialties: PersonWithNaveInclude["specialties"];
+  workWindows: PersonWithNaveInclude["workWindows"];
+  scheduleOverrides: PersonWithNaveInclude["scheduleOverrides"];
+  user: PersonWithNaveInclude["user"];
+  personNaves: PersonWithNaveInclude["personNaves"];
+  nombre: string;
+  capacityHours: number;
+}
+
+function serializeNavePersonnelRow(p: PersonWithNaveInclude): NavePersonnel {
+  return {
+    id: p.id,
+    alias: p.alias,
+    iniciales: p.iniciales,
+    color: p.color,
+    hourlyRate: Number(p.hourlyRate),
+    overtimeHourlyRate: Number(p.overtimeHourlyRate),
+    isActive: p.isActive,
+    notes: p.notes,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    specialties: p.specialties,
+    workWindows: p.workWindows,
+    scheduleOverrides: p.scheduleOverrides,
+    user: p.user,
+    personNaves: p.personNaves,
+    nombre: p.user?.name ?? p.iniciales,
+    capacityHours: deriveDailyHoursFromWindows(p.workWindows),
+  };
+}
+
 function deriveDailyHoursFromWindows(
   windows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[],
 ): number {
@@ -243,7 +291,7 @@ function deriveDailyHoursFromWindows(
   return total > 0 ? total / 5 : 8;
 }
 
-export async function getNavePersonnel(naveScope: string[] | null) {
+export async function getNavePersonnel(naveScope: string[] | null): Promise<NavePersonnel[]> {
   if (naveScope !== null && naveScope.length === 0) return [];
   const rows = naveScope === null
     ? await prisma.person.findMany({
@@ -260,14 +308,7 @@ export async function getNavePersonnel(naveScope: string[] | null) {
       orderBy: { iniciales: "asc" },
     });
 
-  return rows.map((p) => {
-    const capacityHours = deriveDailyHoursFromWindows(p.workWindows);
-    return {
-      ...p,
-      nombre: p.user?.name ?? p.iniciales,
-      capacityHours,
-    };
-  });
+  return rows.map(serializeNavePersonnelRow);
 }
 
 export interface ActualHourEntry {

@@ -28,6 +28,8 @@ export interface HorizonProgressInput {
   /** Pendiente del proyecto objetivo (modo PROJECT). */
   projectPendingBeforeHours: number;
   projectPendingAfterHours: number;
+  /** Horas sin colocar en la última semana (aplazadas o sin capacidad). */
+  lastWeekOutstandingHours?: number;
 }
 
 export interface HorizonProgressResult {
@@ -86,6 +88,7 @@ export function shouldContinueHorizon(input: HorizonProgressInput): HorizonProgr
     totalPendingAfterHours,
     projectPendingBeforeHours,
     projectPendingAfterHours,
+    lastWeekOutstandingHours = 0,
   } = input;
   const maxWeeks = maxWeeksForMode(mode);
   const pendingAfter = relevantPendingHours(
@@ -121,7 +124,8 @@ export function shouldContinueHorizon(input: HorizonProgressInput): HorizonProgr
   if (
     weeksGenerated > 0 &&
     Math.abs(pendingAfter - pendingBefore) < 1e-6 &&
-    pendingAfter > PENDING_DONE_THRESHOLD_HOURS
+    pendingAfter > PENDING_DONE_THRESHOLD_HOURS &&
+    lastWeekOutstandingHours <= PENDING_DONE_THRESHOLD_HOURS
   ) {
     return { shouldContinue: false, stallReason: "no_progress" };
   }
@@ -187,6 +191,7 @@ export async function countPendingPlanningHours(args: {
     where: {
       naveId: args.naveId,
       project: { isActive: true },
+      ...(args.projectId ? { projectId: args.projectId } : {}),
     },
     select: {
       id: true,

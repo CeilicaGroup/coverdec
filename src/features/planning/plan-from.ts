@@ -3,6 +3,30 @@ import { getMondayOf, toUtcDay, weekDays } from "@/lib/week";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const QUARTERS_PER_DAY = 24 * 4;
 
+export function weekQuarterToDayIndex(weekQuarter: number): number {
+  return Math.floor(weekQuarter / QUARTERS_PER_DAY);
+}
+
+/** Permite planificar días anteriores al ancla si la cadena de procesos lo exige. */
+export function relaxFirstSchedulableDayForChain(
+  firstSchedulableDayIndex: number,
+  firstSchedulableWeekQuarter: number | undefined,
+  minWeekQuarters: Iterable<number | undefined>,
+): { firstSchedulableDayIndex: number; firstSchedulableWeekQuarter?: number } {
+  let chainMinDay = firstSchedulableDayIndex;
+  for (const wq of minWeekQuarters) {
+    if (wq === undefined) continue;
+    chainMinDay = Math.min(chainMinDay, weekQuarterToDayIndex(wq));
+  }
+  if (chainMinDay >= firstSchedulableDayIndex) {
+    return { firstSchedulableDayIndex, firstSchedulableWeekQuarter };
+  }
+  return {
+    firstSchedulableDayIndex: chainMinDay,
+    firstSchedulableWeekQuarter: undefined,
+  };
+}
+
 export const PLAN_FROM_OPTIONS = [
   { value: "WEEK_START", label: "Lunes de la semana" },
   { value: "TODAY", label: "Hoy" },

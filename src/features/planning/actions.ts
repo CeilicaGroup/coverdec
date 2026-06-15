@@ -78,6 +78,7 @@ export async function getPlanningHorizonProgressAction(input: {
   weeksGenerated: number;
   totalPendingBeforeHours: number;
   projectPendingBeforeHours: number;
+  lastWeekOutstandingHours?: number;
 }) {
   const ctx = await requireDashboardContext();
   if (!ctx.naveId) {
@@ -116,6 +117,7 @@ export async function getPlanningHorizonProgressAction(input: {
     totalPendingAfterHours: snapshot.totalPendingHours,
     projectPendingBeforeHours: input.projectPendingBeforeHours,
     projectPendingAfterHours: projectPending,
+    lastWeekOutstandingHours: input.lastWeekOutstandingHours,
   });
 
   return {

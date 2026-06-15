@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computePlanFromBounds,
+  relaxFirstSchedulableDayForChain,
   resolvePlanFromAnchor,
 } from "../plan-from";
 
@@ -48,6 +49,28 @@ describe("computePlanFromBounds", () => {
     const at = new Date("2026-05-10T12:00:00.000Z");
     expect(computePlanFromBounds(weekStart, "TODAY", at)).toEqual({
       firstSchedulableDayIndex: 5,
+    });
+  });
+});
+
+describe("relaxFirstSchedulableDayForChain", () => {
+  it("allows earlier days when process chain requires them", () => {
+    const mondayQuarter = 0;
+    expect(
+      relaxFirstSchedulableDayForChain(2, 2 * 24 * 4, [mondayQuarter]),
+    ).toEqual({
+      firstSchedulableDayIndex: 0,
+      firstSchedulableWeekQuarter: undefined,
+    });
+  });
+
+  it("keeps plan-from bounds when chain does not require earlier days", () => {
+    const wednesdayQuarter = 2 * 24 * 4;
+    expect(
+      relaxFirstSchedulableDayForChain(2, wednesdayQuarter, [wednesdayQuarter]),
+    ).toEqual({
+      firstSchedulableDayIndex: 2,
+      firstSchedulableWeekQuarter: wednesdayQuarter,
     });
   });
 });

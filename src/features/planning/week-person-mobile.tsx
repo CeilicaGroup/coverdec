@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear } from "@/lib/format";
-import type { getNavePersonnel } from "@/features/planning/queries";
+import type { WeekPersonListItem } from "./week-person-grid";
 import { WeekDayTasks } from "./week-day-tasks";
 import type {
   WeekGridCell,
@@ -17,7 +17,7 @@ const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
 interface WeekPersonMobileProps {
   view: "plan" | "actual";
-  people: Awaited<ReturnType<typeof getNavePersonnel>>;
+  people: WeekPersonListItem[];
   days: Date[];
   grid: Map<string, Map<string, WeekGridCell[]>>;
   planTask: WeekPersonTaskSummary;

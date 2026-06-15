@@ -9,12 +9,31 @@ import {
   getNavePersonnel,
   getPlanningForWeek,
   type ActualHourEntry,
+  type NavePersonnel,
 } from "@/features/planning/queries";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear, formatHours, formatTimeRangeFromStartAndHours } from "@/lib/format";
 import { WeekDayTasks } from "./week-day-tasks";
 import { WeekPersonMobile } from "./week-person-mobile";
+
+export interface WeekPersonListItem {
+  id: string;
+  nombre: string;
+  iniciales: string;
+  color: string;
+}
+
+export function toWeekPersonListItem(
+  person: Pick<NavePersonnel, "id" | "nombre" | "iniciales" | "color">,
+): WeekPersonListItem {
+  return {
+    id: person.id,
+    nombre: person.nombre,
+    iniciales: person.iniciales,
+    color: person.color,
+  };
+}
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -89,7 +108,7 @@ export function buildEntriesByPersonDayTask(entries: ActualHourEntry[]) {
 
 export function buildPlanGrid(
   planning: Awaited<ReturnType<typeof getPlanningForWeek>>,
-  people: Awaited<ReturnType<typeof getNavePersonnel>>,
+  people: NavePersonnel[],
   days: Date[],
 ): Map<string, Map<string, WeekGridCell[]>> {
   const grid = new Map<string, Map<string, WeekGridCell[]>>();
@@ -132,7 +151,7 @@ export function buildPlanGrid(
 
 export function buildActualGrid(
   entries: ActualHourEntry[],
-  people: Awaited<ReturnType<typeof getNavePersonnel>>,
+  people: NavePersonnel[],
   days: Date[],
 ): Map<string, Map<string, WeekGridCell[]>> {
   const grid = new Map<string, Map<string, WeekGridCell[]>>();
@@ -228,7 +247,7 @@ interface WeekPersonGridProps {
   title?: string;
   bare?: boolean;
   view: "plan" | "actual";
-  people: Awaited<ReturnType<typeof getNavePersonnel>>;
+  people: NavePersonnel[];
   days: Date[];
   grid: Map<string, Map<string, WeekGridCell[]>>;
   planTask: WeekPersonTaskSummary;
@@ -308,7 +327,7 @@ export function WeekPersonGrid({
       <div className="md:hidden">
         <WeekPersonMobile
           view={view}
-          people={people}
+          people={people.map(toWeekPersonListItem)}
           days={days}
           grid={grid}
           planTask={planTask}
