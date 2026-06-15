@@ -6,14 +6,26 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import { emitNotification, resolveNotificationStates } from "@/features/notifications/service";
-import { assertNoAttendanceOverlap } from "./overlap";
 import {
+  assertBreakStartWithinSession,
+  assertBreakWithinSession,
+  assertNoAttendanceOverlap,
+  assertNoBreakOverlap,
+  assertNoOpenBreak,
+} from "./overlap";
+import {
+  adminCreateAttendanceBreakSchema,
+  adminDeleteAttendanceBreakSchema,
   adminDeleteAttendanceSchema,
+  adminUpdateAttendanceBreakSchema,
   adminUpsertAttendanceSchema,
   attendanceRangeSchema,
+  endBreakSchema,
   startAttendanceSchema,
+  startBreakSchema,
   stopAttendanceSchema,
 } from "./validation";
+import { workedSessionMinutes } from "./worked-minutes";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
 
@@ -69,6 +81,27 @@ async function emitOutsideWindowAlert(input: {
   });
 }
 
+async function recalculateClosedSessionMinutes(sessionId: string) {
+  const session = await prisma.attendanceSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      startedAt: true,
+      endedAt: true,
+      breaks: {
+        select: { startedAt: true, endedAt: true, minutes: true },
+        orderBy: { startedAt: "asc" },
+      },
+    },
+  });
+  if (!session?.endedAt) return;
+  const minutes = Math.max(0, workedSessionMinutes(session, session.endedAt));
+  await prisma.attendanceSession.update({
+    where: { id: sessionId },
+    data: { minutes },
+  });
+}
+
 export async function startAttendance(
   input?: { notes?: string },
 ): Promise<ActionResult<void>> {
@@ -120,11 +153,38 @@ export async function stopAttendance(
       endedAt: null,
       ...(data.sessionId ? { id: data.sessionId } : {}),
     },
-    select: { id: true, startedAt: true, personId: true },
+    select: {
+      id: true,
+      startedAt: true,
+      personId: true,
+      breaks: {
+        where: { endedAt: null },
+        select: { id: true, startedAt: true },
+      },
+    },
   });
   if (!session) throw new Error("No hay fichaje diario activo.");
 
   const endedAt = new Date();
+
+  const openBreak = session.breaks[0];
+  if (openBreak) {
+    const breakMinutes = Math.max(
+      0,
+      Math.round((endedAt.getTime() - openBreak.startedAt.getTime()) / 60000),
+    );
+    await prisma.attendanceBreak.update({
+      where: { id: openBreak.id },
+      data: { endedAt, minutes: breakMinutes },
+    });
+  }
+
+  const breaks = await prisma.attendanceBreak.findMany({
+    where: { sessionId: session.id },
+    select: { startedAt: true, endedAt: true, minutes: true },
+    orderBy: { startedAt: "asc" },
+  });
+
   await assertNoAttendanceOverlap({
     userId: ctx.userId,
     startedAt: session.startedAt,
@@ -133,8 +193,11 @@ export async function stopAttendance(
   });
 
   const minutes = Math.max(
-    1,
-    Math.round((endedAt.getTime() - session.startedAt.getTime()) / 60000),
+    0,
+    workedSessionMinutes(
+      { startedAt: session.startedAt, endedAt, breaks },
+      endedAt,
+    ),
   );
   await prisma.attendanceSession.update({
     where: { id: session.id },
@@ -163,6 +226,94 @@ export async function stopAttendance(
   });
 }
 
+export async function startBreak(
+  input?: { sessionId?: string; notes?: string },
+): Promise<ActionResult<void>> {
+  return runServerAction("attendance.startBreak", async () => {
+    const ctx = await requireDashboardContext();
+    const data = startBreakSchema.parse(input ?? {});
+    const session = await prisma.attendanceSession.findFirst({
+      where: {
+        userId: ctx.userId,
+        endedAt: null,
+        ...(data.sessionId ? { id: data.sessionId } : {}),
+      },
+      select: { id: true, startedAt: true },
+    });
+    if (!session) throw new Error("No hay fichaje diario activo.");
+    await assertNoOpenBreak(session.id);
+
+    const startedAt = new Date();
+    assertBreakStartWithinSession({
+      sessionStartedAt: session.startedAt,
+      sessionEndedAt: null,
+      breakStartedAt: startedAt,
+      at: startedAt,
+    });
+
+    await prisma.attendanceBreak.create({
+      data: {
+        sessionId: session.id,
+        source: AttendanceSource.BUTTON,
+        startedAt,
+        notes: data.notes,
+      },
+    });
+
+    log.info({ userId: ctx.userId, sessionId: session.id }, "attendance break started");
+    revalidateAttendancePaths();
+  });
+}
+
+export async function endBreak(
+  input?: { breakId?: string; notes?: string },
+): Promise<ActionResult<void>> {
+  return runServerAction("attendance.endBreak", async () => {
+    const ctx = await requireDashboardContext();
+    const data = endBreakSchema.parse(input ?? {});
+    const openBreak = await prisma.attendanceBreak.findFirst({
+      where: {
+        endedAt: null,
+        session: { userId: ctx.userId, endedAt: null },
+        ...(data.breakId ? { id: data.breakId } : {}),
+      },
+      select: {
+        id: true,
+        startedAt: true,
+        session: { select: { id: true, startedAt: true, endedAt: true } },
+      },
+    });
+    if (!openBreak) throw new Error("No hay pausa activa.");
+
+    const endedAt = new Date();
+    assertBreakWithinSession({
+      sessionStartedAt: openBreak.session.startedAt,
+      sessionEndedAt: openBreak.session.endedAt,
+      breakStartedAt: openBreak.startedAt,
+      breakEndedAt: endedAt,
+      at: endedAt,
+    });
+    await assertNoBreakOverlap({
+      sessionId: openBreak.session.id,
+      startedAt: openBreak.startedAt,
+      endedAt,
+      excludeBreakId: openBreak.id,
+    });
+
+    const minutes = Math.max(
+      0,
+      Math.round((endedAt.getTime() - openBreak.startedAt.getTime()) / 60000),
+    );
+    await prisma.attendanceBreak.update({
+      where: { id: openBreak.id },
+      data: { endedAt, minutes, notes: data.notes },
+    });
+
+    log.info({ userId: ctx.userId, breakId: openBreak.id, minutes }, "attendance break ended");
+    revalidateAttendancePaths();
+  });
+}
+
 export async function getAttendanceRange(input: {
   startDate: string;
   endDate: string;
@@ -172,10 +323,14 @@ export async function getAttendanceRange(input: {
   const data = attendanceRangeSchema.parse(input);
   const start = new Date(`${data.startDate}T00:00:00.000Z`);
   const end = new Date(`${data.endDate}T23:59:59.999Z`);
+  const include = {
+    breaks: { orderBy: { startedAt: "asc" as const } },
+  };
   if (ctx.role === Role.OPERARIO) {
     return prisma.attendanceSession.findMany({
       where: { userId: ctx.userId, startedAt: { gte: start, lte: end } },
       orderBy: { startedAt: "asc" },
+      include,
     });
   }
   return prisma.attendanceSession.findMany({
@@ -184,6 +339,7 @@ export async function getAttendanceRange(input: {
       ...(data.personId ? { personId: data.personId } : {}),
     },
     orderBy: { startedAt: "asc" },
+    include,
   });
 }
 
@@ -214,7 +370,10 @@ export async function adminUpsertAttendanceSession(input: {
     startedAt,
     endedAt,
   });
-  const minutes = Math.max(1, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+  const minutes = Math.max(
+    0,
+    workedSessionMinutes({ startedAt, endedAt, breaks: [] }, endedAt),
+  );
   await prisma.attendanceSession.create({
     data: {
       userId: person.user.id,
@@ -271,5 +430,122 @@ export async function adminDeleteAttendanceSession(input: {
     scopeKey: `attendance-incomplete:${session.userId}:${day}`,
   });
   revalidateAttendancePaths();
+  });
+}
+
+export async function adminCreateAttendanceBreak(input: {
+  sessionId: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.adminCreateBreak", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = adminCreateAttendanceBreakSchema.parse(input);
+
+    const session = await prisma.attendanceSession.findUnique({
+      where: { id: data.sessionId },
+      select: { id: true, startedAt: true, endedAt: true },
+    });
+    if (!session) throw new Error("Sesión de fichaje no encontrada.");
+    if (!session.endedAt) {
+      throw new Error("No se pueden añadir pausas cerradas a una sesión abierta.");
+    }
+
+    const dateIso = isoDay(session.startedAt);
+    const startedAt = toUtcDateTime(dateIso, data.startTime);
+    const endedAt = toUtcDateTime(dateIso, data.endTime);
+    assertBreakWithinSession({
+      sessionStartedAt: session.startedAt,
+      sessionEndedAt: session.endedAt,
+      breakStartedAt: startedAt,
+      breakEndedAt: endedAt,
+    });
+    await assertNoBreakOverlap({ sessionId: session.id, startedAt, endedAt });
+
+    const minutes = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+    await prisma.attendanceBreak.create({
+      data: {
+        sessionId: session.id,
+        source: AttendanceSource.ADMIN_EDIT,
+        startedAt,
+        endedAt,
+        minutes,
+        notes: data.notes,
+      },
+    });
+    await recalculateClosedSessionMinutes(session.id);
+    revalidateAttendancePaths();
+  });
+}
+
+export async function adminUpdateAttendanceBreak(input: {
+  breakId: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.adminUpdateBreak", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = adminUpdateAttendanceBreakSchema.parse(input);
+
+    const existing = await prisma.attendanceBreak.findUnique({
+      where: { id: data.breakId },
+      select: {
+        id: true,
+        sessionId: true,
+        session: { select: { startedAt: true, endedAt: true } },
+      },
+    });
+    if (!existing) throw new Error("Pausa no encontrada.");
+    if (!existing.session.endedAt) {
+      throw new Error("No se puede editar una pausa de una sesión abierta.");
+    }
+
+    const dateIso = isoDay(existing.session.startedAt);
+    const startedAt = toUtcDateTime(dateIso, data.startTime);
+    const endedAt = toUtcDateTime(dateIso, data.endTime);
+    assertBreakWithinSession({
+      sessionStartedAt: existing.session.startedAt,
+      sessionEndedAt: existing.session.endedAt,
+      breakStartedAt: startedAt,
+      breakEndedAt: endedAt,
+    });
+    await assertNoBreakOverlap({
+      sessionId: existing.sessionId,
+      startedAt,
+      endedAt,
+      excludeBreakId: existing.id,
+    });
+
+    const minutes = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+    await prisma.attendanceBreak.update({
+      where: { id: existing.id },
+      data: { startedAt, endedAt, minutes, notes: data.notes },
+    });
+    await recalculateClosedSessionMinutes(existing.sessionId);
+    revalidateAttendancePaths();
+  });
+}
+
+export async function adminDeleteAttendanceBreak(input: {
+  breakId: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.adminDeleteBreak", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = adminDeleteAttendanceBreakSchema.parse(input);
+
+    const existing = await prisma.attendanceBreak.findUnique({
+      where: { id: data.breakId },
+      select: { id: true, sessionId: true },
+    });
+    if (!existing) throw new Error("Pausa no encontrada.");
+
+    await prisma.attendanceBreak.delete({ where: { id: existing.id } });
+    await recalculateClosedSessionMinutes(existing.sessionId);
+    revalidateAttendancePaths();
   });
 }

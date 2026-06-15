@@ -21,7 +21,7 @@ export default async function FichajeDiarioPage() {
       ? { isActive: true, personNaves: { some: { naveId: { in: ctx.naveIds } } } }
       : { id: ctx.personId ?? "__none__" };
 
-  const [people, sessions, absences, holidays, openSession] = await Promise.all([
+  const [people, sessions, absences, holidays, openSession, openBreak] = await Promise.all([
     prisma.person.findMany({
       where: peopleWhere,
       select: {
@@ -49,6 +49,17 @@ export default async function FichajeDiarioPage() {
         endedAt: true,
         minutes: true,
         notes: true,
+        breaks: {
+          orderBy: { startedAt: "asc" },
+          select: {
+            id: true,
+            source: true,
+            startedAt: true,
+            endedAt: true,
+            minutes: true,
+            notes: true,
+          },
+        },
       },
     }),
     prisma.absence.findMany({
@@ -79,6 +90,13 @@ export default async function FichajeDiarioPage() {
       where: { userId: ctx.userId, endedAt: null },
       select: { id: true, startedAt: true },
     }),
+    prisma.attendanceBreak.findFirst({
+      where: {
+        endedAt: null,
+        session: { userId: ctx.userId, endedAt: null },
+      },
+      select: { id: true, startedAt: true, sessionId: true },
+    }),
   ]);
 
   return (
@@ -101,6 +119,11 @@ export default async function FichajeDiarioPage() {
           ...s,
           startedAt: s.startedAt.toISOString(),
           endedAt: s.endedAt?.toISOString() ?? null,
+          breaks: s.breaks.map((b) => ({
+            ...b,
+            startedAt: b.startedAt.toISOString(),
+            endedAt: b.endedAt?.toISOString() ?? null,
+          })),
         }))}
         absences={absences.map((a) => ({
           ...a,
@@ -118,6 +141,15 @@ export default async function FichajeDiarioPage() {
             ? {
                 id: openSession.id,
                 startedAt: openSession.startedAt.toISOString(),
+              }
+            : null
+        }
+        openBreak={
+          openBreak
+            ? {
+                id: openBreak.id,
+                sessionId: openBreak.sessionId,
+                startedAt: openBreak.startedAt.toISOString(),
               }
             : null
         }

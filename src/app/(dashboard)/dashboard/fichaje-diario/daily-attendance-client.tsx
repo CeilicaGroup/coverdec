@@ -3,7 +3,7 @@
 import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pause, Play } from "lucide-react";
+import { Coffee, Pause, Play } from "lucide-react";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,25 @@ import {
 import { AbsenceForm } from "@/features/people/absence-form";
 import { deleteAbsence } from "@/features/people/actions";
 import { createHoliday, deleteHoliday, updateHoliday } from "@/features/holidays/actions";
-import { adminDeleteAttendanceSession, adminUpsertAttendanceSession, startAttendance, stopAttendance } from "@/features/attendance/actions";
+import {
+  adminCreateAttendanceBreak,
+  adminDeleteAttendanceBreak,
+  adminDeleteAttendanceSession,
+  adminUpdateAttendanceBreak,
+  adminUpsertAttendanceSession,
+  endBreak,
+  startAttendance,
+  startBreak,
+  stopAttendance,
+} from "@/features/attendance/actions";
+import {
+  breakMinutes,
+  breakTotalMs,
+  grossSessionMs,
+  workedSessionMinutes,
+  workedSessionSeconds,
+  workedSessionSecondsWithLiveBreak,
+} from "@/features/attendance/worked-minutes";
 import {
   civilIsoFromLocalDate,
   expandCivilIsoRange,
@@ -38,6 +56,15 @@ interface PersonRow {
   workWindows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[];
 }
 
+interface BreakRow {
+  id: string;
+  source: string;
+  startedAt: string;
+  endedAt: string | null;
+  minutes: number | null;
+  notes: string | null;
+}
+
 interface SessionRow {
   id: string;
   userId: string;
@@ -47,6 +74,7 @@ interface SessionRow {
   endedAt: string | null;
   minutes: number | null;
   notes: string | null;
+  breaks: BreakRow[];
 }
 
 interface AbsenceRow {
@@ -81,6 +109,25 @@ function formatHms(totalSeconds: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+function sessionWorkedInput(session: SessionRow) {
+  return {
+    startedAt: new Date(session.startedAt),
+    endedAt: session.endedAt ? new Date(session.endedAt) : null,
+    breaks: session.breaks.map((b) => ({
+      startedAt: new Date(b.startedAt),
+      endedAt: b.endedAt ? new Date(b.endedAt) : null,
+      minutes: b.minutes,
+    })),
+  };
+}
+
+function sessionNetMinutes(session: SessionRow, at: Date): number {
+  if (session.endedAt != null && session.minutes != null) {
+    return session.minutes;
+  }
+  return workedSessionMinutes(sessionWorkedInput(session), at);
+}
+
 export function DailyAttendanceClient(props: {
   canManage: boolean;
   currentUserId: string;
@@ -90,6 +137,7 @@ export function DailyAttendanceClient(props: {
   absences: AbsenceRow[];
   holidays: FestivoRow[];
   openSession: { id: string; startedAt: string } | null;
+  openBreak: { id: string; sessionId: string; startedAt: string } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,6 +151,17 @@ export function DailyAttendanceClient(props: {
   const [holidayEndDate, setHolidayEndDate] = useState(civilIsoFromLocalDate(new Date()));
   const [holidayName, setHolidayName] = useState("");
   const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null);
+  const [addingBreakSessionId, setAddingBreakSessionId] = useState<string | null>(null);
+  const [editingBreakId, setEditingBreakId] = useState<string | null>(null);
+  const [breakStartTime, setBreakStartTime] = useState("10:00");
+  const [breakEndTime, setBreakEndTime] = useState("10:15");
+  const [localOnBreak, setLocalOnBreak] = useState(false);
+  const [activeBreakStartedAt, setActiveBreakStartedAt] = useState<string | null>(null);
+  const [frozenBreak, setFrozenBreak] = useState<{
+    id?: string;
+    startedAt: string;
+    endedAt: string;
+  } | null>(null);
 
   const selectedIso = civilIsoFromLocalDate(selectedDate);
   const visiblePersonId = props.canManage ? personId : props.currentPersonId;
@@ -240,17 +299,77 @@ export function DailyAttendanceClient(props: {
     return Math.max(0, workMinutes - absenceMinutes);
   }, [props.absences, todayIso, todayWeekday, visiblePerson]);
 
+  const isWorking = props.openSession != null;
+  const isOnBreak = localOnBreak;
+
+  const liveBreakState = useMemo(() => {
+    const frozenBreaks =
+      frozenBreak != null
+        ? [
+            {
+              startedAt: new Date(frozenBreak.startedAt),
+              endedAt: new Date(frozenBreak.endedAt),
+            },
+          ]
+        : [];
+    return {
+      activeBreakStartedAt:
+        localOnBreak && (activeBreakStartedAt ?? props.openBreak?.startedAt)
+          ? new Date(activeBreakStartedAt ?? props.openBreak!.startedAt)
+          : null,
+      frozenBreaks,
+    };
+  }, [activeBreakStartedAt, frozenBreak, localOnBreak, props.openBreak?.startedAt]);
+
   const workedTodaySeconds = useMemo(() => {
     if (!visiblePerson) return 0;
+    const at = new Date(nowMs);
     return props.sessions
       .filter((s) => s.personId === visiblePerson.id && s.startedAt.slice(0, 10) === todayIso)
       .reduce((acc, s) => {
-        if (s.endedAt) {
-          return acc + Math.max(0, Math.round((new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000));
+        const input = sessionWorkedInput(s);
+        const isLiveOpenSession = props.openSession?.id === s.id && s.endedAt == null;
+        if (isLiveOpenSession) {
+          return acc + workedSessionSecondsWithLiveBreak(input, at, liveBreakState);
         }
-        return acc + Math.max(0, Math.round((nowMs - new Date(s.startedAt).getTime()) / 1000));
+        return acc + workedSessionSeconds(input, at);
       }, 0);
-  }, [nowMs, props.sessions, todayIso, visiblePerson]);
+  }, [
+    liveBreakState,
+    nowMs,
+    props.openSession?.id,
+    props.sessions,
+    todayIso,
+    visiblePerson,
+  ]);
+
+  useEffect(() => {
+    if (props.openBreak) {
+      setLocalOnBreak(true);
+      setActiveBreakStartedAt(props.openBreak.startedAt);
+      setFrozenBreak(null);
+      return;
+    }
+    if (!frozenBreak) {
+      setLocalOnBreak(false);
+      setActiveBreakStartedAt(null);
+    }
+  }, [frozenBreak, props.openBreak]);
+
+  useEffect(() => {
+    if (!frozenBreak || !props.openSession) return;
+    const session = props.sessions.find((s) => s.id === props.openSession!.id);
+    const synced = session?.breaks.some(
+      (b) =>
+        b.endedAt != null &&
+        (frozenBreak.id ? b.id === frozenBreak.id : b.startedAt === frozenBreak.startedAt),
+    );
+    if (synced) {
+      setFrozenBreak(null);
+      setLocalOnBreak(false);
+      setActiveBreakStartedAt(null);
+    }
+  }, [frozenBreak, props.openSession, props.sessions]);
 
   useEffect(() => {
     if (props.openSession == null) return;
@@ -351,43 +470,93 @@ export function DailyAttendanceClient(props: {
                   <p className="font-mono text-5xl md:text-6xl font-bold tabular-nums">
                     {formatHms(workedTodaySeconds)} / {formatHms(targetTodaySeconds)}
                   </p>
-                  <div className="mt-5 flex gap-2">
-                  <Button
-                    disabled={pending || props.openSession != null}
-                    onClick={() =>
-                      startTransition(async () => {
-                        const result = await startAttendance();
-                        const outcome = handleActionResult("fichaje.start", result);
-                        if (!outcome.success) {
-                          toast.error(outcome.message);
-                          return;
-                        }
-                        toast.success("Fichaje iniciado");
-                        router.refresh();
-                      })
-                    }
-                  >
-                    <Play className="size-4" />
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    disabled={pending || props.openSession == null}
-                    onClick={() =>
-                      startTransition(async () => {
-                        const result = await stopAttendance({ sessionId: props.openSession?.id });
-                        const outcome = handleActionResult("fichaje.stop", result);
-                        if (!outcome.success) {
-                          toast.error(outcome.message);
-                          return;
-                        }
-                        toast.success("Fichaje finalizado");
-                        router.refresh();
-                      })
-                    }
-                  >
-                    <Pause className="size-4" />
-                  </Button>
-                </div>
+                  {isOnBreak ? (
+                    <p className="mt-2 text-sm text-amber-600">En descanso — el contador de trabajo está en pausa</p>
+                  ) : null}
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Button
+                      size="lg"
+                      className="size-14"
+                      variant={isWorking ? "default" : "outline"}
+                      disabled={pending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          if (isWorking) {
+                            const result = await stopAttendance({ sessionId: props.openSession?.id });
+                            const outcome = handleActionResult("fichaje.stop", result);
+                            if (!outcome.success) {
+                              toast.error(outcome.message);
+                              return;
+                            }
+                            setFrozenBreak(null);
+                            setLocalOnBreak(false);
+                            setActiveBreakStartedAt(null);
+                            toast.success("Jornada finalizada");
+                          } else {
+                            const result = await startAttendance();
+                            const outcome = handleActionResult("fichaje.start", result);
+                            if (!outcome.success) {
+                              toast.error(outcome.message);
+                              return;
+                            }
+                            toast.success("Fichaje iniciado");
+                          }
+                          router.refresh();
+                        })
+                      }
+                      title={isWorking ? "Finalizar jornada" : "Iniciar fichaje"}
+                    >
+                      {isWorking ? <Pause className="size-5" /> : <Play className="size-5" />}
+                    </Button>
+                    <Button
+                      size="lg"
+                      className="size-14"
+                      variant={isOnBreak ? "secondary" : "outline"}
+                      disabled={pending || !isWorking}
+                      onClick={() =>
+                        startTransition(async () => {
+                          if (isOnBreak) {
+                            const endedAt = new Date().toISOString();
+                            const startedAt =
+                              props.openBreak?.startedAt ?? activeBreakStartedAt ?? endedAt;
+                            setLocalOnBreak(false);
+                            setActiveBreakStartedAt(null);
+                            setFrozenBreak({
+                              id: props.openBreak?.id,
+                              startedAt,
+                              endedAt,
+                            });
+                            setNowMs(Date.now());
+                            const result = await endBreak({ breakId: props.openBreak?.id });
+                            const outcome = handleActionResult("fichaje.endBreak", result);
+                            if (!outcome.success) {
+                              setFrozenBreak(null);
+                              setLocalOnBreak(props.openBreak != null);
+                              setActiveBreakStartedAt(props.openBreak?.startedAt ?? null);
+                              toast.error(outcome.message);
+                              return;
+                            }
+                            toast.success("Descanso finalizado");
+                          } else {
+                            setLocalOnBreak(true);
+                            setFrozenBreak(null);
+                            const result = await startBreak({ sessionId: props.openSession?.id });
+                            const outcome = handleActionResult("fichaje.startBreak", result);
+                            if (!outcome.success) {
+                              setLocalOnBreak(false);
+                              toast.error(outcome.message);
+                              return;
+                            }
+                            toast.success("Descanso iniciado");
+                          }
+                          router.refresh();
+                        })
+                      }
+                      title={isOnBreak ? "Finalizar descanso" : "Iniciar descanso"}
+                    >
+                      {isOnBreak ? <Pause className="size-5" /> : <Coffee className="size-5" />}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -431,37 +600,212 @@ export function DailyAttendanceClient(props: {
               {sessionsForDay.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sin fichajes para este día.</p>
               ) : (
-                sessionsForDay.map((session) => (
-                  <div key={session.id} className="flex items-center justify-between rounded border p-2 text-sm">
-                    <span>
-                      {toTimeValue(session.startedAt)} - {session.endedAt ? toTimeValue(session.endedAt) : "abierto"} ·{" "}
-                      {session.minutes ?? 0} min
-                    </span>
-                    {props.canManage ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() =>
-                          startTransition(async () => {
-                            const result = await adminDeleteAttendanceSession({
-                              sessionId: session.id,
-                            });
-                            const outcome = handleActionResult("fichaje.adminDelete", result);
-                            if (!outcome.success) {
-                              toast.error(outcome.message);
-                              return;
+                sessionsForDay.map((session) => {
+                  const at = new Date(nowMs);
+                  const workedInput = sessionWorkedInput(session);
+                  const grossMin = Math.round(grossSessionMs(workedInput, at) / 60_000);
+                  const breakMin = Math.round(breakTotalMs(workedInput, at) / 60_000);
+                  const netMin = sessionNetMinutes(session, at);
+                  const editingBreak = editingBreakId
+                    ? session.breaks.find((b) => b.id === editingBreakId) ?? null
+                    : null;
+                  const showBreakForm =
+                    props.canManage &&
+                    session.endedAt != null &&
+                    (addingBreakSessionId === session.id || editingBreak != null);
+
+                  return (
+                    <div key={session.id} className="rounded border p-3 text-sm space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <span>
+                          {toTimeValue(session.startedAt)} -{" "}
+                          {session.endedAt ? toTimeValue(session.endedAt) : "abierto"} · {netMin} min
+                          trabajados
+                          {breakMin > 0 ? (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              ({grossMin} min − {breakMin} min pausas)
+                            </span>
+                          ) : null}
+                        </span>
+                        {props.canManage ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive shrink-0"
+                            onClick={() =>
+                              startTransition(async () => {
+                                const result = await adminDeleteAttendanceSession({
+                                  sessionId: session.id,
+                                });
+                                const outcome = handleActionResult("fichaje.adminDelete", result);
+                                if (!outcome.success) {
+                                  toast.error(outcome.message);
+                                  return;
+                                }
+                                toast.success("Fichaje eliminado");
+                                if (addingBreakSessionId === session.id) setAddingBreakSessionId(null);
+                                if (editingBreakId && session.breaks.some((b) => b.id === editingBreakId)) {
+                                  setEditingBreakId(null);
+                                }
+                                router.refresh();
+                              })
                             }
-                            toast.success("Fichaje eliminado");
-                            router.refresh();
-                          })
-                        }
-                      >
-                        Eliminar
-                      </Button>
-                    ) : null}
-                  </div>
-                ))
+                          >
+                            Eliminar
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      {session.breaks.length > 0 ? (
+                        <div className="space-y-1 border-l-2 border-muted pl-3">
+                          {session.breaks.map((breakRow) => (
+                            <div
+                              key={breakRow.id}
+                              className="flex items-center justify-between gap-2 text-muted-foreground"
+                            >
+                              <span>
+                                {toTimeValue(breakRow.startedAt)} -{" "}
+                                {breakRow.endedAt ? toTimeValue(breakRow.endedAt) : "abierta"} ·{" "}
+                                {breakMinutes(
+                                  {
+                                    startedAt: new Date(breakRow.startedAt),
+                                    endedAt: breakRow.endedAt ? new Date(breakRow.endedAt) : null,
+                                    minutes: breakRow.minutes,
+                                  },
+                                  at,
+                                )}{" "}
+                                min pausa
+                              </span>
+                              {props.canManage && session.endedAt != null ? (
+                                <div className="flex gap-1 shrink-0">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingBreakId(breakRow.id);
+                                      setAddingBreakSessionId(null);
+                                      setBreakStartTime(toTimeValue(breakRow.startedAt));
+                                      setBreakEndTime(
+                                        breakRow.endedAt ? toTimeValue(breakRow.endedAt) : "10:15",
+                                      );
+                                    }}
+                                  >
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive"
+                                    onClick={() =>
+                                      startTransition(async () => {
+                                        const result = await adminDeleteAttendanceBreak({
+                                          breakId: breakRow.id,
+                                        });
+                                        const outcome = handleActionResult(
+                                          "fichaje.adminDeleteBreak",
+                                          result,
+                                        );
+                                        if (!outcome.success) {
+                                          toast.error(outcome.message);
+                                          return;
+                                        }
+                                        toast.success("Pausa eliminada");
+                                        if (editingBreakId === breakRow.id) setEditingBreakId(null);
+                                        router.refresh();
+                                      })
+                                    }
+                                  >
+                                    Eliminar
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {props.canManage && session.endedAt != null && !showBreakForm ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setAddingBreakSessionId(session.id);
+                            setEditingBreakId(null);
+                            setBreakStartTime("10:00");
+                            setBreakEndTime("10:15");
+                          }}
+                        >
+                          Añadir pausa
+                        </Button>
+                      ) : null}
+
+                      {showBreakForm ? (
+                        <div className="grid gap-2 md:grid-cols-4 border-t pt-2">
+                          <div className="space-y-1">
+                            <Label>Inicio pausa</Label>
+                            <Input
+                              type="time"
+                              value={breakStartTime}
+                              onChange={(e) => setBreakStartTime(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Fin pausa</Label>
+                            <Input
+                              type="time"
+                              value={breakEndTime}
+                              onChange={(e) => setBreakEndTime(e.target.value)}
+                            />
+                          </div>
+                          <div className="md:col-span-2 flex items-end gap-2">
+                            <Button
+                              disabled={pending}
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result = editingBreak
+                                    ? await adminUpdateAttendanceBreak({
+                                        breakId: editingBreak.id,
+                                        startTime: breakStartTime,
+                                        endTime: breakEndTime,
+                                      })
+                                    : await adminCreateAttendanceBreak({
+                                        sessionId: session.id,
+                                        startTime: breakStartTime,
+                                        endTime: breakEndTime,
+                                      });
+                                  const outcome = handleActionResult(
+                                    editingBreak ? "fichaje.adminUpdateBreak" : "fichaje.adminCreateBreak",
+                                    result,
+                                  );
+                                  if (!outcome.success) {
+                                    toast.error(outcome.message);
+                                    return;
+                                  }
+                                  toast.success(editingBreak ? "Pausa actualizada" : "Pausa añadida");
+                                  setAddingBreakSessionId(null);
+                                  setEditingBreakId(null);
+                                  router.refresh();
+                                })
+                              }
+                            >
+                              {editingBreak ? "Guardar pausa" : "Guardar pausa"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setAddingBreakSessionId(null);
+                                setEditingBreakId(null);
+                              }}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
               )}
             </div>
           </CardContent>

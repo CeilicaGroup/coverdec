@@ -38,3 +38,51 @@ export const adminUpsertAttendanceSchema = z
 export const adminDeleteAttendanceSchema = z.object({
   sessionId: z.string().min(1),
 });
+
+export const startBreakSchema = z.object({
+  sessionId: z.string().min(1).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export const endBreakSchema = z.object({
+  breakId: z.string().min(1).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export const adminCreateAttendanceBreakSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/),
+    endTime: z.string().regex(/^\d{2}:\d{2}$/),
+    notes: z.string().max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.endTime <= data.startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "La hora fin debe ser posterior a la hora inicio.",
+      });
+    }
+  });
+
+export const adminUpdateAttendanceBreakSchema = z
+  .object({
+    breakId: z.string().min(1),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/),
+    endTime: z.string().regex(/^\d{2}:\d{2}$/),
+    notes: z.string().max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.endTime <= data.startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "La hora fin debe ser posterior a la hora inicio.",
+      });
+    }
+  });
+
+export const adminDeleteAttendanceBreakSchema = z.object({
+  breakId: z.string().min(1),
+});

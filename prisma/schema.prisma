@@ -556,9 +556,26 @@ model AttendanceSession {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  breaks AttendanceBreak[]
 
   @@index([userId, startedAt])
   @@index([personId, startedAt])
+}
+
+model AttendanceBreak {
+  id        String           @id @default(cuid())
+  sessionId String
+  source    AttendanceSource @default(BUTTON)
+  startedAt DateTime
+  endedAt   DateTime?
+  minutes   Int?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, startedAt])
 }
 
 // ---------- Política de desviación de tiempos (catálogo) ----------
