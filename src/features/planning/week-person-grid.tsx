@@ -260,6 +260,111 @@ interface WeekPersonGridProps {
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }
 
+export interface PersonWeekCalendarProps {
+  personId: string;
+  view: "plan" | "actual";
+  days: Date[];
+  cells: Map<string, WeekGridCell[]>;
+  holidayDates: Set<string>;
+  absences: { date: Date; endDate: Date; reason: string | null }[];
+  plannedHoursByTask: Map<string, number>;
+  plannedDueHoursByTask: Map<string, number>;
+  actualHoursByTask: Map<string, number>;
+  plannedItemsByTask: Map<string, { id: string; label: string }[]>;
+  actualRunningByTask: Map<string, boolean>;
+  completedByTask: Map<string, boolean>;
+  processStyles: Map<string, ProcessBadgeStyle>;
+  canEditEntries: boolean;
+  canSeeRecords: boolean;
+  entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+}
+
+/** Calendario L–V de una sola persona (vista por persona / impresión). */
+export function PersonWeekCalendar({
+  personId,
+  view,
+  days,
+  cells,
+  holidayDates,
+  absences,
+  plannedHoursByTask,
+  plannedDueHoursByTask,
+  actualHoursByTask,
+  plannedItemsByTask,
+  actualRunningByTask,
+  completedByTask,
+  processStyles,
+  canEditEntries,
+  canSeeRecords,
+  entriesByPersonDayTask,
+}: PersonWeekCalendarProps) {
+  return (
+    <div className="overflow-x-auto">
+      <div
+        className="grid min-w-[520px] border rounded-md overflow-hidden"
+        style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
+      >
+        {days.map((d, idx) => {
+          const key = d.toISOString().slice(0, 10);
+          const isHoliday = holidayDates.has(key);
+          return (
+            <div
+              key={key}
+              className="bg-muted px-2 py-2 text-xs font-semibold text-center border-b border-r last:border-r-0"
+            >
+              {DAY_LABELS[idx]}
+              <div className="text-[10px] text-muted-foreground font-normal">
+                {formatDayMonthYear(d)}
+              </div>
+              {isHoliday ? (
+                <div className="text-[10px] text-orange-600 font-bold mt-0.5">Festivo</div>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {days.map((d) => {
+          const key = d.toISOString().slice(0, 10);
+          const tasks = cells.get(key) ?? [];
+          const isAbsent = absences.some((a) => absenceCoversCivilIso(a, key));
+          const dayTotal = tasks.reduce((sum, t) => sum + t.hours, 0);
+          return (
+            <div
+              key={`cell-${key}`}
+              className="border-b border-r last:border-r-0 px-1.5 py-1.5 min-h-[88px] space-y-1 bg-card flex flex-col"
+            >
+              <div className="flex-1">
+                <WeekDayTasks
+                  personId={personId}
+                  dayKey={key}
+                  tasks={tasks}
+                  view={view}
+                  isAbsent={isAbsent}
+                  plannedHoursByTask={plannedHoursByTask}
+                  plannedDueHoursByTask={plannedDueHoursByTask}
+                  actualHoursByTask={actualHoursByTask}
+                  plannedItemsByTask={plannedItemsByTask}
+                  actualRunningByTask={actualRunningByTask}
+                  completedByTask={completedByTask}
+                  processStyles={processStyles}
+                  canEditEntries={canEditEntries}
+                  canSeeRecords={canSeeRecords}
+                  entriesByPersonDayTask={entriesByPersonDayTask}
+                />
+              </div>
+              {dayTotal > 0 ? (
+                <div className="text-center text-[10px] font-semibold text-muted-foreground border-t pt-1">
+                  {formatHours(dayTotal)}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WeekPersonGrid({
   title,
   bare = false,

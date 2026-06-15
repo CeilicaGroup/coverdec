@@ -11,37 +11,27 @@ import {
 import {
   getAbsencesForRange,
   getActualHoursForWeek,
-  getNavePersonnel,
+  getHolidaysForRange,
   getLampTaskChains,
+  getNavePersonnel,
   getPlanningForWeek,
+  getPlanningWeekMeta,
+  getProcessBadgeStylesByCode,
   getProcessDefinitionsByCode,
   toPlanningAssignmentSlices,
-  type ActualHourEntry,
 } from "@/features/planning/queries";
-import {
-  buildPlanningTimeline,
-  filterTimelineForPerson,
-  type PlanningAssignmentSlice,
-} from "@/features/planning/planning-timeline";
 import { formatAbsenceDateLabel } from "@/features/people/absence-display";
 import { PageHeader } from "../../_components/page-header";
 import { WeekNav } from "../../_components/week-nav";
 import { ViewToggle } from "../../_components/view-toggle";
 import { PersonAvatar } from "@/components/person-avatar";
-import { ProcessBadge } from "@/components/process-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { rangeLabel } from "@/features/planning/engine/slot-format";
-import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
-import { formatHours, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import { formatHours } from "@/lib/format";
 import { PrintToolbar } from "./print-toolbar";
+import {
+  PersonaLayoutToggle,
+  parsePersonaLayout,
+} from "./persona-layout-toggle";
 import {
   getPlanningViewModeForContext,
   planningNoticeState,
@@ -50,20 +40,26 @@ import {
   actualRecordsUserIdForContext,
   canSeePersonRecords,
 } from "@/features/planning/record-visibility";
-import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
-import { computeTaskProgress } from "@/features/planning/task-progress";
-import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
-import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
-import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
-import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
-import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
+import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
+import {
+  buildActualGrid,
+  buildEntriesByPersonDayTask,
+  buildPersonTaskSummary,
+  buildPlanGrid,
+  PersonWeekCalendar,
+} from "@/features/planning/week-person-grid";
+import { buildPlanningTimeline } from "@/features/planning/planning-timeline";
+import {
+  PersonWeekList,
+  personWeekListTotalHours,
+} from "@/features/planning/person-week-list";
+import { buildPersonWeekListMaps } from "@/features/planning/person-week-list-maps";
 
 export default async function PersonaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; view?: string }>;
+  searchParams: Promise<{ week?: string; view?: string; layout?: string }>;
 }) {
   const ctx = await requireDashboardContext();
   const params = await searchParams;
@@ -71,20 +67,28 @@ export default async function PersonaPage({
   const { year, week } = isoWeek(weekStart);
   const days = weekDays(weekStart);
   const view = params.view === "actual" ? "actual" : "plan";
+  const layout = parsePersonaLayout(params.layout);
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [allPeople, absences, processByCode] = await Promise.all([
-    getNavePersonnel(naveScopeFromContext(ctx)),
+  const [
+    people,
+    absences,
+    holidays,
+    processStyles,
+    processByCode,
+    planning,
+    actualEntries,
+    lampTaskChains,
+    planningMeta,
+  ] = await Promise.all([
+    getNavePersonnel(naveScope),
     getAbsencesForRange(days[0], days[4]),
+    getHolidaysForRange(days[0], days[4]),
+    getProcessBadgeStylesByCode(),
     getProcessDefinitionsByCode(),
-  ]);
-
-  const people = allPeople;
-
-  const [planning, actualEntries, lampTaskChains] = await Promise.all([
     getPlanningForWeek({
       naveScope,
       weekStart,
@@ -96,47 +100,75 @@ export default async function PersonaPage({
       userId: actualRecordsUserIdForContext(ctx),
     }),
     getLampTaskChains(naveScope),
+    getPlanningWeekMeta({ naveScope, weekStart }),
   ]);
-  const planningAssignments = toPlanningAssignmentSlices(
-    planning?.assignments ?? [],
-  );
-  const plannedByTask = buildHoursByTaskFromPlan(planningAssignments);
-  const plannedDueByTask = buildDueHoursByTaskFromPlan(planningAssignments, todayIso);
-  const actualByTask = buildHoursByTaskFromActual(actualEntries);
-  const completedByTask = buildCompletedByTask(planningAssignments, actualEntries);
-  const plannedItemsByTask = buildItemsByTaskFromPlan(planningAssignments);
-  const actualItemsByTask = buildItemsByTaskFromActual(actualEntries);
 
-  const planningMeta =
-    view === "plan"
-      ? await getPlanningWeekMeta({ naveScope, weekStart })
-      : null;
-  const hiddenDraft =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    planningMeta?.status === "DRAFT" &&
-    planningAssignments.length === 0;
-  const noPublished =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    !planningMeta &&
-    planningAssignments.length === 0;
-  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
-
+  const planningAssignments = toPlanningAssignmentSlices(planning?.assignments ?? []);
   const fullTimeline = buildPlanningTimeline(
     planningAssignments,
     processByCode,
     lampTaskChains,
   );
+  const listMaps = buildPersonWeekListMaps(planningAssignments, actualEntries, todayIso);
+
+  const holidayDates = expandHolidayRangesToIsoDays(
+    holidays,
+    days[0],
+    days[days.length - 1] ?? days[0],
+  );
+
+  const planGrid = buildPlanGrid(planning, people, days);
+  const actualGrid = buildActualGrid(actualEntries, people, days);
+  const grid = view === "actual" ? actualGrid : planGrid;
+  const planTask = buildPersonTaskSummary(planGrid, todayIso);
+  const actualTask = buildPersonTaskSummary(actualGrid, todayIso);
+  const entriesByPersonDayTask = buildEntriesByPersonDayTask(actualEntries);
+
+  const hiddenDraft =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    planningMeta?.status === "DRAFT" &&
+    !planning;
+  const noPublished =
+    view === "plan" &&
+    viewMode === "published_only" &&
+    !planningMeta &&
+    !planning;
+  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
+
+  const hasCalendarContent = [...grid.values()].some((dayMap) =>
+    [...dayMap.values()].some((cells) => cells.length > 0),
+  );
+  const hasListContent =
+    view === "actual"
+      ? actualEntries.length > 0
+      : planningAssignments.length > 0;
+  const hasContent = layout === "calendario" ? hasCalendarContent : hasListContent;
+
+  const description =
+    layout === "calendario"
+      ? `${formatWeekRange(weekStart)} · Calendario L–V por operario · imprimir para reparto en nave`
+      : `${formatWeekRange(weekStart)} · Lista detallada por operario · imprimir para reparto en nave`;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Planning por persona · S${week} · ${year}`}
-        description={`${formatWeekRange(weekStart)} · Equipo completo · imprimir para reparto en nave`}
+        description={description}
         actions={
-          <div className="flex items-center gap-2 no-print">
-            <ViewToggle basePath="/dashboard/persona" view={view} week={weekIso} />
+          <div className="flex flex-wrap items-center gap-2 no-print">
+            <PersonaLayoutToggle
+              basePath="/dashboard/persona"
+              layout={layout}
+              view={view}
+              week={weekIso}
+            />
+            <ViewToggle
+              basePath="/dashboard/persona"
+              view={view}
+              week={weekIso}
+              extraParams={{ layout }}
+            />
             <WeekNav
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
               weekIso={weekIso}
@@ -152,299 +184,69 @@ export default async function PersonaPage({
           noPublished={planningNotice.noPublished}
         />
       )}
-      {view === "plan" &&
-        planningAssignments.length === 0 &&
-        !planningNotice.hiddenDraft &&
-        !planningNotice.noPublished && (
+      {view === "plan" && !hasContent && !planningNotice.hiddenDraft && !planningNotice.noPublished && (
         <p className="text-sm text-muted-foreground">
           {ctx.role === Role.OPERARIO
             ? "No hay planning publicado para esta semana."
             : "No hay planning para esta semana. Genera un borrador desde Resumen."}
         </p>
       )}
-      {view === "actual" && actualEntries.length === 0 && (
+      {view === "actual" && !hasContent && (
         <p className="text-sm text-muted-foreground">
           No hay registros de horas para esta semana.
         </p>
       )}
 
       <div className="grid lg:grid-cols-2 gap-4 print:grid-cols-1">
-        {people.map((p) => {
-          const personAbsences = absences.filter((a) => a.personId === p.id);
-          const canSeeRecords = canSeePersonRecords(ctx, p.id);
+        {people.map((person) => {
+          const personAbsences = absences.filter((a) => a.personId === person.id);
+          const canSeeRecords = canSeePersonRecords(ctx, person.id);
+          const total =
+            layout === "calendario"
+              ? [...(grid.get(person.id) ?? new Map()).values()]
+                  .flat()
+                  .reduce((acc, cell) => acc + cell.hours, 0)
+              : personWeekListTotalHours(view, person.id, fullTimeline, actualEntries);
 
-          if (view === "actual") {
-            const entries = actualEntries.filter((e) => e.personId === p.id);
-            const total = entries.reduce((acc, e) => acc + e.hours, 0);
-            return (
-              <PersonCard
-                key={p.id}
-                person={p}
-                total={total}
-                absences={personAbsences}
-              >
-                <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Día</TableHead>
-                      <TableHead>Horario</TableHead>
-                      <TableHead>Proyecto</TableHead>
-                      <TableHead>Proceso</TableHead>
-                      <TableHead className="text-right">h</TableHead>
-                      <TableHead>Progreso</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                          Sin registros
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      entries.map((e) => (
-                        <TableRow key={e.id}>
-                          <TableCell className="font-mono text-xs">
-                            {formatShortDate(new Date(e.date + "T00:00:00Z"))}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {formatTimeRangeFromStartAndHours(e.startedAt, e.hours)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-semibold text-xs">
-                              {e.project?.name ?? "—"}
-                            </div>
-                            {e.lamp?.name ? (
-                              <div className="text-[10px] text-muted-foreground">
-                                {e.lamp.name}
-                              </div>
-                            ) : null}
-                            <TaskLampBastidor
-                              label={e.task ? getTaskLampElementLabel(e.task) : null}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {e.process ? (
-                              <ProcessBadge
-                                code={e.process}
-                                definition={processByCode.get(e.process)?.badge}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs font-semibold">
-                            {formatHours(e.hours)}
-                          </TableCell>
-                          <TableCell>
-                            {e.taskId && canSeeRecords ? (
-                              <TaskProgressInline
-                                progress={computeTaskProgress({
-                                  isCompleted: completedByTask.get(e.taskId) ?? false,
-                                  plannedHours: plannedByTask.get(e.taskId) ?? 0,
-                                  plannedDueHours: plannedDueByTask.get(e.taskId) ?? 0,
-                                  actualHours: actualByTask.get(e.taskId) ?? 0,
-                                  hasRunning: entries.some(
-                                    (x) => x.taskId === e.taskId && x.isRunning,
-                                  ),
-                                })}
-                                stripes={plannedItemsByTask.get(e.taskId) ?? []}
-                                actions={
-                                  <TaskProgressActionsPanel
-                                    taskId={e.taskId}
-                                    isCompleted={completedByTask.get(e.taskId) ?? false}
-                                    canManageCompletion={ctx.role === Role.ADMIN}
-                                    timeEntry={{
-                                      entries: e.endedAt
-                                        ? [
-                                            {
-                                              id: e.id,
-                                              startedAt: e.startedAt.toISOString(),
-                                              endedAt: e.endedAt.toISOString(),
-                                              notes: e.notes,
-                                              summaryLabel: formatActualEntrySummaryLabel(
-                                                e.date,
-                                                e.hours,
-                                                e.process ?? e.task?.process,
-                                              ),
-                                              dateIso: e.date,
-                                              hours: e.hours,
-                                              process: e.process ?? e.task?.process ?? null,
-                                              isRunning: e.isRunning,
-                                            },
-                                          ]
-                                        : [],
-                                      userId: e.userId,
-                                      projectId: e.project?.id ?? e.task?.projectId ?? "",
-                                      lampId: e.lamp?.id ?? e.task?.lampId ?? undefined,
-                                      taskId: e.taskId,
-                                      process: e.process ?? e.task?.process ?? undefined,
-                                      startedAt: e.startedAt.toISOString(),
-                                      endedAt: e.endedAt?.toISOString() ?? null,
-                                      notes: e.notes,
-                                      canEdit: Boolean(e.endedAt),
-                                      canCreate: ctx.role === Role.ADMIN,
-                                      canDelete: true,
-                                    }}
-                                  />
-                                }
-                              />
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground">Sin tarea</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-                </div>
-            </PersonCard>
-            );
-          }
-
-          // Plan view
-          const items = filterTimelineForPerson(fullTimeline, p.id).filter(
-            (i) => i.kind === "work",
-          );
-          const total = items.reduce(
-            (acc, x) => acc + (x.kind === "work" ? x.assignment.hours : 0),
-            0,
-          );
           return (
-            <PersonCard key={p.id} person={p} total={total} absences={personAbsences}>
-              <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Día</TableHead>
-                    <TableHead>Horario</TableHead>
-                    <TableHead>Proyecto</TableHead>
-                    <TableHead>Proceso</TableHead>
-                    <TableHead className="text-right">h</TableHead>
-                    <TableHead>Progreso</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                        Sin asignaciones
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    items.map((item) => {
-                      const planStartedAt = toIsoUtcFromDateAndHour(
-                        item.assignment.date,
-                        slotToHour(item.assignment.startSlot),
-                      );
-                      const planEndedAt = toIsoUtcFromDateAndHour(
-                        item.assignment.date,
-                        slotEndToHour(item.assignment.endSlot),
-                      );
-                      const assignmentDateIso = item.assignment.date.toISOString().slice(0, 10);
-                      const planStripe = {
-                        id: item.assignment.id,
-                        label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
-                          item.assignment.startSlot,
-                          item.assignment.endSlot,
-                        )} · ${formatHours(item.assignment.hours)} · ${item.assignment.process}`,
-                        kind: "plan" as const,
-                      };
-                      const taskEntries = actualEntries
-                        .filter(
-                          (entry) =>
-                            entry.taskId === item.assignment.task.id &&
-                            entry.date === assignmentDateIso &&
-                            entry.endedAt,
-                        )
-                        .map((entry) => ({
-                          id: entry.id,
-                          startedAt: entry.startedAt.toISOString(),
-                          endedAt: entry.endedAt!.toISOString(),
-                          notes: entry.notes,
-                          dateIso: entry.date,
-                          hours: entry.hours,
-                          process: entry.process ?? entry.task?.process ?? null,
-                        }));
-                      return (
-                      <TableRow key={item.assignment.id}>
-                        <TableCell className="font-mono text-xs">
-                          {formatShortDate(item.assignment.date)}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {rangeLabel(item.assignment.startSlot, item.assignment.endSlot)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-semibold text-xs">
-                            {item.assignment.task.project.name}
-                          </div>
-                          {item.assignment.task.lamp?.name ? (
-                            <div className="text-[10px] text-muted-foreground">
-                              {item.assignment.task.lamp.name}
-                            </div>
-                          ) : null}
-                          <TaskLampBastidor
-                            label={getTaskLampElementLabel(item.assignment.task)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <ProcessBadge
-                            code={item.assignment.process}
-                            definition={processByCode.get(item.assignment.process)?.badge}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-semibold">
-                          {formatHours(item.assignment.hours)}
-                        </TableCell>
-                        <TableCell>
-                          {canSeeRecords ? (
-                            <TaskProgressInline
-                              progress={computeTaskProgress({
-                                isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
-                                plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
-                                plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
-                                actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
-                                hasRunning: actualEntries.some(
-                                  (x) => x.taskId === item.assignment.task.id && x.isRunning,
-                                ),
-                              })}
-                              stripes={[planStripe]}
-                              actions={
-                                <TaskProgressActionsPanel
-                                  taskId={item.assignment.task.id}
-                                  isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
-                                  canManageCompletion={ctx.role === Role.ADMIN}
-                                  timeEntry={{
-                                    entries: taskEntries,
-                                    personId: item.assignment.personId,
-                                    projectId: item.assignment.task.projectId,
-                                    lampId: item.assignment.task.lampId,
-                                    taskId: item.assignment.task.id,
-                                    process: item.assignment.process,
-                                    startedAt: planStartedAt,
-                                    endedAt: planEndedAt,
-                                    defaultStartedAt: planStartedAt,
-                                    defaultEndedAt: planEndedAt,
-                                    canEdit: ctx.role === Role.ADMIN,
-                                    canCreate: ctx.role === Role.ADMIN,
-                                    canDelete: ctx.role === Role.ADMIN,
-                                  }}
-                                />
-                              }
-                            />
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-                </Table>
-                </div>
+            <PersonCard
+              key={person.id}
+              person={person}
+              total={total}
+              absences={personAbsences}
+              paddedContent={layout === "calendario"}
+            >
+              {layout === "calendario" ? (
+                <PersonWeekCalendar
+                  personId={person.id}
+                  view={view}
+                  days={days}
+                  cells={grid.get(person.id) ?? new Map()}
+                  holidayDates={holidayDates}
+                  absences={personAbsences}
+                  plannedHoursByTask={planTask.hoursByPersonTask.get(person.id) ?? new Map()}
+                  plannedDueHoursByTask={planTask.dueHoursByPersonTask.get(person.id) ?? new Map()}
+                  actualHoursByTask={actualTask.hoursByPersonTask.get(person.id) ?? new Map()}
+                  plannedItemsByTask={planTask.itemsByPersonTask.get(person.id) ?? new Map()}
+                  actualRunningByTask={actualTask.runningByPersonTask.get(person.id) ?? new Map()}
+                  completedByTask={actualTask.completedByPersonTask.get(person.id) ?? new Map()}
+                  processStyles={processStyles}
+                  canEditEntries={ctx.role === Role.ADMIN}
+                  canSeeRecords={canSeeRecords}
+                  entriesByPersonDayTask={entriesByPersonDayTask}
+                />
+              ) : (
+                <PersonWeekList
+                  view={view}
+                  personId={person.id}
+                  fullTimeline={fullTimeline}
+                  actualEntries={actualEntries}
+                  processByCode={processByCode}
+                  maps={listMaps}
+                  canSeeRecords={canSeeRecords}
+                  canManageCompletion={ctx.role === Role.ADMIN}
+                />
+              )}
             </PersonCard>
           );
         })}
@@ -453,97 +255,18 @@ export default async function PersonaPage({
   );
 }
 
-function buildHoursByTaskFromPlan(assignments: PlanningAssignmentSlice[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const assignment of assignments) {
-    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
-  }
-  return map;
-}
-
-function buildDueHoursByTaskFromPlan(
-  assignments: PlanningAssignmentSlice[],
-  cutoffIso: string,
-): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const assignment of assignments) {
-    if (assignment.date.toISOString().slice(0, 10) > cutoffIso) continue;
-    map.set(assignment.task.id, (map.get(assignment.task.id) ?? 0) + assignment.hours);
-  }
-  return map;
-}
-
-function buildHoursByTaskFromActual(entries: ActualHourEntry[]): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const entry of entries) {
-    if (!entry.taskId) continue;
-    map.set(entry.taskId, (map.get(entry.taskId) ?? 0) + entry.hours);
-  }
-  return map;
-}
-
-function buildItemsByTaskFromPlan(assignments: PlanningAssignmentSlice[]): Map<string, ProgressStripe[]> {
-  const map = new Map<string, ProgressStripe[]>();
-  for (const assignment of assignments) {
-    const list = map.get(assignment.task.id) ?? [];
-    list.push({
-      id: assignment.id,
-      label: `${formatShortDate(assignment.date)} · ${rangeLabel(
-        assignment.startSlot,
-        assignment.endSlot,
-      )} · ${formatHours(assignment.hours)}`,
-      kind: "plan",
-    });
-    map.set(assignment.task.id, list);
-  }
-  return map;
-}
-
-function buildItemsByTaskFromActual(entries: ActualHourEntry[]): Map<string, ProgressStripe[]> {
-  const map = new Map<string, ProgressStripe[]>();
-  for (const entry of entries) {
-    if (!entry.taskId) continue;
-    const list = map.get(entry.taskId) ?? [];
-    list.push({
-      id: entry.id,
-      label: `${formatShortDate(new Date(entry.date + "T00:00:00Z"))} · ${formatTimeRangeFromStartAndHours(
-        entry.startedAt,
-        entry.hours,
-      )} · ${formatHours(entry.hours)}`,
-      kind: "actual",
-      isRunning: entry.isRunning,
-    });
-    map.set(entry.taskId, list);
-  }
-  return map;
-}
-
-function buildCompletedByTask(
-  assignments: PlanningAssignmentSlice[],
-  entries: ActualHourEntry[],
-): Map<string, boolean> {
-  const map = new Map<string, boolean>();
-  for (const assignment of assignments) {
-    map.set(assignment.task.id, assignment.task.isCompleted);
-  }
-  for (const entry of entries) {
-    if (!entry.taskId) continue;
-    if (!entry.task) continue;
-    map.set(entry.taskId, entry.task.isCompleted);
-  }
-  return map;
-}
-
 function PersonCard({
   person,
   total,
   absences,
   children,
+  paddedContent = false,
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string; notes?: string | null };
   total: number;
   absences: { date: Date; endDate: Date }[];
   children: React.ReactNode;
+  paddedContent?: boolean;
 }) {
   return (
     <Card className="break-inside-avoid print:border print:shadow-none">
@@ -578,7 +301,7 @@ function PersonCard({
             {absences.map((a) => formatAbsenceDateLabel(a)).join(", ")}
           </div>
         )}
-        {children}
+        {paddedContent ? <div className="p-3">{children}</div> : children}
       </CardContent>
     </Card>
   );
