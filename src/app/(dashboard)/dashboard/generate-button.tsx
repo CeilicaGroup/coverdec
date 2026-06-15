@@ -42,6 +42,7 @@ import {
 import { addWeeks, maxWeeksForMode } from "@/features/planning/planning-horizon";
 import {
   defaultPlanFromDateIso,
+  planFromHelpText,
   weekWorkdayIsoRange,
 } from "@/features/planning/plan-from";
 import { formatWeekRange } from "@/lib/week";
@@ -478,9 +479,23 @@ export function GenerateButton({
         )}
 
         <div className="flex items-center gap-1.5">
-          <Label htmlFor="plan-from-date" className="sr-only">
-            Planificar desde
-          </Label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Label
+                    htmlFor="plan-from-date"
+                    className="cursor-help whitespace-nowrap text-xs text-muted-foreground"
+                  />
+                }
+              >
+                Planificar desde
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                {planFromHelpText("DATE")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Input
             id="plan-from-date"
             type="date"
@@ -489,7 +504,7 @@ export function GenerateButton({
             max={workWeek.fridayIso}
             value={planFromDate}
             onChange={(e) => setPlanFromDate(e.target.value)}
-            title="Planificar desde"
+            aria-label="Planificar desde"
           />
         </div>
 
