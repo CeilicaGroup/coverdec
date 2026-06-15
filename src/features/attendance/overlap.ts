@@ -85,3 +85,10 @@ export async function assertNoOpenBreak(sessionId: string) {
     throw new Error("Ya hay una pausa abierta en esta sesión.");
   }
 }
+
+export async function findOpenAttendanceSession(userId: string) {
+  return prisma.attendanceSession.findFirst({
+    where: { userId, endedAt: null },
+    select: { id: true },
+  });
+}
