@@ -12,6 +12,7 @@ import {
   getAbsencesForRange,
   getActualHoursForWeek,
   getNavePersonnel,
+  getLampTaskChains,
   getPlanningForWeek,
   getProcessDefinitionsByCode,
   toPlanningAssignmentSlices,
@@ -83,7 +84,7 @@ export default async function PersonaPage({
 
   const people = allPeople;
 
-  const [planning, actualEntries] = await Promise.all([
+  const [planning, actualEntries, lampTaskChains] = await Promise.all([
     getPlanningForWeek({
       naveScope,
       weekStart,
@@ -94,6 +95,7 @@ export default async function PersonaPage({
       weekStart,
       userId: actualRecordsUserIdForContext(ctx),
     }),
+    getLampTaskChains(naveScope),
   ]);
   const planningAssignments = toPlanningAssignmentSlices(
     planning?.assignments ?? [],
@@ -121,7 +123,11 @@ export default async function PersonaPage({
     planningAssignments.length === 0;
   const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
 
-  const fullTimeline = buildPlanningTimeline(planningAssignments, processByCode);
+  const fullTimeline = buildPlanningTimeline(
+    planningAssignments,
+    processByCode,
+    lampTaskChains,
+  );
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">

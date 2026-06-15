@@ -27,7 +27,10 @@ import {
   computeWeekTaskMetrics,
 } from "@/features/planning/week-progress";
 import { isTaskClosedForPlanning } from "@/features/planning/task-planning-status";
-import type { PlanningAssignmentSlice } from "@/features/planning/planning-timeline";
+import type {
+  LampTaskChainItem,
+  PlanningAssignmentSlice,
+} from "@/features/planning/planning-timeline";
 import type { ProcessCode } from "@/types/process";
 import {
   computeTaskHourTotals,
@@ -480,6 +483,8 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
         where: taskNaveFilter,
         select: {
           id: true,
+          lampId: true,
+          order: true,
           process: true,
           estimatedHours: true,
           isCompleted: true,
@@ -506,6 +511,34 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
         pendingHours: totals.remainingWorkHours,
       };
     }),
+  }));
+}
+
+/** Cadena completa de tareas por lámpara (orden productivo) para secados en timeline. */
+export async function getLampTaskChains(
+  naveScope: string[] | null,
+): Promise<LampTaskChainItem[]> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const taskNaveFilter =
+    naveScope !== null ? { naveId: { in: naveScope } } : undefined;
+  const rows = await prisma.task.findMany({
+    where:
+      naveScope !== null
+        ? { project: { isActive: true }, ...taskNaveFilter! }
+        : { project: { isActive: true } },
+    select: {
+      id: true,
+      lampId: true,
+      order: true,
+      process: true,
+    },
+    orderBy: [{ lampId: "asc" }, { order: "asc" }, { process: "asc" }],
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    lampId: row.lampId,
+    order: row.order,
+    process: row.process as ProcessCode,
   }));
 }
 

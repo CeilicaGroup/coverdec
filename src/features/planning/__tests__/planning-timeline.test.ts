@@ -6,6 +6,7 @@ const processByCode = new Map([
   ["IMPRIMACION", { waitHours: 12 }],
   ["PINTURA", { waitHours: 12 }],
   ["LIJADO", { waitHours: 0 }],
+  ["CNC", { waitHours: 0 }],
 ]);
 
 function slice(
@@ -96,5 +97,73 @@ describe("buildPlanningTimeline", () => {
       processByCode,
     );
     expect(items.every((i) => i.kind === "work")).toBe(true);
+  });
+
+  it("shows 12h dry window in Horario, not the calendar gap to successor (PL-08)", () => {
+    const items = buildPlanningTimeline(
+      [
+        slice({
+          taskId: "imp",
+          order: 0,
+          process: "IMPRIMACION",
+          date: new Date("2026-06-11T00:00:00.000Z"),
+          startSlot: 6,
+          endSlot: 6.25,
+        }),
+        slice({
+          taskId: "paint",
+          order: 1,
+          process: "PINTURA",
+          date: new Date("2026-06-12T00:00:00.000Z"),
+          startSlot: 6,
+          endSlot: 6.25,
+        }),
+      ],
+      processByCode,
+    );
+    const dry = items.find((i) => i.kind === "dry-wait");
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("15.25h →");
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("12/06/2026 3.25h");
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).not.toContain(
+      "12/06/2026 15h",
+    );
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain(
+      "PINTURA planificada",
+    );
+  });
+
+  it("uses full lamp chain so dry-wait appears before unassigned intermediate task", () => {
+    const items = buildPlanningTimeline(
+      [
+        slice({
+          taskId: "imp",
+          order: 0,
+          process: "IMPRIMACION",
+          date: new Date("2026-06-10T00:00:00.000Z"),
+          startSlot: 6,
+          endSlot: 7,
+        }),
+        slice({
+          taskId: "paint",
+          order: 2,
+          process: "PINTURA",
+          date: new Date("2026-06-12T00:00:00.000Z"),
+          startSlot: 6,
+          endSlot: 6.25,
+        }),
+      ],
+      processByCode,
+      [
+        { id: "imp", lampId: "l1", order: 0, process: "IMPRIMACION" },
+        { id: "cnc", lampId: "l1", order: 1, process: "CNC" },
+        { id: "paint", lampId: "l1", order: 2, process: "PINTURA" },
+      ],
+    );
+    const dry = items.filter((i) => i.kind === "dry-wait");
+    const dryImpCnc = dry.find(
+      (item) => item.kind === "dry-wait" && item.id === "dry-l1-imp-cnc",
+    );
+    expect(dryImpCnc?.kind).toBe("dry-wait");
+    expect(dryImpCnc?.scheduleLabel).toContain("mín. 12h");
   });
 });

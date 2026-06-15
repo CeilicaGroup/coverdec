@@ -278,6 +278,12 @@ export default async function ProyectoPage({
                     timeline={buildPlanningTimeline(
                       byProject.get(row.project.id) ?? [],
                       processByCode,
+                      row.project.tasks.map((t) => ({
+                        id: t.id,
+                        lampId: t.lampId,
+                        order: t.order,
+                        process: t.process,
+                      })),
                     )}
                     actualEntries={actualByProject.get(row.project.id) ?? []}
                     processByCode={processByCode}

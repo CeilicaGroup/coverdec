@@ -1,6 +1,12 @@
 import type { ProcessCode } from "@/types/process";
-import { slotEndLabel, slotToLabel } from "@/features/planning/engine/slot-format";
-import { formatShortDate } from "@/lib/format";
+import {
+  slotEndLabel,
+  slotToHour,
+  slotToLabel,
+} from "@/features/planning/engine/slot-format";
+import { addWallClockWait } from "@/features/planning/gantt-timeline";
+import { formatHours, formatShortDate } from "@/lib/format";
+import { toUtcDay } from "@/lib/week";
 
 /** Slice mínimo de asignación para construir la línea de tiempo. */
 export interface PlanningAssignmentSlice {
@@ -32,6 +38,14 @@ export interface PlanningAssignmentSlice {
 
 export interface ProcessWaitInfo {
   waitHours: number;
+}
+
+/** Tarea en la cadena productiva de una lámpara (orden completo, con o sin asignación). */
+export interface LampTaskChainItem {
+  id: string;
+  lampId: string;
+  order: number;
+  process: ProcessCode;
 }
 
 export interface DryWaitTimelineItem {
@@ -76,20 +90,68 @@ function firstSlice(slices: PlanningAssignmentSlice[]): PlanningAssignmentSlice 
   );
 }
 
+function toPlanningDayIso(d: Date): string {
+  return toUtcDay(d).toISOString().slice(0, 10);
+}
+
+function formatWallClockMinutes(minutes: number): string {
+  return formatHours(minutes / 60);
+}
+
+function formatDryWaitWindow(
+  from: PlanningAssignmentSlice,
+  waitHours: number,
+): string {
+  const fromDayIso = toPlanningDayIso(from.date);
+  const unlock = addWallClockWait(fromDayIso, from.endSlot, waitHours);
+  const unlockTime = formatWallClockMinutes(unlock.minutes);
+  if (unlock.dayIso === fromDayIso) {
+    return `${slotEndLabel(from.endSlot)} → ${unlockTime}`;
+  }
+  return `${slotEndLabel(from.endSlot)} → ${formatShortDate(unlock.dayIso)} ${unlockTime}`;
+}
+
+function scheduledStartLabel(
+  to: PlanningAssignmentSlice,
+  unlockDayIso: string,
+): string {
+  const succDayIso = toPlanningDayIso(to.date);
+  if (succDayIso === unlockDayIso) {
+    return slotToLabel(to.startSlot);
+  }
+  return `${formatShortDate(to.date)} ${slotToLabel(to.startSlot)}`;
+}
+
+function successorStartsAfterDryWindow(
+  unlock: ReturnType<typeof addWallClockWait>,
+  to: PlanningAssignmentSlice,
+): boolean {
+  const succDayIso = toPlanningDayIso(to.date);
+  const succMinutes = Math.round(slotToHour(to.startSlot) * 60);
+  return (
+    succDayIso > unlock.dayIso ||
+    (succDayIso === unlock.dayIso && succMinutes > unlock.minutes)
+  );
+}
+
 function scheduleGapLabel(
   from: PlanningAssignmentSlice,
   to: PlanningAssignmentSlice | null,
   waitHours: number,
 ): string {
-  if (to) {
-    const sameDay =
-      from.date.toISOString().slice(0, 10) === to.date.toISOString().slice(0, 10);
-    if (sameDay) {
-      return `${slotEndLabel(from.endSlot)}–${slotToLabel(to.startSlot)}`;
-    }
-    return `${slotEndLabel(from.endSlot)} → ${formatShortDate(to.date)} ${slotToLabel(to.startSlot)}`;
+  if (!to) {
+    return `${slotEndLabel(from.endSlot)} · mín. ${waitHours}h`;
   }
-  return `${slotEndLabel(from.endSlot)} · mín. ${waitHours}h`;
+
+  const fromDayIso = toPlanningDayIso(from.date);
+  const unlock = addWallClockWait(fromDayIso, from.endSlot, waitHours);
+  const windowLabel = formatDryWaitWindow(from, waitHours);
+
+  if (successorStartsAfterDryWindow(unlock, to)) {
+    return `${windowLabel} · ${to.process} planificada ${scheduledStartLabel(to, unlock.dayIso)}`;
+  }
+
+  return windowLabel;
 }
 
 /**
@@ -99,6 +161,7 @@ function scheduleGapLabel(
 export function buildPlanningTimeline(
   assignments: PlanningAssignmentSlice[],
   processByCode: Map<ProcessCode, ProcessWaitInfo>,
+  lampTaskChains?: LampTaskChainItem[],
 ): PlanningTimelineItem[] {
   const byLamp = new Map<string, Map<string, PlanningAssignmentSlice[]>>();
 
@@ -111,10 +174,35 @@ export function buildPlanningTimeline(
     byLamp.set(lampId, byTask);
   }
 
+  const chainsByLamp = new Map<string, LampTaskChainItem[]>();
+  if (lampTaskChains) {
+    for (const item of lampTaskChains) {
+      const list = chainsByLamp.get(item.lampId) ?? [];
+      list.push(item);
+      chainsByLamp.set(item.lampId, list);
+    }
+    for (const list of chainsByLamp.values()) {
+      list.sort(
+        (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
+      );
+    }
+  }
+
   const dryWaits: DryWaitTimelineItem[] = [];
 
-  for (const [lampId, byTask] of byLamp) {
-    const taskMeta = new Map<string, { order: number; process: ProcessCode; lampName: string | null }>();
+  const lampIds = new Set([
+    ...byLamp.keys(),
+    ...chainsByLamp.keys(),
+  ]);
+
+  for (const lampId of lampIds) {
+    const byTask = byLamp.get(lampId) ?? new Map();
+
+    const taskMeta = new Map<
+      string,
+      { order: number; process: ProcessCode; lampName: string | null }
+    >();
+
     for (const slices of byTask.values()) {
       const sample = slices[0];
       if (!sample) continue;
@@ -125,14 +213,33 @@ export function buildPlanningTimeline(
       });
     }
 
-    const orderedTaskIds = [...taskMeta.entries()]
-      .sort((a, b) => a[1].order - b[1].order)
-      .map(([id]) => id);
+    const chain = chainsByLamp.get(lampId);
+    if (chain) {
+      const lampName =
+        [...byTask.values()]
+          .map((slices) => slices[0]?.task.lamp?.name ?? null)
+          .find((name) => name != null) ?? null;
+      for (const item of chain) {
+        taskMeta.set(item.id, {
+          order: item.order,
+          process: item.process,
+          lampName,
+        });
+      }
+    }
+
+    const orderedTaskIds = chain
+      ? chain.map((t) => t.id)
+      : [...taskMeta.entries()]
+          .sort((a, b) => a[1].order - b[1].order)
+          .map(([id]) => id);
 
     for (let i = 0; i < orderedTaskIds.length - 1; i++) {
       const predId = orderedTaskIds[i]!;
       const succId = orderedTaskIds[i + 1]!;
-      const predMeta = taskMeta.get(predId)!;
+      const predMeta = taskMeta.get(predId);
+      if (!predMeta) continue;
+
       const proc = processByCode.get(predMeta.process);
       const waitHours = proc?.waitHours ?? 0;
       if (waitHours <= 0) continue;
