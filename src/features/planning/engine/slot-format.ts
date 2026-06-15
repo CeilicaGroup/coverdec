@@ -1,3 +1,4 @@
+import { formatHours } from "@/lib/format";
 import {
   AFTERNOON_END,
   AFTERNOON_START,
@@ -36,9 +37,7 @@ export function slotEndToHour(slot: number): number {
 }
 
 function _hourToLabel(hour: number): string {
-  const h = Math.floor(hour);
-  const m = Math.round((hour - h) * 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return formatHours(hour);
 }
 
 export function slotToLabel(slot: number): string {

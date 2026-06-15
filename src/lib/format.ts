@@ -1,21 +1,28 @@
 export function formatHours(hours: number | null | undefined): string {
   if (hours == null) return "—";
   const rounded = Math.round(hours * 100) / 100;
-  return `${rounded.toFixed(rounded % 1 === 0 ? 0 : 2)}h`;
+  const text =
+    rounded % 1 === 0
+      ? rounded.toFixed(0)
+      : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${text}h`;
 }
 
 const DEFAULT_DISPLAY_TIME_ZONE = "Europe/Madrid";
 
-function formatTimeOfDayInZone(
+function hourDecimalInZone(
   date: Date,
   timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
-): string {
-  return new Intl.DateTimeFormat("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
+): number {
+  const parts = new Intl.DateTimeFormat("es-ES", {
+    hour: "numeric",
+    minute: "numeric",
     hour12: false,
     timeZone,
-  }).format(date);
+  }).formatToParts(date);
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return h + m / 60;
 }
 
 export function formatDayTimeInZone(
@@ -38,7 +45,7 @@ export function formatTimeRangeFromStartAndHours(
   timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
 ): string {
   const endedAt = new Date(startedAt.getTime() + hours * 3_600_000);
-  return `${formatTimeOfDayInZone(startedAt, timeZone)}–${formatTimeOfDayInZone(endedAt, timeZone)}`;
+  return `${formatHours(hourDecimalInZone(startedAt, timeZone))}–${formatHours(hourDecimalInZone(endedAt, timeZone))}`;
 }
 
 export function formatDate(date: Date | string | null | undefined): string {

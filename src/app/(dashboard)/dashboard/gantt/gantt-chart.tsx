@@ -33,7 +33,7 @@ import {
   slotToStartMinutes,
   timelineHoverSummary,
 } from "@/features/planning/gantt-timeline";
-import { formatDayMonthYear, formatShortDate } from "@/lib/format";
+import { formatDayMonthYear, formatHours, formatShortDate } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -67,10 +67,8 @@ interface GanttChartProps {
   canManageTasks?: boolean;
 }
 
-function formatMinutesClock(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+function formatDayBoundsLabel(minutes: number): string {
+  return formatHours(minutes / 60);
 }
 
 const WAIT_BAR_COLOR = "rgba(245, 158, 11, 0.55)";
@@ -754,12 +752,12 @@ export function GanttChart({
                 <div
                   key={iso}
                   className="p-2 text-center text-[10px] text-muted-foreground border-l"
-                  title={`${formatMinutesClock(bounds.dayStartMinutes)} – ${formatMinutesClock(bounds.dayEndMinutes)}`}
+                  title={`${formatDayBoundsLabel(bounds.dayStartMinutes)} – ${formatDayBoundsLabel(bounds.dayEndMinutes)}`}
                 >
                   <div>{formatDayMonthYear(parseUtc(iso))}</div>
                   <div className="text-[9px] opacity-80">
-                    {formatMinutesClock(bounds.dayStartMinutes)}–
-                    {formatMinutesClock(bounds.dayEndMinutes)}
+                    {formatDayBoundsLabel(bounds.dayStartMinutes)}–
+                    {formatDayBoundsLabel(bounds.dayEndMinutes)}
                   </div>
                 </div>
               );

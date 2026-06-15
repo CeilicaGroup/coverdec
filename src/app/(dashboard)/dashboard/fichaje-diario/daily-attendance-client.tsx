@@ -61,6 +61,7 @@ import {
   formatMonthYearEs,
   localDateFromCivilIso,
 } from "@/lib/civil-date";
+import { formatHours } from "@/lib/format";
 
 interface PersonRow {
   id: string;
@@ -715,12 +716,12 @@ export function DailyAttendanceClient(props: {
                             {formatAttendanceSource(session.source)}
                           </span>
                           {toTimeValue(session.startedAt)} -{" "}
-                          {session.endedAt ? toTimeValue(session.endedAt) : "abierto"} · {netMin} min
-                          trabajados
+                          {session.endedAt ? toTimeValue(session.endedAt) : "abierto"} ·{" "}
+                          {formatHours(netMin / 60)} trabajados
                           {breakMin > 0 ? (
                             <span className="text-muted-foreground">
                               {" "}
-                              ({grossMin} min − {breakMin} min pausas)
+                              ({formatHours(grossMin / 60)} − {formatHours(breakMin / 60)} pausas)
                             </span>
                           ) : null}
                         </span>
@@ -842,15 +843,17 @@ export function DailyAttendanceClient(props: {
                               <span>
                                 {toTimeValue(breakRow.startedAt)} -{" "}
                                 {breakRow.endedAt ? toTimeValue(breakRow.endedAt) : "abierta"} ·{" "}
-                                {breakMinutes(
-                                  {
-                                    startedAt: new Date(breakRow.startedAt),
-                                    endedAt: breakRow.endedAt ? new Date(breakRow.endedAt) : null,
-                                    minutes: breakRow.minutes,
-                                  },
-                                  at,
+                                {formatHours(
+                                  breakMinutes(
+                                    {
+                                      startedAt: new Date(breakRow.startedAt),
+                                      endedAt: breakRow.endedAt ? new Date(breakRow.endedAt) : null,
+                                      minutes: breakRow.minutes,
+                                    },
+                                    at,
+                                  ) / 60,
                                 )}{" "}
-                                min pausa
+                                pausa
                               </span>
                               {canManageBreaks && session.endedAt != null ? (
                                 <div className="flex gap-1 shrink-0">
