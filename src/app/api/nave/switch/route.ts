@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { Role } from "@/generated/prisma";
+import { AuditOutcome, Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
+import { recordApiAudit } from "@/lib/audit/record-api-audit";
 import { requireSession } from "@/lib/auth-server";
 import { personNaveIds } from "@/features/people/person-naves";
 
@@ -27,6 +28,13 @@ export async function POST(request: Request) {
       where: { id: session.user.id },
       data: { activeNaveId: null },
     });
+    void recordApiAudit(
+      "api.nave.switch",
+      request,
+      AuditOutcome.SUCCESS,
+      "Cambiar a vista global (todas las naves)",
+      { metadata: { naveId: null } },
+    );
     return NextResponse.json({ ok: true });
   }
 
@@ -48,6 +56,14 @@ export async function POST(request: Request) {
     where: { id: session.user.id },
     data: { activeNaveId: body.naveId },
   });
+
+  void recordApiAudit(
+    "api.nave.switch",
+    request,
+    AuditOutcome.SUCCESS,
+    `Cambiar nave activa`,
+    { metadata: { naveId: body.naveId, naveCodigo: nave.codigo } },
+  );
 
   return NextResponse.json({ ok: true });
 }

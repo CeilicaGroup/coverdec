@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { FactoryStatus, Role } from "@/generated/prisma";
 
@@ -18,25 +19,36 @@ const updateSchema = z.object({
 });
 
 export async function updateFactoryItem(input: z.infer<typeof updateSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = updateSchema.parse(input);
-  const item = await prisma.factoryItem.findFirstOrThrow({
-    where: { id: data.id },
-  });
-  await prisma.factoryItem.update({
-    where: { id: item.id },
-    data: {
-      status: data.status,
-      nave: data.nave,
-      notes: data.notes,
-      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
-      shippedAt:
-        data.status === FactoryStatus.ENVIADO ? new Date() : item.shippedAt,
+  return runAuditedMutation(
+    "factory.updateFactoryItem",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = updateSchema.parse(input);
+      const item = await prisma.factoryItem.findFirstOrThrow({
+        where: { id: data.id },
+      });
+      await prisma.factoryItem.update({
+        where: { id: item.id },
+        data: {
+          status: data.status,
+          nave: data.nave,
+          notes: data.notes,
+          scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
+          shippedAt:
+            data.status === FactoryStatus.ENVIADO ? new Date() : item.shippedAt,
+        },
+      });
+      log.info({ id: item.id, status: data.status }, "factory item updated");
+      revalidatePath("/dashboard/fabrica");
     },
-  });
-  log.info({ id: item.id, status: data.status }, "factory item updated");
-  revalidatePath("/dashboard/fabrica");
+    {
+      summary: "Actualizar ítem de fábrica",
+      entityType: "FactoryItem",
+      entityId: input.id,
+      metadata: input,
+    },
+  );
 }
 
 const createSchema = z.object({
@@ -48,17 +60,29 @@ const createSchema = z.object({
 });
 
 export async function createFactoryItem(input: z.infer<typeof createSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = createSchema.parse(input);
-  await prisma.factoryItem.create({
-    data: {
-      product: data.product,
-      obra: data.obra,
-      nave: data.nave,
-      code: data.code,
-      status: data.status,
+  return runAuditedMutation(
+    "factory.createFactoryItem",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = createSchema.parse(input);
+      const item = await prisma.factoryItem.create({
+        data: {
+          product: data.product,
+          obra: data.obra,
+          nave: data.nave,
+          code: data.code,
+          status: data.status,
+        },
+      });
+      revalidatePath("/dashboard/fabrica");
+      return item;
     },
-  });
-  revalidatePath("/dashboard/fabrica");
+    (result) => ({
+      summary: `Crear ítem de fábrica: ${input.product}`,
+      entityType: "FactoryItem",
+      entityId: result.id,
+      metadata: input,
+    }),
+  );
 }

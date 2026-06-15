@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { AuditOutcome } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
+import { recordApiAudit } from "@/lib/audit/record-api-audit";
 import { requireSession } from "@/lib/auth-server";
 
 const subscriptionSchema = z.object({
@@ -35,6 +37,14 @@ export async function POST(request: Request) {
     },
   });
 
+  void recordApiAudit(
+    "api.notifications.pushSubscribe",
+    request,
+    AuditOutcome.SUCCESS,
+    "Suscribir notificaciones push",
+    { entityType: "PushSubscription", metadata: { endpoint: data.endpoint } },
+  );
+
   return NextResponse.json({ ok: true });
 }
 
@@ -50,6 +60,14 @@ export async function DELETE(request: Request) {
     where: { endpoint: data.endpoint, userId: session.user.id },
     data: { isActive: false },
   });
+
+  void recordApiAudit(
+    "api.notifications.pushUnsubscribe",
+    request,
+    AuditOutcome.SUCCESS,
+    "Cancelar suscripción push",
+    { metadata: { endpoint: data.endpoint } },
+  );
 
   return NextResponse.json({ ok: true });
 }

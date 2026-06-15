@@ -77,6 +77,11 @@ enum FactoryStatus {
   ENVIADO
 }
 
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
 enum ProjectPlanningPreset {
   A_TIEMPO
   EQUILIBRADO
@@ -726,4 +731,38 @@ model FactoryItem {
   updatedAt   DateTime      @updatedAt
 
   @@index([status])
+}
+
+// ---------- Trazabilidad / auditoría ----------
+
+model AuditLog {
+  id          String       @id @default(cuid())
+  createdAt   DateTime     @default(now())
+
+  actorUserId String?
+  actorRole   Role?
+  actorName   String?
+  actorEmail  String?
+
+  action      String
+  category    String
+  outcome     AuditOutcome
+
+  naveId      String?
+  ipAddress   String?
+  userAgent   String?
+
+  entityType  String?
+  entityId    String?
+
+  summary     String
+  metadata    Json?
+  changes     Json?
+
+  @@index([createdAt(sort: Desc)])
+  @@index([category, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([outcome, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
 }

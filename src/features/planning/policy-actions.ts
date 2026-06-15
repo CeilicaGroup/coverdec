@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { Role } from "@/generated/prisma";
 import {
@@ -18,36 +19,42 @@ const log = childLogger({ module: "planning.policy-actions" });
 export async function savePlanningWeightsAction(
   input: unknown,
 ): Promise<{ ok: true }> {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = planningWeightsSchema.parse(input);
+  return runAuditedMutation(
+    "planning.savePlanningWeights",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = planningWeightsSchema.parse(input);
 
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
 
-  await prisma.planningPolicy.upsert({
-    where: { naveId: ctx.naveId },
-    create: {
-      naveId: ctx.naveId,
-      wLate: data.wLate,
-      wUnscheduled: data.wUnscheduled,
-      wLoadBalance: data.wLoadBalance,
-      wMove: data.wMove,
-      wLaborCost: data.wLaborCost,
-      wPriority: data.wPriority,
+      await prisma.planningPolicy.upsert({
+        where: { naveId: ctx.naveId },
+        create: {
+          naveId: ctx.naveId,
+          wLate: data.wLate,
+          wUnscheduled: data.wUnscheduled,
+          wLoadBalance: data.wLoadBalance,
+          wMove: data.wMove,
+          wLaborCost: data.wLaborCost,
+          wPriority: data.wPriority,
+        },
+        update: {
+          wLate: data.wLate,
+          wUnscheduled: data.wUnscheduled,
+          wLoadBalance: data.wLoadBalance,
+          wMove: data.wMove,
+          wLaborCost: data.wLaborCost,
+          wPriority: data.wPriority,
+        },
+      });
+
+      log.info({ naveId: ctx.naveId }, "planning weights saved");
+      revalidatePath("/dashboard", "layout");
+      return { ok: true as const };
     },
-    update: {
-      wLate: data.wLate,
-      wUnscheduled: data.wUnscheduled,
-      wLoadBalance: data.wLoadBalance,
-      wMove: data.wMove,
-      wLaborCost: data.wLaborCost,
-      wPriority: data.wPriority,
-    },
-  });
-
-  log.info({ naveId: ctx.naveId }, "planning weights saved");
-  revalidatePath("/dashboard", "layout");
-  return { ok: true };
+    { summary: "Guardar pesos de planning" },
+  );
 }
 
 /** Guarda estrategia (0–100) mapeada a pesos del solver en servidor. */
@@ -68,47 +75,53 @@ const nonlinearDeadlineSettingsSchema = z.object({
 export async function saveNonlinearDeadlineSettingsAction(
   input: unknown,
 ): Promise<{ ok: true }> {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = nonlinearDeadlineSettingsSchema.parse(input);
+  return runAuditedMutation(
+    "planning.saveNonlinearDeadlineSettings",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = nonlinearDeadlineSettingsSchema.parse(input);
 
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
 
-  const strategyWeights = strategyToWeights({
-    deliveryPriority: data.globalDeadlineBoost,
-    costPriority: 50,
-    stability: 50,
-  });
+      const strategyWeights = strategyToWeights({
+        deliveryPriority: data.globalDeadlineBoost,
+        costPriority: 50,
+        stability: 50,
+      });
 
-  await prisma.planningPolicy.upsert({
-    where: { naveId: ctx.naveId },
-    create: {
-      naveId: ctx.naveId,
-      wLate: strategyWeights.wLate,
-      wUnscheduled: strategyWeights.wUnscheduled,
-      wLoadBalance: strategyWeights.wLoadBalance,
-      wMove: strategyWeights.wMove,
-      wLaborCost: strategyWeights.wLaborCost,
-      wPriority: strategyWeights.wPriority,
-      deadlineCurveExponent: data.deadlineCurveExponent,
-      overduePenaltyMultiplier: data.overduePenaltyMultiplier,
+      await prisma.planningPolicy.upsert({
+        where: { naveId: ctx.naveId },
+        create: {
+          naveId: ctx.naveId,
+          wLate: strategyWeights.wLate,
+          wUnscheduled: strategyWeights.wUnscheduled,
+          wLoadBalance: strategyWeights.wLoadBalance,
+          wMove: strategyWeights.wMove,
+          wLaborCost: strategyWeights.wLaborCost,
+          wPriority: strategyWeights.wPriority,
+          deadlineCurveExponent: data.deadlineCurveExponent,
+          overduePenaltyMultiplier: data.overduePenaltyMultiplier,
+        },
+        update: {
+          wPriority: strategyWeights.wPriority,
+          deadlineCurveExponent: data.deadlineCurveExponent,
+          overduePenaltyMultiplier: data.overduePenaltyMultiplier,
+        },
+      });
+
+      log.info(
+        {
+          naveId: ctx.naveId,
+          deadlineCurveExponent: data.deadlineCurveExponent,
+          overduePenaltyMultiplier: data.overduePenaltyMultiplier,
+          globalDeadlineBoost: data.globalDeadlineBoost,
+        },
+        "planning nonlinear deadline settings saved",
+      );
+      revalidatePath("/dashboard", "layout");
+      return { ok: true as const };
     },
-    update: {
-      wPriority: strategyWeights.wPriority,
-      deadlineCurveExponent: data.deadlineCurveExponent,
-      overduePenaltyMultiplier: data.overduePenaltyMultiplier,
-    },
-  });
-
-  log.info(
-    {
-      naveId: ctx.naveId,
-      deadlineCurveExponent: data.deadlineCurveExponent,
-      overduePenaltyMultiplier: data.overduePenaltyMultiplier,
-      globalDeadlineBoost: data.globalDeadlineBoost,
-    },
-    "planning nonlinear deadline settings saved",
+    { summary: "Guardar ajustes de plazos no lineales" },
   );
-  revalidatePath("/dashboard", "layout");
-  return { ok: true };
 }

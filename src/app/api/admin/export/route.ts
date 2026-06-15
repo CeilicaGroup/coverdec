@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Role } from "@/generated/prisma";
+import { AuditOutcome, Role } from "@/generated/prisma";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { recordApiAudit } from "@/lib/audit/record-api-audit";
 import { childLogger } from "@/lib/logger";
 import { buildPlatformExportWorkbook } from "@/features/admin/export-platform";
 
@@ -48,6 +49,20 @@ export async function GET(request: Request) {
       to: toDate,
     });
     const bytes = new Uint8Array(buffer);
+
+    void recordApiAudit(
+      "api.admin.export",
+      request,
+      AuditOutcome.SUCCESS,
+      "Exportar datos de la plataforma",
+      {
+        metadata: {
+          from: parsed.data.from,
+          to: parsed.data.to,
+          filename,
+        },
+      },
+    );
 
     return new NextResponse(bytes, {
       status: 200,

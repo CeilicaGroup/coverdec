@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { Role } from "@/generated/prisma";
 
@@ -19,30 +20,41 @@ const createSchema = z.object({
 });
 
 export async function createProductionOrder(input: z.infer<typeof createSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = createSchema.parse(input);
-  const year = new Date().getUTCFullYear();
-  const last = await prisma.productionOrder.findFirst({
-    where: { year },
-    orderBy: { serial: "desc" },
-  });
-  const serial = (last?.serial ?? 0) + 1;
-  const number = `OP${String(serial).padStart(4, "0")}-${year}`;
-  const order = await prisma.productionOrder.create({
-    data: {
-      number,
-      year,
-      serial,
-      projectId: data.projectId,
-      lampLabel: data.lampLabel,
-      process: data.process,
-      hours: data.hours,
-      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
-      notes: data.notes,
+  return runAuditedMutation(
+    "production-orders.createProductionOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = createSchema.parse(input);
+      const year = new Date().getUTCFullYear();
+      const last = await prisma.productionOrder.findFirst({
+        where: { year },
+        orderBy: { serial: "desc" },
+      });
+      const serial = (last?.serial ?? 0) + 1;
+      const number = `OP${String(serial).padStart(4, "0")}-${year}`;
+      const order = await prisma.productionOrder.create({
+        data: {
+          number,
+          year,
+          serial,
+          projectId: data.projectId,
+          lampLabel: data.lampLabel,
+          process: data.process,
+          hours: data.hours,
+          scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
+          notes: data.notes,
+        },
+      });
+      log.info({ id: order.id, number }, "production order created");
+      revalidatePath("/dashboard/ordenes");
+      return { id: order.id, number };
     },
-  });
-  log.info({ id: order.id, number }, "production order created");
-  revalidatePath("/dashboard/ordenes");
-  return { id: order.id, number };
+    (result) => ({
+      summary: `Crear orden de producción ${result.number}`,
+      entityType: "ProductionOrder",
+      entityId: result.id,
+      metadata: input,
+    }),
+  );
 }

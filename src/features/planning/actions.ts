@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { runAuditedMutation } from "@/lib/server-action";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import {
   generatePlanning,
@@ -33,43 +34,63 @@ export async function generatePlanningAction(input: {
   weekStart: string;
   horizonMode: z.input<typeof planningHorizonModeSchema>;
 }) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-  const { weekStart, horizonMode } = generateSchema.parse(input);
-  const result = await generatePlanning({
-    naveId: ctx.naveId,
-    weekStart: new Date(weekStart),
-    replaceDraft: true,
-    planFrom: "WEEK_START",
-    planFromAt: new Date(),
-  });
-  revalidatePath("/dashboard", "layout");
-  return result;
+  return runAuditedMutation(
+    "planning.generatePlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+      const { weekStart, horizonMode } = generateSchema.parse(input);
+      const result = await generatePlanning({
+        naveId: ctx.naveId,
+        weekStart: new Date(weekStart),
+        replaceDraft: true,
+        planFrom: "WEEK_START",
+        planFromAt: new Date(),
+      });
+      revalidatePath("/dashboard", "layout");
+      return result;
+    },
+    (result) => ({
+      summary: `Generar planning semana ${input.weekStart}`,
+      entityType: "Planning",
+      entityId: result.planningId,
+      metadata: { weekStart: input.weekStart, horizonMode: input.horizonMode },
+    }),
+  );
 }
 
 export async function prepareHorizonGenerationAction(input: {
   weekStart: string;
   horizonMode: z.input<typeof planningHorizonModeSchema>;
 }) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+  return runAuditedMutation(
+    "planning.prepareHorizonGeneration",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
 
-  const { weekStart, horizonMode } = generateSchema.parse(input);
-  const anchor = getMondayOf(new Date(weekStart));
+      const { weekStart, horizonMode } = generateSchema.parse(input);
+      const anchor = getMondayOf(new Date(weekStart));
 
-  if (isMultiWeekMode(horizonMode)) {
-    if (await hasPublishedFuturePlannings(ctx.naveId, anchor)) {
-      throw new Error(
-        "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
-      );
-    }
-    await clearFutureDraftPlannings(ctx.naveId, anchor);
-  }
+      if (isMultiWeekMode(horizonMode)) {
+        if (await hasPublishedFuturePlannings(ctx.naveId, anchor)) {
+          throw new Error(
+            "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
+          );
+        }
+        await clearFutureDraftPlannings(ctx.naveId, anchor);
+      }
 
-  revalidatePath("/dashboard", "layout");
-  return { ok: true };
+      revalidatePath("/dashboard", "layout");
+      return { ok: true as const };
+    },
+    {
+      summary: `Preparar horizonte de planning desde ${input.weekStart}`,
+      metadata: input,
+    },
+  );
 }
 
 export async function getPlanningHorizonProgressAction(input: {
@@ -136,15 +157,28 @@ export async function getPlanningHorizonProgressAction(input: {
 const publishSchema = z.object({ planningId: z.string().min(1) });
 
 export async function publishPlanningAction(input: { planningId: string }) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-  const { planningId } = publishSchema.parse(input);
-  const planning = await prisma.planning.findUnique({ where: { id: planningId }, select: { naveId: true } });
-  if (!planning || planning.naveId !== ctx.naveId) throw new Error("No autorizado");
-  await publishPlanning(planningId);
-  revalidatePath("/dashboard", "layout");
-  return { ok: true };
+  return runAuditedMutation(
+    "planning.publishPlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+      const { planningId } = publishSchema.parse(input);
+      const planning = await prisma.planning.findUnique({
+        where: { id: planningId },
+        select: { naveId: true },
+      });
+      if (!planning || planning.naveId !== ctx.naveId) throw new Error("No autorizado");
+      await publishPlanning(planningId);
+      revalidatePath("/dashboard", "layout");
+      return { ok: true as const };
+    },
+    {
+      summary: "Publicar planning",
+      entityType: "Planning",
+      entityId: input.planningId,
+    },
+  );
 }
 
 const undoSchema = z.object({
@@ -156,17 +190,26 @@ export async function undoPlanningAction(input: {
   weekStart: string;
   includeFutureWeeks?: boolean;
 }) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-  const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
-  const result = await undoPlanning({
-    naveId: ctx.naveId,
-    weekStart: new Date(weekStart),
-    includeFutureWeeks,
-  });
-  revalidatePath("/dashboard", "layout");
-  return result;
+  return runAuditedMutation(
+    "planning.undoPlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+      const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
+      const result = await undoPlanning({
+        naveId: ctx.naveId,
+        weekStart: new Date(weekStart),
+        includeFutureWeeks,
+      });
+      revalidatePath("/dashboard", "layout");
+      return result;
+    },
+    {
+      summary: `Deshacer planning semana ${input.weekStart}`,
+      metadata: input,
+    },
+  );
 }
 
 export async function getPlanningUndoState(weekStartIso: string): Promise<{

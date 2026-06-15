@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
+import { setAuditRequestContext } from "@/lib/audit/request-context";
 import {
   redirectToLoginWithStaleSession,
   requireSessionOrRedirect,
@@ -10,6 +12,8 @@ import { getDefaultDashboardPath } from "@/lib/dashboard-path";
 export interface DashboardContext {
   userId: string;
   role: Role;
+  name: string;
+  email: string;
   personId: string | null;
   /** Nave activa para planificar. Admin puede dejarla en null (= vista global). Jefe: siempre una nave activa. */
   naveId: string | null;
@@ -34,41 +38,66 @@ export async function requireDashboardContext(): Promise<DashboardContext> {
   if (!user) return redirectToLoginWithStaleSession();
 
   const activeNaveIds = await loadActiveNaveIds();
+  const hdrs = await headers();
+  const ipAddress =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? hdrs.get("x-real-ip")
+    ?? null;
+  const userAgent = hdrs.get("user-agent");
+
+  let ctx: DashboardContext;
 
   if (user.role === Role.ADMIN) {
     const naveId =
       user.activeNaveId && activeNaveIds.includes(user.activeNaveId)
         ? user.activeNaveId
         : null;
-    return {
+    ctx = {
       userId: user.id,
       role: user.role,
+      name: user.name,
+      email: user.email,
       personId: user.personId,
       naveId,
       naveIds: naveId ? [naveId] : activeNaveIds,
     };
-  }
-
-  if (user.role === Role.JEFE_PRODUCCION) {
+  } else if (user.role === Role.JEFE_PRODUCCION) {
     const naveId = resolvePlanningNaveId(user.activeNaveId, activeNaveIds);
-    return {
+    ctx = {
       userId: user.id,
       role: user.role,
+      name: user.name,
+      email: user.email,
       personId: user.personId,
       naveId,
       naveIds: activeNaveIds,
     };
+  } else {
+    const personNaveIds = orderedPersonNaveIds(user.person);
+    const naveId = resolvePlanningNaveId(user.activeNaveId, personNaveIds);
+    ctx = {
+      userId: user.id,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+      personId: user.personId,
+      naveId,
+      naveIds: personNaveIds,
+    };
   }
 
-  const personNaveIds = orderedPersonNaveIds(user.person);
-  const naveId = resolvePlanningNaveId(user.activeNaveId, personNaveIds);
-  return {
-    userId: user.id,
-    role: user.role,
-    personId: user.personId,
-    naveId,
-    naveIds: personNaveIds,
-  };
+  setAuditRequestContext({
+    actor: {
+      userId: ctx.userId,
+      role: ctx.role,
+      name: ctx.name,
+      email: ctx.email,
+      naveId: ctx.naveId,
+    },
+    request: { ipAddress, userAgent },
+  });
+
+  return ctx;
 }
 
 async function loadActiveNaveIds(): Promise<string[]> {

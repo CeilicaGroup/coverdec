@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { NotificationType, Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
+import { runAuditedMutation } from "@/lib/server-action";
 import { upsertNotificationSubscription } from "./service";
 
 const updateSubscriptionSchema = z.object({
@@ -16,57 +17,94 @@ const updateSubscriptionSchema = z.object({
 });
 
 export async function updateNotificationSubscription(input: z.infer<typeof updateSubscriptionSchema>) {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  const data = updateSubscriptionSchema.parse(input);
-  const user = await prisma.user.findUnique({
-    where: { id: data.userId },
-    select: { role: true },
-  });
-  if (!user || (user.role !== Role.ADMIN && user.role !== Role.JEFE_PRODUCCION)) {
-    throw new Error("Solo se pueden configurar administradores o jefes de producción.");
-  }
+  return runAuditedMutation(
+    "notifications.updateSubscription",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN]);
+      const data = updateSubscriptionSchema.parse(input);
+      const user = await prisma.user.findUnique({
+        where: { id: data.userId },
+        select: { role: true },
+      });
+      if (!user || (user.role !== Role.ADMIN && user.role !== Role.JEFE_PRODUCCION)) {
+        throw new Error("Solo se pueden configurar administradores o jefes de producción.");
+      }
 
-  await upsertNotificationSubscription(data);
-  revalidatePath("/dashboard/admin/usuarios");
+      await upsertNotificationSubscription(data);
+      revalidatePath("/dashboard/admin/usuarios");
+    },
+    {
+      summary: "Actualizar suscripción de notificaciones",
+      entityType: "User",
+      entityId: input.userId,
+      metadata: input,
+    },
+  );
 }
 
 const markReadSchema = z.object({ notificationId: z.string().min(1) });
 
 export async function markNotificationRead(input: z.infer<typeof markReadSchema>) {
-  const ctx = await requireDashboardContext();
-  const data = markReadSchema.parse(input);
-  await prisma.notification.updateMany({
-    where: {
-      id: data.notificationId,
-      userId: ctx.userId,
-      readAt: null,
+  return runAuditedMutation(
+    "notifications.markRead",
+    async () => {
+      const ctx = await requireDashboardContext();
+      const data = markReadSchema.parse(input);
+      await prisma.notification.updateMany({
+        where: {
+          id: data.notificationId,
+          userId: ctx.userId,
+          readAt: null,
+        },
+        data: { readAt: new Date() },
+      });
+      revalidatePath("/dashboard/notificaciones");
     },
-    data: { readAt: new Date() },
-  });
-  revalidatePath("/dashboard/notificaciones");
+    {
+      summary: "Marcar notificación como leída",
+      entityType: "Notification",
+      entityId: input.notificationId,
+    },
+  );
 }
 
 export async function markNotificationUnread(input: z.infer<typeof markReadSchema>) {
-  const ctx = await requireDashboardContext();
-  const data = markReadSchema.parse(input);
-  await prisma.notification.updateMany({
-    where: {
-      id: data.notificationId,
-      userId: ctx.userId,
+  return runAuditedMutation(
+    "notifications.markUnread",
+    async () => {
+      const ctx = await requireDashboardContext();
+      const data = markReadSchema.parse(input);
+      await prisma.notification.updateMany({
+        where: {
+          id: data.notificationId,
+          userId: ctx.userId,
+        },
+        data: { readAt: null },
+      });
+      revalidatePath("/dashboard/notificaciones");
     },
-    data: { readAt: null },
-  });
-  revalidatePath("/dashboard/notificaciones");
+    {
+      summary: "Marcar notificación como no leída",
+      entityType: "Notification",
+      entityId: input.notificationId,
+    },
+  );
 }
 
 export async function markAllNotificationsRead() {
-  const ctx = await requireDashboardContext();
-  await prisma.notification.updateMany({
-    where: { userId: ctx.userId, readAt: null },
-    data: { readAt: new Date() },
-  });
-  revalidatePath("/dashboard/notificaciones");
+  return runAuditedMutation(
+    "notifications.markAllRead",
+    async () => {
+      const ctx = await requireDashboardContext();
+      await prisma.notification.updateMany({
+        where: { userId: ctx.userId, readAt: null },
+        data: { readAt: new Date() },
+      });
+      revalidatePath("/dashboard/notificaciones");
+    },
+    { summary: "Marcar todas las notificaciones como leídas" },
+  );
 }
 
 const massMarkSchema = z.object({
@@ -74,29 +112,47 @@ const massMarkSchema = z.object({
 });
 
 export async function markAllNotificationsUnread(input?: z.infer<typeof massMarkSchema>) {
-  const ctx = await requireDashboardContext();
-  const { filter } = massMarkSchema.parse(input ?? { filter: "all" });
-  await prisma.notification.updateMany({
-    where: {
-      userId: ctx.userId,
-      ...(filter === "read" ? { readAt: { not: null } } : {}),
-      ...(filter === "unread" ? { readAt: null } : {}),
+  return runAuditedMutation(
+    "notifications.markAllUnread",
+    async () => {
+      const ctx = await requireDashboardContext();
+      const { filter } = massMarkSchema.parse(input ?? { filter: "all" });
+      await prisma.notification.updateMany({
+        where: {
+          userId: ctx.userId,
+          ...(filter === "read" ? { readAt: { not: null } } : {}),
+          ...(filter === "unread" ? { readAt: null } : {}),
+        },
+        data: { readAt: null },
+      });
+      revalidatePath("/dashboard/notificaciones");
     },
-    data: { readAt: null },
-  });
-  revalidatePath("/dashboard/notificaciones");
+    {
+      summary: "Marcar notificaciones visibles como no leídas",
+      metadata: input ?? { filter: "all" },
+    },
+  );
 }
 
 export async function markAllNotificationsReadFiltered(input?: z.infer<typeof massMarkSchema>) {
-  const ctx = await requireDashboardContext();
-  const { filter } = massMarkSchema.parse(input ?? { filter: "all" });
-  await prisma.notification.updateMany({
-    where: {
-      userId: ctx.userId,
-      ...(filter === "read" ? { readAt: { not: null } } : {}),
-      ...(filter === "unread" ? { readAt: null } : {}),
+  return runAuditedMutation(
+    "notifications.markAllReadFiltered",
+    async () => {
+      const ctx = await requireDashboardContext();
+      const { filter } = massMarkSchema.parse(input ?? { filter: "all" });
+      await prisma.notification.updateMany({
+        where: {
+          userId: ctx.userId,
+          ...(filter === "read" ? { readAt: { not: null } } : {}),
+          ...(filter === "unread" ? { readAt: null } : {}),
+        },
+        data: { readAt: new Date() },
+      });
+      revalidatePath("/dashboard/notificaciones");
     },
-    data: { readAt: new Date() },
-  });
-  revalidatePath("/dashboard/notificaciones");
+    {
+      summary: "Marcar notificaciones visibles como leídas",
+      metadata: input ?? { filter: "all" },
+    },
+  );
 }

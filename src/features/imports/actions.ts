@@ -6,6 +6,7 @@ import { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
+import { runAuditedMutation } from "@/lib/server-action";
 import { applyBastidorRows } from "./apply-bastidores";
 import { buildPreviewFromSession } from "./build-preview";
 import {
@@ -138,22 +139,31 @@ export async function applyImportPreview(input: {
   sessionId: string;
   rows: BastidorRowDraft[];
 }): Promise<ImportApplyResult> {
-  await requireAdmin();
+  return runAuditedMutation(
+    "imports.applyImportPreview",
+    async () => {
+      await requireAdmin();
 
-  const blocking = countBlockingImportErrors(input.rows);
-  if (blocking > 0) {
-    throw new Error(
-      `Hay ${blocking} fila(s) con error sin marcar como «Omitir». Corrígelas o omítelas antes de importar.`,
-    );
-  }
+      const blocking = countBlockingImportErrors(input.rows);
+      if (blocking > 0) {
+        throw new Error(
+          `Hay ${blocking} fila(s) con error sin marcar como «Omitir». Corrígelas o omítelas antes de importar.`,
+        );
+      }
 
-  const rows = z.array(bastidorRowSchema).parse(input.rows) as BastidorRowDraft[];
-  const bastidores = await applyBastidorRows(rows);
-  deleteImportSession(input.sessionId);
-  revalidatePath("/dashboard/catalogo");
-  revalidatePath("/dashboard/admin/export");
-  log.info({ bastidores }, "bastidores import applied");
-  return { bastidores };
+      const rows = z.array(bastidorRowSchema).parse(input.rows) as BastidorRowDraft[];
+      const bastidores = await applyBastidorRows(rows);
+      deleteImportSession(input.sessionId);
+      revalidatePath("/dashboard/catalogo");
+      revalidatePath("/dashboard/admin/export");
+      log.info({ bastidores }, "bastidores import applied");
+      return { bastidores };
+    },
+    (result) => ({
+      summary: `Importar ${result.bastidores} bastidor(es)`,
+      metadata: { sessionId: input.sessionId, rowCount: input.rows.length, bastidores: result.bastidores },
+    }),
+  );
 }
 
 export async function getImportCatalogOptions() {
