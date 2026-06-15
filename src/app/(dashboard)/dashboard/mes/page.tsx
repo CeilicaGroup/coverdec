@@ -1,5 +1,5 @@
 import { CalendarDays } from "lucide-react";
-import { requireDashboardContext } from "@/lib/context";
+import { requireDashboardContext, requireRole } from "@/lib/context";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import {
   businessDaysInMonth,
@@ -59,6 +59,7 @@ export default async function MesPage({
   searchParams: Promise<{ month?: string; view?: string }>;
 }) {
   const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const params = await searchParams;
   const monthStartIso = parseMonthParam(params.month);
   const { startIso, endIso } = monthStartEnd(monthStartIso);

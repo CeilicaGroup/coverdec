@@ -10,11 +10,13 @@ function CalendarScaleToggleInner({
   weekIso,
   monthParam,
   view,
+  monthHidden,
 }: {
   scale: "week" | "month";
   weekIso?: string;
   monthParam?: string;
   view?: string;
+  monthHidden?: boolean;
 }) {
   const searchParams = useSearchParams();
 
@@ -35,6 +37,8 @@ function CalendarScaleToggleInner({
     const search = params.toString();
     return search ? `${base}?${search}` : base;
   };
+
+  if (monthHidden) return null;
 
   return (
     <div
@@ -73,6 +77,7 @@ export function CalendarScaleToggle(props: {
   weekIso?: string;
   monthParam?: string;
   view?: string;
+  monthHidden?: boolean;
 }) {
   return (
     <Suspense

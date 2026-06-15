@@ -12,11 +12,15 @@ export function resolvePostLoginPath(
 ): string {
   const fallback = getDefaultDashboardPath(role ?? Role.OPERARIO);
   if (!redirectParam?.startsWith("/dashboard")) return fallback;
-  if (
-    role === Role.OPERARIO &&
-    (redirectParam === "/dashboard" || redirectParam === "/dashboard/")
-  ) {
-    return fallback;
+  if (role === Role.OPERARIO) {
+    if (
+      redirectParam === "/dashboard" ||
+      redirectParam === "/dashboard/" ||
+      redirectParam === "/dashboard/mes" ||
+      redirectParam.startsWith("/dashboard/mes?")
+    ) {
+      return fallback;
+    }
   }
   return redirectParam;
 }

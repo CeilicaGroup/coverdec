@@ -108,6 +108,7 @@ export default async function SemanaPage({
               weekIso={weekIso}
               monthParam={`${weekIso.slice(0, 7)}-01`}
               view={view}
+              monthHidden={ctx.role === Role.OPERARIO}
             />
             <ViewToggle basePath="/dashboard/semana" view={view} week={weekIso} />
             <div className="col-span-2 sm:col-span-1">
