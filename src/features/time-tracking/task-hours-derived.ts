@@ -32,6 +32,54 @@ export async function loadDoneHoursByTaskIds(
   return doneByTaskId;
 }
 
+/** Operario con más horas registradas por tarea (para fijar continuidad). */
+export async function loadPrimaryWorkerByTaskIds(
+  tx: Tx,
+  taskIds: string[],
+  at: Date = new Date(),
+): Promise<Map<string, string>> {
+  if (taskIds.length === 0) return new Map();
+  const entries = await tx.timeEntry.findMany({
+    where: {
+      taskId: { in: taskIds },
+      user: { personId: { not: null } },
+    },
+    select: {
+      taskId: true,
+      startedAt: true,
+      endedAt: true,
+      hours: true,
+      user: { select: { personId: true } },
+    },
+  });
+  const hoursByTaskPerson = new Map<string, Map<string, number>>();
+  for (const entry of entries) {
+    const personId = entry.user.personId;
+    if (!entry.taskId || !personId) continue;
+    const hours = resolveTimeEntryHours(entry, at);
+    if (hours <= 0) continue;
+    let byPerson = hoursByTaskPerson.get(entry.taskId);
+    if (!byPerson) {
+      byPerson = new Map();
+      hoursByTaskPerson.set(entry.taskId, byPerson);
+    }
+    byPerson.set(personId, (byPerson.get(personId) ?? 0) + hours);
+  }
+  const ownerByTask = new Map<string, string>();
+  for (const [taskId, byPerson] of hoursByTaskPerson) {
+    let bestPerson: string | null = null;
+    let bestHours = -1;
+    for (const [personId, hours] of byPerson) {
+      if (hours > bestHours) {
+        bestHours = hours;
+        bestPerson = personId;
+      }
+    }
+    if (bestPerson) ownerByTask.set(taskId, bestPerson);
+  }
+  return ownerByTask;
+}
+
 export function computeTaskHourTotals(
   estimatedHours: number,
   doneHours: number,

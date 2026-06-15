@@ -54,6 +54,8 @@ export type SolveRequestPayload = {
     process: string;
     pendingHours: number;
     minWeekQuarter?: number;
+    canFragment?: boolean;
+    ownerPersonId?: string | null;
   }[];
   absences: {
     personId: string;
@@ -238,6 +240,8 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       process: t.process,
       pendingHours: t.pendingHours,
       minWeekQuarter: t.minWeekQuarter ?? 0,
+      canFragment: t.canFragment ?? true,
+      ownerPersonId: t.ownerPersonId ?? null,
     })),
     absences: input.absences.map((a) => ({
       personId: a.personId,

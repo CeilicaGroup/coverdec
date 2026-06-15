@@ -359,6 +359,41 @@ export async function getPriorPlanningAssignments(args: {
   }));
 }
 
+/** Operario de la asignación de planning más reciente por tarea. */
+export function buildOwnerPersonIdByTaskId(
+  assignments: {
+    taskId: string;
+    personId: string;
+    date: Date;
+    endSlot: number;
+  }[],
+): Map<string, string> {
+  const sorted = [...assignments].sort((a, b) => {
+    const dayDiff = a.date.getTime() - b.date.getTime();
+    if (dayDiff !== 0) return dayDiff;
+    return a.endSlot - b.endSlot;
+  });
+  const owner = new Map<string, string>();
+  for (const a of sorted) {
+    owner.set(a.taskId, a.personId);
+  }
+  return owner;
+}
+
+export async function getPriorPlanningOwnerByTaskId(args: {
+  naveId: string;
+  beforeWeekStart: Date;
+  includeDraftPriorWeeks?: boolean;
+}): Promise<Map<string, string>> {
+  const rows = await prisma.planningAssignment.findMany({
+    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart, {
+      includeDraftPriorWeeks: args.includeDraftPriorWeeks,
+    }),
+    select: { taskId: true, personId: true, date: true, endSlot: true },
+  });
+  return buildOwnerPersonIdByTaskId(rows);
+}
+
 export async function getPriorPlanningAssignmentsDetailed(args: {
   naveId: string;
   beforeWeekStart: Date;

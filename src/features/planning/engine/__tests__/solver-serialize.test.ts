@@ -81,6 +81,54 @@ describe("serializeSolverInput", () => {
     expect(payload.processes[0]?.waitHours).toBe(12);
   });
 
+  it("serializes canFragment and ownerPersonId on tasks", () => {
+    const input: SolverInput = minimalSolverInput({
+      tasks: [
+        {
+          id: "t1",
+          projectId: "pr1",
+          projectPriority: 50,
+          deadlineCurveExponent: 2,
+          overduePenaltyMultiplier: 2.5,
+          projectDeliveryDate: null,
+          lampId: "l1",
+          order: 0,
+          process: "ENSAMBLAJE",
+          pendingHours: 6,
+          canFragment: false,
+          ownerPersonId: "p1",
+        },
+      ],
+    });
+
+    const payload = serializeSolverInput(input);
+    expect(payload.tasks[0]?.canFragment).toBe(false);
+    expect(payload.tasks[0]?.ownerPersonId).toBe("p1");
+  });
+
+  it("defaults canFragment to true and ownerPersonId to null", () => {
+    const input: SolverInput = minimalSolverInput({
+      tasks: [
+        {
+          id: "t1",
+          projectId: "pr1",
+          projectPriority: 50,
+          deadlineCurveExponent: 2,
+          overduePenaltyMultiplier: 2.5,
+          projectDeliveryDate: null,
+          lampId: "l1",
+          order: 0,
+          process: "CNC",
+          pendingHours: 4,
+        },
+      ],
+    });
+
+    const payload = serializeSolverInput(input);
+    expect(payload.tasks[0]?.canFragment).toBe(true);
+    expect(payload.tasks[0]?.ownerPersonId).toBeNull();
+  });
+
   it("includes all people in schedules even without workWindows", () => {
     const person = (id: string) => ({
       id,

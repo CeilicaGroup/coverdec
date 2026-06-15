@@ -66,6 +66,7 @@ class EngineTask(BaseModel):
     pendingHours: float
     canFragment: bool = True
     minWeekQuarter: int = 0
+    ownerPersonId: str | None = None
 
 
 class EngineAbsence(BaseModel):

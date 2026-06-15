@@ -567,6 +567,176 @@ def test_manual_estimation_assigns_without_specialty():
     assert len(result.assignments) > 0
 
 
+def test_single_worker_per_task_even_when_can_fragment():
+    """A task must never be split across multiple workers."""
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="ENSAMBLAJE")],
+            people=[
+                EnginePerson(
+                    id="op-a",
+                    iniciales="OA",
+                    primary=["ENSAMBLAJE"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+                EnginePerson(
+                    id="op-b",
+                    iniciales="OB",
+                    primary=["ENSAMBLAJE"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="ENSAMBLAJE",
+                    pendingHours=6.25,
+                    canFragment=True,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=5, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["op-a", "op-b"]),
+        ),
+    )
+
+    task_assignments = [a for a in result.assignments if a.taskId == "task-a"]
+    workers = {a.personId for a in task_assignments}
+    assert len(workers) <= 1, f"Task must have at most one worker; got {workers}"
+    if task_assignments:
+        assert abs(sum(a.hours for a in task_assignments) - 6.25) < 0.1
+
+
+def test_two_tasks_never_split_across_workers():
+    """Regression: load-balance must not place task remainders on a second worker."""
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="ENSAMBLAJE")],
+            people=[
+                EnginePerson(
+                    id="worker-a",
+                    iniciales="WA",
+                    primary=["ENSAMBLAJE"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+                EnginePerson(
+                    id="worker-b",
+                    iniciales="WB",
+                    primary=["ENSAMBLAJE"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="bastidor",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="ENSAMBLAJE",
+                    pendingHours=6.25,
+                    canFragment=True,
+                ),
+                EngineTask(
+                    id="viga",
+                    projectId="p2",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l2",
+                    order=0,
+                    process="ENSAMBLAJE",
+                    pendingHours=2.5,
+                    canFragment=True,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=5, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["worker-a", "worker-b"]),
+        ),
+    )
+
+    for task_id in ("bastidor", "viga"):
+        task_assignments = [a for a in result.assignments if a.taskId == task_id]
+        workers = {a.personId for a in task_assignments}
+        assert len(workers) <= 1, (
+            f"Task {task_id} must have at most one worker; got {workers}"
+        )
+
+
+def test_owner_person_id_pins_worker():
+    """When ownerPersonId is set, only that worker may receive the task."""
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[
+                EnginePerson(
+                    id="op-a",
+                    iniciales="OA",
+                    primary=["CNC"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+                EnginePerson(
+                    id="op-b",
+                    iniciales="OB",
+                    primary=["CNC"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="CNC",
+                    pendingHours=4,
+                    ownerPersonId="op-b",
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["op-a", "op-b"]),
+        ),
+    )
+
+    assert result.unscheduledHours == 0
+    task_assignments = [a for a in result.assignments if a.taskId == "task-a"]
+    assert task_assignments
+    assert all(a.personId == "op-b" for a in task_assignments)
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from app.main import app

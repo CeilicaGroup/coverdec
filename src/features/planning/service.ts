@@ -17,6 +17,10 @@ import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
 import { emitNotificationTx } from "@/features/notifications/service";
+import {
+  assertSingleWorkerPerTask,
+  findTasksWithMultipleWorkers,
+} from "@/features/planning/validate-assignments";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
@@ -144,6 +148,15 @@ export async function generatePlanning(
     },
     "planning solver done",
   );
+
+  const workerConflicts = findTasksWithMultipleWorkers(result.assignments);
+  if (workerConflicts.length > 0) {
+    log.error(
+      { naveId: args.naveId, year, week, conflicts: workerConflicts },
+      "planning rejected: task assigned to multiple workers",
+    );
+  }
+  assertSingleWorkerPerTask(result.assignments);
 
   const totalUnplaced = result.unscheduledHours + deferredHours;
   if (

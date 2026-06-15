@@ -14,8 +14,10 @@ import {
 } from "@/features/planning/plan-from";
 import {
   buildLastAssignmentEndByTaskId,
+  buildOwnerPersonIdByTaskId,
   buildPriorPlannedHoursByTaskId,
   computeMinWeekQuarterByTaskId,
+  getPriorPlanningOwnerByTaskId,
   type PriorPlanningAssignment,
 } from "@/features/planning/prior-week-planning";
 import { isSameUtcDay, isoWeek, toUtcDay } from "@/lib/week";
@@ -41,6 +43,7 @@ import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 import {
   computeTaskPlanningTotals,
   loadDoneHoursByTaskIds,
+  loadPrimaryWorkerByTaskIds,
 } from "@/features/time-tracking/task-hours-derived";
 import {
   effectivePendingHours,
@@ -90,6 +93,44 @@ export function partitionAssignmentsByPlanFrom(
 
 function fixedAssignmentKey(a: PlanningAssignmentSlice): string {
   return `${a.taskId}|${a.personId}|${a.date.toISOString()}|${a.startSlot}`;
+}
+
+/** Prioridad: registros de tiempo > planning previo > asignaciones fijas de la semana actual. */
+export function resolveOwnerPersonIdByTaskId(
+  taskIds: string[],
+  fromTimeEntries: Map<string, string>,
+  fromPriorPlanning: Map<string, string>,
+  fromCurrentWeek: Map<string, string>,
+): Map<string, string> {
+  const owner = new Map<string, string>();
+  for (const taskId of taskIds) {
+    const fromTime = fromTimeEntries.get(taskId);
+    if (fromTime) {
+      owner.set(taskId, fromTime);
+      continue;
+    }
+    const fromPrior = fromPriorPlanning.get(taskId);
+    if (fromPrior) {
+      owner.set(taskId, fromPrior);
+      continue;
+    }
+    const fromWeek = fromCurrentWeek.get(taskId);
+    if (fromWeek) owner.set(taskId, fromWeek);
+  }
+  return owner;
+}
+
+function buildOwnerFromCurrentWeekAssignments(
+  assignments: PlanningAssignmentSlice[],
+  weekStart: Date,
+  firstSchedulableDayIndex: number,
+): Map<string, string> {
+  const { beforeAnchor } = partitionAssignmentsByPlanFrom(
+    assignments,
+    weekStart,
+    firstSchedulableDayIndex,
+  );
+  return buildOwnerPersonIdByTaskId(beforeAnchor);
 }
 
 /** Fija asignaciones de tareas cerradas y de días anteriores al ancla al regenerar. */
@@ -352,6 +393,26 @@ export async function loadSolverInput(args: {
     tasksRaw.map((task) => task.id),
     planFromAt,
   );
+  const taskIds = tasksRaw.map((task) => task.id);
+  const [primaryWorkerByTask, priorOwnerByTask] = await Promise.all([
+    loadPrimaryWorkerByTaskIds(prisma, taskIds, planFromAt),
+    getPriorPlanningOwnerByTaskId({
+      naveId: args.naveId,
+      beforeWeekStart: weekStart,
+      includeDraftPriorWeeks: true,
+    }),
+  ]);
+  const currentWeekOwnerByTask = buildOwnerFromCurrentWeekAssignments(
+    args.previousAssignments ?? [],
+    weekStart,
+    firstSchedulableDayIndex,
+  );
+  const ownerPersonIdByTask = resolveOwnerPersonIdByTaskId(
+    taskIds,
+    primaryWorkerByTask,
+    priorOwnerByTask,
+    currentWeekOwnerByTask,
+  );
   const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
     args.priorWeekAssignments ?? [],
   );
@@ -448,6 +509,7 @@ export async function loadSolverInput(args: {
       process: t.process,
       pendingHours: pending,
       canFragment: processCanFragment.get(t.process) ?? true,
+      ownerPersonId: ownerPersonIdByTask.get(t.id) ?? null,
       };
     });
 

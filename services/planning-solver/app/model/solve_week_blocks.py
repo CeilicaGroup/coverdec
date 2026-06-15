@@ -377,6 +377,8 @@ def _build_block_variables(
             continue
 
         for person in pick_candidates(data.people, task.process):
+            if task.ownerPersonId and person.id != task.ownerPersonId:
+                continue
             week_tl = data.week_timelines.get(person.id)
             if week_tl is None or week_tl.cap <= 0:
                 continue
@@ -573,10 +575,8 @@ def _add_max_one_worker_per_task(
     data: ProblemData,
     mv: ModelVars,
 ) -> None:
-    """When canFragment=false, at most one worker-day block (single calendar day)."""
+    """At most one worker may be assigned to each task."""
     for task in data.tasks:
-        if task.canFragment:
-            continue
         blocks = mv.by_task.get(task.id, [])
         if len(blocks) > 1:
             model.Add(sum(bv.presence for bv in blocks) <= 1)

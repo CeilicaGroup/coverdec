@@ -34,6 +34,10 @@ export interface EngineTask {
   pendingHours: number;
   /** Earliest week-quarter index (from prior-week planning on the same lamp). */
   minWeekQuarter?: number;
+  /** When false, task must be scheduled in a single calendar day. */
+  canFragment?: boolean;
+  /** When set, only this worker may be assigned (task already started). */
+  ownerPersonId?: string | null;
 }
 
 export interface EngineAbsence {
