@@ -124,7 +124,7 @@ export default async function PersonaPage({
   const fullTimeline = buildPlanningTimeline(planningAssignments, processByCode);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Planning por persona · S${week} · ${year}`}
         description={`${formatWeekRange(weekStart)} · Equipo completo · imprimir para reparto en nave`}
@@ -177,6 +177,7 @@ export default async function PersonaPage({
                 total={total}
                 absences={personAbsences}
               >
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -292,7 +293,8 @@ export default async function PersonaPage({
                     )}
                   </TableBody>
                 </Table>
-              </PersonCard>
+                </div>
+            </PersonCard>
             );
           }
 
@@ -306,6 +308,7 @@ export default async function PersonaPage({
           );
           return (
             <PersonCard key={p.id} person={p} total={total} absences={personAbsences}>
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -434,7 +437,8 @@ export default async function PersonaPage({
                     })
                   )}
                 </TableBody>
-              </Table>
+                </Table>
+                </div>
             </PersonCard>
           );
         })}

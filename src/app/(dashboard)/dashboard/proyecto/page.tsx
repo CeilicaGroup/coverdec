@@ -186,7 +186,7 @@ export default async function ProyectoPage({
   const recordsPersonId = ctx.role === Role.OPERARIO ? ctx.personId : null;
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Planning por proyecto · S${week} · ${year}`}
         description={formatWeekRange(weekStart)}
@@ -319,6 +319,7 @@ function ActualProjectTable({
   completedByTask: Map<string, boolean>;
 }) {
   return (
+    <div className="overflow-x-auto">
     <Table>
       <TableHeader>
         <TableRow>
@@ -438,6 +439,7 @@ function ActualProjectTable({
         )}
       </TableBody>
     </Table>
+    </div>
   );
 }
 
@@ -465,6 +467,7 @@ function PlanProjectTable({
   completedByTask: Map<string, boolean>;
 }) {
   return (
+    <div className="overflow-x-auto">
     <Table>
       <TableHeader>
         <TableRow>
@@ -613,6 +616,7 @@ function PlanProjectTable({
         )}
       </TableBody>
     </Table>
+    </div>
   );
 }
 

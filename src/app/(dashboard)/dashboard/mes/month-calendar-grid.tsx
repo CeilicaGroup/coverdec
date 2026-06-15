@@ -7,6 +7,7 @@ import type {
 import { formatHours } from "@/lib/format";
 import { getMondayOf } from "@/lib/week";
 import { MonthDayCell } from "./month-day-cell";
+import { MonthMobileList } from "./month-mobile-list";
 
 const DAY_HEADERS = ["Lun", "Mar", "Mié", "Jue", "Vie"];
 
@@ -30,8 +31,9 @@ export function MonthCalendarGrid({
   maxDayHours,
 }: MonthCalendarGridProps) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-sm">
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr>
               <th className="w-[108px] border-b bg-muted/40 px-2 py-2 text-left text-xs font-semibold text-muted-foreground">
@@ -93,6 +95,16 @@ export function MonthCalendarGrid({
           </tbody>
         </table>
       </div>
+      <div className="md:hidden">
+        <MonthMobileList
+          weeks={weeks}
+          summariesByDay={summariesByDay}
+          holidayDates={holidayDates}
+          view={view}
+          todayIso={todayIso}
+        />
+      </div>
+    </>
   );
 }
 

@@ -238,7 +238,7 @@ export default async function HorasPage() {
   const totalWeek = entries.reduce((acc, e) => acc + (e.hours ?? 0), 0);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Mis horas"
         description={`Total semana: ${totalWeek.toFixed(2)}h`}

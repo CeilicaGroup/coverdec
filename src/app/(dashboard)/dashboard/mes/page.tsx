@@ -156,7 +156,7 @@ export default async function MesPage({
   const noPublished = view === "plan" && !hasAnyData;
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Vista mensual · ${monthLabel}`}
         description={
@@ -165,7 +165,7 @@ export default async function MesPage({
             : "Resumen de planning por día laborable con carga por operario y proyecto. Pulsa un día para abrir la semana."
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-[auto_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
             <CalendarScaleToggle
               scale="month"
               weekIso={weekIsoForToggle}
@@ -177,7 +177,9 @@ export default async function MesPage({
               view={view}
               extraParams={{ month: monthParam.slice(0, 7) }}
             />
-            <MonthNav monthLabel={monthLabel} monthParam={monthParam} />
+            <div className="col-span-2 sm:col-span-1">
+              <MonthNav monthLabel={monthLabel} monthParam={monthParam} />
+            </div>
           </div>
         }
       />

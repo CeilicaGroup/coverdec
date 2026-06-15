@@ -100,7 +100,7 @@ export default async function FichajeDiarioPage() {
   ]);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Fichaje diario"
         description="Presencia diaria, ausencias (incl. vacaciones personales) y festivos de empresa."

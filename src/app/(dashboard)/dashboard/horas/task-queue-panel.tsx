@@ -121,10 +121,10 @@ export function TaskQueuePanel({
                 </div>
               ) : null}
 
-              <div className="grid sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                 <Button
                   disabled={pending || !!openTimer || isNextTaskBlocked}
-                  className="gap-2"
+                  className="gap-2 w-full"
                   onClick={() => {
                     if (!nextTask) return;
                     startTransition(async () => {
@@ -150,7 +150,7 @@ export function TaskQueuePanel({
                 <Button
                   variant="destructive"
                   disabled={pending || !openTimer}
-                  className="gap-2"
+                  className="gap-2 w-full"
                   onClick={() => {
                     if (!openTimer) return;
                     startTransition(async () => {
@@ -171,7 +171,7 @@ export function TaskQueuePanel({
                 <Button
                   variant="secondary"
                   disabled={pending || !nextTask || !!openTimer || isNextTaskBlocked}
-                  className={cn("gap-2")}
+                  className={cn("gap-2 w-full")}
                   onClick={() => {
                     if (!nextTask) return;
                     startTransition(async () => {
@@ -191,7 +191,7 @@ export function TaskQueuePanel({
                 <Button
                   variant="outline"
                   disabled={pending || !nextTask}
-                  className="gap-2"
+                  className="gap-2 w-full"
                   onClick={() => setShowManual((v) => !v)}
                 >
                   <ClipboardPenLine className="size-4" />

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Coffee, Pause, Play } from "lucide-react";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
+import { es } from "react-day-picker/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -414,11 +415,16 @@ export function DailyAttendanceClient(props: {
             </Select>
           ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4 min-w-0">
           <TooltipProvider>
+            <div className="w-full min-w-0">
             <Calendar
               mode="single"
-              className="[--cell-size:--spacing(10)]"
+              locale={es}
+              className="w-full p-0"
+              classNames={{
+                month_grid: "w-full",
+              }}
               selected={selectedDate}
               onSelect={(d) => {
                 if (!d) return;
@@ -440,7 +446,7 @@ export function DailyAttendanceClient(props: {
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <span>
+                        <span className="contents">
                           <CalendarDayButton modifiers={modifiers} {...dayProps} />
                         </span>
                       }
@@ -452,6 +458,7 @@ export function DailyAttendanceClient(props: {
                 ),
               }}
             />
+            </div>
           </TooltipProvider>
           <div className="mt-4 flex flex-wrap gap-3 text-xs">
             <div className="flex items-center gap-2">
@@ -482,7 +489,7 @@ export function DailyAttendanceClient(props: {
                   <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
                     Tiempo actual / tiempo objetivo
                   </p>
-                  <p className="font-mono text-5xl md:text-6xl font-bold tabular-nums">
+                  <p className="font-mono text-[clamp(1.35rem,7vw,3rem)] font-bold tabular-nums">
                     {formatHms(workedTodaySeconds)} / {formatHms(targetTodaySeconds)}
                   </p>
                   {isOnBreak ? (
@@ -610,7 +617,7 @@ export function DailyAttendanceClient(props: {
                     </div>
                     <div className="flex items-end">
                       <Button
-                        className="w-full"
+                        className="w-full min-h-11"
                         disabled={pending || isWorking}
                         onClick={() =>
                           startTransition(async () => {
@@ -636,7 +643,7 @@ export function DailyAttendanceClient(props: {
                 </div>
               </div>
             ) : (
-              <div className="grid gap-2 md:grid-cols-4">
+              <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
                 <div className="space-y-1">
                   <Label>Inicio</Label>
                   <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -648,6 +655,7 @@ export function DailyAttendanceClient(props: {
                 <div className="md:col-span-2 flex items-end">
                   <Button
                     disabled={pending || !visiblePersonId}
+                    className="min-h-11 w-full sm:w-auto"
                     onClick={() =>
                       startTransition(async () => {
                         const result = await adminUpsertAttendanceSession({
@@ -772,7 +780,7 @@ export function DailyAttendanceClient(props: {
                       </div>
 
                       {showSessionEditForm ? (
-                        <div className="grid gap-2 md:grid-cols-4 border-t pt-2">
+                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 border-t pt-2">
                           <div className="space-y-1">
                             <Label>Inicio</Label>
                             <Input
@@ -792,6 +800,7 @@ export function DailyAttendanceClient(props: {
                           <div className="md:col-span-2 flex items-end gap-2">
                             <Button
                               disabled={pending}
+                              className="min-h-11"
                               onClick={() =>
                                 startTransition(async () => {
                                   const result = await updateOwnAttendanceSession({
@@ -909,7 +918,7 @@ export function DailyAttendanceClient(props: {
                       ) : null}
 
                       {showBreakForm ? (
-                        <div className="grid gap-2 md:grid-cols-4 border-t pt-2">
+                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 border-t pt-2">
                           <div className="space-y-1">
                             <Label>Inicio pausa</Label>
                             <Input
@@ -1106,7 +1115,7 @@ export function DailyAttendanceClient(props: {
                 Calendario laboral común (navidad, puente, etc.). Las vacaciones de cada operario
                 se registran como ausencias, no aquí.
               </p>
-              <div className="grid md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label>Inicio</Label>
                   <Input

@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+function shortWeekLabel(weekLabel: string): string {
+  const match = weekLabel.match(/^S(\d+)/);
+  return match ? `S${match[1]}` : weekLabel;
+}
+
 function WeekNavInner({
   weekLabel,
   weekIso,
@@ -31,13 +36,18 @@ function WeekNavInner({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 w-full sm:w-auto">
       <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
         <ChevronLeft className="size-4" />
       </Button>
-      <Button variant="outline" onClick={today} className="gap-2 px-3">
-        <Calendar className="size-4" />
-        <span className="font-semibold">{weekLabel}</span>
+      <Button
+        variant="outline"
+        onClick={today}
+        className="gap-2 px-2 sm:px-3 flex-1 sm:flex-none min-w-0"
+      >
+        <Calendar className="size-4 shrink-0" />
+        <span className="font-semibold truncate sm:hidden">{shortWeekLabel(weekLabel)}</span>
+        <span className="font-semibold truncate hidden sm:inline">{weekLabel}</span>
       </Button>
       <Button variant="outline" size="icon" onClick={() => navigate(1)}>
         <ChevronRight className="size-4" />

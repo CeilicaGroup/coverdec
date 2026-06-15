@@ -69,12 +69,12 @@ export default async function NotificacionesPage({
   ]);
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Notificaciones"
         description={`${unread} sin leer · ${total} totales`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <form
               action={async () => {
                 "use server";
@@ -99,7 +99,7 @@ export default async function NotificacionesPage({
         }
       />
 
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <Link
           href="/dashboard/notificaciones?filter=all"
           className={filter === "all" ? "font-semibold underline" : "text-muted-foreground hover:text-foreground"}

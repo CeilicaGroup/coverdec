@@ -97,12 +97,12 @@ export default async function SemanaPage({
   const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Vista semanal S${week} · ${year}`}
         description={formatWeekRange(weekStart)}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-[auto_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
             <CalendarScaleToggle
               scale="week"
               weekIso={weekIso}
@@ -110,10 +110,12 @@ export default async function SemanaPage({
               view={view}
             />
             <ViewToggle basePath="/dashboard/semana" view={view} week={weekIso} />
-            <WeekNav
-              weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
-              weekIso={weekIso}
-            />
+            <div className="col-span-2 sm:col-span-1">
+              <WeekNav
+                weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
+                weekIso={weekIso}
+              />
+            </div>
           </div>
         }
       />

@@ -14,6 +14,11 @@ function shiftMonth(monthIso: string, delta: number): string {
   return `${y}-${m}-01`;
 }
 
+function shortMonthLabel(monthParam: string): string {
+  const d = localDateFromCivilIso(monthParam);
+  return d.toLocaleDateString("es-ES", { month: "short", year: "numeric" });
+}
+
 function MonthNavInner({
   monthLabel,
   monthParam,
@@ -39,13 +44,20 @@ function MonthNavInner({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 w-full sm:w-auto">
       <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
         <ChevronLeft className="size-4" />
       </Button>
-      <Button variant="outline" onClick={today} className="gap-2 px-3">
-        <Calendar className="size-4" />
-        <span className="font-semibold capitalize">{monthLabel}</span>
+      <Button
+        variant="outline"
+        onClick={today}
+        className="gap-2 px-2 sm:px-3 flex-1 min-w-0 sm:flex-none sm:w-auto"
+      >
+        <Calendar className="size-4 shrink-0" />
+        <span className="font-semibold capitalize truncate sm:hidden">
+          {shortMonthLabel(monthParam)}
+        </span>
+        <span className="font-semibold capitalize truncate hidden sm:inline">{monthLabel}</span>
       </Button>
       <Button variant="outline" size="icon" onClick={() => navigate(1)}>
         <ChevronRight className="size-4" />

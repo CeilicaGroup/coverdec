@@ -1,25 +1,20 @@
 import { PersonAvatar } from "@/components/person-avatar";
 import {
-  ProcessBadge,
-  processColor,
   type ProcessBadgeStyle,
 } from "@/components/process-badge";
-import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
-import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
+import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 import {
   getNavePersonnel,
   getPlanningForWeek,
   type ActualHourEntry,
 } from "@/features/planning/queries";
-import { computeTaskProgress } from "@/features/planning/task-progress";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
-import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
-import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear, formatHours, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import { WeekDayTasks } from "./week-day-tasks";
+import { WeekPersonMobile } from "./week-person-mobile";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -263,6 +258,8 @@ export function WeekPersonGrid({
   entriesByPersonDayTask,
 }: WeekPersonGridProps) {
   const gridContent = (
+    <>
+      <div className="hidden md:block">
         <div className="grid min-w-[480px]" style={{ gridTemplateColumns: "180px repeat(5, 1fr)" }}>
           <div className="bg-muted px-3 py-2 text-xs font-semibold border-b border-r">
             Operario
@@ -307,6 +304,24 @@ export function WeekPersonGrid({
             />
           ))}
         </div>
+      </div>
+      <div className="md:hidden">
+        <WeekPersonMobile
+          view={view}
+          people={people}
+          days={days}
+          grid={grid}
+          planTask={planTask}
+          actualTask={actualTask}
+          holidayDates={holidayDates}
+          absences={absences}
+          processStyles={processStyles}
+          canEditEntries={canEditEntries}
+          recordsPersonId={recordsPersonId}
+          entriesByPersonDayTask={entriesByPersonDayTask}
+        />
+      </div>
+    </>
   );
 
   if (bare) return gridContent;
@@ -375,142 +390,23 @@ function WeekPersonRow({
             key={key}
             className="border-b border-r last:border-r-0 px-1.5 py-1.5 min-h-[80px] space-y-1 bg-card"
           >
-            {isAbsent ? (
-              <div className="rounded bg-muted px-2 py-1 text-[10px] text-muted-foreground text-center">
-                Ausencia
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="rounded border border-dashed px-2 py-1 text-[10px] text-muted-foreground text-center">
-                Libre
-              </div>
-            ) : (
-              tasks.map((t) => {
-                const colors = processColor(t.process, processStyles.get(t.process));
-                const planned = t.taskId ? (plannedHoursByTask.get(t.taskId) ?? 0) : 0;
-                const plannedDue = t.taskId ? (plannedDueHoursByTask.get(t.taskId) ?? 0) : 0;
-                const actual = t.taskId ? (actualHoursByTask.get(t.taskId) ?? 0) : 0;
-                const stripes: ProgressStripe[] =
-                  t.taskId
-                    ? view === "actual"
-                      ? (plannedItemsByTask.get(t.taskId) ?? []).map((x) => ({
-                          id: `plan-${x.id}`,
-                          label: x.label,
-                          kind: "plan" as const,
-                        }))
-                      : t.startSlot != null && t.endSlot != null
-                        ? [
-                            {
-                              id: `plan-${t.id}`,
-                              label: `${key} · ${rangeLabel(t.startSlot, t.endSlot)} · ${formatHours(t.hours)} · ${t.process}`,
-                              kind: "plan" as const,
-                            },
-                          ]
-                        : []
-                    : [];
-                const hasRunning = t.taskId
-                  ? (actualRunningByTask.get(t.taskId) ?? false)
-                  : false;
-                const dayDate = new Date(`${key}T00:00:00Z`);
-                const planStartedAt =
-                  t.startSlot != null
-                    ? toIsoUtcFromDateAndHour(dayDate, slotToHour(t.startSlot))
-                    : `${key}T08:00:00.000Z`;
-                const planEndedAt =
-                  t.endSlot != null
-                    ? toIsoUtcFromDateAndHour(dayDate, slotEndToHour(t.endSlot))
-                    : `${key}T09:00:00.000Z`;
-                const startedAt =
-                  view === "actual" && t.startedAt ? t.startedAt : planStartedAt;
-                const endedAt =
-                  view === "actual" && t.endedAt ? t.endedAt : planEndedAt;
-                const cellEntries =
-                  t.taskId != null
-                    ? (entriesByPersonDayTask.get(`${person.id}|${key}|${t.taskId}`) ?? [])
-                    : [];
-                return (
-                  <div
-                    key={t.id}
-                    className="rounded px-1.5 py-1 border-l-[3px] text-[10px] leading-tight"
-                    style={{
-                      background: colors.bgColor,
-                      borderColor: colors.borderColor,
-                    }}
-                  >
-                    {(t.timeLabel ??
-                      (t.startSlot !== null && t.endSlot !== null
-                        ? rangeLabel(t.startSlot, t.endSlot)
-                        : null)) && (
-                      <div className="font-mono text-[9px] opacity-70">
-                        {t.timeLabel ?? rangeLabel(t.startSlot!, t.endSlot!)}
-                      </div>
-                    )}
-                    <div className="font-semibold truncate" style={{ color: colors.fgColor }}>
-                      {t.project}
-                    </div>
-                    {t.lamp ? (
-                      <div
-                        className="text-[9px] truncate opacity-80"
-                        style={{ color: colors.fgColor }}
-                      >
-                        {t.lamp}
-                      </div>
-                    ) : null}
-                    <TaskLampBastidor label={t.bastidor} className="text-[9px] opacity-80" />
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <ProcessBadge
-                        code={t.process}
-                        definition={processStyles.get(t.process)}
-                      />
-                      <span
-                        className="font-mono text-[9px] font-bold ml-auto"
-                        style={{ color: colors.fgColor }}
-                      >
-                        {formatHours(t.hours)}
-                      </span>
-                    </div>
-                    {t.taskId && canSeeRecords ? (
-                      <TaskProgressInline
-                        progress={computeTaskProgress({
-                          isCompleted: completedByTask.get(t.taskId) ?? false,
-                          plannedHours: planned,
-                          plannedDueHours: plannedDue,
-                          actualHours: actual,
-                          hasRunning,
-                        })}
-                        stripes={stripes}
-                        className="mt-0.5 block"
-                        actions={
-                          canEditEntries ? (
-                            <TaskProgressActionsPanel
-                              taskId={t.taskId}
-                              isCompleted={completedByTask.get(t.taskId) ?? false}
-                              canManageCompletion={canEditEntries}
-                              timeEntry={{
-                                entries: cellEntries,
-                                userId: t.userId ?? undefined,
-                                personId: t.personId ?? person.id,
-                                projectId: t.projectId ?? "",
-                                lampId: t.lampId ?? undefined,
-                                taskId: t.taskId,
-                                process: t.process,
-                                startedAt,
-                                endedAt,
-                                defaultStartedAt: planStartedAt,
-                                defaultEndedAt: planEndedAt,
-                                notes: t.notes,
-                                canEdit: canEditEntries,
-                                canCreate: canEditEntries,
-                                canDelete: canEditEntries,
-                              }}
-                            />
-                          ) : null
-                        }
-                      />
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
+            <WeekDayTasks
+              personId={person.id}
+              dayKey={key}
+              tasks={tasks}
+              view={view}
+              isAbsent={isAbsent}
+              plannedHoursByTask={plannedHoursByTask}
+              plannedDueHoursByTask={plannedDueHoursByTask}
+              actualHoursByTask={actualHoursByTask}
+              plannedItemsByTask={plannedItemsByTask}
+              actualRunningByTask={actualRunningByTask}
+              completedByTask={completedByTask}
+              processStyles={processStyles}
+              canEditEntries={canEditEntries}
+              canSeeRecords={canSeeRecords}
+              entriesByPersonDayTask={entriesByPersonDayTask}
+            />
           </div>
         );
       })}
