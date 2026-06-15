@@ -242,6 +242,7 @@ interface WeekPersonGridProps {
   absences: { personId: string; date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  recordsPersonId: string | null;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }
 
@@ -258,6 +259,7 @@ export function WeekPersonGrid({
   absences,
   processStyles,
   canEditEntries,
+  recordsPersonId,
   entriesByPersonDayTask,
 }: WeekPersonGridProps) {
   const gridContent = (
@@ -300,6 +302,7 @@ export function WeekPersonGrid({
               absences={absences.filter((a) => a.personId === person.id)}
               processStyles={processStyles}
               canEditEntries={canEditEntries}
+              canSeeRecords={recordsPersonId == null || recordsPersonId === person.id}
               entriesByPersonDayTask={entriesByPersonDayTask}
             />
           ))}
@@ -335,6 +338,7 @@ function WeekPersonRow({
   absences,
   processStyles,
   canEditEntries,
+  canSeeRecords,
   entriesByPersonDayTask,
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string };
@@ -351,6 +355,7 @@ function WeekPersonRow({
   absences: { date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  canSeeRecords: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }) {
   return (
@@ -463,7 +468,7 @@ function WeekPersonRow({
                         {formatHours(t.hours)}
                       </span>
                     </div>
-                    {t.taskId ? (
+                    {t.taskId && canSeeRecords ? (
                       <TaskProgressInline
                         progress={computeTaskProgress({
                           isCompleted: completedByTask.get(t.taskId) ?? false,

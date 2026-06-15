@@ -41,7 +41,14 @@ import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import { formatHours, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
 import { PrintToolbar } from "./print-toolbar";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import {
+  getPlanningViewModeForContext,
+  planningNoticeState,
+} from "@/features/planning/planning-visibility";
+import {
+  actualRecordsUserIdForContext,
+  canSeePersonRecords,
+} from "@/features/planning/record-visibility";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -74,12 +81,9 @@ export default async function PersonaPage({
     getProcessDefinitionsByCode(),
   ]);
 
-  const people =
-    ctx.role === Role.OPERARIO && ctx.personId
-      ? allPeople.filter((p) => p.id === ctx.personId)
-      : allPeople;
+  const people = allPeople;
 
-  const [planning, rawActualEntries] = await Promise.all([
+  const [planning, actualEntries] = await Promise.all([
     getPlanningForWeek({
       naveScope,
       weekStart,
@@ -88,15 +92,12 @@ export default async function PersonaPage({
     getActualHoursForWeek({
       naveScope,
       weekStart,
+      userId: actualRecordsUserIdForContext(ctx),
     }),
   ]);
   const planningAssignments = toPlanningAssignmentSlices(
     planning?.assignments ?? [],
   );
-  const actualEntries =
-    ctx.role === Role.OPERARIO && ctx.personId
-      ? rawActualEntries.filter((e) => e.personId === ctx.personId)
-      : rawActualEntries;
   const plannedByTask = buildHoursByTaskFromPlan(planningAssignments);
   const plannedDueByTask = buildDueHoursByTaskFromPlan(planningAssignments, todayIso);
   const actualByTask = buildHoursByTaskFromActual(actualEntries);
@@ -118,6 +119,7 @@ export default async function PersonaPage({
     viewMode === "published_only" &&
     !planningMeta &&
     planningAssignments.length === 0;
+  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
 
   const fullTimeline = buildPlanningTimeline(planningAssignments, processByCode);
 
@@ -125,11 +127,7 @@ export default async function PersonaPage({
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={`Planning por persona · S${week} · ${year}`}
-        description={
-          ctx.role === Role.OPERARIO && ctx.personId
-            ? `${formatWeekRange(weekStart)} · Tu semana`
-            : `${formatWeekRange(weekStart)} · Equipo completo · imprimir para reparto en nave`
-        }
+        description={`${formatWeekRange(weekStart)} · Equipo completo · imprimir para reparto en nave`}
         actions={
           <div className="flex items-center gap-2 no-print">
             <ViewToggle basePath="/dashboard/persona" view={view} week={weekIso} />
@@ -143,14 +141,19 @@ export default async function PersonaPage({
       />
 
       {view === "plan" && (
-        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+        <PlanningEmptyNotice
+          hiddenDraft={planningNotice.hiddenDraft}
+          noPublished={planningNotice.noPublished}
+        />
       )}
       {view === "plan" &&
         planningAssignments.length === 0 &&
-        !hiddenDraft &&
-        !noPublished && (
+        !planningNotice.hiddenDraft &&
+        !planningNotice.noPublished && (
         <p className="text-sm text-muted-foreground">
-          No hay planning para esta semana. Genera un borrador desde Resumen.
+          {ctx.role === Role.OPERARIO
+            ? "No hay planning publicado para esta semana."
+            : "No hay planning para esta semana. Genera un borrador desde Resumen."}
         </p>
       )}
       {view === "actual" && actualEntries.length === 0 && (
@@ -162,6 +165,7 @@ export default async function PersonaPage({
       <div className="grid lg:grid-cols-2 gap-4 print:grid-cols-1">
         {people.map((p) => {
           const personAbsences = absences.filter((a) => a.personId === p.id);
+          const canSeeRecords = canSeePersonRecords(ctx, p.id);
 
           if (view === "actual") {
             const entries = actualEntries.filter((e) => e.personId === p.id);
@@ -227,7 +231,7 @@ export default async function PersonaPage({
                             {formatHours(e.hours)}
                           </TableCell>
                           <TableCell>
-                            {e.taskId ? (
+                            {e.taskId && canSeeRecords ? (
                               <TaskProgressInline
                                 progress={computeTaskProgress({
                                   isCompleted: completedByTask.get(e.taskId) ?? false,
@@ -386,40 +390,44 @@ export default async function PersonaPage({
                           {formatHours(item.assignment.hours)}
                         </TableCell>
                         <TableCell>
-                          <TaskProgressInline
-                            progress={computeTaskProgress({
-                              isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
-                              plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
-                              plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
-                              actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
-                              hasRunning: actualEntries.some(
-                                (x) => x.taskId === item.assignment.task.id && x.isRunning,
-                              ),
-                            })}
-                            stripes={[planStripe]}
-                            actions={
-                              <TaskProgressActionsPanel
-                                taskId={item.assignment.task.id}
-                                isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
-                                canManageCompletion={ctx.role === Role.ADMIN}
-                                timeEntry={{
-                                  entries: taskEntries,
-                                  personId: item.assignment.personId,
-                                  projectId: item.assignment.task.projectId,
-                                  lampId: item.assignment.task.lampId,
-                                  taskId: item.assignment.task.id,
-                                  process: item.assignment.process,
-                                  startedAt: planStartedAt,
-                                  endedAt: planEndedAt,
-                                  defaultStartedAt: planStartedAt,
-                                  defaultEndedAt: planEndedAt,
-                                  canEdit: ctx.role === Role.ADMIN,
-                                  canCreate: ctx.role === Role.ADMIN,
-                                  canDelete: ctx.role === Role.ADMIN,
-                                }}
-                              />
-                            }
-                          />
+                          {canSeeRecords ? (
+                            <TaskProgressInline
+                              progress={computeTaskProgress({
+                                isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
+                                plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                                plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
+                                actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
+                                hasRunning: actualEntries.some(
+                                  (x) => x.taskId === item.assignment.task.id && x.isRunning,
+                                ),
+                              })}
+                              stripes={[planStripe]}
+                              actions={
+                                <TaskProgressActionsPanel
+                                  taskId={item.assignment.task.id}
+                                  isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
+                                  canManageCompletion={ctx.role === Role.ADMIN}
+                                  timeEntry={{
+                                    entries: taskEntries,
+                                    personId: item.assignment.personId,
+                                    projectId: item.assignment.task.projectId,
+                                    lampId: item.assignment.task.lampId,
+                                    taskId: item.assignment.task.id,
+                                    process: item.assignment.process,
+                                    startedAt: planStartedAt,
+                                    endedAt: planEndedAt,
+                                    defaultStartedAt: planStartedAt,
+                                    defaultEndedAt: planEndedAt,
+                                    canEdit: ctx.role === Role.ADMIN,
+                                    canCreate: ctx.role === Role.ADMIN,
+                                    canDelete: ctx.role === Role.ADMIN,
+                                  }}
+                                />
+                              }
+                            />
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
                       );

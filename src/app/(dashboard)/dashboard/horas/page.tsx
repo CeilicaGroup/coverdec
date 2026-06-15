@@ -149,6 +149,7 @@ export default async function HorasPage() {
       : prisma.timeEntry.groupBy({
           by: ["taskId"],
           where: {
+            userId: ctx.userId,
             taskId: { not: null },
             endedAt: { not: null },
           },

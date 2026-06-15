@@ -3,6 +3,7 @@ import { PlanningStatus, Role } from "@/generated/prisma";
 import {
   isPlanningVisible,
   parsePlanningViewModeCookie,
+  planningNoticeState,
   resolvePlanningViewMode,
 } from "@/features/planning/planning-visibility";
 import { buildPriorPlanningWhere } from "@/features/planning/prior-week-planning";
@@ -44,6 +45,21 @@ describe("planning-visibility", () => {
     expect(isPlanningVisible(PlanningStatus.DRAFT, "include_draft")).toBe(
       true,
     );
+  });
+
+  it("operario no ve aviso de borrador oculto", () => {
+    expect(
+      planningNoticeState(Role.OPERARIO, {
+        hiddenDraft: true,
+        noPublished: false,
+      }),
+    ).toEqual({ hiddenDraft: false, noPublished: true });
+    expect(
+      planningNoticeState(Role.ADMIN, {
+        hiddenDraft: true,
+        noPublished: false,
+      }),
+    ).toEqual({ hiddenDraft: true, noPublished: false });
   });
 });
 

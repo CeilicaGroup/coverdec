@@ -14,6 +14,7 @@ import {
   countDistinctProjectsInAssignments,
   getActualHoursForDateRange,
   getHolidaysForRange,
+  getNavePersonnel,
   getPlanningForDateRange,
   getPlanningsInDateRange,
   summarizeActualByDay,
@@ -22,6 +23,11 @@ import {
   summarizeWeekRowsFromCalendar,
 } from "@/features/planning/queries";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import {
+  actualRecordsUserIdForContext,
+  enrichActualSummariesWithTeam,
+} from "@/features/planning/record-visibility";
+import { Role } from "@/generated/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "../../_components/page-header";
 import { MonthNav } from "../../_components/month-nav";
@@ -67,7 +73,7 @@ export default async function MesPage({
   const rangeEnd = civilIsoToUtcDate(endIso);
   rangeEnd.setUTCHours(23, 59, 59, 999);
 
-  const [holidays, assignments, actualEntries, planningsInRange] = await Promise.all([
+  const [holidays, assignments, actualEntries, planningsInRange, teamPeople] = await Promise.all([
     getHolidaysForRange(rangeStart, rangeEnd),
     view === "plan"
       ? getPlanningForDateRange({
@@ -82,6 +88,7 @@ export default async function MesPage({
           naveScope,
           rangeStart,
           rangeEnd,
+          userId: actualRecordsUserIdForContext(ctx),
         })
       : Promise.resolve([]),
     view === "plan"
@@ -91,6 +98,9 @@ export default async function MesPage({
           rangeEnd,
           viewMode,
         })
+      : Promise.resolve([]),
+    view === "actual" && ctx.role === Role.OPERARIO
+      ? getNavePersonnel(naveScope)
       : Promise.resolve([]),
   ]);
 
@@ -102,10 +112,21 @@ export default async function MesPage({
   const businessDays = businessDaysInMonth(monthStartIso, holidayDates);
   const weeks = monthCalendarWeeks(monthStartIso);
 
-  const summariesByDay =
+  const summariesByDayRaw =
     view === "plan"
       ? summarizePlanningByDay(assignments)
       : summarizeActualByDay(actualEntries);
+  const summariesByDay =
+    view === "actual" && ctx.role === Role.OPERARIO
+      ? enrichActualSummariesWithTeam(
+          summariesByDayRaw,
+          teamPeople.map((p) => ({
+            id: p.id,
+            iniciales: p.iniciales,
+            color: p.color,
+          })),
+        )
+      : summariesByDayRaw;
 
   const weekRows = summarizeWeekRowsFromCalendar(
     weeks,

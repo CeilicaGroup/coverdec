@@ -23,7 +23,11 @@ import { WeekNav } from "../../_components/week-nav";
 import { ViewToggle } from "../../_components/view-toggle";
 import { CalendarScaleToggle } from "../../_components/calendar-scale-toggle";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import {
+  getPlanningViewModeForContext,
+  planningNoticeState,
+} from "@/features/planning/planning-visibility";
+import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { Role } from "@/generated/prisma";
 import {
@@ -63,6 +67,7 @@ export default async function SemanaPage({
     getActualHoursForWeek({
       naveScope,
       weekStart,
+      userId: actualRecordsUserIdForContext(ctx),
     }),
     getPlanningWeekMeta({ naveScope, weekStart }),
   ]);
@@ -89,6 +94,7 @@ export default async function SemanaPage({
     viewMode === "published_only" &&
     !planningMeta &&
     !planning;
+  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -112,9 +118,12 @@ export default async function SemanaPage({
         }
       />
       {view === "plan" && (
-        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+        <PlanningEmptyNotice
+          hiddenDraft={planningNotice.hiddenDraft}
+          noPublished={planningNotice.noPublished}
+        />
       )}
-      {view === "plan" && grid.size === 0 && !hiddenDraft && !noPublished && (
+      {view === "plan" && grid.size === 0 && !planningNotice.hiddenDraft && !planningNotice.noPublished && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           No hay planning generado para esta semana. Vuelve al Resumen y pulsa "Generar planning".
         </div>
@@ -144,6 +153,7 @@ export default async function SemanaPage({
             absences={absences}
             processStyles={processStyles}
             canEditEntries={ctx.role === Role.ADMIN}
+            recordsPersonId={ctx.role === Role.OPERARIO ? ctx.personId : null}
             entriesByPersonDayTask={entriesByPersonDayTask}
           />
         </CardContent>

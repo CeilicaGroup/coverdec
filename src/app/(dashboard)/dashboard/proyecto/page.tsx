@@ -42,7 +42,11 @@ import {
   riskFromPlannedEnd,
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import {
+  getPlanningViewModeForContext,
+  planningNoticeState,
+} from "@/features/planning/planning-visibility";
+import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import {
   buildPlannedEndByProjectId,
   buildPriorPlannedHoursByTaskId,
@@ -90,6 +94,7 @@ export default async function ProyectoPage({
     getActualHoursForWeek({
       naveScope,
       weekStart,
+      userId: actualRecordsUserIdForContext(ctx),
     }),
     ctx.naveId
       ? getPriorPlanningAssignments({
@@ -116,6 +121,7 @@ export default async function ProyectoPage({
     viewMode === "published_only" &&
     !planningMeta &&
     assignments.length === 0;
+  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
 
   // Build per-project data
   const byProject = new Map<string, PlanningAssignmentSlice[]>();
@@ -177,6 +183,8 @@ export default async function ProyectoPage({
       return aDate - bDate;
     });
 
+  const recordsPersonId = ctx.role === Role.OPERARIO ? ctx.personId : null;
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
@@ -194,7 +202,10 @@ export default async function ProyectoPage({
       />
 
       {view === "plan" && (
-        <PlanningEmptyNotice hiddenDraft={hiddenDraft} noPublished={noPublished} />
+        <PlanningEmptyNotice
+          hiddenDraft={planningNotice.hiddenDraft}
+          noPublished={planningNotice.noPublished}
+        />
       )}
 
       {projectsWithLoad.length === 0 && (
@@ -251,6 +262,7 @@ export default async function ProyectoPage({
                 {view === "actual" ? (
                   <ActualProjectTable
                     isAdmin={ctx.role === Role.ADMIN}
+                    recordsPersonId={recordsPersonId}
                     entries={actualByProject.get(row.project.id) ?? []}
                     processByCode={processByCode}
                     plannedByTask={plannedByTask}
@@ -262,6 +274,7 @@ export default async function ProyectoPage({
                 ) : (
                   <PlanProjectTable
                     isAdmin={ctx.role === Role.ADMIN}
+                    recordsPersonId={recordsPersonId}
                     timeline={buildPlanningTimeline(
                       byProject.get(row.project.id) ?? [],
                       processByCode,
@@ -286,6 +299,7 @@ export default async function ProyectoPage({
 
 function ActualProjectTable({
   isAdmin,
+  recordsPersonId,
   entries,
   processByCode,
   plannedByTask,
@@ -295,6 +309,7 @@ function ActualProjectTable({
   completedByTask,
 }: {
   isAdmin: boolean;
+  recordsPersonId: string | null;
   entries: ActualHourEntry[];
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
   plannedByTask: Map<string, number>;
@@ -428,6 +443,7 @@ function ActualProjectTable({
 
 function PlanProjectTable({
   isAdmin,
+  recordsPersonId,
   timeline,
   actualEntries,
   processByCode,
@@ -438,6 +454,7 @@ function PlanProjectTable({
   completedByTask,
 }: {
   isAdmin: boolean;
+  recordsPersonId: string | null;
   timeline: ReturnType<typeof buildPlanningTimeline>;
   actualEntries: ActualHourEntry[];
   processByCode: Awaited<ReturnType<typeof getProcessDefinitionsByCode>>;
@@ -552,38 +569,42 @@ function PlanProjectTable({
                   {formatHours(item.assignment.hours)}
                 </TableCell>
                 <TableCell>
-                  <TaskProgressInline
-                    progress={computeTaskProgress({
-                      isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
-                      plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
-                      plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
-                      actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
-                      hasRunning: actualItemsByTask.get(item.assignment.task.id)?.some((x) => x.isRunning) ?? false,
-                    })}
-                    stripes={[planStripe]}
-                    actions={
-                      <TaskProgressActionsPanel
-                        taskId={item.assignment.task.id}
-                        isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
-                        canManageCompletion={isAdmin}
-                        timeEntry={{
-                          entries: taskEntries,
-                          personId: item.assignment.person.id,
-                          projectId: item.assignment.task.projectId,
-                          lampId: item.assignment.task.lampId,
-                          taskId: item.assignment.task.id,
-                          process: item.assignment.process,
-                          startedAt: planStartedAt,
-                          endedAt: planEndedAt,
-                          defaultStartedAt: planStartedAt,
-                          defaultEndedAt: planEndedAt,
-                          canEdit: isAdmin,
-                          canCreate: isAdmin,
-                          canDelete: isAdmin,
-                        }}
-                      />
-                    }
-                  />
+                  {recordsPersonId == null || recordsPersonId === item.assignment.person.id ? (
+                    <TaskProgressInline
+                      progress={computeTaskProgress({
+                        isCompleted: completedByTask.get(item.assignment.task.id) ?? false,
+                        plannedHours: plannedByTask.get(item.assignment.task.id) ?? 0,
+                        plannedDueHours: plannedDueByTask.get(item.assignment.task.id) ?? 0,
+                        actualHours: actualByTask.get(item.assignment.task.id) ?? 0,
+                        hasRunning: actualItemsByTask.get(item.assignment.task.id)?.some((x) => x.isRunning) ?? false,
+                      })}
+                      stripes={[planStripe]}
+                      actions={
+                        <TaskProgressActionsPanel
+                          taskId={item.assignment.task.id}
+                          isCompleted={completedByTask.get(item.assignment.task.id) ?? false}
+                          canManageCompletion={isAdmin}
+                          timeEntry={{
+                            entries: taskEntries,
+                            personId: item.assignment.person.id,
+                            projectId: item.assignment.task.projectId,
+                            lampId: item.assignment.task.lampId,
+                            taskId: item.assignment.task.id,
+                            process: item.assignment.process,
+                            startedAt: planStartedAt,
+                            endedAt: planEndedAt,
+                            defaultStartedAt: planStartedAt,
+                            defaultEndedAt: planEndedAt,
+                            canEdit: isAdmin,
+                            canCreate: isAdmin,
+                            canDelete: isAdmin,
+                          }}
+                        />
+                      }
+                    />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">—</span>
+                  )}
                 </TableCell>
               </TableRow>
               );

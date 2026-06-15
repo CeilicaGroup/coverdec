@@ -300,9 +300,11 @@ export interface ActualHourEntry {
 export async function getActualHoursForWeek({
   naveScope,
   weekStart,
+  userId,
 }: {
   naveScope: string[] | null;
   weekStart: Date;
+  userId?: string;
 }): Promise<ActualHourEntry[]> {
   const monday = getMondayOf(weekStart);
   const saturdayStart = new Date(monday.getTime() + 5 * 86_400_000);
@@ -311,6 +313,7 @@ export async function getActualHoursForWeek({
 
   const entries = await prisma.timeEntry.findMany({
     where: {
+      ...(userId ? { userId } : {}),
       startedAt: { gte: monday, lt: saturdayStart },
       OR: [
         { endedAt: { not: null }, hours: { gt: 0 } },
@@ -1592,10 +1595,12 @@ export async function getActualHoursForDateRange({
   naveScope,
   rangeStart,
   rangeEnd,
+  userId,
 }: {
   naveScope: string[] | null;
   rangeStart: Date;
   rangeEnd: Date;
+  userId?: string;
 }): Promise<ActualHourEntry[]> {
   if (naveScope !== null && naveScope.length === 0) return [];
 
@@ -1603,6 +1608,7 @@ export async function getActualHoursForDateRange({
 
   const entries = await prisma.timeEntry.findMany({
     where: {
+      ...(userId ? { userId } : {}),
       startedAt: { gte: rangeStart, lt: rangeEndExclusive },
       OR: [
         { endedAt: { not: null }, hours: { gt: 0 } },

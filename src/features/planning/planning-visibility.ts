@@ -56,3 +56,14 @@ export async function getPlanningViewModeForContext(
   );
   return resolvePlanningViewMode(ctx.role, pref);
 }
+
+/** Operarios no deben saber que existe un borrador oculto: solo ven ausencia de planning publicado. */
+export function planningNoticeState(
+  role: Role,
+  input: { hiddenDraft: boolean; noPublished: boolean },
+): { hiddenDraft: boolean; noPublished: boolean } {
+  if (role === Role.OPERARIO && input.hiddenDraft) {
+    return { hiddenDraft: false, noPublished: true };
+  }
+  return input;
+}
