@@ -4,7 +4,11 @@ import {
   formatAttendanceSource,
   operarioCanDeleteSession,
   operarioCanEditSession,
+  operarioCanManageBreaks,
+  ownsAttendanceSession,
 } from "../source-display";
+
+const userId = "user-1";
 
 describe("source-display", () => {
   it("labels attendance sources", () => {
@@ -13,49 +17,36 @@ describe("source-display", () => {
     expect(formatAttendanceSource(AttendanceSource.ADMIN_EDIT)).toBe("Añadido por jefe");
   });
 
-  it("allows operario to edit own closed manual and button sessions", () => {
-    expect(
-      operarioCanEditSession({
-        id: "s1",
-        source: AttendanceSource.MANUAL,
-        endedAt: "2026-06-15T14:00:00.000Z",
-      }),
-    ).toBe(true);
-    expect(
-      operarioCanEditSession({
-        id: "s1",
-        source: AttendanceSource.BUTTON,
-        endedAt: "2026-06-15T14:00:00.000Z",
-      }),
-    ).toBe(true);
-    expect(
-      operarioCanEditSession({
-        id: "s1",
-        source: AttendanceSource.ADMIN_EDIT,
-        endedAt: "2026-06-15T14:00:00.000Z",
-      }),
-    ).toBe(false);
-    expect(
-      operarioCanEditSession({
-        id: "s1",
-        source: AttendanceSource.MANUAL,
-        endedAt: null,
-      }),
-    ).toBe(false);
+  it("checks ownership", () => {
+    expect(ownsAttendanceSession({ userId }, userId)).toBe(true);
+    expect(ownsAttendanceSession({ userId: "other" }, userId)).toBe(false);
   });
 
-  it("allows operario to delete only manual closed sessions", () => {
+  it("allows operario to edit any own closed session", () => {
     expect(
-      operarioCanDeleteSession({
-        source: AttendanceSource.MANUAL,
-        endedAt: "2026-06-15T14:00:00.000Z",
-      }),
+      operarioCanEditSession(
+        { userId, endedAt: "2026-06-15T14:00:00.000Z" },
+        userId,
+      ),
     ).toBe(true);
     expect(
-      operarioCanDeleteSession({
-        source: AttendanceSource.BUTTON,
-        endedAt: "2026-06-15T14:00:00.000Z",
-      }),
+      operarioCanEditSession(
+        { userId, endedAt: "2026-06-15T14:00:00.000Z" },
+        "other",
+      ),
     ).toBe(false);
+    expect(operarioCanEditSession({ userId, endedAt: null }, userId)).toBe(false);
+  });
+
+  it("allows operario to delete any own session", () => {
+    expect(operarioCanDeleteSession({ userId }, userId)).toBe(true);
+    expect(operarioCanDeleteSession({ userId }, "other")).toBe(false);
+  });
+
+  it("allows operario to manage breaks on own closed sessions", () => {
+    expect(
+      operarioCanManageBreaks({ userId, endedAt: "2026-06-15T14:00:00.000Z" }, userId),
+    ).toBe(true);
+    expect(operarioCanManageBreaks({ userId, endedAt: null }, userId)).toBe(false);
   });
 });

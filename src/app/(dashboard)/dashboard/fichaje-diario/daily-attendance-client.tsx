@@ -29,17 +29,21 @@ import {
   adminUpdateAttendanceBreak,
   adminUpsertAttendanceSession,
   createManualAttendanceSession,
+  createOwnAttendanceBreak,
   deleteOwnAttendanceSession,
+  deleteOwnAttendanceBreak,
   endBreak,
   startAttendance,
   startBreak,
   stopAttendance,
   updateOwnAttendanceSession,
+  updateOwnAttendanceBreak,
 } from "@/features/attendance/actions";
 import {
   formatAttendanceSource,
   operarioCanDeleteSession,
   operarioCanEditSession,
+  operarioCanManageBreaks,
 } from "@/features/attendance/source-display";
 import {
   breakMinutes,
@@ -682,17 +686,18 @@ export function DailyAttendanceClient(props: {
                     ? session.breaks.find((b) => b.id === editingBreakId) ?? null
                     : null;
                   const showBreakForm =
-                    props.canManage &&
                     session.endedAt != null &&
-                    (addingBreakSessionId === session.id || editingBreak != null);
+                    (addingBreakSessionId === session.id || editingBreak != null) &&
+                    (props.canManage || operarioCanManageBreaks(session, props.currentUserId));
                   const showSessionEditForm =
                     !props.canManage &&
                     editingSessionId === session.id &&
-                    operarioCanEditSession(session);
-                  const canEditSession =
-                    !props.canManage && operarioCanEditSession(session);
+                    operarioCanEditSession(session, props.currentUserId);
+                  const canEditSession = operarioCanEditSession(session, props.currentUserId);
                   const canDeleteSession =
-                    !props.canManage && operarioCanDeleteSession(session);
+                    props.canManage || operarioCanDeleteSession(session, props.currentUserId);
+                  const canManageBreaks =
+                    props.canManage || operarioCanManageBreaks(session, props.currentUserId);
 
                   return (
                     <div key={session.id} className="rounded border p-3 text-sm space-y-2">
@@ -711,78 +716,59 @@ export function DailyAttendanceClient(props: {
                             </span>
                           ) : null}
                         </span>
-                        {props.canManage ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive shrink-0"
-                            onClick={() =>
-                              startTransition(async () => {
-                                const result = await adminDeleteAttendanceSession({
-                                  sessionId: session.id,
-                                });
-                                const outcome = handleActionResult("fichaje.adminDelete", result);
-                                if (!outcome.success) {
-                                  toast.error(outcome.message);
-                                  return;
-                                }
-                                toast.success("Fichaje eliminado");
-                                if (addingBreakSessionId === session.id) setAddingBreakSessionId(null);
-                                if (editingBreakId && session.breaks.some((b) => b.id === editingBreakId)) {
-                                  setEditingBreakId(null);
-                                }
-                                router.refresh();
-                              })
-                            }
-                          >
-                            Eliminar
-                          </Button>
-                        ) : canEditSession || canDeleteSession ? (
-                          <div className="flex gap-1 shrink-0">
-                            {canEditSession ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setEditingSessionId(session.id);
-                                  setSessionEditStartTime(toTimeValue(session.startedAt));
-                                  setSessionEditEndTime(
-                                    session.endedAt ? toTimeValue(session.endedAt) : "14:00",
+                        <div className="flex gap-1 shrink-0">
+                          {!props.canManage && canEditSession ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingSessionId(session.id);
+                                setSessionEditStartTime(toTimeValue(session.startedAt));
+                                setSessionEditEndTime(
+                                  session.endedAt ? toTimeValue(session.endedAt) : "14:00",
+                                );
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          ) : null}
+                          {canDeleteSession ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result = props.canManage
+                                    ? await adminDeleteAttendanceSession({ sessionId: session.id })
+                                    : await deleteOwnAttendanceSession({ sessionId: session.id });
+                                  const outcome = handleActionResult(
+                                    props.canManage ? "fichaje.adminDelete" : "fichaje.deleteOwn",
+                                    result,
                                   );
-                                }}
-                              >
-                                Editar
-                              </Button>
-                            ) : null}
-                            {canDeleteSession ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() =>
-                                  startTransition(async () => {
-                                    const result = await deleteOwnAttendanceSession({
-                                      sessionId: session.id,
-                                    });
-                                    const outcome = handleActionResult(
-                                      "fichaje.deleteOwn",
-                                      result,
-                                    );
-                                    if (!outcome.success) {
-                                      toast.error(outcome.message);
-                                      return;
-                                    }
-                                    toast.success("Registro manual eliminado");
-                                    if (editingSessionId === session.id) setEditingSessionId(null);
-                                    router.refresh();
-                                  })
-                                }
-                              >
-                                Eliminar
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                                  if (!outcome.success) {
+                                    toast.error(outcome.message);
+                                    return;
+                                  }
+                                  toast.success("Fichaje eliminado");
+                                  if (addingBreakSessionId === session.id) {
+                                    setAddingBreakSessionId(null);
+                                  }
+                                  if (
+                                    editingBreakId &&
+                                    session.breaks.some((b) => b.id === editingBreakId)
+                                  ) {
+                                    setEditingBreakId(null);
+                                  }
+                                  if (editingSessionId === session.id) setEditingSessionId(null);
+                                  router.refresh();
+                                })
+                              }
+                            >
+                              Eliminar
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
 
                       {showSessionEditForm ? (
@@ -857,7 +843,7 @@ export function DailyAttendanceClient(props: {
                                 )}{" "}
                                 min pausa
                               </span>
-                              {props.canManage && session.endedAt != null ? (
+                              {canManageBreaks && session.endedAt != null ? (
                                 <div className="flex gap-1 shrink-0">
                                   <Button
                                     size="sm"
@@ -879,11 +865,13 @@ export function DailyAttendanceClient(props: {
                                     className="text-destructive"
                                     onClick={() =>
                                       startTransition(async () => {
-                                        const result = await adminDeleteAttendanceBreak({
-                                          breakId: breakRow.id,
-                                        });
+                                        const result = props.canManage
+                                          ? await adminDeleteAttendanceBreak({ breakId: breakRow.id })
+                                          : await deleteOwnAttendanceBreak({ breakId: breakRow.id });
                                         const outcome = handleActionResult(
-                                          "fichaje.adminDeleteBreak",
+                                          props.canManage
+                                            ? "fichaje.adminDeleteBreak"
+                                            : "fichaje.deleteOwnBreak",
                                           result,
                                         );
                                         if (!outcome.success) {
@@ -905,7 +893,7 @@ export function DailyAttendanceClient(props: {
                         </div>
                       ) : null}
 
-                      {props.canManage && session.endedAt != null && !showBreakForm ? (
+                      {canManageBreaks && session.endedAt != null && !showBreakForm ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -944,18 +932,36 @@ export function DailyAttendanceClient(props: {
                               onClick={() =>
                                 startTransition(async () => {
                                   const result = editingBreak
-                                    ? await adminUpdateAttendanceBreak({
-                                        breakId: editingBreak.id,
-                                        startTime: breakStartTime,
-                                        endTime: breakEndTime,
-                                      })
-                                    : await adminCreateAttendanceBreak({
-                                        sessionId: session.id,
-                                        startTime: breakStartTime,
-                                        endTime: breakEndTime,
-                                      });
+                                    ? props.canManage
+                                      ? await adminUpdateAttendanceBreak({
+                                          breakId: editingBreak.id,
+                                          startTime: breakStartTime,
+                                          endTime: breakEndTime,
+                                        })
+                                      : await updateOwnAttendanceBreak({
+                                          breakId: editingBreak.id,
+                                          startTime: breakStartTime,
+                                          endTime: breakEndTime,
+                                        })
+                                    : props.canManage
+                                      ? await adminCreateAttendanceBreak({
+                                          sessionId: session.id,
+                                          startTime: breakStartTime,
+                                          endTime: breakEndTime,
+                                        })
+                                      : await createOwnAttendanceBreak({
+                                          sessionId: session.id,
+                                          startTime: breakStartTime,
+                                          endTime: breakEndTime,
+                                        });
                                   const outcome = handleActionResult(
-                                    editingBreak ? "fichaje.adminUpdateBreak" : "fichaje.adminCreateBreak",
+                                    editingBreak
+                                      ? props.canManage
+                                        ? "fichaje.adminUpdateBreak"
+                                        : "fichaje.updateOwnBreak"
+                                      : props.canManage
+                                        ? "fichaje.adminCreateBreak"
+                                        : "fichaje.createOwnBreak",
                                     result,
                                   );
                                   if (!outcome.success) {

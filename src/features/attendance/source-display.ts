@@ -13,18 +13,27 @@ export function formatAttendanceSource(source: string): string {
   return source;
 }
 
-export function operarioCanEditSession(session: {
-  source: string;
-  endedAt: string | null;
-  id: string;
-}): boolean {
-  if (session.endedAt == null) return false;
-  return session.source === AttendanceSource.MANUAL || session.source === AttendanceSource.BUTTON;
+export function ownsAttendanceSession(session: { userId: string }, currentUserId: string): boolean {
+  return session.userId === currentUserId;
 }
 
-export function operarioCanDeleteSession(session: {
-  source: string;
-  endedAt: string | null;
-}): boolean {
-  return session.endedAt != null && session.source === AttendanceSource.MANUAL;
+export function operarioCanEditSession(
+  session: { endedAt: string | null; userId: string },
+  currentUserId: string,
+): boolean {
+  return ownsAttendanceSession(session, currentUserId) && session.endedAt != null;
+}
+
+export function operarioCanDeleteSession(
+  session: { userId: string },
+  currentUserId: string,
+): boolean {
+  return ownsAttendanceSession(session, currentUserId);
+}
+
+export function operarioCanManageBreaks(
+  session: { endedAt: string | null; userId: string },
+  currentUserId: string,
+): boolean {
+  return ownsAttendanceSession(session, currentUserId) && session.endedAt != null;
 }

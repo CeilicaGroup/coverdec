@@ -85,6 +85,31 @@ async function emitOutsideWindowAlert(input: {
   });
 }
 
+async function requireOwnClosedAttendanceSession(userId: string, sessionId: string) {
+  const session = await prisma.attendanceSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, userId: true, startedAt: true, endedAt: true },
+  });
+  if (!session || session.userId !== userId) {
+    throw new Error("Sesión de fichaje no encontrada.");
+  }
+  if (!session.endedAt) {
+    throw new Error("No se puede modificar un fichaje abierto.");
+  }
+  return session;
+}
+
+async function requireOwnAttendanceSession(userId: string, sessionId: string) {
+  const session = await prisma.attendanceSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, userId: true, personId: true, startedAt: true },
+  });
+  if (!session || session.userId !== userId) {
+    throw new Error("Sesión de fichaje no encontrada.");
+  }
+  return session;
+}
+
 async function recalculateClosedSessionMinutes(sessionId: string) {
   const session = await prisma.attendanceSession.findUnique({
     where: { id: sessionId },
@@ -433,12 +458,6 @@ export async function updateOwnAttendanceSession(input: {
     if (!session.endedAt) {
       throw new Error("No se puede editar un fichaje abierto.");
     }
-    if (
-      session.source !== AttendanceSource.MANUAL &&
-      session.source !== AttendanceSource.BUTTON
-    ) {
-      throw new Error("No puedes editar fichajes añadidos por un jefe.");
-    }
 
     const startedAt = toUtcDateTime(data.date, data.startTime);
     const endedAt = toUtcDateTime(data.date, data.endTime);
@@ -494,23 +513,149 @@ export async function deleteOwnAttendanceSession(input: {
   return runServerAction("attendance.deleteOwn", async () => {
     const ctx = await requireDashboardContext();
     if (ctx.role !== Role.OPERARIO) {
-      throw new Error("Solo los operarios pueden eliminar sus fichajes manuales.");
+      throw new Error("Solo los operarios pueden eliminar sus propios fichajes.");
     }
     const data = deleteOwnAttendanceSchema.parse(input);
 
-    const session = await prisma.attendanceSession.findUnique({
-      where: { id: data.sessionId },
-      select: { id: true, userId: true, source: true },
+    const session = await requireOwnAttendanceSession(ctx.userId, data.sessionId);
+    await prisma.attendanceSession.delete({ where: { id: session.id } });
+    const day = isoDay(session.startedAt);
+    await resolveNotificationStates({
+      type: NotificationType.ATTENDANCE_OPEN_TOO_LONG,
+      scopeKeys: [`attendance-open-too-long:${session.id}`],
     });
-    if (!session || session.userId !== ctx.userId) {
-      throw new Error("Sesión de fichaje no encontrada.");
+    await emitNotification({
+      type: NotificationType.ATTENDANCE_INCOMPLETE_DAY,
+      title: "Día con fichaje incompleto",
+      body: "Se detectó un día con presencia incompleta tras eliminar un fichaje.",
+      payload: {
+        eventKey: `attendance-incomplete:${session.userId}:${day}`,
+        userId: session.userId,
+        personId: session.personId,
+        dateIso: day,
+      },
+      scopeKey: `attendance-incomplete:${session.userId}:${day}`,
+    });
+    log.info({ userId: ctx.userId, sessionId: session.id }, "own attendance deleted");
+    revalidateAttendancePaths();
+  });
+}
+
+export async function createOwnAttendanceBreak(input: {
+  sessionId: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.createOwnBreak", async () => {
+    const ctx = await requireDashboardContext();
+    if (ctx.role !== Role.OPERARIO) {
+      throw new Error("Solo los operarios pueden gestionar pausas de sus fichajes.");
     }
-    if (session.source !== AttendanceSource.MANUAL) {
-      throw new Error("Solo puedes eliminar registros manuales.");
+    const data = adminCreateAttendanceBreakSchema.parse(input);
+    const session = await requireOwnClosedAttendanceSession(ctx.userId, data.sessionId);
+
+    const dateIso = isoDay(session.startedAt);
+    const startedAt = toUtcDateTime(dateIso, data.startTime);
+    const endedAt = toUtcDateTime(dateIso, data.endTime);
+    assertBreakWithinSession({
+      sessionStartedAt: session.startedAt,
+      sessionEndedAt: session.endedAt,
+      breakStartedAt: startedAt,
+      breakEndedAt: endedAt,
+    });
+    await assertNoBreakOverlap({ sessionId: session.id, startedAt, endedAt });
+
+    const minutes = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+    await prisma.attendanceBreak.create({
+      data: {
+        sessionId: session.id,
+        source: AttendanceSource.MANUAL,
+        startedAt,
+        endedAt,
+        minutes,
+        notes: data.notes,
+      },
+    });
+    await recalculateClosedSessionMinutes(session.id);
+    revalidateAttendancePaths();
+  });
+}
+
+export async function updateOwnAttendanceBreak(input: {
+  breakId: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.updateOwnBreak", async () => {
+    const ctx = await requireDashboardContext();
+    if (ctx.role !== Role.OPERARIO) {
+      throw new Error("Solo los operarios pueden gestionar pausas de sus fichajes.");
+    }
+    const data = adminUpdateAttendanceBreakSchema.parse(input);
+
+    const existing = await prisma.attendanceBreak.findUnique({
+      where: { id: data.breakId },
+      select: {
+        id: true,
+        sessionId: true,
+        session: { select: { userId: true, startedAt: true, endedAt: true } },
+      },
+    });
+    if (!existing || existing.session.userId !== ctx.userId) {
+      throw new Error("Pausa no encontrada.");
+    }
+    if (!existing.session.endedAt) {
+      throw new Error("No se puede editar una pausa de una sesión abierta.");
     }
 
-    await prisma.attendanceSession.delete({ where: { id: session.id } });
-    log.info({ userId: ctx.userId, sessionId: session.id }, "own manual attendance deleted");
+    const dateIso = isoDay(existing.session.startedAt);
+    const startedAt = toUtcDateTime(dateIso, data.startTime);
+    const endedAt = toUtcDateTime(dateIso, data.endTime);
+    assertBreakWithinSession({
+      sessionStartedAt: existing.session.startedAt,
+      sessionEndedAt: existing.session.endedAt,
+      breakStartedAt: startedAt,
+      breakEndedAt: endedAt,
+    });
+    await assertNoBreakOverlap({
+      sessionId: existing.sessionId,
+      startedAt,
+      endedAt,
+      excludeBreakId: existing.id,
+    });
+
+    const minutes = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+    await prisma.attendanceBreak.update({
+      where: { id: existing.id },
+      data: { startedAt, endedAt, minutes, notes: data.notes },
+    });
+    await recalculateClosedSessionMinutes(existing.sessionId);
+    revalidateAttendancePaths();
+  });
+}
+
+export async function deleteOwnAttendanceBreak(input: {
+  breakId: string;
+}): Promise<ActionResult<void>> {
+  return runServerAction("attendance.deleteOwnBreak", async () => {
+    const ctx = await requireDashboardContext();
+    if (ctx.role !== Role.OPERARIO) {
+      throw new Error("Solo los operarios pueden gestionar pausas de sus fichajes.");
+    }
+    const data = adminDeleteAttendanceBreakSchema.parse(input);
+
+    const existing = await prisma.attendanceBreak.findUnique({
+      where: { id: data.breakId },
+      select: { id: true, sessionId: true, session: { select: { userId: true } } },
+    });
+    if (!existing || existing.session.userId !== ctx.userId) {
+      throw new Error("Pausa no encontrada.");
+    }
+
+    await prisma.attendanceBreak.delete({ where: { id: existing.id } });
+    await recalculateClosedSessionMinutes(existing.sessionId);
     revalidateAttendancePaths();
   });
 }
