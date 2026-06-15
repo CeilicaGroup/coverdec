@@ -464,7 +464,16 @@ export async function getHolidaysForRange(start: Date, end: Date) {
 export async function getAbsencesForRange(start: Date, end: Date) {
   return prisma.absence.findMany({
     where: absenceOverlapPrismaFilter(start, end),
-    include: { person: true },
+    select: {
+      id: true,
+      personId: true,
+      date: true,
+      endDate: true,
+      hours: true,
+      blockStartMinutes: true,
+      blockEndMinutes: true,
+      reason: true,
+    },
     orderBy: { date: "asc" },
   });
 }

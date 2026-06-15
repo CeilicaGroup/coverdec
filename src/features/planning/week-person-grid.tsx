@@ -333,7 +333,12 @@ export function WeekPersonGrid({
           planTask={planTask}
           actualTask={actualTask}
           holidayDates={holidayDates}
-          absences={absences}
+          absences={absences.map((a) => ({
+            personId: a.personId,
+            date: a.date,
+            endDate: a.endDate,
+            reason: a.reason,
+          }))}
           processStyles={processStyles}
           canEditEntries={canEditEntries}
           recordsPersonId={recordsPersonId}

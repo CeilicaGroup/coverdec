@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   computePlanFromBounds,
+  defaultPlanFromDateIso,
   relaxFirstSchedulableDayForChain,
   resolvePlanFromAnchor,
+  weekWorkdayIsoRange,
 } from "../plan-from";
 
 const weekStart = new Date("2026-05-04T00:00:00.000Z");
@@ -19,6 +21,13 @@ describe("resolvePlanFromAnchor", () => {
     const at = new Date("2026-05-07T14:00:00.000Z");
     expect(resolvePlanFromAnchor(weekStart, "TOMORROW", at).toISOString()).toBe(
       "2026-05-08T00:00:00.000Z",
+    );
+  });
+
+  it("DATE uses the selected calendar day at midnight", () => {
+    const at = new Date("2026-05-05T00:00:00.000Z");
+    expect(resolvePlanFromAnchor(weekStart, "DATE", at).toISOString()).toBe(
+      "2026-05-05T00:00:00.000Z",
     );
   });
 });
@@ -49,6 +58,39 @@ describe("computePlanFromBounds", () => {
     const at = new Date("2026-05-10T12:00:00.000Z");
     expect(computePlanFromBounds(weekStart, "TODAY", at)).toEqual({
       firstSchedulableDayIndex: 5,
+    });
+  });
+
+  it("DATE before today in the same week starts on monday", () => {
+    const at = new Date("2026-05-04T00:00:00.000Z");
+    expect(computePlanFromBounds(weekStart, "DATE", at)).toEqual({
+      firstSchedulableDayIndex: 0,
+    });
+  });
+});
+
+describe("defaultPlanFromDateIso", () => {
+  it("defaults to today when it falls inside the work week", () => {
+    const at = new Date("2026-05-06T12:00:00.000Z");
+    expect(defaultPlanFromDateIso(weekStart, at)).toBe("2026-05-06");
+  });
+
+  it("defaults to monday when today is before the work week", () => {
+    const at = new Date("2026-05-01T12:00:00.000Z");
+    expect(defaultPlanFromDateIso(weekStart, at)).toBe("2026-05-04");
+  });
+
+  it("defaults to monday when today is after the work week", () => {
+    const at = new Date("2026-05-10T12:00:00.000Z");
+    expect(defaultPlanFromDateIso(weekStart, at)).toBe("2026-05-04");
+  });
+});
+
+describe("weekWorkdayIsoRange", () => {
+  it("returns monday and friday of the viewed week", () => {
+    expect(weekWorkdayIsoRange(weekStart)).toEqual({
+      mondayIso: "2026-05-04",
+      fridayIso: "2026-05-08",
     });
   });
 });

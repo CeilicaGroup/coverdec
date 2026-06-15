@@ -29,6 +29,7 @@ export function relaxFirstSchedulableDayForChain(
 
 export const PLAN_FROM_OPTIONS = [
   { value: "WEEK_START", label: "Lunes de la semana" },
+  { value: "DATE", label: "Fecha elegida" },
   { value: "TODAY", label: "Hoy" },
   { value: "TOMORROW", label: "Mañana" },
   { value: "NOW", label: "Ahora mismo" },
@@ -37,6 +38,43 @@ export const PLAN_FROM_OPTIONS = [
 export type PlanFrom = (typeof PLAN_FROM_OPTIONS)[number]["value"];
 
 export const PLAN_FROM_STORAGE_KEY = "coverdec.planFrom";
+
+export function weekWorkdayIsoRange(weekStart: Date | string): {
+  mondayIso: string;
+  fridayIso: string;
+} {
+  const monday = getMondayOf(
+    typeof weekStart === "string" ? new Date(weekStart) : weekStart,
+  );
+  const days = weekDays(monday);
+  return {
+    mondayIso: days[0].toISOString().slice(0, 10),
+    fridayIso: days[4].toISOString().slice(0, 10),
+  };
+}
+
+/** Por defecto hoy si cae en la semana; si la semana es futura, lunes; si es pasada, lunes. */
+export function defaultPlanFromDateIso(
+  weekStart: Date | string,
+  at: Date = new Date(),
+): string {
+  const { mondayIso, fridayIso } = weekWorkdayIsoRange(weekStart);
+  const todayIso = toUtcDay(at).toISOString().slice(0, 10);
+  if (todayIso < mondayIso || todayIso > fridayIso) return mondayIso;
+  return todayIso;
+}
+
+export function assertPlanFromDateInWorkWeek(
+  weekStart: Date | string,
+  planFromDateIso: string,
+): void {
+  const { mondayIso, fridayIso } = weekWorkdayIsoRange(weekStart);
+  if (planFromDateIso < mondayIso || planFromDateIso > fridayIso) {
+    throw new Error(
+      "«Planificar desde» debe ser un día laborable (lun–vie) de la semana del calendario.",
+    );
+  }
+}
 
 /** Índice 0–4 (lun–vie) del primer día planificable; 5 = ningún día en la semana. */
 export function findFirstSchedulableDayIndex(
@@ -65,6 +103,7 @@ export function resolvePlanFromAnchor(
   switch (planFrom) {
     case "WEEK_START":
       return monday;
+    case "DATE":
     case "TODAY":
       return toUtcDay(planFromAt);
     case "TOMORROW":
@@ -124,6 +163,8 @@ export function planFromHelpText(planFrom: PlanFrom): string {
   switch (planFrom) {
     case "WEEK_START":
       return "Solo se asignará trabajo desde el lunes de la semana seleccionada.";
+    case "DATE":
+      return "Solo se asignará trabajo desde el día indicado en adelante dentro de la semana.";
     case "TODAY":
       return "Solo se asignará trabajo desde hoy (o el siguiente día laborable de la semana).";
     case "TOMORROW":

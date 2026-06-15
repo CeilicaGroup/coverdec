@@ -1,7 +1,7 @@
 "use client";
 
 import { reportMutationError } from "@/lib/mutation-error";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2, Sparkles, CheckCircle2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +40,10 @@ import {
   type PlanningHorizonMode,
 } from "@/features/planning/planning-horizon-schema";
 import { addWeeks, maxWeeksForMode } from "@/features/planning/planning-horizon";
+import {
+  defaultPlanFromDateIso,
+  weekWorkdayIsoRange,
+} from "@/features/planning/plan-from";
 import { formatWeekRange } from "@/lib/week";
 import type { PlanningStatus, Role } from "@/generated/prisma";
 
@@ -109,6 +113,14 @@ export function GenerateButton({
   const [planningWarnings, setPlanningWarnings] = useState<string[]>([]);
   const [unscheduledHours, setUnscheduledHours] = useState(0);
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const workWeek = useMemo(() => weekWorkdayIsoRange(weekStart), [weekStart]);
+  const [planFromDate, setPlanFromDate] = useState(() =>
+    defaultPlanFromDateIso(weekStart),
+  );
+
+  useEffect(() => {
+    setPlanFromDate(defaultPlanFromDateIso(weekStart));
+  }, [weekStart]);
 
   const projectsWithPending = useMemo(
     () => activeProjects.filter((p) => p.pendingHours > 0.25),
@@ -174,6 +186,7 @@ export function GenerateButton({
           const result = await generatePlanningAction({
             weekStart: weekIso,
             horizonMode,
+            planFromDate: weeksGenerated === 0 ? planFromDate : undefined,
           });
 
           weeksGenerated += 1;
@@ -463,6 +476,22 @@ export function GenerateButton({
             />
           </div>
         )}
+
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="plan-from-date" className="sr-only">
+            Planificar desde
+          </Label>
+          <Input
+            id="plan-from-date"
+            type="date"
+            className="h-8 w-[150px] text-xs"
+            min={workWeek.mondayIso}
+            max={workWeek.fridayIso}
+            value={planFromDate}
+            onChange={(e) => setPlanFromDate(e.target.value)}
+            title="Planificar desde"
+          />
+        </div>
 
         <Button onClick={onGenerate} disabled={pending} className="gap-2">
           {pending ? (

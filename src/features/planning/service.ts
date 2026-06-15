@@ -101,7 +101,7 @@ export async function generatePlanning(
 
   if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
     throw new Error(
-      "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige «Lunes de la semana» o navega a la semana actual o futura.",
+      "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige una fecha anterior o navega a otra semana.",
     );
   }
 

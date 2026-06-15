@@ -23,16 +23,23 @@ import {
   shouldContinueHorizon,
 } from "@/features/planning/planning-horizon";
 import { planningHorizonModeSchema } from "@/features/planning/planning-horizon-schema";
+import {
+  assertPlanFromDateInWorkWeek,
+} from "@/features/planning/plan-from";
 import { Role } from "@/generated/prisma";
+
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const generateSchema = z.object({
   weekStart: z.string().min(8),
   horizonMode: planningHorizonModeSchema,
+  planFromDate: isoDateSchema.optional(),
 });
 
 export async function generatePlanningAction(input: {
   weekStart: string;
   horizonMode: z.input<typeof planningHorizonModeSchema>;
+  planFromDate?: string;
 }) {
   return runAuditedMutation(
     "planning.generatePlanning",
@@ -40,13 +47,26 @@ export async function generatePlanningAction(input: {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-      const { weekStart, horizonMode } = generateSchema.parse(input);
+      const { weekStart, horizonMode, planFromDate } = generateSchema.parse(input);
+
+      const planFrom =
+        planFromDate !== undefined
+          ? ("DATE" as const)
+          : ("WEEK_START" as const);
+
+      if (planFrom === "DATE") {
+        assertPlanFromDateInWorkWeek(weekStart, planFromDate!);
+      }
+
       const result = await generatePlanning({
         naveId: ctx.naveId,
         weekStart: new Date(weekStart),
         replaceDraft: true,
-        planFrom: "WEEK_START",
-        planFromAt: new Date(),
+        planFrom,
+        planFromAt:
+          planFrom === "DATE"
+            ? new Date(`${planFromDate}T00:00:00.000Z`)
+            : new Date(),
       });
       revalidatePath("/dashboard", "layout");
       return result;
@@ -55,7 +75,11 @@ export async function generatePlanningAction(input: {
       summary: `Generar planning semana ${input.weekStart}`,
       entityType: "Planning",
       entityId: result.planningId,
-      metadata: { weekStart: input.weekStart, horizonMode: input.horizonMode },
+      metadata: {
+        weekStart: input.weekStart,
+        horizonMode: input.horizonMode,
+        planFromDate: input.planFromDate,
+      },
     }),
   );
 }
