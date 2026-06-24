@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CONTRACT+ · Órdenes de Producción</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── TOKENS CONTRACT+ ── */
+:root {
+  --bg:         #F7F4EE;
+  --bg-card:    #FFFFFF;
+  --bg-hover:   #F2EFE8;
+  --sidebar-bg: #1C1B18;
+  --sidebar-w:  196px;
+  --border:     #E5E1D8;
+  --border-2:   #D8D3C8;
+  --text-1:     #1A1916;
+  --text-2:     #4A4844;
+  --text-3:     #8A8780;
+  --gold:       #8B6914;
+  --gold-btn:   #7A5C10;
+  --gold-lt:    #F5EDD0;
+  --riesgo-bg:  #FEE2E2;
+  --riesgo-c:   #DC2626;
+  --atencion-bg:#FEF3C7;
+  --atencion-c: #D97706;
+  --ok-bg:      #D1FAE5;
+  --ok-c:       #059669;
+  --r:          6px;
+  --r-lg:       10px;
+
+  /* Operarios — colores exactos del ERP */
+  --cp: #16A34A; /* Claudio — verde */
+  --ds: #0891B2; /* Daniil  — teal  */
+  --ia: #4F46E5; /* Ihor    — índigo */
+  --sk: #EA580C; /* Serhii  — naranja */
+  --tm: #7C3AED; /* Tetiana — púrpura */
+
+  /* Procesos */
+  --cnc-bg:  #EDE9FB; --cnc-c:  #4338CA;
+  --ens-bg:  #D1FAE5; --ens-c:  #065F46;
+  --lij-bg:  #FEF3C7; --lij-c:  #92400E;
+  --imp-bg:  #FFEDD5; --imp-c:  #C2410C;
+  --pin-bg:  #FCE7F3; --pin-c:  #9D174D;
+  --emb-bg:  #DBEAFE; --emb-c:  #1E40AF;
+  --ort-bg:  #FEE2E2; --ort-c:  #991B1B;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-1); font-size: 13px; display: flex; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  padding: 16px 16px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -.01em;
+  border-bottom: 1px solid #2A2926;
+}
+.sidebar-logo span { font-size: 11px; display: block; color: #666; font-weight: 400; margin-top: 1px; }
+.sidebar-section {
+  padding: 14px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: #AAA8A2;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 1px 6px;
+  transition: background .12s, color .12s;
+}
+.sidebar-item:hover { background: #2A2926; color: #E8E5DE; }
+.sidebar-item.active { background: var(--gold); color: #FFF; font-weight: 500; }
+.sidebar-item svg { width: 14px; height: 14px; flex-shrink: 0; opacity: .7; }
+.sidebar-item.active svg { opacity: 1; }
+
+/* ── MAIN ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── TOP BAR ── */
+.topbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.topbar-sub { font-size: 12px; color: var(--text-3); margin-left: 4px; }
+.spacer { flex: 1; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r);
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .12s;
+  font-family: inherit;
+}
+.btn-gold { background: var(--gold); color: #fff; }
+.btn-gold:hover { background: var(--gold-btn); }
+.btn-outline { background: white; color: var(--text-2); border: 1px solid var(--border-2); }
+.btn-outline:hover { background: var(--bg-hover); }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+
+/* ── TABS ── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--text-1); border-bottom-color: var(--gold); }
+
+/* ── CONTENT ── */
+.content { flex: 1; overflow-y: auto; padding: 20px 28px 40px; }
+
+/* ── VIEW PANELS ── */
+.view-panel { display: none; }
+.view-panel.active { display: block; }
+
+/* ── FILTROS BAR ── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filter-bar label { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.chip {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  background: white;
+  color: var(--text-2);
+  border-color: var(--border-2);
+  transition: all .12s;
+  font-family: inherit;
+}
+.chip.active, .chip:hover { background: var(--gold-lt); border-color: var(--gold); color: var(--gold); }
+.chip.active { font-weight: 600; }
+
+/* ── KPI ROW ── */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.kpi-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+}
+.kpi-label { font-size: 11px; color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.kpi-val { font-size: 26px; font-weight: 300; letter-spacing: -.02em; }
+.kpi-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.kpi-val.danger { color: var(--riesgo-c); font-weight: 600; }
+.kpi-val.warn   { color: var(--atencion-c); }
+
+/* ── TABLE ── */
+.table-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.table-card-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.table-card-title { font-size: 14px; font-weight: 600; flex: 1; }
+table { width: 100%; border-collapse: collapse; }
+thead tr { border-bottom: 1px solid var(--border); }
+thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 10px 14px;
+  text-align: left;
+  white-space: nowrap;
+  background: var(--bg);
+}
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .1s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--bg-hover); }
+tbody td { padding: 11px 14px; vertical-align: middle; }
+.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+
+/* ── BADGES ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-riesgo   { background: var(--riesgo-bg);   color: var(--riesgo-c);   }
+.badge-atencion { background: var(--atencion-bg);  color: var(--atencion-c); }
+.badge-ok       { background: var(--ok-bg);        color: var(--ok-c);       }
+.badge-cerrada  { background: #F0FDF4; color: #15803D; }
+.badge-curso    { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+.badge-pausa    { background: #FFFBEB; color: #B45309; }
+.badge-multi    { background: var(--cnc-bg);       color: var(--cnc-c);      }
+.badge-pend     { background: var(--bg);           color: var(--text-3); border: 1px solid var(--border-2); }
+
+/* Proceso badges */
+.proc { display: inline-flex; align-items: center; font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.proc-cnc  { background: var(--cnc-bg);  color: var(--cnc-c);  }
+.proc-ens  { background: var(--ens-bg);  color: var(--ens-c);  }
+.proc-lij  { background: var(--lij-bg);  color: var(--lij-c);  }
+.proc-imp  { background: var(--imp-bg);  color: var(--imp-c);  }
+.proc-pin  { background: var(--pin-bg);  color: var(--pin-c);  }
+.proc-emb  { background: var(--emb-bg);  color: var(--emb-c);  }
+.proc-ort  { background: var(--ort-bg);  color: var(--ort-c);  }
+
+/* Avatar operario */
+.avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+/* Progress bar */
+.prog-wrap { display: flex; align-items: center; gap: 8px; }
+.prog-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; min-width: 60px; }
+.prog-fill { height: 100%; border-radius: 2px; background: var(--ok-c); }
+.prog-fill.danger { background: var(--riesgo-c); }
+.prog-fill.warn   { background: var(--atencion-c); }
+
+/* ── MODAL / DRAWER ── */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.2); z-index: 50; display: none; }
+.overlay.open { display: block; }
+.drawer {
+  position: fixed;
+  right: -520px;
+  top: 0; bottom: 0;
+  width: 500px;
+  background: white;
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0,0,0,.1);
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  transition: right .22s cubic-bezier(.4,0,.2,1);
+}
+.drawer.open { right: 0; }
+.drawer-header {
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.drawer-header-info { flex: 1; }
+.drawer-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-3); font-size: 18px; padding: 0; line-height: 1;
+}
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px 22px; }
+.d-section { margin-bottom: 22px; }
+.d-label {
+  font-size: 10px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 8px;
+}
+.d-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--bg-hover);
+}
+.d-row:last-child { border-bottom: none; }
+.d-key { font-size: 12px; color: var(--text-3); }
+.d-val { font-size: 13px; font-weight: 500; }
+.proj-pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  background: var(--bg);
+  border-radius: var(--r);
+  margin-bottom: 6px;
+}
+.proj-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sub-op-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: var(--r);
+  border-left: 3px solid var(--border-2);
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+.ral-ball { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.1); flex-shrink: 0; }
+.imput-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 10px; }
+.imput-box {
+  background: var(--bg);
+  border-radius: var(--r);
+  padding: 10px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.imput-box .iv { font-size: 17px; font-weight: 600; }
+.imput-box .il { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.imput-box .id { font-size: 11px; margin-top: 4px; }
+.desvio-pos { color: var(--riesgo-c); }
+.desvio-neg { color: var(--ok-c); }
+.actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.btn-iniciar  { background: var(--gold); color: white; }
+.btn-pausar   { background: var(--atencion-bg); color: var(--atencion-c); border: 1px solid #FCD34D; }
+.btn-cerrar   { background: var(--ok-bg); color: var(--ok-c); border: 1px solid #6EE7B7; }
+.nota-box {
+  background: var(--gold-lt);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ── CALENDARIO VIEW ── */
+.cal-outer { display: flex; gap: 0; height: calc(100vh - 180px); overflow: hidden; }
+.cal-time-col { width: 52px; flex-shrink: 0; padding-top: 44px; }
+.cal-time-slot {
+  height: 56px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: monospace;
+}
+.cal-days { flex: 1; overflow-x: auto; }
+.cal-days-inner { display: flex; min-width: 700px; height: 100%; }
+.cal-day { flex: 1; border-left: 1px solid var(--border); display: flex; flex-direction: column; min-width: 110px; }
+.cal-day-header {
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.cal-day-header .dh-name { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
+.cal-day-header .dh-date { font-size: 16px; font-weight: 300; color: var(--text-1); }
+.cal-day-body { flex: 1; position: relative; overflow: hidden; }
+.cal-hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); pointer-events: none; }
+.cal-hour-line.half { border-top-style: dashed; opacity: .4; }
+.cal-block {
+  position: absolute;
+  left: 3px; right: 3px;
+  border-radius: 5px;
+  padding: 4px 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border-left: 3px solid;
+  transition: transform .1s, box-shadow .1s;
+  font-size: 11px;
+}
+.cal-block:hover { transform: translateX(1px); box-shadow: 2px 2px 6px rgba(0,0,0,.15); z-index: 10; }
+.cal-block .cb-code { font-family: monospace; font-size: 9px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-block .cb-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.cal-block .cb-detail { font-size: 10px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.cb-cnc  { background: var(--cnc-bg); border-left-color: var(--cnc-c); color: var(--cnc-c); }
+.cb-ens  { background: var(--ens-bg); border-left-color: var(--ens-c); color: var(--ens-c); }
+.cb-lij  { background: var(--lij-bg); border-left-color: var(--lij-c); color: var(--lij-c); }
+.cb-imp  { background: var(--imp-bg); border-left-color: var(--imp-c); color: var(--imp-c); }
+.cb-pin  { background: var(--pin-bg); border-left-color: var(--pin-c); color: var(--pin-c); }
+.cb-emb  { background: var(--emb-bg); border-left-color: var(--emb-c); color: var(--emb-c); }
+.cb-ort  { background: var(--ort-bg); border-left-color: var(--ort-c); color: var(--ort-c); }
+.cb-stock{ background: #F5F5F0; border-left-color: #888; color: #444; }
+
+/* ── TABLET VIEW ── */
+.tablet-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.operario-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.oc-header {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+}
+.oc-header .oc-name { font-size: 13px; font-weight: 600; }
+.oc-header .oc-role { font-size: 10px; opacity: .85; }
+.oc-ops { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.oc-op-item {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  border-left: 3px solid;
+  cursor: pointer;
+  transition: background .1s;
+}
+.oc-op-item:hover { background: var(--bg-hover); }
+.oc-op-code { font-family: monospace; font-size: 9px; color: var(--text-3); }
+.oc-op-name { font-size: 11px; font-weight: 600; margin-top: 1px; }
+.oc-op-detail { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.oc-op-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.oc-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.oc-btn-start { background: var(--gold); color: white; }
+.oc-btn-resume { background: var(--cnc-bg); color: var(--cnc-c); }
+.oc-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--text-3); }
+
+/* ── GENERACION VIEW ── */
+.gen-section { margin-bottom: 24px; }
+.gen-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.agrup-table { background: white; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.ag-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .1s;
+}
+.ag-row:last-child { border-bottom: none; }
+.ag-row:hover { background: var(--bg-hover); }
+.ag-check { width: 16px; height: 16px; border: 1.5px solid var(--border-2); border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.ag-check.checked { background: var(--gold); border-color: var(--gold); }
+.ag-check.checked::after { content: '✓'; color: white; font-size: 10px; font-weight: 700; }
+.ag-info { flex: 1; }
+.ag-name { font-size: 13px; font-weight: 500; }
+.ag-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.ag-proyectos { display: flex; gap: 4px; }
+.ag-horas { font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+
+/* ── EMPTY ── */
+.empty-state { text-align: center; padding: 48px 20px; color: var(--text-3); }
+.empty-state .es-icon { font-size: 32px; margin-bottom: 8px; }
+.empty-state .es-text { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">CONTRACT+<span>N2 · Contract +</span></div>
+
+  <div class="sidebar-section">Planning</div>
+  <div class="sidebar-item" onclick="goNav('resumen')">
+    <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Resumen
+  </div>
+  <div class="sidebar-item" onclick="goNav('semana')">
+    <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="3" width="14" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v4M11 1v4M1 7h14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Vista semana
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="3" width="14" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v4M11 1v4M1 7h14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Vista mes
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Por persona
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 12L6 6l3 3 2-4 3 7H2z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Gantt
+  </div>
+
+  <div class="sidebar-section">Operativa</div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Fichaje diario
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L1 5v6l7 4 7-4V5L8 1z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Notificaciones
+  </div>
+
+  <div class="sidebar-section">Catálogo</div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1 6h14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Proyectos
+  </div>
+  <div class="sidebar-item active" onclick="goNav('ops')">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>Órdenes de Prod.
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Personal
+  </div>
+
+  <div class="sidebar-section">Admin</div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Usuarios
+  </div>
+  <div class="sidebar-item">
+    <svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 8h6M8 5v6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>Costes
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <span class="topbar-title">Órdenes de Producción</span>
+      <span class="topbar-sub">S24 · 15 jun – 19 jun 2026</span>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-outline btn-sm" onclick="showTab('generar')">+ Generar OPs</button>
+    <button class="btn btn-gold btn-sm">⬇ Exportar</button>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('listado')">Listado de OPs</div>
+    <div class="tab" onclick="showTab('calendario')">Calendario</div>
+    <div class="tab" onclick="showTab('tablet')">Vista operario</div>
+    <div class="tab" onclick="showTab('generar')">Generar OPs</div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ TAB: LISTADO ══ -->
+    <div id="tab-listado" class="view-panel active">
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">OPs esta semana</div>
+          <div class="kpi-val">18</div>
+          <div class="kpi-sub">3 proyectos activos</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Horas estimadas</div>
+          <div class="kpi-val">51.4h</div>
+          <div class="kpi-sub">5 operarios disponibles</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">En curso ahora</div>
+          <div class="kpi-val warn">3</div>
+          <div class="kpi-sub">2 multiday · 1 interrumpida</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Desviación media</div>
+          <div class="kpi-val danger">+9.7%</div>
+          <div class="kpi-sub">sobre tiempo estándar</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <label>Proceso</label>
+        <button class="chip active" onclick="filterOPs('all',this)">Todas</button>
+        <button class="chip" onclick="filterOPs('cnc',this)">CNC</button>
+        <button class="chip" onclick="filterOPs('ens',this)">Ensamblaje</button>
+        <button class="chip" onclick="filterOPs('lij',this)">Lijado</button>
+        <button class="chip" onclick="filterOPs('imp',this)">Imprimación</button>
+        <button class="chip" onclick="filterOPs('pin',this)">Pintura</button>
+        <button class="chip" onclick="filterOPs('emb',this)">Embalaje</button>
+        <button class="chip" onclick="filterOPs('ort',this)">Retrabajo</button>
+        <div style="flex:1"></div>
+        <label>Estado</label>
+        <button class="chip" onclick="filterEstado('Cerrada',this)">Cerradas</button>
+        <button class="chip" onclick="filterEstado('En curso',this)">En curso</button>
+        <button class="chip" onclick="filterEstado('Pendiente',this)">Pendientes</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-card-header">
+          <div class="table-card-title">Órdenes de Producción</div>
+          <span style="font-size:12px;color:var(--text-3)" id="ops-count">18 OPs</span>
+        </div>
+        <table id="ops-table">
+          <thead>
+            <tr>
+              <th>Código OP</th>
+              <th>Proceso</th>
+              <th>Lámpara / Lote</th>
+              <th>Uds</th>
+              <th>Est.</th>
+              <th>Real</th>
+              <th>Desvío</th>
+              <th>Operario</th>
+              <th>Proyectos</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="ops-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ TAB: CALENDARIO ══ -->
+    <div id="tab-calendario" class="view-panel">
+      <div class="cal-outer">
+        <div class="cal-time-col" id="calTimeCol"></div>
+        <div class="cal-days">
+          <div class="cal-days-inner" id="calDaysInner"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ TAB: TABLET ══ -->
+    <div id="tab-tablet" class="view-panel">
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:14px;font-weight:600">Vista tablet operario · Lunes 15/06/2026</div>
+        <div style="font-size:12px;color:var(--text-3)">Lo que ve cada operario en su dispositivo de planta</div>
+      </div>
+      <div class="tablet-grid" id="tabletGrid"></div>
+    </div>
+
+    <!-- ══ TAB: GENERAR ══ -->
+    <div id="tab-generar" class="view-panel">
+      <div style="margin-bottom:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">Generar Órdenes de Producción</div>
+        <div style="font-size:13px;color:var(--text-3)">Selecciona las lámparas pendientes a agrupar. El sistema sugiere agrupaciones por material y tipo.</div>
+      </div>
+
+      <div class="gen-section">
+        <div class="gen-title">
+          <span style="background:var(--cnc-bg);color:var(--cnc-c);padding:2px 10px;border-radius:20px;font-size:12px">MDF 30</span>
+          Agrupación CNC — mismo material, mismo programa
+        </div>
+        <div class="agrup-table" id="genTable"></div>
+      </div>
+
+      <div class="gen-section">
+        <div class="gen-title">
+          <span style="background:var(--emb-bg);color:var(--emb-c);padding:2px 10px;border-radius:20px;font-size:12px">Metacrilato</span>
+          Agrupación CNC — programa independiente
+        </div>
+        <div class="agrup-table" id="genTable2"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn btn-gold" onclick="alert('OPs generadas correctamente. El sistema ha creado 8 OPs distribuidas en la semana.')">⚡ Generar OPs seleccionadas</button>
+        <button class="btn btn-outline" onclick="showTab('listado')">Cancelar</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── DRAWER DETALLE ── -->
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="drawer-header-info">
+      <div style="font-family:monospace;font-size:11px;color:var(--text-3)" id="dCode"></div>
+      <div style="font-size:17px;font-weight:600;margin-top:3px" id="dTitle"></div>
+      <div style="display:flex;gap:6px;margin-top:6px" id="dBadges"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="dBody"></div>
+</div>
+
+<script>
+// ── DATOS ─────────────────────────────────────────────────────────
+
+const PROYECTOS = {
+  A: { name:'DRUNI CC PLAYA BLANCA', color:'#16A34A', entrega:'10/06', riesgo:'Riesgo' },
+  B: { name:'DRUNI CC ISLAZUL',      color:'#8B6914', entrega:'19/06', riesgo:'Atención' },
+  C: { name:'DRUNI CC TAVIRA',       color:'#4F46E5', entrega:'19/06', riesgo:'Atención' },
+};
+
+const OPERARIOS = {
+  CP: { name:'Claudio Peralta',  color:'var(--cp)', role:'Responsable pintura' },
+  DS: { name:'Daniil Shcheglov', color:'var(--ds)', role:'Operario CNC' },
+  IA: { name:'Ihor Alieksieiev', color:'var(--ia)', role:'Ensamblaje / Perfiles' },
+  SK: { name:'Serhii Kotluienko',color:'var(--sk)', role:'Perfiles / Embalaje' },
+  TM: { name:'Tetiana Mesriakin',color:'var(--tm)', role:'Lijado / Masillado' },
+};
+
+const OPS = [
+  { id:'OP-2026-001-CNC', tipo:'cnc', lamparas:'Cruz + Parafarmacia', uds:15, est:6.2, real:6.8, operario:'DS', proyectos:[{p:'A',u:3},{p:'B',u:9},{p:'C',u:3}], estado:'Cerrada', day:0, start:7.0, end:9.25, nota:'Graba código 001-1…001-15 en Aspire' },
+  { id:'OP-2026-002-CNC', tipo:'cnc', lamparas:'Selcos metacrilato', uds:15, est:3.8, real:4.0, operario:'DS', proyectos:[{p:'A',u:10},{p:'C',u:5}], estado:'Cerrada', day:0, start:9.5, end:11.0 },
+  { id:'OP-2026-001-ENS-CRUZ', tipo:'ens', lamparas:'Ensamblaje Cruz', uds:3, est:4.5, real:4.5, operario:'IA', proyectos:[{p:'A',u:1},{p:'B',u:1},{p:'C',u:1}], estado:'Cerrada', day:0, start:7.0, end:9.0 },
+  { id:'OP-2026-001-ENS-PARA', tipo:'ens', lamparas:'Ensamblaje Parafarmacia', uds:12, est:8.4, real:null, operario:'SK', proyectos:[{p:'A',u:4},{p:'B',u:8}], estado:'Multiday', day:0, start:9.0, end:15.5, nota:'9/12 uds completadas · continúa martes' },
+  { id:'OP-2026-003-CNC', tipo:'cnc', lamparas:'Sol + Selcos 350 + Canopi', uds:3, est:2.4, real:2.4, operario:'DS', proyectos:[{p:'B',u:1},{p:'C',u:2}], estado:'Cerrada', day:1, start:7.0, end:9.0 },
+  { id:'OP-2026-001-LIJ-CRUZ', tipo:'lij', lamparas:'Lijado Cruz', uds:3, est:2.0, real:null, operario:'TM', proyectos:[{p:'A',u:1},{p:'B',u:1},{p:'C',u:1}], estado:'En curso', day:1, start:9.5, end:11.5 },
+  { id:'OP-2026-001-LIJ-PARA', tipo:'lij', lamparas:'Lijado Parafarmacia', uds:12, est:4.8, real:null, operario:'TM', proyectos:[{p:'A',u:4},{p:'B',u:8}], estado:'Pendiente', day:1, start:11.5, end:15.0 },
+  { id:'OP-2026-001-IMP', tipo:'imp', lamparas:'Imprimación lote completo', uds:16, est:3.2, real:null, operario:'CP', proyectos:[{p:'A',u:5},{p:'B',u:9},{p:'C',u:2}], estado:'Pendiente', day:2, start:7.0, end:9.0, nota:'Siempre lote completo · base blanca universal · nunca se divide' },
+  { id:'OP-2026-001-PIN-CRUZ-9010', tipo:'pin', lamparas:'Pintura Cruz · RAL 9010', uds:2, est:1.5, real:null, operario:'CP', proyectos:[{p:'A',u:1},{p:'C',u:1}], estado:'Pendiente', day:3, start:7.0, end:8.5, ral:{code:'9010',hex:'#F4F4F4',name:'Blanco puro'}, nota:'Sub-OP interna · solo visible al pintor' },
+  { id:'OP-2026-001-PIN-CRUZ-7016', tipo:'pin', lamparas:'Pintura Cruz · RAL 7016', uds:1, est:0.9, real:null, operario:'CP', proyectos:[{p:'B',u:1}], estado:'Pendiente', day:3, start:8.5, end:10.0, ral:{code:'7016',hex:'#383E42',name:'Gris antracita'} },
+  { id:'OP-2026-001-PIN-PARA-9010', tipo:'pin', lamparas:'Pintura Para · RAL 9010', uds:4, est:2.4, real:null, operario:'CP', proyectos:[{p:'A',u:4}], estado:'Pendiente', day:3, start:10.0, end:12.5, ral:{code:'9010',hex:'#F4F4F4',name:'Blanco puro'} },
+  { id:'OP-2026-001-PIN-PARA-7016', tipo:'pin', lamparas:'Pintura Para · RAL 7016', uds:8, est:4.8, real:null, operario:'CP', proyectos:[{p:'B',u:8}], estado:'Pendiente', day:3, start:12.5, end:15.5, ral:{code:'7016',hex:'#383E42',name:'Gris antracita'} },
+  { id:'OP-2026-001-PIN-CANOPI-9010', tipo:'pin', lamparas:'Pintura Canopi · RAL 9010', uds:1, est:0.8, real:null, operario:'CP', proyectos:[{p:'C',u:1}], estado:'Pendiente', day:3, start:15.5, end:16.5, ral:{code:'9010',hex:'#F4F4F4',name:'Blanco puro'} },
+  { id:'ORT-2026-001', tipo:'ort', lamparas:'Retrabajo Gracos', uds:1, est:1.8, real:null, operario:'IA', proyectos:[], estado:'Pendiente', day:4, start:7.0, end:10.0, nota:'Causa RT-02 · cambio especificación cliente · 4.2h orig + 1.8h retrabajo = 6.0h total' },
+  { id:'OP-2026-001-EMB-CRUZ', tipo:'emb', lamparas:'Embalaje Cruz + Canopi', uds:4, est:1.2, real:null, operario:'SK', proyectos:[{p:'A',u:1},{p:'B',u:1},{p:'C',u:2}], estado:'Pendiente', day:4, start:7.0, end:8.5 },
+  { id:'OP-2026-001-EMB-PARA', tipo:'emb', lamparas:'Embalaje Parafarmacia', uds:12, est:2.4, real:null, operario:'SK', proyectos:[{p:'A',u:4},{p:'B',u:8}], estado:'Pendiente', day:4, start:8.5, end:11.0 },
+  { id:'OP-2026-001-EMB-SELCOS', tipo:'emb', lamparas:'Embalaje Selcos', uds:15, est:1.5, real:null, operario:'SK', proyectos:[{p:'A',u:10},{p:'C',u:5}], estado:'Pendiente', day:4, start:11.0, end:12.5 },
+  { id:'STOCK-2026-009-CNC', tipo:'cnc', lamparas:'Stock anticipado Cruz', uds:4, est:4.0, real:null, operario:'DS', proyectos:[], estado:'Pendiente', day:5, start:7.0, end:9.0, nota:'Tiempo muerto aprovechado · horas a cuenta de stock' },
+];
+
+const DIAS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const FECHAS = ['15/06','16/06','17/06','18/06','19/06','—'];
+const H_START = 7;
+const H_PX = 52;
+const H_COUNT = 12;
+
+// ── ESTADO UI ─────────────────────────────────────────────────────
+let currentFilter = 'all';
+let currentEstado = null;
+
+// ── HELPERS ───────────────────────────────────────────────────────
+const fmtH = h => { const hh=Math.floor(h), mm=Math.round((h-hh)*60); return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; };
+const estadoBadge = e => ({
+  'Cerrada':'badge-cerrada','En curso':'badge-curso','Multiday':'badge-multi',
+  'Interrumpida':'badge-pausa','Pendiente':'badge-pend'
+}[e]||'badge-pend');
+const procClass = t => `proc-${t}`;
+const procName = t => ({cnc:'CNC',ens:'Ensamblaje',lij:'Lijado',imp:'Imprimación',pin:'Pintura',emb:'Embalaje',ort:'Retrabajo'}[t]||t);
+const operAvatar = k => `<div class="avatar" style="background:${OPERARIOS[k]?.color||'#888'}">${k}</div>`;
+const proyBadges = ps => ps.length ? ps.map(p=>`<span class="badge" style="background:${PROYECTOS[p.p]?.color+'22'||'#eee'};color:${PROYECTOS[p.p]?.color||'#444'}">${p.p}:${p.u}</span>`).join('') : '<span class="badge badge-pend">Stock</span>';
+
+// ── TABLA LISTADO ─────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('ops-tbody');
+  const filtered = OPS.filter(op => {
+    if(currentFilter !== 'all' && op.tipo !== currentFilter) return false;
+    if(currentEstado && op.estado !== currentEstado) return false;
+    return true;
+  });
+  document.getElementById('ops-count').textContent = `${filtered.length} OPs`;
+
+  tbody.innerHTML = filtered.map(op => {
+    const desvio = op.real != null ? ((op.real - op.est)/op.est*100).toFixed(1) : '—';
+    const desvioClass = desvio === '—' ? '' : (parseFloat(desvio) > 0 ? 'color:var(--riesgo-c)' : 'color:var(--ok-c)');
+    const desvioTxt = desvio === '—' ? '—' : (parseFloat(desvio) > 0 ? `+${desvio}%` : `${desvio}%`);
+    const ralDot = op.ral ? `<span class="ral-ball" style="background:${op.ral.hex};width:12px;height:12px;display:inline-block;border-radius:50%;vertical-align:middle;margin-right:4px;border:1px solid rgba(0,0,0,.1)"></span>` : '';
+    return `<tr onclick="openDrawer('${op.id}')">
+      <td><span class="mono">${op.id}</span></td>
+      <td><span class="proc ${procClass(op.tipo)}">${procName(op.tipo)}</span></td>
+      <td>${ralDot}${op.lamparas}</td>
+      <td>${op.uds}</td>
+      <td style="font-weight:500">${op.est}h</td>
+      <td>${op.real != null ? op.real+'h' : '—'}</td>
+      <td style="${desvioClass};font-weight:500">${desvioTxt}</td>
+      <td>${operAvatar(op.operario)}</td>
+      <td style="display:flex;gap:3px;flex-wrap:wrap;padding:11px 14px">${proyBadges(op.proyectos)}</td>
+      <td><span class="badge ${estadoBadge(op.estado)}">${op.estado}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function filterOPs(f, btn) {
+  currentFilter = f;
+  currentEstado = null;
+  document.querySelectorAll('.filter-bar .chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable();
+}
+
+function filterEstado(e, btn) {
+  currentEstado = currentEstado === e ? null : e;
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-bar .chip').forEach(b => b.classList.remove('active'));
+  if(currentEstado) btn.classList.add('active');
+  renderTable();
+}
+
+// ── DRAWER ────────────────────────────────────────────────────────
+function openDrawer(id) {
+  const op = OPS.find(o => o.id === id);
+  if(!op) return;
+  document.getElementById('dCode').textContent = op.id;
+  document.getElementById('dTitle').textContent = op.lamparas;
+  document.getElementById('dBadges').innerHTML = `
+    <span class="proc ${procClass(op.tipo)}">${procName(op.tipo)}</span>
+    <span class="badge ${estadoBadge(op.estado)}">${op.estado}</span>
+    ${op.ral ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:var(--bg);padding:2px 8px;border-radius:20px"><span style="width:12px;height:12px;border-radius:50%;background:${op.ral.hex};border:1px solid rgba(0,0,0,.1)"></span>RAL ${op.ral.code}</span>` : ''}
+  `;
+
+  const desvio = op.real != null ? ((op.real - op.est)/op.est*100).toFixed(1) : null;
+  const oper = OPERARIOS[op.operario];
+
+  const imputHtml = op.proyectos.length > 1 && op.real ? `
+    <div class="d-section">
+      <div class="d-label">Imputación automática por proyecto</div>
+      <div class="imput-grid">
+        ${op.proyectos.map(p => {
+          const h = (p.u / op.uds * op.real).toFixed(2);
+          const estH = (p.u / op.uds * op.est).toFixed(2);
+          const dv = ((h-estH)/estH*100).toFixed(1);
+          return `<div class="imput-box">
+            <div style="font-size:10px;color:${PROYECTOS[p.p]?.color};font-weight:600;margin-bottom:4px">${PROYECTOS[p.p]?.name?.replace('DRUNI CC ','')}</div>
+            <div class="iv">${h}h</div>
+            <div class="il">est. ${estH}h</div>
+            <div class="id ${parseFloat(dv)>0?'desvio-pos':'desvio-neg'}">${parseFloat(dv)>0?'+':''}${dv}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  const subOpsHtml = op.tipo === 'pin' ? '' : op.tipo === 'imp' ? `
+    <div class="d-section">
+      <div class="d-label">Sub-OPs de pintura generadas</div>
+      <div class="sub-op-row"><div class="ral-ball" style="background:#F4F4F4;border-color:#ccc"></div><span class="mono" style="font-size:10px">${op.id.replace('IMP','PIN-CRUZ-9010')}</span><span style="flex:1;font-size:11px;margin-left:6px">Cruz · RAL 9010</span></div>
+      <div class="sub-op-row"><div class="ral-ball" style="background:#383E42"></div><span class="mono" style="font-size:10px">${op.id.replace('IMP','PIN-CRUZ-7016')}</span><span style="flex:1;font-size:11px;margin-left:6px">Cruz · RAL 7016</span></div>
+    </div>` : '';
+
+  const notaHtml = op.nota ? `<div class="nota-box">${op.nota}</div>` : '';
+  const acciones = {
+    'Pendiente': `<button class="btn btn-gold btn-sm btn-iniciar">▶ Iniciar</button>`,
+    'En curso': `<button class="btn btn-outline btn-sm btn-pausar">⏸ Pausar</button><button class="btn btn-outline btn-sm btn-cerrar">✓ Finalizar</button>`,
+    'Multiday': `<button class="btn btn-gold btn-sm">▶ Reanudar</button>`,
+    'Interrumpida': `<button class="btn btn-gold btn-sm">▶ Reanudar</button>`,
+    'Cerrada': '',
+  };
+
+  document.getElementById('dBody').innerHTML = `
+    <div class="d-section">
+      <div class="d-label">Datos de la orden</div>
+      <div class="d-row"><span class="d-key">Operario</span><span class="d-val" style="display:flex;align-items:center;gap:6px">${operAvatar(op.operario)} ${oper?.name||op.operario}</span></div>
+      <div class="d-row"><span class="d-key">Horario</span><span class="d-val mono">${fmtH(op.start)} – ${fmtH(op.end)}</span></div>
+      <div class="d-row"><span class="d-key">Unidades</span><span class="d-val">${op.uds} uds</span></div>
+      <div class="d-row"><span class="d-key">Tiempo estándar</span><span class="d-val">${op.est}h</span></div>
+      <div class="d-row"><span class="d-key">Tiempo real</span><span class="d-val">${op.real != null ? op.real+'h' : '—'}</span></div>
+      ${desvio ? `<div class="d-row"><span class="d-key">Desviación</span><span class="d-val ${parseFloat(desvio)>0?'desvio-pos':'desvio-neg'}">${parseFloat(desvio)>0?'+':''}${desvio}% sobre estándar</span></div>` : ''}
+    </div>
+
+    <div class="d-section">
+      <div class="d-label">Proyectos vinculados</div>
+      ${op.proyectos.length > 0 ? op.proyectos.map(p => `
+        <div class="proj-pill">
+          <div class="proj-dot" style="background:${PROYECTOS[p.p]?.color||'#999'}"></div>
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:500">${PROYECTOS[p.p]?.name||'Stock'}</div>
+            <div style="font-size:10px;color:var(--text-3)">Entrega: ${PROYECTOS[p.p]?.entrega||'—'} · <span class="badge badge-${(PROYECTOS[p.p]?.riesgo||'').toLowerCase()}">${PROYECTOS[p.p]?.riesgo||''}</span></div>
+          </div>
+          <div style="font-size:14px;font-weight:600">${p.u} uds</div>
+        </div>`).join('') : '<div style="font-size:12px;color:var(--text-3);padding:8px 0">Sin proyecto asignado · horas a cuenta de stock</div>'}
+    </div>
+
+    ${imputHtml}
+    ${subOpsHtml}
+    ${notaHtml ? `<div class="d-section"><div class="d-label">Nota operativa</div>${notaHtml}</div>` : ''}
+
+    <div class="actions-row">${acciones[op.estado]||''}</div>
+  `;
+
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+// ── CALENDARIO ────────────────────────────────────────────────────
+function renderCalendario() {
+  const tc = document.getElementById('calTimeCol');
+  tc.innerHTML = '';
+  for(let h=0; h<H_COUNT; h++) {
+    const s = document.createElement('div');
+    s.className = 'cal-time-slot';
+    s.style.height = H_PX + 'px';
+    s.textContent = `${String(H_START+h).padStart(2,'0')}:00`;
+    tc.appendChild(s);
+  }
+
+  const di = document.getElementById('calDaysInner');
+  di.innerHTML = '';
+  for(let d=0; d<6; d++) {
+    const col = document.createElement('div');
+    col.className = 'cal-day';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'cal-day-header';
+    hdr.innerHTML = `<div class="dh-name">${DIAS[d]}</div><div class="dh-date">${FECHAS[d]}</div>`;
+    col.appendChild(hdr);
+
+    const body = document.createElement('div');
+    body.className = 'cal-day-body';
+    body.style.height = `${H_PX * H_COUNT}px`;
+
+    for(let h=0; h<=H_COUNT; h++) {
+      const l = document.createElement('div');
+      l.className = 'cal-hour-line';
+      l.style.top = `${H_PX*h}px`;
+      body.appendChild(l);
+      if(h < H_COUNT) {
+        const lh = document.createElement('div');
+        lh.className = 'cal-hour-line half';
+        lh.style.top = `${H_PX*h + H_PX/2}px`;
+        body.appendChild(lh);
+      }
+    }
+
+    OPS.filter(o => o.day === d).forEach(op => {
+      const top = (op.start - H_START) * H_PX;
+      const ht = Math.max((op.end - op.start) * H_PX - 2, 18);
+      const b = document.createElement('div');
+      b.className = `cal-block cb-${op.tipo}`;
+      b.style.top = `${top}px`;
+      b.style.height = `${ht}px`;
+      const ralDot = op.ral ? `<span style="width:8px;height:8px;border-radius:50%;background:${op.ral.hex};border:1px solid rgba(0,0,0,.15);display:inline-block;vertical-align:middle;margin-right:3px"></span>` : '';
+      b.innerHTML = `<div class="cb-code">${op.id}</div>${ht>30?`<div class="cb-name">${ralDot}${op.lamparas}</div>`:''}${ht>50?`<div class="cb-detail">${op.uds}uds · ${op.est}h</div>`:''}`;
+      b.onclick = () => openDrawer(op.id);
+      body.appendChild(b);
+    });
+
+    col.appendChild(body);
+    di.appendChild(col);
+  }
+}
+
+// ── TABLET VIEW ───────────────────────────────────────────────────
+function renderTablet() {
+  const grid = document.getElementById('tabletGrid');
+  const orden = ['DS','IA','SK','TM','CP'];
+  grid.innerHTML = orden.map(k => {
+    const op = OPERARIOS[k];
+    const myOps = OPS.filter(o => o.operario === k && o.day === 0);
+    const multiday = OPS.filter(o => o.operario === k && o.estado === 'Multiday');
+    const allOps = [...multiday.filter(o=>!myOps.includes(o)), ...myOps];
+    const opsHtml = allOps.length > 0 ? allOps.map(o => {
+      const isMulti = o.estado === 'Multiday';
+      const btnTxt = isMulti ? '▶ Reanudar' : '▶ Iniciar';
+      const btnCls = isMulti ? 'oc-btn-resume' : 'oc-btn-start';
+      return `<div class="oc-op-item op-${o.tipo}" style="border-left-color:var(--${o.tipo==='cnc'?'cnc-c':o.tipo==='ens'?'ens-c':o.tipo==='lij'?'lij-c':o.tipo==='imp'?'imp-c':o.tipo==='pin'?'pin-c':o.tipo==='emb'?'emb-c':'ort-c'})" onclick="openDrawer('${o.id}')">
+        ${isMulti?'<div style="font-size:9px;font-weight:600;color:var(--cnc-c);margin-bottom:2px">🔄 CONTINÚA HOY</div>':''}
+        <div class="oc-op-code">${o.id}</div>
+        <div class="oc-op-name">${o.lamparas}</div>
+        <div class="oc-op-detail">${o.uds} uds · ${o.est}h est.</div>
+        <div class="oc-op-row">
+          <span style="font-size:9px;color:var(--text-3)">${fmtH(o.start)}–${fmtH(o.end)}</span>
+          <button class="oc-btn ${btnCls}">${btnTxt}</button>
+        </div>
+      </div>`;
+    }).join('') : `<div class="oc-empty">Sin OPs asignadas</div>`;
+
+    return `<div class="operario-card">
+      <div class="oc-header" style="background:${op.color}">
+        <div class="avatar" style="background:rgba(255,255,255,.25)">${k}</div>
+        <div>
+          <div class="oc-name">${op.name}</div>
+          <div class="oc-role">${op.role}</div>
+        </div>
+      </div>
+      <div class="oc-ops">${opsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── GENERAR VIEW ──────────────────────────────────────────────────
+const GEN_ITEMS = [
+  { id:'g1', name:'Cruz 250cm', detail:'9.84m/ud · Bastidor tabica 150x12 · MDF 30', proyectos:[{p:'A',u:1},{p:'B',u:1}], horas:'3.1h', checked:true },
+  { id:'g2', name:'Cruz 350cm', detail:'12.5m/ud · Bastidor tabica 150x12 · MDF 30', proyectos:[{p:'C',u:1}], horas:'1.9h', checked:true },
+  { id:'g3', name:'Parafarmacia 150cm', detail:'Bastidor normal 50 · MDF 30', proyectos:[{p:'A',u:4},{p:'B',u:8}], horas:'8.4h', checked:true },
+  { id:'g4', name:'Canopi', detail:'Bastidor CANOPI · MDF 30', proyectos:[{p:'C',u:1}], horas:'2.1h', checked:false },
+];
+const GEN_ITEMS2 = [
+  { id:'g5', name:'Selcos metacrilato', detail:'Bastidor metacrilato · programa CNC independiente', proyectos:[{p:'A',u:10},{p:'C',u:5}], horas:'3.8h', checked:true },
+];
+
+function renderGen(items, tableId) {
+  document.getElementById(tableId).innerHTML = items.map(it => `
+    <div class="ag-row" onclick="toggleGen('${it.id}')">
+      <div class="ag-check ${it.checked?'checked':''}" id="chk-${it.id}"></div>
+      <div class="ag-info">
+        <div class="ag-name">${it.name}</div>
+        <div class="ag-sub">${it.detail}</div>
+      </div>
+      <div class="ag-proyectos">${proyBadges(it.proyectos)}</div>
+      <div class="ag-horas">${it.horas}</div>
+    </div>`).join('');
+}
+
+function toggleGen(id) {
+  const chk = document.getElementById('chk-'+id);
+  chk.classList.toggle('checked');
+}
+
+// ── NAVEGACIÓN TABS ───────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => {
+    if(t.textContent.toLowerCase().includes(name==='listado'?'listado':name==='calendario'?'calen':name==='tablet'?'oper':'generar'))
+      t.classList.add('active');
+  });
+}
+
+function goNav(section) {
+  if(section === 'ops') showTab('listado');
+}
+
+// ── INIT ─────────────────────────────────────────────────────────
+renderTable();
+renderCalendario();
+renderTablet();
+renderGen(GEN_ITEMS, 'genTable');
+renderGen(GEN_ITEMS2, 'genTable2');
+</script>
+</body>
+</html>

@@ -95,6 +95,46 @@ export function toAxisFraction(
   return idx + dayFrac;
 }
 
+export function filterBlocksOnAxis(
+  blocks: GanttTimelineBlock[],
+  axis: string[],
+  timeAxis: GanttTimeAxisContext,
+): GanttTimelineBlock[] {
+  return blocks.filter((block) => resolveBlockRange(axis, block, timeAxis) != null);
+}
+
+/** Bloques visibles en el eje, o una barra de respaldo por fechas estimadas. */
+export function resolveGanttBarBlocks(
+  timelineBlocks: GanttTimelineBlock[] | undefined,
+  estimatedStart: string | null,
+  estimatedEnd: string | null,
+  axis: string[],
+  timeAxis: GanttTimeAxisContext,
+  fallbackLabel?: string,
+): GanttTimelineBlock[] {
+  if (timelineBlocks && timelineBlocks.length > 0) {
+    const visible = filterBlocksOnAxis(timelineBlocks, axis, timeAxis);
+    if (visible.length > 0) return visible;
+  }
+
+  if (!estimatedStart || !estimatedEnd) return [];
+
+  return [
+    {
+      kind: "work",
+      startDayIso: estimatedStart,
+      startSlot: 0,
+      startMinutes: slotToStartMinutes(0),
+      endDayIso: estimatedEnd,
+      endSlot: 8,
+      endMinutes: slotToEndMinutes(8),
+      label:
+        fallbackLabel ??
+        `Planificado ${formatShortDay(estimatedStart)} – ${formatShortDay(estimatedEnd)}`,
+    },
+  ];
+}
+
 export function resolveBlockRange(
   axis: string[],
   block: Pick<

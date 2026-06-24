@@ -47,6 +47,17 @@ Lista importada desde Excel; cambia **Estado** con el desplegable (requiere rol 
 
 **Nueva OP** rellena proyecto y datos; **Imprimir** abre hoja con marca CONTRACT+ y Coverdec Innovación SL.
 
+### Próximamente (módulo CEILICA)
+
+En desarrollo según [`roadmap-post-mvp.md`](roadmap-post-mvp.md):
+
+- OPs **agrupadas** entre proyectos (mismo bastidor CNC, lotes de imprimación)
+- Vista **tablet** en nave: iniciar, pausar y confirmar procesos
+- **Stock anticipado** y cancelaciones con reglas por fase de fabricación
+- Planning de **todas las naves a la vez** para lámparas multi-nave
+
+Guía detallada cuando esté disponible en producción.
+
 ## Importación Excel (técnicos)
 
 ```bash

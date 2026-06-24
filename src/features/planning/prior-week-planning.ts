@@ -208,7 +208,11 @@ export function computeMinWeekQuarterByTaskId(args: {
       for (const pred of sorted) {
         if (pred.order >= task.order) break;
         if (args.engineTaskIds.has(pred.id)) continue;
-        if (!taskHasNoPendingWork(pred)) continue;
+        if (!taskHasNoPendingWork(pred)) {
+          deferredPastHorizon.add(task.id);
+          minQ = HORIZON_Q;
+          break;
+        }
 
         const last = args.priorEnds.get(pred.id);
         if (!last) continue;
@@ -323,8 +327,16 @@ export function buildPriorPlanningWhere(
   beforeWeekStart: Date,
   options?: { includeDraftPriorWeeks?: boolean },
 ) {
+  return buildPriorPlanningWhereNaveIds([naveId], beforeWeekStart, options);
+}
+
+export function buildPriorPlanningWhereNaveIds(
+  naveIds: string[],
+  beforeWeekStart: Date,
+  options?: { includeDraftPriorWeeks?: boolean },
+) {
   const base = {
-    naveId,
+    naveId: naveIds.length === 1 ? naveIds[0]! : { in: naveIds },
     weekStart: { lt: getMondayOf(beforeWeekStart) },
   };
   if (options?.includeDraftPriorWeeks) {
@@ -344,8 +356,21 @@ export async function getPriorPlanningAssignments(args: {
   /** Incluye borradores de semanas anteriores (encadenamiento multi-semana). */
   includeDraftPriorWeeks?: boolean;
 }): Promise<PriorPlanningAssignment[]> {
+  return getPriorPlanningAssignmentsForNaves({
+    naveIds: [args.naveId],
+    beforeWeekStart: args.beforeWeekStart,
+    includeDraftPriorWeeks: args.includeDraftPriorWeeks,
+  });
+}
+
+export async function getPriorPlanningAssignmentsForNaves(args: {
+  naveIds: string[];
+  beforeWeekStart: Date;
+  includeDraftPriorWeeks?: boolean;
+}): Promise<PriorPlanningAssignment[]> {
+  if (args.naveIds.length === 0) return [];
   const rows = await prisma.planningAssignment.findMany({
-    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart, {
+    where: buildPriorPlanningWhereNaveIds(args.naveIds, args.beforeWeekStart, {
       includeDraftPriorWeeks: args.includeDraftPriorWeeks,
     }),
     select: { taskId: true, date: true, endSlot: true, hours: true },
@@ -385,8 +410,21 @@ export async function getPriorPlanningOwnerByTaskId(args: {
   beforeWeekStart: Date;
   includeDraftPriorWeeks?: boolean;
 }): Promise<Map<string, string>> {
+  return getPriorPlanningOwnerByTaskIdForNaves({
+    naveIds: [args.naveId],
+    beforeWeekStart: args.beforeWeekStart,
+    includeDraftPriorWeeks: args.includeDraftPriorWeeks,
+  });
+}
+
+export async function getPriorPlanningOwnerByTaskIdForNaves(args: {
+  naveIds: string[];
+  beforeWeekStart: Date;
+  includeDraftPriorWeeks?: boolean;
+}): Promise<Map<string, string>> {
+  if (args.naveIds.length === 0) return new Map();
   const rows = await prisma.planningAssignment.findMany({
-    where: buildPriorPlanningWhere(args.naveId, args.beforeWeekStart, {
+    where: buildPriorPlanningWhereNaveIds(args.naveIds, args.beforeWeekStart, {
       includeDraftPriorWeeks: args.includeDraftPriorWeeks,
     }),
     select: { taskId: true, personId: true, date: true, endSlot: true },

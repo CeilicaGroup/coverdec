@@ -28,6 +28,7 @@ import type { WorkWindowRow } from "@/features/planning/gantt-time-axis";
 import {
   slotToEndMinutes,
   slotToStartMinutes,
+  buildTaskTimelineBlocks,
 } from "@/features/planning/gantt-timeline";
 import { PageHeader } from "../../_components/page-header";
 import { GanttChart } from "./gantt-chart";
@@ -74,7 +75,11 @@ function buildAxisRangeFromAssignments(assignments: GanttPlanningAssignment[], t
   };
 }
 
-function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow[] {
+function buildWorkerRows(
+  assignments: GanttPlanningAssignment[],
+  waitHoursByProcess: Map<string, number>,
+  holidayDates: Set<string>,
+): GanttWorkerRow[] {
   const byWorker = new Map<string, GanttPlanningAssignment[]>();
   for (const assignment of assignments) {
     const list = byWorker.get(assignment.personId) ?? [];
@@ -118,6 +123,13 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         );
         const first = taskSorted[0]!;
         const last = taskSorted[taskSorted.length - 1]!;
+        const taskTimelineBlocks = buildTaskTimelineBlocks(
+          taskSorted,
+          taskId,
+          waitHoursByProcess.get(first.process) ?? 0,
+          holidayDates,
+          first.process,
+        );
         return {
           id: `${workerId}:${taskId}`,
           taskId,
@@ -131,23 +143,11 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
           estimatedStart: first.date.toISOString().slice(0, 10),
           estimatedEnd: last.date.toISOString().slice(0, 10),
           isAssigned: true,
-          timelineBlocks: taskSorted.map((a) => ({
-            kind: "work" as const,
-            startDayIso: a.date.toISOString().slice(0, 10),
-            endDayIso: a.date.toISOString().slice(0, 10),
-            startSlot: a.startSlot,
-            endSlot: a.endSlot,
-            startMinutes: slotToStartMinutes(a.startSlot),
-            endMinutes: slotToEndMinutes(a.endSlot),
-            hours: a.hours,
-            label: (() => {
-              const frameLabel = getTaskLampElementLabel(a.task);
-              const bastidor = frameLabel ? ` · Bastidor ${frameLabel}` : "";
-              return `${a.task.project.name} · ${a.task.lamp.name ?? "Lámpara"} · ${a.process} · ${rangeLabel(a.startSlot, a.endSlot)} · ${a.hours}h${bastidor}`;
-            })(),
-          })),
+          timelineBlocks: taskTimelineBlocks,
         };
       });
+
+      const workerTimelineBlocks = tasks.flatMap((task) => task.timelineBlocks);
 
       return {
         id: workerId,
@@ -157,7 +157,7 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         estimatedStart: sorted[0]!.date.toISOString().slice(0, 10),
         estimatedEnd: sorted[sorted.length - 1]!.date.toISOString().slice(0, 10),
         isAssigned: sorted.length > 0,
-        timelineBlocks,
+        timelineBlocks: workerTimelineBlocks.length > 0 ? workerTimelineBlocks : timelineBlocks,
         tasks,
       };
     })
@@ -283,7 +283,10 @@ export default async function GanttPage({
       endMinutes: w.endMinutes,
     })),
   );
-  const workerRows = axisMode === "worker" ? buildWorkerRows(filteredAssignments) : [];
+  const workerRows =
+    axisMode === "worker"
+      ? buildWorkerRows(filteredAssignments, waitHoursByProcess, holidayDates)
+      : [];
   const planningByTask = new Map<string, number>();
   for (const assignment of planningAssignments) {
     planningByTask.set(
@@ -424,6 +427,8 @@ export default async function GanttPage({
           plannedItemsByTask={plannedItemsByTask}
           actualItemsByTask={actualItemsByTask}
           plannedDueByTask={plannedDueByTask}
+          plannedHoursByTask={planningByTask}
+          actualHoursByTask={actualByTask}
           canManageTasks={ctx.role === "ADMIN"}
         />
       )}

@@ -13,7 +13,7 @@ import {
   type GanttTimeAxisContext,
   type WorkWindowRow,
 } from "@/features/planning/gantt-time-axis";
-import { resolveBlockRange, timelineHoverSummary } from "@/features/planning/gantt-timeline";
+import { resolveBlockRange, resolveGanttBarBlocks, timelineHoverSummary } from "@/features/planning/gantt-timeline";
 import { formatDayMonthYear, formatHours } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ const LABEL_COL = "minmax(220px, 260px)";
 const WAIT_BAR_COLOR = "rgba(245, 158, 11, 0.55)";
 const WAIT_BAR_PATTERN =
   "repeating-linear-gradient(135deg, rgba(245,158,11,0.35) 0, rgba(245,158,11,0.35) 4px, rgba(251,191,36,0.2) 4px, rgba(251,191,36,0.2) 8px)";
+const MIN_GANTT_BAR_PX = 2;
 
 export interface GanttWorkerTaskRow {
   id: string;
@@ -140,6 +141,7 @@ function TimelineBars({
                   style={{
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
+                    minWidth: `${MIN_GANTT_BAR_PX}px`,
                     background: isWait ? WAIT_BAR_COLOR : color,
                     backgroundImage: isWait ? WAIT_BAR_PATTERN : undefined,
                   }}
@@ -239,9 +241,15 @@ export function GanttWorkerChart({
                     />
                     <div className="absolute inset-0 bg-secondary/50 rounded-full z-0" />
                     <div className="absolute inset-0 z-[1]">
-                      {worker.isAssigned ? (
+                      {worker.isAssigned && worker.estimatedStart && worker.estimatedEnd ? (
                         <TimelineBars
-                          blocks={worker.timelineBlocks}
+                          blocks={resolveGanttBarBlocks(
+                            worker.timelineBlocks,
+                            worker.estimatedStart,
+                            worker.estimatedEnd,
+                            axis,
+                            timeAxis,
+                          )}
                           axis={axis}
                           total={total}
                           color={worker.color}
@@ -338,7 +346,13 @@ export function GanttWorkerChart({
                         <div className="absolute inset-0 z-[1]">
                           {task.isAssigned && task.estimatedStart && task.estimatedEnd ? (
                             <TimelineBars
-                              blocks={task.timelineBlocks}
+                              blocks={resolveGanttBarBlocks(
+                                task.timelineBlocks,
+                                task.estimatedStart,
+                                task.estimatedEnd,
+                                axis,
+                                timeAxis,
+                              )}
                               axis={axis}
                               total={total}
                               color={barColor}

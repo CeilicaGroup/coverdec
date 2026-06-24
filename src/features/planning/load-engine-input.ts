@@ -5,7 +5,7 @@ import {
 import { prisma } from "@/lib/db";
 import { utcDayStart } from "@/lib/holidays";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
-import { getPlanningWeights } from "@/features/planning/queries";
+import { getPlanningWeights, getMergedPlanningWeights } from "@/features/planning/queries";
 import { projectStrategyToWeights } from "@/features/planning/policy-schema";
 import {
   computePlanFromBounds,
@@ -18,6 +18,7 @@ import {
   buildPriorPlannedHoursByTaskId,
   computeMinWeekQuarterByTaskId,
   getPriorPlanningOwnerByTaskId,
+  getPriorPlanningOwnerByTaskIdForNaves,
   type PriorPlanningAssignment,
 } from "@/features/planning/prior-week-planning";
 import { isSameUtcDay, isoWeek, toUtcDay } from "@/lib/week";
@@ -258,7 +259,8 @@ export function buildFixedAssignmentsFromPrevious(
 }
 
 export async function loadSolverInput(args: {
-  naveId: string;
+  naveId?: string;
+  naveIds?: string[];
   weekStart: Date;
   weekEnd: Date;
   planFrom?: PlanFrom;
@@ -275,6 +277,13 @@ export async function loadSolverInput(args: {
   /** Asignaciones de plannings con weekStart anterior a esta semana. */
   priorWeekAssignments?: PriorPlanningAssignment[];
 }): Promise<SolverInput> {
+  const naveIds =
+    args.naveIds ?? (args.naveId ? [args.naveId] : []);
+  if (naveIds.length === 0) {
+    throw new Error("Se requiere al menos una nave para planificar");
+  }
+  const isCoordinated = naveIds.length > 1;
+  const primaryNaveId = naveIds[0]!;
   const weekStart = toUtcDay(args.weekStart);
   const planFromAt = args.planFromAt ?? new Date();
   const planFrom = args.planFrom ?? "WEEK_START";
@@ -283,27 +292,32 @@ export async function loadSolverInput(args: {
 
   const { year, week } = isoWeek(weekStart);
 
+  const weights = await (isCoordinated
+    ? getMergedPlanningWeights(naveIds)
+    : getPlanningWeights(primaryNaveId));
+
   const [
     processes,
     peopleRaw,
     absencesRaw,
     holidaysRaw,
-    weights,
     tasksRaw,
     timeEntriesRaw,
     crossNaveAssignments,
     planningPolicy,
+    precedenceTasksRaw,
   ] = await Promise.all([
     prisma.processDefinition.findMany(),
     prisma.person.findMany({
       where: {
         isActive: true,
-        personNaves: { some: { naveId: args.naveId } },
+        personNaves: { some: { naveId: { in: naveIds } } },
       },
       include: {
         specialties: true,
         workWindows: true,
         scheduleOverrides: { include: { windows: true } },
+        personNaves: { select: { naveId: true } },
       },
     }),
     prisma.absence.findMany({
@@ -321,10 +335,9 @@ export async function loadSolverInput(args: {
         ],
       },
     }),
-    getPlanningWeights(args.naveId),
     prisma.task.findMany({
       where: {
-        naveId: args.naveId,
+        naveId: { in: naveIds },
         project: { isActive: true },
       },
       include: {
@@ -345,34 +358,53 @@ export async function loadSolverInput(args: {
         startedAt: { gte: weekStart, lte: args.weekEnd },
         user: {
           personId: { not: null },
-          person: { personNaves: { some: { naveId: args.naveId } } },
+          person: { personNaves: { some: { naveId: { in: naveIds } } } },
         },
       },
       include: {
         user: { select: { personId: true } },
       },
     }),
-    prisma.planningAssignment.findMany({
-      where: {
-        planning: {
-          naveId: { not: args.naveId },
-          year,
-          week,
+    isCoordinated
+      ? Promise.resolve([])
+      : prisma.planningAssignment.findMany({
+        where: {
+          planning: {
+            naveId: { notIn: naveIds },
+            year,
+            week,
+          },
         },
-      },
-      select: {
-        personId: true,
-        date: true,
-        startSlot: true,
-        endSlot: true,
-        hours: true,
-      },
-    }),
+        select: {
+          personId: true,
+          date: true,
+          startSlot: true,
+          endSlot: true,
+          hours: true,
+        },
+      }),
     prisma.planningPolicy.findUnique({
-      where: { naveId: args.naveId },
+      where: { naveId: primaryNaveId },
       select: {
         deadlineCurveExponent: true,
         overduePenaltyMultiplier: true,
+      },
+    }),
+    prisma.task.findMany({
+      where: {
+        project: { isActive: true },
+        lamp: {
+          tasks: { some: { naveId: { in: naveIds } } },
+        },
+      },
+      select: {
+        id: true,
+        lampId: true,
+        order: true,
+        process: true,
+        estimatedHours: true,
+        isCompleted: true,
+        naveId: true,
       },
     }),
   ]);
@@ -388,19 +420,31 @@ export async function loadSolverInput(args: {
       hours: a.hours,
     }));
 
+  const allPrecedenceTaskIds = [
+    ...new Set([
+      ...tasksRaw.map((t) => t.id),
+      ...precedenceTasksRaw.map((t) => t.id),
+    ]),
+  ];
   const doneHoursByTask = await loadDoneHoursByTaskIds(
     prisma,
-    tasksRaw.map((task) => task.id),
+    allPrecedenceTaskIds,
     planFromAt,
   );
   const taskIds = tasksRaw.map((task) => task.id);
   const [primaryWorkerByTask, priorOwnerByTask] = await Promise.all([
     loadPrimaryWorkerByTaskIds(prisma, taskIds, planFromAt),
-    getPriorPlanningOwnerByTaskId({
-      naveId: args.naveId,
-      beforeWeekStart: weekStart,
-      includeDraftPriorWeeks: true,
-    }),
+    isCoordinated
+      ? getPriorPlanningOwnerByTaskIdForNaves({
+        naveIds,
+        beforeWeekStart: weekStart,
+        includeDraftPriorWeeks: true,
+      })
+      : getPriorPlanningOwnerByTaskId({
+        naveId: primaryNaveId,
+        beforeWeekStart: weekStart,
+        includeDraftPriorWeeks: true,
+      }),
   ]);
   const currentWeekOwnerByTask = buildOwnerFromCurrentWeekAssignments(
     args.previousAssignments ?? [],
@@ -417,14 +461,21 @@ export async function loadSolverInput(args: {
     args.priorWeekAssignments ?? [],
   );
   const planningTotalsByTaskId = new Map(
-    tasksRaw.map((task) => [
-      task.id,
-      computeTaskPlanningTotals({
-        estimatedHours: task.estimatedHours,
-        doneHours: doneHoursByTask.get(task.id) ?? 0,
-        priorPlannedHours: priorPlannedHoursByTask.get(task.id) ?? 0,
-      }),
-    ]),
+    allPrecedenceTaskIds.map((taskId) => {
+      const task =
+        tasksRaw.find((t) => t.id === taskId) ??
+        precedenceTasksRaw.find((t) => t.id === taskId);
+      const estimatedHours = task?.estimatedHours ?? 0;
+      const isCompleted = task?.isCompleted ?? false;
+      return [
+        taskId,
+        computeTaskPlanningTotals({
+          estimatedHours,
+          doneHours: doneHoursByTask.get(taskId) ?? 0,
+          priorPlannedHours: priorPlannedHoursByTask.get(taskId) ?? 0,
+        }),
+      ] as const;
+    }),
   );
   const taskById = new Map(
     tasksRaw.map((task) => [
@@ -507,6 +558,7 @@ export async function loadSolverInput(args: {
       lampId: t.lampId,
       order: t.order,
       process: t.process,
+      naveId: t.naveId,
       pendingHours: pending,
       canFragment: processCanFragment.get(t.process) ?? true,
       ownerPersonId: ownerPersonIdByTask.get(t.id) ?? null,
@@ -520,7 +572,7 @@ export async function loadSolverInput(args: {
   const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
     computeMinWeekQuarterByTaskId({
       weekStart,
-      tasks: tasksRaw.map((task) => ({
+      tasks: precedenceTasksRaw.map((task) => ({
         id: task.id,
         lampId: task.lampId,
         order: task.order,
@@ -629,6 +681,9 @@ export async function loadSolverInput(args: {
       fallback: p.specialties
         .filter((s) => !s.isPrimary)
         .map((s) => s.process),
+      naveIds: p.personNaves
+        .map((pn) => pn.naveId)
+        .filter((id) => naveIds.includes(id)),
       capacityHours,
       hourlyRate: Number(p.hourlyRate),
       overtimeHourlyRate: Number(p.overtimeHourlyRate),

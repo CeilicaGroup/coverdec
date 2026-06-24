@@ -29,8 +29,7 @@ import {
 } from "@/features/planning/gantt-time-axis";
 import {
   resolveBlockRange,
-  slotToEndMinutes,
-  slotToStartMinutes,
+  resolveGanttBarBlocks,
   timelineHoverSummary,
 } from "@/features/planning/gantt-timeline";
 import { formatDayMonthYear, formatHours, formatShortDate } from "@/lib/format";
@@ -64,6 +63,8 @@ interface GanttChartProps {
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
   plannedDueByTask: Map<string, number>;
+  plannedHoursByTask: Map<string, number>;
+  actualHoursByTask: Map<string, number>;
   canManageTasks?: boolean;
 }
 
@@ -74,6 +75,7 @@ function formatDayBoundsLabel(minutes: number): string {
 const WAIT_BAR_COLOR = "rgba(245, 158, 11, 0.55)";
 const WAIT_BAR_PATTERN =
   "repeating-linear-gradient(135deg, rgba(245,158,11,0.35) 0, rgba(245,158,11,0.35) 4px, rgba(251,191,36,0.2) 4px, rgba(251,191,36,0.2) 8px)";
+const MIN_GANTT_BAR_PX = 2;
 
 function parseUtc(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
@@ -226,31 +228,23 @@ function GanttBarContent({
   if (!isAssigned || !estimatedStart || !estimatedEnd) {
     return <GanttUnassignedTrack />;
   }
-  if (timelineBlocks && timelineBlocks.length > 0) {
-    return (
-      <TimelineBars
-        blocks={timelineBlocks}
-        axis={axis}
-        total={total}
-        workColor={color}
-        timeAxis={timeAxis}
-      />
-    );
+
+  const bars = resolveGanttBarBlocks(
+    timelineBlocks,
+    estimatedStart,
+    estimatedEnd,
+    axis,
+    timeAxis,
+    `Planificado ${formatShortDate(parseUtc(estimatedStart))} – ${formatShortDate(parseUtc(estimatedEnd))}`,
+  );
+
+  if (bars.length === 0) {
+    return <GanttUnassignedTrack />;
   }
+
   return (
     <TimelineBars
-      blocks={[
-        {
-          kind: "work",
-          startDayIso: estimatedStart,
-          startSlot: 0,
-          startMinutes: slotToStartMinutes(0),
-          endDayIso: estimatedEnd,
-          endSlot: 8,
-          endMinutes: slotToEndMinutes(8),
-          label: `Planificado ${formatShortDate(parseUtc(estimatedStart))} – ${formatShortDate(parseUtc(estimatedEnd))}`,
-        },
-      ]}
+      blocks={bars}
       axis={axis}
       total={total}
       workColor={color}
@@ -357,6 +351,7 @@ function TimelineBars({
                   style={{
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
+                    minWidth: `${MIN_GANTT_BAR_PX}px`,
                     background: isWait ? WAIT_BAR_COLOR : workColor,
                     backgroundImage: isWait ? WAIT_BAR_PATTERN : undefined,
                   }}
@@ -431,7 +426,7 @@ function ProjectGanttRow({
   hasLamps: boolean;
 }) {
   const color = riskColor(p.risk);
-  const isAssigned = p.assignedHours > 0;
+  const isAssigned = p.assignedHours > 0 || p.timelineBlocks.length > 0;
 
   return (
     <div
@@ -574,6 +569,8 @@ function TaskGanttRow({
   plannedItemsByTask,
   actualItemsByTask,
   plannedDueByTask,
+  plannedHoursByTask,
+  actualHoursByTask,
   canManageTasks = false,
 }: {
   task: GanttTaskRow;
@@ -586,6 +583,8 @@ function TaskGanttRow({
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
   plannedDueByTask: Map<string, number>;
+  plannedHoursByTask: Map<string, number>;
+  actualHoursByTask: Map<string, number>;
   canManageTasks?: boolean;
 }) {
   const processStyle = processStyles[task.process];
@@ -619,15 +618,15 @@ function TaskGanttRow({
         <TaskProgressInline
           progress={computeTaskProgress({
             isCompleted: task.isPlanningComplete,
-            plannedHours: (plannedItemsByTask.get(task.id) ?? []).length,
+            plannedHours: plannedHoursByTask.get(task.id) ?? 0,
             plannedDueHours: plannedDueByTask.get(task.id) ?? 0,
-            actualHours: (actualItemsByTask.get(task.id) ?? []).length,
+            actualHours: actualHoursByTask.get(task.id) ?? 0,
             hasRunning: (actualItemsByTask.get(task.id) ?? []).some((s) => s.isRunning),
           })}
           stripes={
             mode === "actual"
-              ? (plannedItemsByTask.get(task.id) ?? [])
-              : (actualItemsByTask.get(task.id) ?? [])
+              ? (actualItemsByTask.get(task.id) ?? [])
+              : (plannedItemsByTask.get(task.id) ?? [])
           }
           actions={
             <TaskCompletionAction
@@ -681,6 +680,8 @@ export function GanttChart({
   plannedItemsByTask,
   actualItemsByTask,
   plannedDueByTask,
+  plannedHoursByTask,
+  actualHoursByTask,
   canManageTasks = false,
 }: GanttChartProps) {
   const timeAxis = useMemo(
@@ -814,6 +815,8 @@ export function GanttChart({
                                     plannedItemsByTask={plannedItemsByTask}
                                     actualItemsByTask={actualItemsByTask}
                                     plannedDueByTask={plannedDueByTask}
+                                    plannedHoursByTask={plannedHoursByTask}
+                                    actualHoursByTask={actualHoursByTask}
                                     canManageTasks={canManageTasks}
                                   />
                                 ))

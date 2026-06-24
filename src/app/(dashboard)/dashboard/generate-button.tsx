@@ -46,7 +46,7 @@ import {
   weekWorkdayIsoRange,
 } from "@/features/planning/plan-from";
 import { formatWeekRange } from "@/lib/week";
-import type { PlanningStatus, Role } from "@/generated/prisma";
+import type { Role } from "@/generated/prisma";
 
 export interface GenerateButtonProject {
   id: string;
@@ -79,26 +79,30 @@ function weekIsoFromDate(d: Date): string {
 
 export function GenerateButton({
   weekStart,
-  planningId,
-  planningStatus,
+  hasPlanning,
+  hasDraft,
+  isPublished,
   canUndo,
   hasFuturePlannings,
   futurePlanningWeeks,
   hasPublishedFuture,
   hasRegistros,
-  isPublished,
+  coordinatedNaveCount,
+  publishPlanningId,
   role,
   activeProjects,
 }: {
   weekStart: string;
-  planningId: string | null;
-  planningStatus: PlanningStatus | null;
+  hasPlanning: boolean;
+  hasDraft: boolean;
+  isPublished: boolean;
   canUndo: boolean;
   hasFuturePlannings: boolean;
   futurePlanningWeeks: string[];
   hasPublishedFuture: boolean;
   hasRegistros: boolean;
-  isPublished: boolean;
+  coordinatedNaveCount: number;
+  publishPlanningId: string | null;
   role: Role;
   activeProjects: GenerateButtonProject[];
 }) {
@@ -114,6 +118,7 @@ export function GenerateButton({
   const [planningWarnings, setPlanningWarnings] = useState<string[]>([]);
   const [unscheduledHours, setUnscheduledHours] = useState(0);
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const isCoordinated = coordinatedNaveCount > 1;
   const workWeek = useMemo(() => weekWorkdayIsoRange(weekStart), [weekStart]);
   const [planFromDate, setPlanFromDate] = useState(() =>
     defaultPlanFromDateIso(weekStart),
@@ -156,7 +161,10 @@ export function GenerateButton({
 
     startTransition(async () => {
       try {
-        await prepareHorizonGenerationAction({ weekStart, horizonMode });
+        await prepareHorizonGenerationAction({
+          weekStart,
+          horizonMode,
+        });
 
         const maxWeeks = maxWeeksForMode(horizonMode);
         let weeksGenerated = 0;
@@ -223,6 +231,9 @@ export function GenerateButton({
             : `${weeksGenerated} semanas`;
 
         let toastMessage = `Planning generado: ${weeksLabel}, ${totalAssignments} asignaciones`;
+        if (isCoordinated) {
+          toastMessage = `Planning coordinado: ${coordinatedNaveCount} naves, ${weeksLabel}, ${totalAssignments} asignaciones`;
+        }
         if (horizonKind === "PROJECT" && selectedProjectId) {
           const projectName =
             projectsWithPending.find((p) => p.id === selectedProjectId)?.name ??
@@ -264,11 +275,13 @@ export function GenerateButton({
           includeFutureWeeks: hasFuturePlannings ? includeFutureWeeks : false,
         });
         setUndoDialogOpen(false);
-        toast.success(
+        const deletedLabel =
           result.deletedCount === 1
             ? "Planning deshecho"
-            : `Planning deshecho (${result.deletedCount} semanas)`,
-        );
+            : isCoordinated
+              ? `Planning deshecho (${result.deletedCount} registros)`
+              : `Planning deshecho (${result.deletedCount} semanas)`;
+        toast.success(deletedLabel);
       } catch (err) {
         toast.error(reportMutationError("Error al deshacer planning", err));
       }
@@ -276,11 +289,19 @@ export function GenerateButton({
   };
 
   const onPublish = async () => {
-    if (!planningId) return;
+    if (!publishPlanningId || !hasDraft) return;
     setPublishing(true);
     try {
-      await publishPlanningAction({ planningId });
-      toast.success("Planning publicado");
+      const result = await publishPlanningAction({ planningId: publishPlanningId });
+      const count =
+        "publishedCount" in result && typeof result.publishedCount === "number"
+          ? result.publishedCount
+          : 1;
+      toast.success(
+        isCoordinated
+          ? `Planning publicado en ${count} naves`
+          : "Planning publicado",
+      );
     } catch (err) {
       toast.error(reportMutationError("Error publicando planning", err));
     }
@@ -514,9 +535,9 @@ export function GenerateButton({
           ) : (
             <Sparkles className="size-4" />
           )}
-          {progressLabel ?? (planningId ? "Regenerar" : "Generar planning")}
+          {progressLabel ?? (hasPlanning ? "Regenerar" : "Generar planning")}
         </Button>
-        {planningId && planningStatus === "DRAFT" && (
+        {hasDraft && publishPlanningId && (
           <Button
             onClick={onPublish}
             disabled={publishing}
@@ -528,10 +549,10 @@ export function GenerateButton({
             ) : (
               <CheckCircle2 className="size-4" />
             )}
-            Publicar
+            {isCoordinated ? "Publicar todas las naves" : "Publicar"}
           </Button>
         )}
-        {planningId &&
+        {hasPlanning &&
           (undoBlockedReason ? (
             <TooltipProvider>
               <Tooltip>

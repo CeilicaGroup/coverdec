@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAP · Gestión de producción (PP) — Demo</title>
+<style>
+  :root{
+    --shell:#1c3144; --shell-2:#27425a; --accent:#0a6ed1; --accent-d:#085caf;
+    --ink:#1c2b36; --muted:#5b6b78; --line:#dfe6ec; --bg:#eef1f4; --panel:#ffffff;
+    --ok:#107e3e; --okbg:#e6f3ec; --warn:#b8761b; --warnbg:#fbf2e2; --bad:#bb0000; --badbg:#fbeaea;
+    --info:#0a6ed1; --infobg:#e8f1fb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45}
+  .shell{display:flex;align-items:center;gap:14px;background:var(--shell);color:#fff;padding:0 18px;height:48px}
+  .shell .logo{font-weight:700;letter-spacing:.5px;background:#fff;color:var(--shell);padding:3px 8px;border-radius:3px;font-size:13px}
+  .shell .title{font-size:14px;font-weight:600;opacity:.95}
+  .shell .tcode{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--shell-2);border:1px solid #3a566f;border-radius:4px;padding:4px 8px;font-size:12px;color:#cfe0ee}
+  .shell .tcode input{background:transparent;border:0;color:#fff;width:120px;outline:none;font-size:12px}
+  .layout{display:flex;min-height:calc(100vh - 48px)}
+  nav{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:10px 0;flex:0 0 230px}
+  nav .grp{padding:8px 16px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:9px;padding:9px 16px;color:var(--ink);text-decoration:none;cursor:pointer;border-left:3px solid transparent;font-size:13px}
+  nav a:hover{background:#f4f7fa}
+  nav a.active{background:var(--infobg);border-left-color:var(--accent);color:var(--accent-d);font-weight:600}
+  nav a .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  main{flex:1;padding:22px 26px;overflow:auto}
+  h1{font-size:20px;margin:0 0 2px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px;max-width:920px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;cursor:pointer;transition:.12s}
+  .tile:hover{box-shadow:0 3px 10px rgba(20,40,60,.10);transform:translateY(-1px)}
+  .tile .k{font-size:30px;font-weight:300;color:var(--accent-d);line-height:1}
+  .tile .l{font-size:12px;color:var(--muted);margin-top:8px}
+  .tile .nm{font-weight:600;font-size:14px}
+  .tile .tc{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:18px;overflow:hidden}
+  .card>h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;display:flex;align-items:center;gap:8px;background:#f8fafc}
+  .card>h2 .tc{font-family:ui-monospace,monospace;font-size:11px;color:#fff;background:var(--muted);padding:2px 6px;border-radius:3px}
+  .card .body{padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;background:#f8fafc}
+  tbody tr:hover{background:#f4f7fa}
+  tr.click{cursor:pointer}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.85}
+  .p-crtd{color:var(--muted);background:#eef1f4}
+  .p-rel{color:var(--info);background:var(--infobg)}
+  .p-pcnf{color:var(--warn);background:var(--warnbg)}
+  .p-cnf{color:var(--ok);background:var(--okbg)}
+  .p-teco{color:#444;background:#e7e9eb}
+  .btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:5px;padding:7px 14px;cursor:pointer}
+  .btn:hover{background:var(--accent-d)}
+  .btn.ghost{background:#fff;color:var(--accent-d)}
+  .btn.ghost:hover{background:var(--infobg)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .row{display:flex;gap:18px;flex-wrap:wrap}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 14px;font-size:13px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-weight:500}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}
+  .step{font-size:11px;padding:4px 10px;border-radius:20px;background:#eef1f4;color:var(--muted)}
+  .step.on{background:var(--accent);color:#fff;font-weight:600}
+  .step.done{background:var(--okbg);color:var(--ok)}
+  .log{font-size:12px;font-family:ui-monospace,monospace;color:var(--muted)}
+  .log div{padding:3px 0;border-bottom:1px dashed var(--line)}
+  .bar{height:9px;background:#eef1f4;border-radius:6px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .hint{font-size:12px;color:var(--muted);background:var(--infobg);border:1px solid #cfe2f7;border-radius:6px;padding:10px 12px;margin-bottom:16px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .view{display:none}
+  .view.active{display:block}
+</style>
+</head>
+<body>
+<div class="shell">
+  <span class="logo">SAP</span>
+  <span class="title">Gestión de producción — módulo PP</span>
+  <span class="tcode">/n <input value="CO01" readonly></span>
+</div>
+<div class="layout">
+  <nav id="nav">
+    <div class="grp">Datos maestros</div>
+    <a data-v="home" class="active"><span class="dot"></span>Inicio (Fiori)</a>
+    <a data-v="maestros"><span class="dot"></span>Material · BOM · Ruta</a>
+    <div class="grp">Cadena de producción</div>
+    <a data-v="mrp"><span class="dot"></span>Planificación (MRP)</a>
+    <a data-v="ordenes"><span class="dot"></span>Órdenes de producción</a>
+    <a data-v="conf"><span class="dot"></span>Confirmaciones</a>
+    <a data-v="costes"><span class="dot"></span>Costes</a>
+  </nav>
+  <main>
+    <!-- HOME -->
+    <section class="view active" id="v-home">
+      <h1>Lanzadera de producción</h1>
+      <p class="sub">Cada tile abre una transacción. En SAP la producción es una cadena: dato maestro → necesidad → orden → ejecución → coste.</p>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <!-- MAESTROS -->
+    <section class="view" id="v-maestros">
+      <h1>Datos maestros</h1>
+      <p class="sub">Sin estos cuatro objetos no se puede crear una orden de producción. Son la información que SAP "pide".</p>
+      <div class="card"><h2><span class="tc">MM03</span> Maestro de material</h2><div class="body">
+        <dl class="kv">
+          <dt>Material</dt><dd>PUMP-1000</dd>
+          <dt>Descripción</dt><dd>Bomba centrífuga 1.5 kW</dd>
+          <dt>Tipo</dt><dd>FERT (producto acabado)</dd>
+          <dt>Unidad base</dt><dd>UN</dd>
+          <dt>Estrategia</dt><dd>Fabricación bajo pedido (MTO)</dd>
+        </dl>
+      </div></div>
+      <div class="card"><h2><span class="tc">CS03</span> Lista de materiales (BOM)</h2><div class="body">
+        <table><thead><tr><th>Componente</th><th>Descripción</th><th class="num">Cant.</th><th class="num">€/ud</th></tr></thead>
+        <tbody id="bom"></tbody></table>
+      </div></div>
+      <div class="card"><h2><span class="tc">CA03</span> Hoja de ruta + puesto de trabajo</h2><div class="body">
+        <table><thead><tr><th>Op.</th><th>Puesto</th><th>Operación</th><th class="num">Prep. (min)</th><th class="num">Min/ud</th></tr></thead>
+        <tbody id="ruta"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- MRP -->
+    <section class="view" id="v-mrp">
+      <h1>Planificación de necesidades (MRP)</h1>
+      <p class="sub">El MRP compara demanda contra stock y genera órdenes previsionales. Decide qué y cuánto fabricar.</p>
+      <div class="hint">SAP planifica <b>hacia delante</b>: necesidad neta = demanda − stock − entradas previstas. La capacidad sale de los tiempos de la hoja de ruta, no del histórico.</div>
+      <div class="card"><h2>Situación de necesidades · PUMP-1000</h2><div class="body">
+        <table><thead><tr><th>Concepto</th><th class="num">Unidades</th></tr></thead>
+        <tbody>
+          <tr><td>Demanda (pedidos cliente)</td><td class="num">10</td></tr>
+          <tr><td>Stock disponible</td><td class="num">0</td></tr>
+          <tr><td>Entradas previstas</td><td class="num">0</td></tr>
+          <tr><td><b>Necesidad neta</b></td><td class="num"><b>10</b></td></tr>
+        </tbody></table>
+        <div class="actions"><button class="btn" id="runMrp">Ejecutar MRP</button></div>
+        <div id="mrpOut"></div>
+      </div></div>
+    </section>
+
+    <!-- ORDENES -->
+    <section class="view" id="v-ordenes">
+      <h1>Órdenes de producción</h1>
+      <p class="sub">El documento que autoriza fabricar. Pasa por estados: Creada → Liberada → (Parcial) → Confirmada → Cerrada (TECO).</p>
+      <div class="card"><h2><span class="tc">CO01</span> Lista de órdenes</h2><div class="body">
+        <table><thead><tr><th>Orden</th><th>Material</th><th class="num">Cant.</th><th>Estado</th><th class="num">Coste real</th></tr></thead>
+        <tbody id="ordList"></tbody></table>
+      </div></div>
+      <div id="ordDetail"></div>
+    </section>
+
+    <!-- CONF -->
+    <section class="view" id="v-conf">
+      <h1>Confirmaciones</h1>
+      <p class="sub">Cada confirmación reporta tiempo real de una operación, consume material y carga coste a la orden.</p>
+      <div class="card"><h2><span class="tc">CO11</span> Registro de confirmaciones</h2><div class="body">
+        <div class="log" id="confLog"><div>Sin confirmaciones todavía. Libera una orden y confirma operaciones.</div></div>
+      </div></div>
+    </section>
+
+    <!-- COSTES -->
+    <section class="view" id="v-costes">
+      <h1>Costes de producción</h1>
+      <p class="sub">Coste plan (estándar) frente a coste real acumulado por confirmaciones. La diferencia es la desviación.</p>
+      <div class="card"><h2><span class="tc">KKS1</span> Plan vs real por orden</h2><div class="body">
+        <table><thead><tr><th>Orden</th><th class="num">Plan €</th><th class="num">Real €</th><th class="num">Desviación</th></tr></thead>
+        <tbody id="costList"></tbody></table>
+      </div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const RATE = 0.65;           // €/min de mano de obra+máquina
+const fmt = n => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+const bom = [
+  {c:'HOUS-200',d:'Carcasa fundición',q:1,p:42},
+  {c:'IMPL-050',d:'Impulsor',q:1,p:28},
+  {c:'SEAL-010',d:'Junta mecánica',q:2,p:6},
+  {c:'BOLT-M8',d:'Tornillo M8',q:8,p:0.3},
+];
+const ruta = [
+  {op:'0010',wc:'MECANIZ',d:'Mecanizado carcasa',prep:30,tpu:12},
+  {op:'0020',wc:'MONTAJE',d:'Montaje conjunto',prep:10,tpu:20},
+  {op:'0030',wc:'PRUEBA', d:'Prueba hidráulica',prep:5, tpu:8},
+];
+const matCost = bom.reduce((s,b)=>s+b.q*b.p,0);
+
+function planCost(qty){
+  const min = ruta.reduce((s,o)=>s+o.prep+o.tpu*qty,0);
+  return matCost*qty + min*RATE;
+}
+
+const STATES = {
+  CRTD:{lbl:'Creada',cls:'p-crtd'}, REL:{lbl:'Liberada',cls:'p-rel'},
+  PCNF:{lbl:'Parcial',cls:'p-pcnf'}, CNF:{lbl:'Confirmada',cls:'p-cnf'},
+  TECO:{lbl:'Cerrada (TECO)',cls:'p-teco'}
+};
+const STEP_ORDER = ['CRTD','REL','PCNF','CNF','TECO'];
+
+let orders = [
+  {id:'1000123',mat:'PUMP-1000',qty:10,st:'CRTD',opDone:0,realMin:0},
+];
+let confLog = [];
+
+const $ = s => document.querySelector(s);
+const pill = st => `<span class="pill ${STATES[st].cls}">${STATES[st].lbl}</span>`;
+
+function renderTiles(){
+  const open = orders.filter(o=>o.st!=='TECO').length;
+  const t = [
+    {k:open,l:'Órdenes abiertas',v:'ordenes'},
+    {k:'10',l:'Necesidad neta (ud)',v:'mrp'},
+    {k:confLog.length,l:'Confirmaciones',v:'conf'},
+    {nm:'Datos maestros',tc:'MM03 · CS03 · CA03',v:'maestros'},
+    {nm:'Costes',tc:'KKS1',v:'costes'},
+  ];
+  $('#tiles').innerHTML = t.map(x=>`<div class="tile" data-v="${x.v}">
+    ${x.k!==undefined?`<div class="k">${x.k}</div><div class="l">${x.l}</div>`
+      :`<div class="nm">${x.nm}</div><div class="tc">${x.tc}</div>`}</div>`).join('');
+  document.querySelectorAll('.tile').forEach(el=>el.onclick=()=>go(el.dataset.v));
+}
+
+function renderMaestros(){
+  $('#bom').innerHTML = bom.map(b=>`<tr><td>${b.c}</td><td>${b.d}</td><td class="num">${b.q}</td><td class="num">${fmt(b.p)}</td></tr>`).join('')
+    + `<tr><td colspan="3"><b>Material por unidad</b></td><td class="num"><b>${fmt(matCost)}</b></td></tr>`;
+  $('#ruta').innerHTML = ruta.map(o=>`<tr><td>${o.op}</td><td>${o.wc}</td><td>${o.d}</td><td class="num">${o.prep}</td><td class="num">${o.tpu}</td></tr>`).join('');
+}
+
+function renderOrders(){
+  $('#ordList').innerHTML = orders.map(o=>`<tr class="click" data-id="${o.id}">
+    <td>${o.id}</td><td>${o.mat}</td><td class="num">${o.qty}</td><td>${pill(o.st)}</td>
+    <td class="num">${fmt(o.realMin*RATE + (o.st!=='CRTD'?matCost*o.qty:0))}</td></tr>`).join('');
+  document.querySelectorAll('#ordList tr.click').forEach(tr=>tr.onclick=()=>showOrder(tr.dataset.id));
+}
+
+function showOrder(id){
+  const o = orders.find(x=>x.id===id);
+  const stepsHtml = STEP_ORDER.map(s=>{
+    const idx = STEP_ORDER.indexOf(o.st);
+    const cur = STEP_ORDER.indexOf(s);
+    const cls = cur<idx?'done':cur===idx?'on':'';
+    return `<span class="step ${cls}">${STATES[s].lbl}</span>`;
+  }).join('');
+  const pct = Math.round(o.opDone/ruta.length*100);
+  const real = o.realMin*RATE + (o.st!=='CRTD'?matCost*o.qty:0);
+  let acts='';
+  if(o.st==='CRTD') acts=`<button class="btn" onclick="release('${id}')">Liberar orden</button>`;
+  else if(o.st==='REL'||o.st==='PCNF'){
+    const next = ruta[o.opDone];
+    acts=`<button class="btn" onclick="confirmOp('${id}')">Confirmar op. ${next.op} · ${next.d}</button>`;
+  } else if(o.st==='CNF') acts=`<button class="btn ghost" onclick="teco('${id}')">Cerrar técnicamente (TECO)</button>`;
+  else acts=`<span class="sub">Orden cerrada. Coste liquidado al material.</span>`;
+
+  $('#ordDetail').innerHTML = `<div class="card"><h2>Orden ${o.id} · ${o.mat}</h2><div class="body">
+    <div class="steps">${stepsHtml}</div>
+    <div class="row">
+      <dl class="kv">
+        <dt>Cantidad</dt><dd>${o.qty} UN</dd>
+        <dt>Operaciones</dt><dd>${o.opDone} / ${ruta.length} confirmadas</dd>
+        <dt>Horas reales</dt><dd>${(o.realMin/60).toFixed(2)} h</dd>
+      </dl>
+      <dl class="kv">
+        <dt>Coste plan</dt><dd>${fmt(planCost(o.qty))} €</dd>
+        <dt>Coste real</dt><dd>${fmt(real)} €</dd>
+        <dt>Desviación</dt><dd>${fmt(real-planCost(o.qty))} €</dd>
+      </dl>
+    </div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="actions">${acts}</div>
+  </div></div>`;
+}
+
+function release(id){
+  const o=orders.find(x=>x.id===id); o.st='REL';
+  log(`${id} · LIBERADA · reserva de material y disponibilidad de capacidad`);
+  refresh(); showOrder(id);
+}
+function confirmOp(id){
+  const o=orders.find(x=>x.id===id);
+  const op=ruta[o.opDone];
+  const min=op.prep+op.tpu*o.qty;
+  o.realMin+=min; o.opDone++;
+  o.st = o.opDone>=ruta.length ? 'CNF' : 'PCNF';
+  log(`${id} · op ${op.op} (${op.wc}) confirmada · ${(min/60).toFixed(2)} h · +${fmt(min*RATE)} €`);
+  refresh(); showOrder(id);
+}
+function teco(id){
+  const o=orders.find(x=>x.id===id); o.st='TECO';
+  log(`${id} · TECO · coste real liquidado al material (módulo CO)`);
+  refresh(); showOrder(id);
+}
+function log(t){ confLog.unshift(`${new Date().toLocaleTimeString('es-ES')}  ${t}`); }
+
+function renderConf(){
+  $('#confLog').innerHTML = confLog.length
+    ? confLog.map(l=>`<div>${l}</div>`).join('')
+    : '<div>Sin confirmaciones todavía. Libera una orden y confirma operaciones.</div>';
+}
+function renderCostes(){
+  $('#costList').innerHTML = orders.map(o=>{
+    const plan=planCost(o.qty);
+    const real=o.realMin*RATE + (o.st!=='CRTD'?matCost*o.qty:0);
+    const dev=real-plan;
+    return `<tr><td>${o.id}</td><td class="num">${fmt(plan)}</td><td class="num">${fmt(real)}</td>
+      <td class="num" style="color:${dev>0?'var(--bad)':'var(--ok)'}">${dev>=0?'+':''}${fmt(dev)}</td></tr>`;
+  }).join('');
+}
+function refresh(){ renderTiles();renderOrders();renderConf();renderCostes(); }
+
+function go(v){
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.v));
+$('#runMrp').onclick=()=>{
+  $('#mrpOut').innerHTML=`<div class="hint" style="margin-top:14px">MRP ejecutado. Generada orden previsional convertida en <b>orden de producción 1000123</b> (10 UN). Revísala en «Órdenes de producción».</div>`;
+};
+
+renderMaestros(); refresh();
+</script>
+</body>
+</html>

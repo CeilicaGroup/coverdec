@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CONTRACT+ · Producción multi-nave · CEILICA</title>
+<style>
+:root{
+  --n1-col:#6d3fc0; --n1-bg:#f0ebf9; --n1-brd:#d4c5f0;
+  --n2-col:#0f6e56; --n2-bg:#e7f2ee; --n2-brd:#b0d9cc;
+  --n3-col:#b87a0a; --n3-bg:#fdf3e3; --n3-brd:#f2d99a;
+  --seq-col:#1a5fa8; --seq-bg:#e6f1fb; --seq-brd:#b5d4f4;
+  --ink:#1a1f2e; --muted:#6b7280; --line:#e5e9ef; --bg:#f3f5f8; --panel:#fff;
+  --ok:#107e3e; --okbg:#e6f3ec; --okbrd:#a5d5b8;
+  --warn:#9a6500; --warnbg:#fbf2e2; --warnbrd:#f0d5a0;
+  --bad:#bb0000; --badbg:#fbeaea;
+  --info:#0a6ed1; --infobg:#e8f1fb; --infobrd:#b5d4f4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Inter",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:13.5px;line-height:1.5}
+.shell{height:50px;background:var(--ink);display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:3px solid var(--n2-col)}
+.shell .logo{font-weight:800;font-size:15px;color:#fff;letter-spacing:.3px}
+.shell .logo em{color:#5de8c4;font-style:normal}
+.shell .ctx{font-size:12px;color:#8a9bb5}
+.shell .who{margin-left:auto;font-size:12px;color:#8a9bb5}
+.layout{display:flex;min-height:calc(100vh - 50px)}
+nav{width:224px;flex:0 0 224px;background:var(--panel);border-right:1px solid var(--line);padding:10px 0;overflow-y:auto}
+nav .grp{padding:10px 16px 3px;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+nav a{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--ink);cursor:pointer;border-left:3px solid transparent;font-size:13px;text-decoration:none}
+nav a:hover{background:#f7f8fa}
+nav a.active{background:var(--n2-bg);border-left-color:var(--n2-col);color:var(--n2-col);font-weight:600}
+.ndot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+main{flex:1;padding:22px 26px;overflow:auto}
+h1{font-size:20px;font-weight:700;margin-bottom:2px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+/* naves */
+.naves3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.nave-kpi{border-radius:10px;padding:14px 16px;border:1.5px solid;cursor:pointer;transition:.1s}
+.nave-kpi:hover{filter:brightness(.97)}
+.nave-kpi.n1{background:var(--n1-bg);border-color:var(--n1-brd)}
+.nave-kpi.n2{background:var(--n2-bg);border-color:var(--n2-brd)}
+.nave-kpi.n3{background:var(--n3-bg);border-color:var(--n3-brd)}
+.nave-kpi.seq{background:var(--seq-bg);border-color:var(--seq-brd)}
+.nave-kpi .ntit{font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px}
+.nave-kpi.n1 .ntit{color:var(--n1-col)}.nave-kpi.n2 .ntit{color:var(--n2-col)}
+.nave-kpi.n3 .ntit{color:var(--n3-col)}.nave-kpi.seq .ntit{color:var(--seq-col)}
+.nave-kpi .nsub{font-size:11px;color:var(--muted);margin-top:2px}
+.nave-kpi .nval{font-size:24px;font-weight:300;margin-top:8px;color:var(--ink)}
+/* card */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.card .ch{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:#fafbfc}
+.card .ch h2{font-size:14px;font-weight:600}
+.card .cb{padding:14px 16px}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;background:#fafbfc;border-bottom:1px solid var(--line);text-align:left}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover{background:#f7f9fb}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;line-height:1.6}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.pp{color:var(--muted);background:#eef0f4}
+.pi{color:var(--info);background:var(--infobg)}
+.pk{color:var(--ok);background:var(--okbg)}
+.pw{color:var(--warn);background:var(--warnbg)}
+.pn1{color:var(--n1-col);background:var(--n1-bg)}
+.pn2{color:var(--n2-col);background:var(--n2-bg)}
+.pn3{color:var(--n3-col);background:var(--n3-bg)}
+.pseq{color:var(--seq-col);background:var(--seq-bg)}
+/* btn */
+.btn{font:inherit;font-size:13px;font-weight:600;border-radius:6px;padding:6px 13px;cursor:pointer;border:1.5px solid;transition:.1s}
+.bs{background:var(--n2-col);border-color:var(--n2-col);color:#fff}.bs:hover{opacity:.88}
+.bg{background:var(--panel);border-color:var(--n2-col);color:var(--n2-col)}.bg:hover{background:var(--n2-bg)}
+.bw{background:var(--panel);border-color:var(--warn);color:var(--warn)}
+.bb{background:var(--panel);border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+/* kv */
+.kv{display:grid;grid-template-columns:160px 1fr;gap:4px 10px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{font-weight:500}
+/* hint */
+.hint{font-size:12px;border-radius:7px;padding:9px 12px;margin-bottom:12px;border:1px solid}
+.hi{color:var(--info);background:var(--infobg);border-color:var(--infobrd)}
+.hw{color:var(--warn);background:var(--warnbg);border-color:var(--warnbrd)}
+.hk{color:var(--ok);background:var(--okbg);border-color:var(--okbrd)}
+/* tag */
+.tag{font-size:11px;font-family:ui-monospace,monospace;background:#eef0f4;padding:1px 6px;border-radius:4px;color:var(--muted)}
+/* op card */
+.opc{border:1.5px solid var(--line);border-radius:9px;padding:13px;margin-bottom:10px}
+.opc.t2{border-top:4px solid var(--seq-col)}
+.opc.n1b{border-left:4px solid var(--n1-col)}
+.opc.n2b{border-left:4px solid var(--n2-col)}
+.opc.n3b{border-left:4px solid var(--n3-col)}
+.op-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.procs{display:flex;gap:4px;flex-wrap:wrap;margin:7px 0}
+.pr{font-size:11px;padding:3px 8px;border-radius:20px;background:#eef0f4;color:var(--muted)}
+.pr.done{background:var(--okbg);color:var(--ok)}.pr.cur{font-weight:700}
+.pr.cur.cn1{background:var(--n1-bg);color:var(--n1-col)}
+.pr.cur.cn2{background:var(--n2-bg);color:var(--n2-col)}
+.pr.cur.cn3{background:var(--n3-bg);color:var(--n3-col)}
+.pr.cur.cseq{background:var(--seq-bg);color:var(--seq-col)}
+.bar{height:7px;background:#eef0f4;border-radius:6px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;border-radius:6px}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid rgba(0,0,0,.18);vertical-align:-1px;margin-right:3px}
+.col2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.view{display:none}.view.active{display:block}
+.log{font-size:12px;font-family:ui-monospace,monospace;color:var(--muted)}
+.log div{padding:3px 0;border-bottom:1px dashed var(--line)}
+.leyenda{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:18px}
+.ley{display:flex;align-items:center;gap:5px}
+.ley .dot{width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body>
+<div class="shell">
+  <span class="logo">CONTRACT<em>+</em></span>
+  <span class="ctx">· CEILICA · Producción multi-nave</span>
+  <span class="who">ingenieria@coverdec.com</span>
+</div>
+<div class="layout">
+  <nav>
+    <div class="grp">Producción</div>
+    <a data-v="home" class="active"><span class="ndot" style="background:var(--n2-col)"></span>Panel</a>
+    <a data-v="catalogo"><span class="ndot" style="background:var(--muted)"></span>Catálogo de rutas</a>
+    <a data-v="proyecto"><span class="ndot" style="background:var(--info)"></span>Proyecto P-6-075</a>
+    <a data-v="op"><span class="ndot" style="background:var(--n2-col)"></span>Órdenes de producción</a>
+    <div class="grp">Análisis</div>
+    <a data-v="horas"><span class="ndot" style="background:var(--n1-col)"></span>Imputación de horas</a>
+    <a data-v="costes"><span class="ndot" style="background:var(--n3-col)"></span>Costes por nave</a>
+  </nav>
+  <main>
+
+    <!-- HOME -->
+    <section class="view active" id="v-home">
+      <h1>Producción CEILICA · 3 centros de coste</h1>
+      <p class="sub">Cada lámpara activa 1, 2 o 3 naves según su ruta. Nave 1 siempre en paralelo. Nave 3→Nave 2 secuencial solo en Canopi, Sol y Selcos metacrilato.</p>
+      <div class="leyenda">
+        <div class="ley"><div class="dot" style="background:var(--n1-col)"></div>Nave 1 · Telas (siempre paralela)</div>
+        <div class="ley"><div class="dot" style="background:var(--n2-col)"></div>Nave 2 · Bastidores</div>
+        <div class="ley"><div class="dot" style="background:var(--n3-col)"></div>Nave 3 · Iluminación</div>
+        <div class="ley"><div class="dot" style="background:var(--seq-col)"></div>N3→N2 secuencial (OP compartida)</div>
+      </div>
+      <div class="naves3" id="homeKpis"></div>
+      <div class="col2">
+        <div class="card"><div class="ch"><h2>Proyecto activo</h2></div><div class="cb" id="homeProj"></div></div>
+        <div class="card"><div class="ch"><h2>Estado de OPs</h2></div><div class="cb" id="homeOps"></div></div>
+      </div>
+    </section>
+
+    <!-- CATÁLOGO -->
+    <section class="view" id="v-catalogo">
+      <h1>Catálogo de rutas por lámpara</h1>
+      <p class="sub">Tres tipos de ruta. El tipo determina cuántas OPs se generan y si existe secuencia entre naves.</p>
+      <div class="hint hi"><b>Tipo 1:</b> OP simple en una sola nave, entrega directa a instalación. &nbsp;|&nbsp; <b>Tipo 2:</b> OP compartida N3→N2 secuencial (mismo objeto físico viaja entre naves). &nbsp;|&nbsp; <b>Tipo 3:</b> 1, 2 o 3 OPs en paralelo, cada nave cierra independiente.</div>
+      <div class="card"><div class="ch"><h2>Rutas definidas</h2></div><div class="cb">
+        <table><thead><tr><th>Lámpara</th><th>SKU</th><th>Nave 1</th><th>Nave 2</th><th>Nave 3</th><th>Tipo de ruta</th></tr></thead>
+        <tbody id="catRows"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- PROYECTO -->
+    <section class="view" id="v-proyecto">
+      <h1>Proyecto P-6-075</h1>
+      <p class="sub">Hospital Universitario Valencia · 3 SKUs, rutas distintas.</p>
+      <div class="card"><div class="ch"><h2>Líneas del proyecto</h2></div><div class="cb">
+        <table><thead><tr><th>SKU</th><th>Lámpara</th><th class="num">Ud</th><th>Color</th><th>Tipo de ruta</th><th>OPs que genera</th></tr></thead>
+        <tbody id="projRows"></tbody></table>
+        <div class="hint hw" style="margin-top:12px">Cruz genera 3 OPs paralelas (N1+N2+N3). Selcos MC genera 1 OP de N1 paralela + 1 OP compartida N3→N2. Luminaria genera 2 OPs paralelas (N1+N3, sin bastidor).</div>
+        <div class="acts">
+          <button class="btn bs" onclick="crearOPs()">Crear todas las OPs</button>
+        </div>
+        <div id="opMsg"></div>
+      </div></div>
+    </section>
+
+    <!-- OP -->
+    <section class="view" id="v-op">
+      <h1>Órdenes de producción</h1>
+      <p class="sub">Agrupadas por SKU. La OP compartida N3→N2 muestra dos fases en la misma orden.</p>
+      <div id="opPanel"></div>
+    </section>
+
+    <!-- HORAS -->
+    <section class="view" id="v-horas">
+      <h1>Imputación de horas</h1>
+      <p class="sub">Las horas se imputan al centro de coste de la nave que ejecuta. En la OP N3→N2 cada fase imputa a su nave.</p>
+      <div class="card"><div class="ch"><h2>Registro de movimientos</h2></div><div class="cb">
+        <div class="log" id="horasLog"><div>Sin movimientos todavía.</div></div>
+      </div></div>
+    </section>
+
+    <!-- COSTES -->
+    <section class="view" id="v-costes">
+      <h1>Costes por nave y proyecto</h1>
+      <p class="sub">Acumulado real frente a plan. La OP compartida aparece con coste dividido entre N3 y N2.</p>
+      <div class="card"><div class="ch"><h2>P-6-075 · desglose por nave</h2></div><div class="cb">
+        <table><thead><tr><th>SKU</th><th>Nave</th><th>Tipo</th><th class="num">Ud</th><th class="num">H real</th><th class="num">Plan €</th><th class="num">Real €</th><th class="num">Desv.</th></tr></thead>
+        <tbody id="costRows"></tbody></table>
+      </div></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+const fmt = n => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+const $ = s => document.querySelector(s);
+
+// ── DATOS MAESTROS ───────────────────────────────────────────────────────────
+// Tipo 1 = solo una nave | Tipo 2 = N3→N2 secuencial | Tipo 3 = naves en paralelo
+const SKUS = {
+  'LAMP-CRUZ':   {nom:'Cruz',           tipo:3, naves:['N1','N2','N3'], matU:71},
+  'LAMP-SELCOS': {nom:'Selcos MC',      tipo:2, naves:['N1','SEQ'],     matU:84},
+  'LAMP-CANOPI': {nom:'Canopi',         tipo:2, naves:['N1','SEQ'],     matU:78},
+  'LAMP-SOL':    {nom:'Sol',            tipo:2, naves:['N1','SEQ'],     matU:80},
+  'LAMP-HAIR':   {nom:'Hair',           tipo:3, naves:['N1','N2','N3'], matU:65},
+  'LAMP-PHAR':   {nom:'Parafarmacia',   tipo:3, naves:['N1','N2','N3'], matU:74},
+  'LAMP-LUM':    {nom:'Luminaria',      tipo:3, naves:['N1','N3'],      matU:56},
+};
+
+// Procesos y tiempos por nave/fase (setup min, tpu min)
+const PROCS = {
+  N1:  [{p:'Corte tela',    nave:'N1', s:15,t:8},  {p:'Costura/acabado',nave:'N1',s:5, t:12}],
+  N2:  [{p:'CNC bastidor',  nave:'N2', s:25,t:9},  {p:'Imprimación',    nave:'N2',s:15,t:6},
+        {p:'Pintura RAL',   nave:'N2', s:20,t:10}],
+  N3:  [{p:'Instalación LED',nave:'N3',s:10,t:14}, {p:'Cableado/prueba',nave:'N3',s:8, t:10}],
+  // SEQ: primero procesos de N3, luego los de N2
+  SEQ: [{p:'Inst. iluminación',nave:'N3',s:10,t:14},{p:'Cableado/prueba',nave:'N3',s:8,t:10},
+        {p:'Cierre bastidor',  nave:'N2',s:20,t:12},{p:'Perfil tela',    nave:'N2',s:10,t:8},
+        {p:'Ensamblaje final', nave:'N2',s:10,t:10},{p:'Embalaje',       nave:'N2',s:5, t:4}],
+};
+const TARIFA = {N1:28, N2:52, N3:38};
+const NAVE_META = {
+  N1:  {lbl:'Nave 1 · Telas',       cls:'n1', col:'var(--n1-col)', bg:'var(--n1-bg)'},
+  N2:  {lbl:'Nave 2 · Bastidores',  cls:'n2', col:'var(--n2-col)', bg:'var(--n2-bg)'},
+  N3:  {lbl:'Nave 3 · Iluminación', cls:'n3', col:'var(--n3-col)', bg:'var(--n3-bg)'},
+  SEQ: {lbl:'N3 → N2 secuencial',   cls:'seq',col:'var(--seq-col)',bg:'var(--seq-bg)'},
+};
+
+// Proyecto de ejemplo
+const PROJ = {
+  id:'P-6-075', cli:'Hospital Universitario Valencia',
+  lineas:[
+    {sku:'LAMP-CRUZ',  ud:5, ral:'9005', hex:'#1d1d1b'},
+    {sku:'LAMP-SELCOS',ud:5, ral:'9010', hex:'#f1f0ea'},
+    {sku:'LAMP-LUM',   ud:2, ral:'6018', hex:'#3b5743'},
+  ]
+};
+
+// Estado
+let OPS = {};
+let horasLog = [];
+let created = false;
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+function go(v){
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.v));
+
+function navePill(n){ return `<span class="pill p${NAVE_META[n].cls}">${NAVE_META[n].lbl.split('·')[1]?.trim()||NAVE_META[n].lbl}</span>`; }
+function stPill(st){
+  return st==='PEND'?'<span class="pill pp">Pendiente</span>':
+         st==='CURSO'?'<span class="pill pi">En curso</span>':
+         st==='CERR'?'<span class="pill pk">Cerrada</span>':'<span class="pill pw">—</span>';
+}
+
+function planMin(nave_o_fase, ud){
+  const ps = PROCS[nave_o_fase]||[];
+  return ps.reduce((s,p)=>s+p.s+p.t*ud,0);
+}
+function planCost(nave_o_fase, ud, matU){
+  const ps = PROCS[nave_o_fase]||[];
+  const minByNave = {};
+  ps.forEach(p=>{ minByNave[p.nave]=(minByNave[p.nave]||0)+p.s+p.t*ud; });
+  let c=0;
+  Object.entries(minByNave).forEach(([n,m])=>c+=m/60*TARIFA[n]);
+  // Material: reparto proporcional por naves involucradas
+  const navesUniq=[...new Set(ps.map(p=>p.nave))];
+  c += matU * ud * (navesUniq.length>=2 ? 1 : 0.4);
+  return c;
+}
+function logH(t){ horasLog.unshift(`${new Date().toLocaleTimeString('es-ES')}  ${t}`); }
+
+// ── CREAR OPs ─────────────────────────────────────────────────────────────────
+function crearOPs(){
+  if(created){ $('#opMsg').innerHTML=`<div class="hint hk" style="margin-top:10px">OPs ya creadas.</div>`; return; }
+  created=true;
+  let seq=42;
+  PROJ.lineas.forEach(lin=>{
+    const sku=SKUS[lin.sku];
+    sku.naves.forEach(naveKey=>{
+      const id=`OP-2026-${seq++}-${naveKey}`;
+      OPS[id]={ id, sku:lin.sku, naveKey, ud:lin.ud, ral:lin.ral, hex:lin.hex,
+                st:'PEND', step:0, realMin:0, matU:sku.matU,
+                isSeq: naveKey==='SEQ' };
+    });
+  });
+  $('#opMsg').innerHTML=`<div class="hint hk" style="margin-top:10px">${Object.keys(OPS).length} OPs generadas. Ve a «Órdenes de producción».</div>`;
+  refresh();
+}
+
+// ── ACCIONES OP ──────────────────────────────────────────────────────────────
+function iniciar(id){
+  const op=OPS[id]; op.st='CURSO';
+  const pr=PROCS[op.naveKey][0];
+  logH(`${id} · INICIAR · ${pr.p} (${NAVE_META[pr.nave].lbl})`);
+  refresh();
+}
+function confirmar(id){
+  const op=OPS[id];
+  const ps=PROCS[op.naveKey];
+  const pr=ps[op.step];
+  const min=pr.s+pr.t*op.ud;
+  op.realMin+=min; op.step++;
+  const hNave=NAVE_META[pr.nave];
+  logH(`${id} · ${pr.p} · ${hNave.lbl} · ${(min/60).toFixed(2)} h · ${fmt(min/60*TARIFA[pr.nave])} €`);
+  // Notificar cambio de nave en SEQ
+  if(op.isSeq && op.step>0 && op.step<ps.length){
+    const prev=ps[op.step-1].nave, next=ps[op.step].nave;
+    if(prev!==next) logH(`${id} · TRASPASO físico ${NAVE_META[prev].lbl} → ${NAVE_META[next].lbl}`);
+  }
+  if(op.step>=ps.length){ op.st='CERR'; logH(`${id} · CERRADA`); }
+  refresh();
+}
+
+// ── RENDER HOME ───────────────────────────────────────────────────────────────
+function renderHome(){
+  const byNave=n=>Object.values(OPS).filter(o=>o.naveKey===n||(o.isSeq && PROCS.SEQ.some(p=>p.nave===n)));
+  // kpis
+  const kpis=[
+    {n:'N1', cls:'n1'}, {n:'N2',cls:'n2'}, {n:'N3',cls:'n3'},
+    {n:'SEQ',cls:'seq'},
+  ];
+  $('#homeKpis').innerHTML = kpis.map(k=>{
+    const ops=Object.values(OPS).filter(o=>o.naveKey===k.n);
+    const h=ops.reduce((s,o)=>s+o.realMin,0)/60;
+    return `<div class="nave-kpi ${k.cls}" onclick="go('op')">
+      <div class="ntit"><span class="ndot" style="background:${NAVE_META[k.n].col}"></span>${NAVE_META[k.n].lbl}</div>
+      <div class="nsub">${ops.length} OPs · ${ops.filter(o=>o.st!=='CERR').length} abiertas</div>
+      <div class="nval">${h.toFixed(1)} h</div>
+    </div>`;
+  }).join('');
+  $('#homeProj').innerHTML=`<dl class="kv">
+    <dt>Proyecto</dt><dd>${PROJ.id} · ${PROJ.cli}</dd>
+    <dt>SKUs</dt><dd>${PROJ.lineas.map(l=>SKUS[l.sku].nom).join(' · ')}</dd>
+    <dt>Total ud</dt><dd>${PROJ.lineas.reduce((s,l)=>s+l.ud,0)}</dd>
+    <dt>Estado</dt><dd>${created?'OPs creadas':'Sin OPs'}</dd>
+  </dl>`;
+  const ops=Object.values(OPS);
+  $('#homeOps').innerHTML=`<dl class="kv">
+    <dt>Total OPs</dt><dd>${ops.length}</dd>
+    <dt>Pendiente</dt><dd>${ops.filter(o=>o.st==='PEND').length}</dd>
+    <dt>En curso</dt><dd>${ops.filter(o=>o.st==='CURSO').length}</dd>
+    <dt>Cerradas</dt><dd>${ops.filter(o=>o.st==='CERR').length}</dd>
+  </dl>`;
+}
+
+// ── RENDER CATÁLOGO ───────────────────────────────────────────────────────────
+function renderCatalogo(){
+  const TIPO_LBL={1:'<span class="pill pp">Tipo 1 · simple</span>',
+                  2:'<span class="pill pseq">Tipo 2 · N3→N2</span>',
+                  3:'<span class="pill pn2">Tipo 3 · paralelo</span>'};
+  $('#catRows').innerHTML=Object.entries(SKUS).map(([k,s])=>{
+    const n1=s.naves.includes('N1')?navePill('N1'):'<span style="color:var(--muted)">—</span>';
+    const hasN2=s.naves.includes('N2')||s.naves.includes('SEQ');
+    const hasN3=s.naves.includes('N3')||s.naves.includes('SEQ');
+    const n2c=s.naves.includes('SEQ')?'<span class="pill pseq">Fase 2</span>':hasN2?navePill('N2'):'<span style="color:var(--muted)">—</span>';
+    const n3c=s.naves.includes('SEQ')?'<span class="pill pseq">Fase 1</span>':hasN3?navePill('N3'):'<span style="color:var(--muted)">—</span>';
+    return `<tr><td>${s.nom}</td><td><span class="tag">${k}</span></td><td>${n1}</td><td>${n2c}</td><td>${n3c}</td><td>${TIPO_LBL[s.tipo]}</td></tr>`;
+  }).join('');
+}
+
+// ── RENDER PROYECTO ───────────────────────────────────────────────────────────
+function renderProyecto(){
+  $('#projRows').innerHTML=PROJ.lineas.map(lin=>{
+    const s=SKUS[lin.sku];
+    const ops=s.naves.map(n=>{
+      if(n==='SEQ') return `OP N1 paralela + OP N3→N2 secuencial`;
+      return `OP ${NAVE_META[n].lbl}`;
+    }).join('<br>');
+    const tipoMap={2:'<span class="pill pseq">N3→N2 sec.</span>',3:'<span class="pill pn2">Paralelo</span>'};
+    return `<tr>
+      <td><span class="tag">${lin.sku}</span></td>
+      <td>${s.nom}</td><td class="num">${lin.ud}</td>
+      <td><span class="swatch" style="background:${lin.hex}"></span>RAL ${lin.ral}</td>
+      <td>${tipoMap[s.tipo]}</td>
+      <td style="font-size:12px;color:var(--muted)">${ops}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── RENDER OPs ────────────────────────────────────────────────────────────────
+function renderOPs(){
+  if(!created){ $('#opPanel').innerHTML=`<div class="hint hi">Ve al proyecto y pulsa «Crear todas las OPs».</div>`; return; }
+  // Agrupar por SKU
+  const grouped={};
+  Object.values(OPS).forEach(op=>{ if(!grouped[op.sku]) grouped[op.sku]=[]; grouped[op.sku].push(op); });
+  $('#opPanel').innerHTML=Object.entries(grouped).map(([sku,ops])=>{
+    const s=SKUS[sku];
+    const cards=ops.map(op=>{
+      const ps=PROCS[op.naveKey];
+      const pct=Math.round(op.step/ps.length*100);
+      const isSeq=op.isSeq;
+      // fases actuales
+      const curNave=op.st==='CURSO'&&op.step<ps.length?ps[op.step].nave:null;
+      const procHtml=ps.map((pr,i)=>{
+        const done=i<op.step; const cur=i===op.step&&op.st==='CURSO';
+        const navCls=cur?`cn${pr.nave.toLowerCase().replace('n','')} c${pr.nave.toLowerCase()}`:'';
+        return `<span class="pr${done?' done':''}${cur?' cur '+navCls:''}">${pr.p}${isSeq&&(i===2)?` <span style="font-size:10px;opacity:.7">→ N2</span>`:''}</span>`;
+      }).join('');
+      let act='';
+      if(op.st==='PEND') act=`<button class="btn bs" onclick="iniciar('${op.id}')">INICIAR</button>`;
+      else if(op.st==='CURSO'){
+        if(op.step<ps.length){
+          const np=ps[op.step];
+          act=`<button class="btn bs" onclick="confirmar('${op.id}')">Confirmar: ${np.p}</button>`;
+          if(isSeq && op.step===2) act=`<button class="btn bs" onclick="confirmar('${op.id}')">Confirmar traspaso a Nave 2 · ${np.p}</button>`;
+        }
+      } else act=`<span style="font-size:12px;color:var(--ok);font-weight:600">✓ Cerrada</span>`;
+
+      const nk=NAVE_META[op.naveKey];
+      const realC=op.realMin/60 * (isSeq ? 45 : TARIFA[op.naveKey.replace('SEQ','N3')]||38);
+      return `<div class="opc ${isSeq?'t2':op.naveKey.toLowerCase()+'b'}">
+        <div class="op-hdr">
+          <span class="pill p${nk.cls}">${nk.lbl}</span>
+          <span class="tag" style="font-size:11px">${op.id}</span>
+          ${stPill(op.st)}
+          ${isSeq&&op.st==='CURSO'&&curNave?`<span class="pill p${curNave.toLowerCase()}" style="font-size:10px">En ${NAVE_META[curNave].lbl}</span>`:''}
+        </div>
+        <div class="procs">${procHtml}</div>
+        <div class="bar"><i style="width:${pct}%;background:${nk.col}"></i></div>
+        <div style="display:flex;gap:16px;font-size:12px;color:var(--muted);margin:6px 0">
+          <span>Paso ${op.step}/${ps.length}</span>
+          <span>${(op.realMin/60).toFixed(2)} h reales</span>
+          <span>${fmt(realC)} € acum.</span>
+        </div>
+        <div class="acts">${act}</div>
+      </div>`;
+    }).join('');
+    const lin=PROJ.lineas.find(l=>l.sku===sku);
+    return `<div class="card">
+      <div class="ch">
+        <h2>${s.nom} <span class="tag">${sku}</span></h2>
+        <span style="font-size:12px;color:var(--muted)">
+          ${lin?`<span class="swatch" style="background:${lin.hex}"></span>RAL ${lin.ral} · ${lin.ud} ud`:''}
+          &nbsp; Tipo ${s.tipo==='2'||s.tipo===2?'2 · N3→N2 sec.':'3 · paralelo'}
+        </span>
+      </div>
+      <div class="cb">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── RENDER HORAS ──────────────────────────────────────────────────────────────
+function renderHoras(){
+  $('#horasLog').innerHTML=horasLog.length
+    ? horasLog.map(l=>`<div>${l}</div>`).join('')
+    : '<div>Sin movimientos. Avanza las OPs.</div>';
+}
+
+// ── RENDER COSTES ─────────────────────────────────────────────────────────────
+function renderCostes(){
+  if(!created){ $('#costRows').innerHTML=`<tr><td colspan="8" style="color:var(--muted)">Sin OPs.</td></tr>`; return; }
+  let rows='';
+  PROJ.lineas.forEach(lin=>{
+    const s=SKUS[lin.sku];
+    s.naves.forEach(nk=>{
+      const op=Object.values(OPS).find(o=>o.sku===lin.sku&&o.naveKey===nk);
+      if(!op) return;
+      const ps=PROCS[nk];
+      // Para SEQ: desglosar coste por nave
+      if(nk==='SEQ'){
+        const navesEnSeq=[...new Set(ps.map(p=>p.nave))];
+        navesEnSeq.forEach(n=>{
+          const minn=ps.filter(p=>p.nave===n).reduce((s,p)=>s+p.s+p.t*lin.ud,0);
+          const plan=minn/60*TARIFA[n]+lin.matU*lin.ud*0.5/navesEnSeq.length;
+          const realH=op.st==='CERR'?minn/60:0;
+          const real=realH*TARIFA[n];
+          const dev=real-plan;
+          rows+=`<tr>
+            <td><span class="tag">${lin.sku}</span></td>
+            <td>${navePill(n)}</td>
+            <td><span class="pill pseq" style="font-size:10px">SEQ fase</span></td>
+            <td class="num">${lin.ud}</td>
+            <td class="num">${op.st==='CERR'?realH.toFixed(2):'—'}</td>
+            <td class="num">${fmt(plan)}</td>
+            <td class="num">${op.st==='CERR'?fmt(real):'—'}</td>
+            <td class="num" style="color:${op.st==='CERR'?(dev>0?'var(--bad)':'var(--ok)'):'var(--muted)'}">${op.st==='CERR'?(dev>=0?'+':'')+fmt(dev):'—'}</td>
+          </tr>`;
+        });
+      } else {
+        const plan=planCost(nk,lin.ud,lin.matU);
+        const realH=op.st==='CERR'?planMin(nk,lin.ud)/60:0;
+        const real=realH*TARIFA[nk];
+        const dev=real-plan;
+        rows+=`<tr>
+          <td><span class="tag">${lin.sku}</span></td>
+          <td>${navePill(nk)}</td>
+          <td><span class="pill pn2" style="font-size:10px">Paralela</span></td>
+          <td class="num">${lin.ud}</td>
+          <td class="num">${op.st==='CERR'?realH.toFixed(2):'—'}</td>
+          <td class="num">${fmt(plan)}</td>
+          <td class="num">${op.st==='CERR'?fmt(real):'—'}</td>
+          <td class="num" style="color:${op.st==='CERR'?(dev>0?'var(--bad)':'var(--ok)'):'var(--muted)'}">${op.st==='CERR'?(dev>=0?'+':'')+fmt(dev):'—'}</td>
+        </tr>`;
+      }
+    });
+  });
+  $('#costRows').innerHTML=rows;
+}
+
+function refresh(){ renderHome();renderCatalogo();renderProyecto();renderOPs();renderHoras();renderCostes(); }
+refresh();
+</script>
+</body>
+</html>

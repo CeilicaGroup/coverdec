@@ -839,6 +839,22 @@ export async function getPlanningWeights(
   return normalizePlanningWeights(row);
 }
 
+/** Promedia pesos de varias naves para una pasada coordinada del solver. */
+export async function getMergedPlanningWeights(
+  naveIds: string[],
+): Promise<PlanningWeights> {
+  if (naveIds.length === 0) return { ...DEFAULT_PLANNING_WEIGHTS };
+  if (naveIds.length === 1) return getPlanningWeights(naveIds[0]!);
+  const rows = await Promise.all(naveIds.map((id) => getPlanningWeights(id)));
+  const keys = Object.keys(DEFAULT_PLANNING_WEIGHTS) as (keyof PlanningWeights)[];
+  const merged: PlanningWeights = { ...DEFAULT_PLANNING_WEIGHTS };
+  for (const key of keys) {
+    merged[key] =
+      rows.reduce((sum, row) => sum + row[key], 0) / rows.length;
+  }
+  return normalizePlanningWeights(merged);
+}
+
 export interface PlanningDeadlineSettings {
   globalDeadlineBoost: number;
   deadlineCurveExponent: number;

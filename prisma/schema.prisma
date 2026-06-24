@@ -451,23 +451,26 @@ model Task {
 // ---------- Planning ----------
 
 model Planning {
-  id          String         @id @default(cuid())
-  naveId      String
-  year        Int
-  week        Int
-  weekStart   DateTime
-  weekEnd     DateTime
-  status      PlanningStatus @default(DRAFT)
-  publishedAt DateTime?
-  notes       String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  naveId           String
+  year             Int
+  week             Int
+  weekStart        DateTime
+  weekEnd          DateTime
+  status           PlanningStatus @default(DRAFT)
+  publishedAt      DateTime?
+  /// Vincula borradores generados en la misma pasada coordinada multi-nave.
+  planningGroupId  String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   nave        Nave                 @relation("NavePlannings", fields: [naveId], references: [id], onDelete: Cascade)
   assignments PlanningAssignment[]
   notifications Notification[]
 
   @@unique([naveId, year, week])
+  @@index([planningGroupId])
 }
 
 model PlanningAssignment {

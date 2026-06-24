@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CONTRACT+ · Producción CEILICA — equivalencia con SAP</title>
+<style>
+  :root{
+    --shell:#0d2b24; --shell-2:#16433a; --accent:#0f6e56; --accent-d:#0a5341;
+    --ink:#1c2b27; --muted:#5d6c66; --line:#dde6e2; --bg:#eef2f0; --panel:#ffffff;
+    --ok:#107e3e; --okbg:#e6f3ec; --warn:#b8761b; --warnbg:#fbf2e2; --bad:#bb0000; --badbg:#fbeaea;
+    --info:#0a6ed1; --infobg:#e8f1fb; --rework:#7a3da8; --reworkbg:#f1e9f8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45}
+  .shell{display:flex;align-items:center;gap:14px;background:var(--shell);color:#fff;padding:0 18px;height:48px}
+  .shell .logo{font-weight:700;letter-spacing:.5px;background:#fff;color:var(--shell);padding:3px 8px;border-radius:3px;font-size:13px}
+  .shell .title{font-size:14px;font-weight:600;opacity:.95}
+  .shell .who{margin-left:auto;font-size:12px;color:#bfd7ce}
+  .layout{display:flex;min-height:calc(100vh - 48px)}
+  nav{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:10px 0;flex:0 0 230px}
+  nav .grp{padding:8px 16px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:9px;padding:9px 16px;color:var(--ink);text-decoration:none;cursor:pointer;border-left:3px solid transparent;font-size:13px}
+  nav a:hover{background:#f1f6f4}
+  nav a.active{background:#e7f2ee;border-left-color:var(--accent);color:var(--accent-d);font-weight:600}
+  nav a .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  main{flex:1;padding:22px 26px;overflow:auto}
+  h1{font-size:20px;margin:0 0 2px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .map{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0;margin-bottom:20px;overflow:hidden}
+  .map h2{font-size:13px;margin:0;padding:11px 16px;background:#f6faf8;border-bottom:1px solid var(--line);font-weight:600}
+  .map table{width:100%;border-collapse:collapse;font-size:13px}
+  .map td{padding:8px 16px;border-bottom:1px solid var(--line)}
+  .map td:first-child{color:var(--info);font-weight:600;width:40%}
+  .map td .ar{color:var(--muted);margin:0 8px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px;max-width:920px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;cursor:pointer;transition:.12s}
+  .tile:hover{box-shadow:0 3px 10px rgba(15,40,30,.10);transform:translateY(-1px)}
+  .tile .k{font-size:30px;font-weight:300;color:var(--accent-d);line-height:1}
+  .tile .l{font-size:12px;color:var(--muted);margin-top:8px}
+  .tile .nm{font-weight:600;font-size:14px}.tile .tc{font-size:11px;color:var(--muted)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:18px;overflow:hidden}
+  .card>h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;display:flex;align-items:center;gap:8px;background:#f6faf8}
+  .card>h2 .tc{font-size:11px;color:#fff;background:var(--muted);padding:2px 6px;border-radius:3px}
+  .card .body{padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;background:#f6faf8}
+  tbody tr:hover{background:#f1f6f4}
+  tr.click{cursor:pointer}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.85}
+  .p-pend{color:var(--muted);background:#eef2f0}
+  .p-curso{color:var(--info);background:var(--infobg)}
+  .p-int{color:var(--warn);background:var(--warnbg)}
+  .p-multi{color:#7a5b13;background:#f7eecd}
+  .p-cerr{color:var(--ok);background:var(--okbg)}
+  .p-ort{color:var(--rework);background:var(--reworkbg)}
+  .btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:5px;padding:7px 14px;cursor:pointer}
+  .btn:hover{background:var(--accent-d)}
+  .btn.ghost{background:#fff;color:var(--accent-d)}
+  .btn.warn{background:#fff;border-color:var(--warn);color:var(--warn)}
+  .btn.ok{background:#fff;border-color:var(--ok);color:var(--ok)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .row{display:flex;gap:18px;flex-wrap:wrap}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13px}
+  .kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:500}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}
+  .step{font-size:11px;padding:4px 10px;border-radius:20px;background:#eef2f0;color:var(--muted)}
+  .step.on{background:var(--accent);color:#fff;font-weight:600}
+  .step.done{background:var(--okbg);color:var(--ok)}
+  .log{font-size:12px;font-family:ui-monospace,monospace;color:var(--muted)}
+  .log div{padding:3px 0;border-bottom:1px dashed var(--line)}
+  .bar{height:9px;background:#eef2f0;border-radius:6px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .hint{font-size:12px;color:var(--accent-d);background:#e7f2ee;border:1px solid #bfe0d4;border-radius:6px;padding:10px 12px;margin-bottom:16px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .tag{font-size:11px;font-family:ui-monospace,monospace;background:#eef2f0;color:var(--muted);padding:1px 6px;border-radius:3px}
+  .view{display:none}.view.active{display:block}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-1px;margin-right:5px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <span class="logo">CONTRACT+</span>
+  <span class="title">CEILICA · Módulo de producción (M01)</span>
+  <span class="who">ingenieria@coverdec.com · Jefe de producción</span>
+</div>
+<div class="layout">
+  <nav id="nav">
+    <div class="grp">Datos maestros</div>
+    <a data-v="home" class="active"><span class="dot"></span>Inicio</a>
+    <a data-v="maestros"><span class="dot"></span>Lámpara · BOM · Ruta</a>
+    <div class="grp">Cadena de producción</div>
+    <a data-v="plan"><span class="dot"></span>Proyectos y agrupación</a>
+    <a data-v="op"><span class="dot"></span>Órdenes de producción</a>
+    <a data-v="horas"><span class="dot"></span>Imputación de horas</a>
+    <a data-v="ort"><span class="dot"></span>Retrabajos (ORT)</a>
+    <a data-v="costes"><span class="dot"></span>Costes por lámpara</a>
+  </nav>
+  <main>
+    <!-- HOME -->
+    <section class="view active" id="v-home">
+      <h1>Producción CEILICA sobre la lógica de SAP</h1>
+      <p class="sub">Misma cadena que SAP, vocabulario nuestro. La capa de proyecto (PS en SAP) es real aquí: una OP puede agrupar lámparas de varios proyectos.</p>
+      <div class="map">
+        <h2>Equivalencia de conceptos</h2>
+        <table>
+          <tr><td>Maestro de material (FERT)</td><td><span class="ar">→</span> Lámpara / SKU (Cruz, Sol, Canopi…)</td></tr>
+          <tr><td>Lista de materiales (BOM)</td><td><span class="ar">→</span> Bastidor + componentes de la lámpara</td></tr>
+          <tr><td>Hoja de ruta + puesto</td><td><span class="ar">→</span> CNC → ensamblaje → imprimación → pintura</td></tr>
+          <tr><td>Proyecto (WBS, módulo PS)</td><td><span class="ar">→</span> Proyecto = contenedor comercial</td></tr>
+          <tr><td>Orden de producción</td><td><span class="ar">→</span> OP-AÑO-SECUENCIAL-PROCESO</td></tr>
+          <tr><td>Lote / variante de color</td><td><span class="ar">→</span> Sub-OP de pintura por RAL</td></tr>
+          <tr><td>Confirmación (CO11)</td><td><span class="ar">→</span> Imputación de horas (reparto por proyecto)</td></tr>
+          <tr><td>Orden de retrabajo</td><td><span class="ar">→</span> ORT-AÑO-SECUENCIAL</td></tr>
+        </table>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <!-- MAESTROS -->
+    <section class="view" id="v-maestros">
+      <h1>Datos maestros · lámpara Cruz</h1>
+      <p class="sub">El equivalente al maestro de material + BOM + ruta de SAP, para una lámpara.</p>
+      <div class="card"><h2>Lámpara (SKU)</h2><div class="body">
+        <dl class="kv">
+          <dt>Código</dt><dd>LAMP-CRUZ</dd>
+          <dt>Descripción</dt><dd>Lámpara Cruz</dd>
+          <dt>Bastidor</dt><dd>MDF 30</dd>
+          <dt>Pintable</dt><dd>Sí (imprimación + color RAL)</dd>
+          <dt>Estrategia</dt><dd>Bajo proyecto / stock anticipado (STOCK-)</dd>
+        </dl>
+      </div></div>
+      <div class="card"><h2>BOM · componentes</h2><div class="body">
+        <table><thead><tr><th>Componente</th><th>Material</th><th class="num">Cant.</th><th class="num">€/ud</th></tr></thead>
+        <tbody id="bom"></tbody></table>
+      </div></div>
+      <div class="card"><h2>Hoja de ruta · procesos y puestos</h2><div class="body">
+        <table><thead><tr><th>Proceso</th><th>Puesto</th><th>Agrupación de OP</th><th class="num">Min/ud</th></tr></thead>
+        <tbody id="ruta"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- PLAN -->
+    <section class="view" id="v-plan">
+      <h1>Proyectos y agrupación de OP</h1>
+      <p class="sub">Aquí está la diferencia con el PP estándar: dos proyectos piden la misma lámpara → el sistema sugiere una sola OP por bastidor.</p>
+      <div class="card"><h2>Necesidad de lámparas Cruz (bastidor MDF 30)</h2><div class="body">
+        <table><thead><tr><th>Proyecto</th><th>Cliente</th><th>Lámpara</th><th class="num">Ud</th><th>Color destino</th></tr></thead>
+        <tbody>
+          <tr><td>P-2026-018</td><td>Farmacia Centro</td><td>Cruz</td><td class="num">6</td><td><span class="swatch" style="background:#1d1d1b"></span>RAL 9005</td></tr>
+          <tr><td>P-2026-021</td><td>Clínica Sol</td><td>Cruz</td><td class="num">4</td><td><span class="swatch" style="background:#f1f0ea"></span>RAL 9010</td></tr>
+        </tbody></table>
+        <div class="hint" style="margin-top:14px">Sugerencia del sistema: agrupar 6 + 4 = <b>10 unidades</b> en una sola OP de CNC por compartir bastidor MDF 30. Decisión final: jefe de producción / operario CNC.</div>
+        <div class="actions"><button class="btn" id="grpBtn">Crear OP agrupada</button></div>
+        <div id="grpOut"></div>
+      </div></div>
+    </section>
+
+    <!-- OP -->
+    <section class="view" id="v-op">
+      <h1>Órdenes de producción</h1>
+      <p class="sub">Estados propios: Pendiente → En curso → (Interrumpida / multiday) → Cerrada. Acciones: INICIAR · PAUSAR · REANUDAR · FINALIZAR.</p>
+      <div class="card"><h2>Órdenes activas</h2><div class="body">
+        <table><thead><tr><th>OP</th><th>Lámpara</th><th class="num">Ud</th><th>Proceso</th><th>Estado</th></tr></thead>
+        <tbody id="opList"></tbody></table>
+      </div></div>
+      <div id="opDetail"></div>
+    </section>
+
+    <!-- HORAS -->
+    <section class="view" id="v-horas">
+      <h1>Imputación de horas</h1>
+      <p class="sub">Cada hora trabajada en una OP agrupada se reparte de forma proporcional a las unidades de cada proyecto.</p>
+      <div class="hint">Misma tabla de tiempos que RRHH (M05): la confirmación de producción y el registro horario comparten origen. No duplicar fuentes.</div>
+      <div class="card"><h2>Reparto de la OP agrupada</h2><div class="body">
+        <div class="log" id="horasLog"><div>Sin horas imputadas todavía. Inicia y finaliza la OP en «Órdenes de producción».</div></div>
+      </div></div>
+    </section>
+
+    <!-- ORT -->
+    <section class="view" id="v-ort">
+      <h1>Retrabajos (ORT)</h1>
+      <p class="sub">Orden de retrabajo con coste trazado por separado: horas originales + horas de retrabajo, nunca mezcladas.</p>
+      <div class="card"><h2>ORT-2026-0007 · cambio de color</h2><div class="body">
+        <dl class="kv">
+          <dt>Origen</dt><dd>2× Cruz del proyecto P-2026-018 (RAL 9005 → RAL 7016)</dd>
+          <dt>Motivo</dt><dd>Cambio de color por modificación de cliente</dd>
+        </dl>
+        <table style="margin-top:12px"><thead><tr><th>Concepto</th><th>Proceso</th><th class="num">Horas</th><th class="num">Coste €</th></tr></thead>
+        <tbody>
+          <tr><td>Fabricación original</td><td>CNC + montaje + pintura</td><td class="num">3,80</td><td class="num">148,20</td></tr>
+          <tr><td><span class="pill p-ort">Retrabajo</span></td><td>Lijado + nueva pintura RAL 7016</td><td class="num">1,20</td><td class="num">46,80</td></tr>
+          <tr><td><b>Coste total trazado</b></td><td></td><td class="num"><b>5,00</b></td><td class="num"><b>195,00</b></td></tr>
+        </tbody></table>
+        <div class="hint" style="margin-top:14px">El coste de retrabajo queda visible y separado: permite análisis de calidad (M07) y desvío real sin contaminar el coste estándar de la lámpara.</div>
+      </div></div>
+    </section>
+
+    <!-- COSTES -->
+    <section class="view" id="v-costes">
+      <h1>Costes por lámpara y proyecto</h1>
+      <p class="sub">Coste plan (estándar de la lámpara) frente a coste real con horas imputadas. La desviación alimenta el análisis (M09).</p>
+      <div class="card"><h2>Coste de la OP agrupada por proyecto</h2><div class="body">
+        <table><thead><tr><th>Proyecto</th><th class="num">Ud</th><th class="num">Plan €</th><th class="num">Real €</th><th class="num">Desviación</th></tr></thead>
+        <tbody id="costList"></tbody></table>
+      </div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const RATE=0.65;
+const fmt=n=>n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+const bom=[
+  {c:'BAST-MDF30',m:'Tablero MDF 30 mm',q:1,p:34},
+  {c:'LED-STRIP',m:'Tira LED 24V',q:1,p:18},
+  {c:'DIFUSOR',m:'Difusor acrílico',q:1,p:12},
+  {c:'HERRAJE',m:'Kit fijación',q:1,p:7},
+];
+const ruta=[
+  {p:'CNC',wc:'Centro CNC (Aspire)',grp:'por bastidor (MDF 30)',tpu:9},
+  {p:'Ensamblaje',wc:'Banco de montaje',grp:'por tipo de lámpara',tpu:14},
+  {p:'Imprimación',wc:'Cabina imprimación',grp:'lote completo',tpu:6},
+  {p:'Pintura',wc:'Cabina pintura',grp:'sub-OP por RAL',tpu:10},
+];
+const matCost=bom.reduce((s,b)=>s+b.q*b.p,0);
+
+const PROJ=[
+  {id:'P-2026-018',cli:'Farmacia Centro',ud:6,ral:'9005',hex:'#1d1d1b'},
+  {id:'P-2026-021',cli:'Clínica Sol',ud:4,ral:'9010',hex:'#f1f0ea'},
+];
+const TOTAL_UD=PROJ.reduce((s,p)=>s+p.ud,0);
+
+const STATES={
+  PEND:{lbl:'Pendiente',cls:'p-pend'}, CURSO:{lbl:'En curso',cls:'p-curso'},
+  INT:{lbl:'Interrumpida',cls:'p-int'}, MULTI:{lbl:'En curso (multiday)',cls:'p-multi'},
+  CERR:{lbl:'Cerrada',cls:'p-cerr'}
+};
+
+let op=null;            // OP agrupada (se crea en «Proyectos»)
+let horasLog=[];
+let imputed=false;
+
+const $=s=>document.querySelector(s);
+const pill=st=>`<span class="pill ${STATES[st].cls}">${STATES[st].lbl}</span>`;
+
+function renderTiles(){
+  const t=[
+    {k:op?1:0,l:'OP abiertas',v:'op'},
+    {k:TOTAL_UD,l:'Ud Cruz a fabricar',v:'plan'},
+    {k:'2',l:'Proyectos agrupados',v:'plan'},
+    {nm:'Imputación de horas',tc:'reparto por proyecto',v:'horas'},
+    {nm:'Retrabajos ORT',tc:'coste trazado',v:'ort'},
+  ];
+  $('#tiles').innerHTML=t.map(x=>`<div class="tile" data-v="${x.v}">
+    ${x.k!==undefined?`<div class="k">${x.k}</div><div class="l">${x.l}</div>`
+      :`<div class="nm">${x.nm}</div><div class="tc">${x.tc}</div>`}</div>`).join('');
+  document.querySelectorAll('.tile').forEach(el=>el.onclick=()=>go(el.dataset.v));
+}
+function renderMaestros(){
+  $('#bom').innerHTML=bom.map(b=>`<tr><td>${b.c}</td><td>${b.m}</td><td class="num">${b.q}</td><td class="num">${fmt(b.p)}</td></tr>`).join('')
+    +`<tr><td colspan="3"><b>Material por lámpara</b></td><td class="num"><b>${fmt(matCost)}</b></td></tr>`;
+  $('#ruta').innerHTML=ruta.map(o=>`<tr><td>${o.p}</td><td>${o.wc}</td><td>${o.grp}</td><td class="num">${o.tpu}</td></tr>`).join('');
+}
+
+function createOp(){
+  if(op) return;
+  op={id:'OP-2026-0042-CNC',lamp:'Cruz',ud:TOTAL_UD,st:'PEND',step:0,realMin:0};
+  $('#grpOut').innerHTML=`<div class="hint" style="margin-top:14px">Creada <span class="tag">${op.id}</span> · 10× Cruz · combina P-2026-018 y P-2026-021. Gestiónala en «Órdenes de producción».</div>`;
+  refresh();
+}
+
+function renderOp(){
+  if(!op){ $('#opList').innerHTML=`<tr><td colspan="5" class="sub">No hay OP. Créala en «Proyectos y agrupación».</td></tr>`; $('#opDetail').innerHTML=''; return; }
+  const proc = op.step>=ruta.length?'—':ruta[op.step].p;
+  $('#opList').innerHTML=`<tr class="click"><td>${op.id}</td><td>${op.lamp}</td><td class="num">${op.ud}</td><td>${proc}</td><td>${pill(op.st)}</td></tr>`;
+  $('#opList tr.click').onclick=showOp;
+  showOp();
+}
+
+function showOp(){
+  if(!op){return;}
+  const order=['PEND','CURSO','CERR'];
+  const steps=order.map(s=>{
+    const i=order.indexOf(op.st==='INT'||op.st==='MULTI'?'CURSO':op.st), c=order.indexOf(s);
+    return `<span class="step ${c<i?'done':c===i?'on':''}">${STATES[s].lbl}</span>`;
+  }).join('');
+  const pct=Math.round(op.step/ruta.length*100);
+  const real=op.realMin*RATE + (op.st!=='PEND'?matCost*op.ud:0);
+
+  // sub-OP de pintura por RAL (visible al llegar a pintura)
+  let subops='';
+  if(op.step>=3){
+    subops=`<div class="card" style="margin-top:14px"><h2>Sub-OP de pintura por RAL <span class="tag">visibles solo al pintor</span></h2><div class="body">
+      <table><thead><tr><th>Sub-OP</th><th>Color</th><th class="num">Ud</th></tr></thead><tbody>
+      ${PROJ.map(p=>`<tr><td><span class="tag">OP-2026-0042-PIN-CRUZ-RAL${p.ral}</span></td>
+        <td><span class="swatch" style="background:${p.hex}"></span>RAL ${p.ral} · ${p.cli}</td>
+        <td class="num">${p.ud}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+
+  let acts='';
+  if(op.st==='PEND') acts=`<button class="btn" onclick="act('iniciar')">INICIAR</button>`;
+  else if(op.st==='CURSO'||op.st==='MULTI'){
+    const next=op.step<ruta.length?ruta[op.step]:null;
+    acts=(next?`<button class="btn ok" onclick="act('confirm')">Confirmar ${next.p}</button>`:'')+
+         `<button class="btn warn" onclick="act('pausar')">PAUSAR</button>`+
+         (op.step>=ruta.length?`<button class="btn" onclick="act('finalizar')">FINALIZAR</button>`:'');
+  } else if(op.st==='INT'){
+    acts=`<button class="btn" onclick="act('reanudar')">REANUDAR</button>`;
+  } else acts=`<span class="sub">OP cerrada. Horas imputadas y coste repartido por proyecto.</span>`;
+
+  $('#opDetail').innerHTML=`<div class="card"><h2>${op.id} · ${op.lamp} ×${op.ud}</h2><div class="body">
+    <div class="steps">${steps}</div>
+    <div class="row">
+      <dl class="kv">
+        <dt>Procesos</dt><dd>${op.step} / ${ruta.length} confirmados</dd>
+        <dt>Horas reales</dt><dd>${(op.realMin/60).toFixed(2)} h</dd>
+        <dt>Trazabilidad</dt><dd>código CNC grabado (p. ej. 042-1)</dd>
+      </dl>
+      <dl class="kv">
+        <dt>Coste plan</dt><dd>${fmt(planCost())} €</dd>
+        <dt>Coste real</dt><dd>${fmt(real)} €</dd>
+        <dt>Proyectos</dt><dd>P-2026-018 (6) · P-2026-021 (4)</dd>
+      </dl>
+    </div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="actions">${acts}</div>
+    ${subops}
+  </div></div>`;
+}
+
+function planCost(){
+  const minUd=ruta.reduce((s,o)=>s+o.tpu,0);
+  return matCost*op.ud + minUd*op.ud*RATE;
+}
+
+function act(a){
+  if(a==='iniciar'){ op.st='CURSO'; log(`${op.id} · INICIAR · arranca proceso ${ruta[0].p}`); }
+  if(a==='pausar'){ op.st='INT'; log(`${op.id} · PAUSAR · interrumpida (causa obligatoria)`); }
+  if(a==='reanudar'){ op.st='CURSO'; log(`${op.id} · REANUDAR`); }
+  if(a==='confirm'){
+    const o=ruta[op.step]; const min=o.tpu*op.ud; op.realMin+=min; op.step++;
+    if(op.step>=ruta.length) op.st='CURSO';
+    log(`${op.id} · ${o.p} confirmado · ${(min/60).toFixed(2)} h`);
+  }
+  if(a==='finalizar'){ op.st='CERR'; imputeHours(); log(`${op.id} · FINALIZAR · cerrada`); }
+  refresh(); showOp();
+}
+
+function imputeHours(){
+  if(imputed) return; imputed=true;
+  const totH=op.realMin/60;
+  PROJ.forEach(p=>{
+    const h=totH*p.ud/TOTAL_UD;
+    horasLog.push(`${p.id} (${p.cli}) · ${p.ud}/${TOTAL_UD} ud → ${h.toFixed(2)} h imputadas · ${fmt(h*60*RATE + matCost*p.ud)} €`);
+  });
+}
+
+function renderHoras(){
+  $('#horasLog').innerHTML=horasLog.length?horasLog.map(l=>`<div>${l}</div>`).join('')
+    :'<div>Sin horas imputadas todavía. Inicia y finaliza la OP en «Órdenes de producción».</div>';
+}
+function renderCostes(){
+  if(!op){ $('#costList').innerHTML=`<tr><td colspan="5" class="sub">Crea la OP primero.</td></tr>`; return; }
+  const totH=op.realMin/60;
+  $('#costList').innerHTML=PROJ.map(p=>{
+    const plan=(matCost+ruta.reduce((s,o)=>s+o.tpu,0)*RATE)*p.ud;
+    const real= op.st==='CERR' ? (totH*p.ud/TOTAL_UD)*60*RATE + matCost*p.ud : 0;
+    const dev=real-plan;
+    return `<tr><td>${p.id}</td><td class="num">${p.ud}</td><td class="num">${fmt(plan)}</td>
+      <td class="num">${op.st==='CERR'?fmt(real):'—'}</td>
+      <td class="num" style="color:${dev>0?'var(--bad)':'var(--ok)'}">${op.st==='CERR'?(dev>=0?'+':'')+fmt(dev):'—'}</td></tr>`;
+  }).join('');
+}
+function log(t){ /* general log unused */ }
+function refresh(){ renderTiles();renderOp();renderHoras();renderCostes(); }
+
+function go(v){
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.v));
+$('#grpBtn').onclick=createOp;
+
+renderMaestros(); refresh();
+</script>
+</body>
+</html>

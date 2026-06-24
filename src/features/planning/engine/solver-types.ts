@@ -52,6 +52,7 @@ export type SolveRequestPayload = {
     lampId: string;
     order: number;
     process: string;
+    naveId: string;
     pendingHours: number;
     minWeekQuarter?: number;
     canFragment?: boolean;
@@ -238,6 +239,7 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       lampId: t.lampId,
       order: t.order,
       process: t.process,
+      naveId: t.naveId,
       pendingHours: t.pendingHours,
       minWeekQuarter: t.minWeekQuarter ?? 0,
       canFragment: t.canFragment ?? true,

@@ -10,9 +10,10 @@ import {
   generatePlanning,
   hasRegistrosFromWeek,
   listFuturePlannings,
-  publishPlanning,
+  publishPlanningForWeek,
   undoPlanning,
 } from "@/features/planning/service";
+import { getCoordinatedPlanningNaveIds } from "@/features/planning/coordinated-naves";
 import {
   addWeeks,
   clearFutureDraftPlannings,
@@ -46,8 +47,13 @@ export async function generatePlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-      const { weekStart, horizonMode, planFromDate } = generateSchema.parse(input);
+      const { weekStart, horizonMode, planFromDate } =
+        generateSchema.parse(input);
+
+      const naveIds = await getCoordinatedPlanningNaveIds(ctx);
+      if (naveIds.length === 0) {
+        throw new Error("No hay naves activas para planificar");
+      }
 
       const planFrom =
         planFromDate !== undefined
@@ -58,18 +64,27 @@ export async function generatePlanningAction(input: {
         assertPlanFromDateInWorkWeek(weekStart, planFromDate!);
       }
 
+      const planFromAt =
+        planFrom === "DATE"
+          ? new Date(`${planFromDate}T00:00:00.000Z`)
+          : new Date();
+
       const result = await generatePlanning({
-        naveId: ctx.naveId,
+        naveIds,
         weekStart: new Date(weekStart),
         replaceDraft: true,
         planFrom,
-        planFromAt:
-          planFrom === "DATE"
-            ? new Date(`${planFromDate}T00:00:00.000Z`)
-            : new Date(),
+        planFromAt,
       });
       revalidatePath("/dashboard", "layout");
-      return result;
+      return {
+        planningId: result.plannings[0]?.planningId ?? "",
+        planningGroupId: result.planningGroupId,
+        warnings: result.warnings,
+        unscheduledHours: result.unscheduledHours,
+        assignmentsCount: result.assignmentsCount,
+        coordinatedNaves: result.plannings.length,
+      };
     },
     (result) => ({
       summary: `Generar planning semana ${input.weekStart}`,
@@ -93,18 +108,25 @@ export async function prepareHorizonGenerationAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-
       const { weekStart, horizonMode } = generateSchema.parse(input);
+      const targetNaveIds = await getCoordinatedPlanningNaveIds(ctx);
+      if (targetNaveIds.length === 0) {
+        throw new Error("No hay naves activas para planificar");
+      }
+
       const anchor = getMondayOf(new Date(weekStart));
 
       if (isMultiWeekMode(horizonMode)) {
-        if (await hasPublishedFuturePlannings(ctx.naveId, anchor)) {
-          throw new Error(
-            "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
-          );
+        for (const naveId of targetNaveIds) {
+          if (await hasPublishedFuturePlannings(naveId, anchor)) {
+            throw new Error(
+              "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
+            );
+          }
         }
-        await clearFutureDraftPlannings(ctx.naveId, anchor);
+        for (const naveId of targetNaveIds) {
+          await clearFutureDraftPlannings(naveId, anchor);
+        }
       }
 
       revalidatePath("/dashboard", "layout");
@@ -126,7 +148,9 @@ export async function getPlanningHorizonProgressAction(input: {
   lastWeekOutstandingHours?: number;
 }) {
   const ctx = await requireDashboardContext();
-  if (!ctx.naveId) {
+  const coordinatedNaveIds = await getCoordinatedPlanningNaveIds(ctx);
+  const progressNaveId = coordinatedNaveIds[0] ?? null;
+  if (!progressNaveId) {
     return {
       totalPendingHours: 0,
       projectPendingHours: 0,
@@ -144,7 +168,7 @@ export async function getPlanningHorizonProgressAction(input: {
     parsed.horizonMode.kind === "PROJECT" ? parsed.horizonMode.projectId : undefined;
 
   const snapshot = await countPendingPlanningHours({
-    naveId: ctx.naveId,
+    naveId: progressNaveId,
     beforeWeekStart: addWeeks(anchor, input.weeksGenerated),
     projectId,
   });
@@ -186,16 +210,28 @@ export async function publishPlanningAction(input: { planningId: string }) {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
       const { planningId } = publishSchema.parse(input);
       const planning = await prisma.planning.findUnique({
         where: { id: planningId },
-        select: { naveId: true },
+        select: { naveId: true, year: true, week: true, status: true },
       });
-      if (!planning || planning.naveId !== ctx.naveId) throw new Error("No autorizado");
-      await publishPlanning(planningId);
+      if (!planning) throw new Error("Planning no encontrado");
+
+      const coordinatedNaveIds = await getCoordinatedPlanningNaveIds(ctx);
+      if (!coordinatedNaveIds.includes(planning.naveId)) {
+        throw new Error("No autorizado");
+      }
+
+      const result = await publishPlanningForWeek({
+        naveIds: coordinatedNaveIds,
+        year: planning.year,
+        week: planning.week,
+      });
+      if (result.publishedCount === 0) {
+        throw new Error("No hay borradores pendientes de publicar");
+      }
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const };
+      return { ok: true as const, publishedCount: result.publishedCount };
     },
     {
       summary: "Publicar planning",
@@ -219,10 +255,14 @@ export async function undoPlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
       const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
+      const naveIds = await getCoordinatedPlanningNaveIds(ctx);
+      if (naveIds.length === 0) {
+        throw new Error("No hay naves activas para planificar");
+      }
+
       const result = await undoPlanning({
-        naveId: ctx.naveId,
+        naveIds,
         weekStart: new Date(weekStart),
         includeFutureWeeks,
       });
@@ -243,9 +283,13 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
   hasPublishedFuture: boolean;
   hasRegistros: boolean;
   isPublished: boolean;
+  hasDraft: boolean;
+  planningIds: string[];
+  coordinatedNaveCount: number;
 }> {
   const ctx = await requireDashboardContext();
-  if (!ctx.naveId) {
+  const coordinatedNaveIds = await getCoordinatedPlanningNaveIds(ctx);
+  if (coordinatedNaveIds.length === 0) {
     return {
       canUndo: false,
       hasFuturePlannings: false,
@@ -253,17 +297,25 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
       hasPublishedFuture: false,
       hasRegistros: false,
       isPublished: false,
+      hasDraft: false,
+      planningIds: [],
+      coordinatedNaveCount: 0,
     };
   }
+
   const weekStart = getMondayOf(new Date(weekStartIso));
   const { year, week } = isoWeek(weekStart);
 
-  const planning = await prisma.planning.findUnique({
+  const plannings = await prisma.planning.findMany({
     where: {
-      naveId_year_week: { naveId: ctx.naveId, year, week },
+      naveId: { in: coordinatedNaveIds },
+      year,
+      week,
     },
+    select: { id: true, status: true },
   });
-  if (!planning) {
+
+  if (plannings.length === 0) {
     return {
       canUndo: false,
       hasFuturePlannings: false,
@@ -271,19 +323,37 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
       hasPublishedFuture: false,
       hasRegistros: false,
       isPublished: false,
+      hasDraft: false,
+      planningIds: [],
+      coordinatedNaveCount: coordinatedNaveIds.length,
     };
   }
 
-  const [futurePlannings, registros] = await Promise.all([
-    listFuturePlannings(ctx.naveId, weekStart),
-    hasRegistrosFromWeek(ctx.naveId, weekStart),
+  const [futurePlanningsByNave, registrosByNave] = await Promise.all([
+    Promise.all(
+      coordinatedNaveIds.map((naveId) => listFuturePlannings(naveId, weekStart)),
+    ),
+    Promise.all(
+      coordinatedNaveIds.map((naveId) => hasRegistrosFromWeek(naveId, weekStart)),
+    ),
   ]);
+
+  const futurePlannings = futurePlanningsByNave.flat();
+  const hasRegistros = registrosByNave.some(Boolean);
+  const hasDraft = plannings.some((p) => p.status === "DRAFT");
+  const isPublished = plannings.every((p) => p.status === "PUBLISHED");
+
   return {
-    canUndo: !registros,
+    canUndo: !hasRegistros,
     hasFuturePlannings: futurePlannings.length > 0,
-    futurePlanningWeeks: futurePlannings.map((p) => p.weekStart.toISOString()),
+    futurePlanningWeeks: [
+      ...new Set(futurePlannings.map((p) => p.weekStart.toISOString())),
+    ].sort(),
     hasPublishedFuture: futurePlannings.some((p) => p.status === "PUBLISHED"),
-    hasRegistros: registros,
-    isPublished: planning.status === "PUBLISHED",
+    hasRegistros,
+    isPublished,
+    hasDraft,
+    planningIds: plannings.map((p) => p.id),
+    coordinatedNaveCount: coordinatedNaveIds.length,
   };
 }

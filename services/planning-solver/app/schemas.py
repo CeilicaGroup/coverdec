@@ -48,6 +48,7 @@ class EnginePerson(BaseModel):
     iniciales: str
     primary: list[str]
     fallback: list[str]
+    naveIds: list[str] = Field(default_factory=list)
     capacityHours: float
     hourlyRate: float
     overtimeHourlyRate: float
@@ -63,6 +64,7 @@ class EngineTask(BaseModel):
     lampId: str
     order: int
     process: str
+    naveId: str = ""
     pendingHours: float
     canFragment: bool = True
     minWeekQuarter: int = 0

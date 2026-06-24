@@ -70,4 +70,36 @@ describe("prior-week-planning", () => {
     expect(minQ).toBeGreaterThan(0);
     expect(dateTimeToWeekQuarter(WEEK_START, WEEK_START)).toBe(0);
   });
+
+  it("defers successor when cross-nave predecessor still has pending work", () => {
+    const tasks = [
+      {
+        id: "pred-n2",
+        lampId: "l1",
+        order: 0,
+        process: "PINTURA",
+        pendingToPlanHours: 4,
+        remainingWorkHours: 4,
+        estimatedHours: 8,
+      },
+      {
+        id: "succ-n1",
+        lampId: "l1",
+        order: 1,
+        process: "MONTAJE",
+        pendingToPlanHours: 8,
+        remainingWorkHours: 8,
+        estimatedHours: 8,
+      },
+    ];
+    const { deferredPastHorizon } = computeMinWeekQuarterByTaskId({
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["succ-n1"]),
+      priorEnds: new Map(),
+      waitHoursByProcess: new Map(),
+      holidayDates: new Set(),
+    });
+    expect(deferredPastHorizon.has("succ-n1")).toBe(true);
+  });
 });

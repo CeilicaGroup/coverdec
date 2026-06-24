@@ -376,7 +376,7 @@ def _build_block_variables(
         if proc is None:
             continue
 
-        for person in pick_candidates(data.people, task.process):
+        for person in pick_candidates(data.people, task.process, task.naveId or None):
             if task.ownerPersonId and person.id != task.ownerPersonId:
                 continue
             week_tl = data.week_timelines.get(person.id)
@@ -469,7 +469,7 @@ def _block_debug_rows(data: ProblemData, mv: ModelVars) -> list[dict]:
     rows: list[dict] = []
     for task in data.tasks:
         blocks = mv.by_task.get(task.id, [])
-        cand = pick_candidates(data.people, task.process)
+        cand = pick_candidates(data.people, task.process, task.naveId or None)
         rows.append(
             {
                 "taskId": task.id,
@@ -487,7 +487,7 @@ def _diagnose_no_candidate(data: ProblemData, task: EngineTask) -> str:
         return (
             f"{NO_CANDIDATE_PREFIX} El proceso «{task.process}» no está en el catálogo."
         )
-    candidates = pick_candidates(data.people, task.process)
+    candidates = pick_candidates(data.people, task.process, task.naveId or None)
     if not candidates:
         return (
             f"{NO_CANDIDATE_PREFIX} Ningún operario tiene el proceso "
