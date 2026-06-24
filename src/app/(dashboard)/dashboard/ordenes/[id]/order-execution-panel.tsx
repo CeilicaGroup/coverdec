@@ -27,6 +27,13 @@ const STATUS_LABELS: Record<ProductionOrderStatus, string> = {
   CERR: "Cerrada",
 };
 
+interface ExecutionLine {
+  id: string;
+  units: number;
+  completedUnits: number;
+  projectName?: string;
+}
+
 export function OrderExecutionPanel({
   orderId,
   status,
@@ -34,6 +41,8 @@ export function OrderExecutionPanel({
   plannedHours,
   actualHours,
   canManage,
+  canExecute = canManage,
+  lines = [],
 }: {
   orderId: string;
   status: ProductionOrderStatus;
@@ -41,16 +50,20 @@ export function OrderExecutionPanel({
   plannedHours: number | null;
   actualHours: number;
   canManage: boolean;
+  canExecute?: boolean;
+  lines?: ExecutionLine[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pauseReason, setPauseReason] = useState("");
   const [stepHours, setStepHours] = useState("");
+  const [completedUnits, setCompletedUnits] = useState("");
+  const [lineId, setLineId] = useState(lines[0]?.id ?? "");
   const [finishHours, setFinishHours] = useState(
     actualHours > 0 ? String(actualHours) : plannedHours ? String(plannedHours) : "",
   );
 
-  if (!canManage || status === ProductionOrderStatus.CERR) return null;
+  if (!canExecute || status === ProductionOrderStatus.CERR) return null;
 
   const run = (fn: () => Promise<unknown>, success: string) => {
     startTransition(async () => {
@@ -64,6 +77,9 @@ export function OrderExecutionPanel({
     });
   };
 
+  const totalUnits = lines.reduce((s, l) => s + l.units, 0);
+  const doneUnits = lines.reduce((s, l) => s + l.completedUnits, 0);
+
   return (
     <section className="no-print mb-6 rounded-lg border bg-muted/20 p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -72,6 +88,7 @@ export function OrderExecutionPanel({
           <div className="text-xs text-muted-foreground">
             Estado: {STATUS_LABELS[status]} · Paso {step}
             {actualHours > 0 ? ` · ${formatHours(actualHours)} h acumuladas` : null}
+            {totalUnits > 0 ? ` · ${doneUnits}/${totalUnits} ud` : null}
           </div>
         </div>
         {pending ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
@@ -101,7 +118,7 @@ export function OrderExecutionPanel({
 
         {status === ProductionOrderStatus.CURSO || status === ProductionOrderStatus.MULTI ? (
           <>
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               <div className="space-y-1">
                 <Label htmlFor="step-hours" className="text-xs">
                   Horas del paso
@@ -116,6 +133,42 @@ export function OrderExecutionPanel({
                   onChange={(e) => setStepHours(e.target.value)}
                 />
               </div>
+              {lines.length > 0 ? (
+                <>
+                  <div className="space-y-1">
+                    <Label htmlFor="completed-units" className="text-xs">
+                      Unidades del paso
+                    </Label>
+                    <Input
+                      id="completed-units"
+                      type="number"
+                      min={0}
+                      className="w-24 font-mono h-8"
+                      value={completedUnits}
+                      onChange={(e) => setCompletedUnits(e.target.value)}
+                    />
+                  </div>
+                  {lines.length > 1 ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="line-id" className="text-xs">
+                        Línea
+                      </Label>
+                      <select
+                        id="line-id"
+                        className="h-8 text-xs border rounded px-2 bg-background"
+                        value={lineId}
+                        onChange={(e) => setLineId(e.target.value)}
+                      >
+                        {lines.map((line) => (
+                          <option key={line.id} value={line.id}>
+                            {line.projectName ?? line.id} ({line.completedUnits}/{line.units})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <Button
                 size="sm"
                 variant="secondary"
@@ -123,8 +176,16 @@ export function OrderExecutionPanel({
                 onClick={() => {
                   const h = Number(stepHours);
                   if (!h || h <= 0) return;
+                  const units = completedUnits ? Number(completedUnits) : undefined;
                   run(
-                    () => confirmProductionOrderStepAction({ orderId, stepHours: h }),
+                    () =>
+                      confirmProductionOrderStepAction({
+                        orderId,
+                        stepHours: h,
+                        ...(units != null && units > 0 && lineId
+                          ? { completedUnits: units, lineId }
+                          : {}),
+                      }),
                     "Paso confirmado",
                   );
                 }}
@@ -166,36 +227,38 @@ export function OrderExecutionPanel({
           </>
         ) : null}
 
-        <div className="flex items-end gap-2 ml-auto">
-          <div className="space-y-1">
-            <Label htmlFor="finish-hours" className="text-xs">
-              Horas reales (finalizar)
-            </Label>
-            <Input
-              id="finish-hours"
-              type="number"
-              step={0.25}
-              min={0.25}
-              className="w-28 font-mono h-8"
-              value={finishHours}
-              onChange={(e) => setFinishHours(e.target.value)}
-            />
+        {canManage ? (
+          <div className="flex items-end gap-2 ml-auto">
+            <div className="space-y-1">
+              <Label htmlFor="finish-hours" className="text-xs">
+                Horas reales (finalizar)
+              </Label>
+              <Input
+                id="finish-hours"
+                type="number"
+                step={0.25}
+                min={0.25}
+                className="w-28 font-mono h-8"
+                value={finishHours}
+                onChange={(e) => setFinishHours(e.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              disabled={pending || !finishHours}
+              onClick={() => {
+                const h = Number(finishHours);
+                if (!h || h <= 0) return;
+                run(
+                  () => finishProductionOrderAction({ orderId, actualHours: h }),
+                  "OP finalizada e imputada",
+                );
+              }}
+            >
+              Finalizar
+            </Button>
           </div>
-          <Button
-            size="sm"
-            disabled={pending || !finishHours}
-            onClick={() => {
-              const h = Number(finishHours);
-              if (!h || h <= 0) return;
-              run(
-                () => finishProductionOrderAction({ orderId, actualHours: h }),
-                "OP finalizada e imputada",
-              );
-            }}
-          >
-            Finalizar
-          </Button>
-        </div>
+        ) : null}
       </div>
     </section>
   );

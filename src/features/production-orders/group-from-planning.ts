@@ -1,6 +1,11 @@
 import { PlanningStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { toUtcDay } from "@/lib/week";
+import {
+  buildProcessBatchSuffix,
+  isPaintProcess,
+  resolveRalFromLamp,
+} from "./grouping-rules";
 
 export interface WorkOrderLinePreview {
   taskId: string;
@@ -8,6 +13,8 @@ export interface WorkOrderLinePreview {
   projectName: string;
   units: number;
   hours: number;
+  ral: string | null;
+  colorHex: string | null;
 }
 
 export interface WorkOrderBatchPreview {
@@ -15,6 +22,7 @@ export interface WorkOrderBatchPreview {
   process: string;
   naveId: string;
   elementTypeId: string | null;
+  batchRal: string | null;
   scheduledWeek: string;
   planningGroupId: string | null;
   hours: number;
@@ -29,6 +37,8 @@ interface GroupedLine {
   projectName: string;
   units: number;
   hours: number;
+  ral: string | null;
+  colorHex: string | null;
 }
 
 interface RawAssignment {
@@ -41,6 +51,13 @@ interface RawAssignment {
     separateWorkOrder: boolean;
     projectId: string;
     project: { name: string };
+    lamp: {
+      ral: string | null;
+      colorHex: string | null;
+      notes: string | null;
+      name: string;
+      code: string | null;
+    };
     lampElement: { elementTypeId: string; units: number } | null;
   };
   planning: {
@@ -56,6 +73,7 @@ function buildBatchKey(args: {
   process: string;
   naveId: string;
   elementTypeId: string | null;
+  ral: string | null;
   taskId: string;
   separateWorkOrder: boolean;
 }): string {
@@ -65,10 +83,14 @@ function buildBatchKey(args: {
     args.process,
     args.naveId,
   ].join("|");
-  if (args.separateWorkOrder) {
-    return `${base}|task:${args.taskId}`;
-  }
-  return `${base}|elem:${args.elementTypeId ?? "none"}`;
+  const suffix = buildProcessBatchSuffix({
+    process: args.process,
+    elementTypeId: args.elementTypeId,
+    ral: args.ral,
+    taskId: args.taskId,
+    separateWorkOrder: args.separateWorkOrder,
+  });
+  return `${base}|${suffix}`;
 }
 
 export function groupAssignmentsIntoBatches(
@@ -81,6 +103,7 @@ export function groupAssignmentsIntoBatches(
       process: string;
       naveId: string;
       elementTypeId: string | null;
+      batchRal: string | null;
       scheduledWeek: string;
       planningGroupId: string | null;
       hours: number;
@@ -93,12 +116,14 @@ export function groupAssignmentsIntoBatches(
     const weekStart = toUtcDay(a.planning.weekStart);
     const weekStartIso = weekStart.toISOString().slice(0, 10);
     const elementTypeId = a.task.lampElement?.elementTypeId ?? null;
+    const { ral, colorHex } = resolveRalFromLamp(a.task.lamp);
     const batchKey = buildBatchKey({
       planningGroupId: a.planning.planningGroupId,
       weekStartIso,
       process: a.process,
       naveId: a.task.naveId,
       elementTypeId,
+      ral,
       taskId: a.task.id,
       separateWorkOrder: a.task.separateWorkOrder,
     });
@@ -110,6 +135,7 @@ export function groupAssignmentsIntoBatches(
         process: a.process,
         naveId: a.task.naveId,
         elementTypeId,
+        batchRal: isPaintProcess(a.process) ? ral : null,
         scheduledWeek: weekStartIso,
         planningGroupId: a.planning.planningGroupId,
         hours: 0,
@@ -137,6 +163,8 @@ export function groupAssignmentsIntoBatches(
         projectName: a.task.project.name,
         units,
         hours: a.hours,
+        ral,
+        colorHex,
       });
     }
   }
@@ -148,6 +176,7 @@ export function groupAssignmentsIntoBatches(
       process: batch.process,
       naveId: batch.naveId,
       elementTypeId: batch.elementTypeId,
+      batchRal: batch.batchRal,
       scheduledWeek: batch.scheduledWeek,
       planningGroupId: batch.planningGroupId,
       hours: Math.round(batch.hours * 100) / 100,
@@ -163,7 +192,7 @@ async function loadPublishedAssignments(args: {
   year: number;
   week: number;
 }): Promise<RawAssignment[]> {
-  const rows = await prisma.planningAssignment.findMany({
+  return prisma.planningAssignment.findMany({
     where: {
       planning: {
         naveId: { in: args.naveIds },
@@ -183,6 +212,15 @@ async function loadPublishedAssignments(args: {
           separateWorkOrder: true,
           projectId: true,
           project: { select: { name: true } },
+          lamp: {
+            select: {
+              ral: true,
+              colorHex: true,
+              notes: true,
+              name: true,
+              code: true,
+            },
+          },
           lampElement: { select: { elementTypeId: true, units: true } },
         },
       },
@@ -195,7 +233,6 @@ async function loadPublishedAssignments(args: {
       },
     },
   });
-  return rows;
 }
 
 async function batchAlreadyExists(args: {
@@ -204,6 +241,7 @@ async function batchAlreadyExists(args: {
   naveId: string;
   elementTypeId: string | null;
   scheduledWeek: Date;
+  batchRal?: string | null;
   separateTaskId?: string;
 }): Promise<boolean> {
   const baseWhere = {
@@ -223,6 +261,17 @@ async function batchAlreadyExists(args: {
       select: { id: true },
     });
     return existing !== null;
+  }
+
+  if (args.batchRal) {
+    const candidates = await prisma.productionOrder.findMany({
+      where: baseWhere,
+      select: { id: true, lines: { select: { ral: true } } },
+    });
+    return candidates.some((order) =>
+      order.lines.length > 0 &&
+      order.lines.every((l) => l.ral === args.batchRal),
+    );
   }
 
   const existing = await prisma.productionOrder.findFirst({
@@ -253,6 +302,7 @@ export async function previewWorkOrdersFromPlanning(args: {
       naveId: batch.naveId,
       elementTypeId: batch.elementTypeId,
       scheduledWeek,
+      batchRal: batch.batchRal,
       separateTaskId,
     });
     enriched.push({ ...batch, skippedExisting });
@@ -264,17 +314,21 @@ export async function generateWorkOrdersFromPlanning(args: {
   naveIds: string[];
   year: number;
   week: number;
+  batchKeys?: string[];
 }): Promise<{ created: number; skipped: number; numbers: string[] }> {
   const previews = await previewWorkOrdersFromPlanning(args);
-  const toCreate = previews.filter((b) => !b.skippedExisting && b.lines.length > 0);
+  const selected = args.batchKeys?.length
+    ? previews.filter((b) => args.batchKeys!.includes(b.batchKey))
+    : previews;
+  const toCreate = selected.filter((b) => !b.skippedExisting && b.lines.length > 0);
 
   if (toCreate.length === 0) {
-    return { created: 0, skipped: previews.length, numbers: [] };
+    return { created: 0, skipped: selected.length, numbers: [] };
   }
 
   const numbers: string[] = [];
   let created = 0;
-  let skipped = previews.length - toCreate.length;
+  const skipped = selected.length - toCreate.length;
 
   await prisma.$transaction(async (tx) => {
     const orderYear = new Date().getUTCFullYear();
@@ -315,6 +369,8 @@ export async function generateWorkOrdersFromPlanning(args: {
               taskId: line.taskId,
               projectId: line.projectId,
               units: line.units,
+              ral: line.ral,
+              colorHex: line.colorHex,
             })),
           },
         },

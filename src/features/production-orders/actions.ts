@@ -19,9 +19,17 @@ import {
   generateWorkOrdersFromPlanning,
   previewWorkOrdersFromPlanning,
 } from "./group-from-planning";
+import {
+  assertCanExecuteProductionOrder,
+} from "./permissions";
 import { createProductionOrderSchema } from "./schema";
 
 const log = childLogger({ module: "production-orders.actions" });
+
+const planningWeekSchema = z.object({
+  year: z.number().int().min(2020).max(2100),
+  week: z.number().int().min(1).max(53),
+});
 
 const orderIdSchema = z.object({ orderId: z.string().min(1) });
 
@@ -31,14 +39,21 @@ const pauseOrderSchema = orderIdSchema.extend({
 
 const confirmStepSchema = orderIdSchema.extend({
   stepHours: z.number().positive(),
+  completedUnits: z.number().int().min(0).optional(),
+  lineId: z.string().optional(),
 });
 
 const finishOrderSchema = orderIdSchema.extend({
   actualHours: z.number().positive().optional(),
 });
 
+const generateSelectedSchema = planningWeekSchema.extend({
+  batchKeys: z.array(z.string().min(1)).min(1),
+});
+
 function revalidateOrdenesPaths(orderId?: string) {
   revalidatePath("/dashboard/ordenes");
+  revalidatePath("/dashboard/planta");
   revalidatePath("/dashboard/proyectos");
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
@@ -50,8 +65,8 @@ export async function startProductionOrderAction(input: unknown) {
     "production-orders.startProductionOrder",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const { orderId } = orderIdSchema.parse(input);
+      await assertCanExecuteProductionOrder(ctx, orderId, "start");
       const order = await loadProductionOrderForExecution(orderId);
       assertOrderTransition(order.status, [ProductionOrderStatus.PEND]);
       await prisma.productionOrder.update({
@@ -73,8 +88,8 @@ export async function pauseProductionOrderAction(input: unknown) {
     "production-orders.pauseProductionOrder",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = pauseOrderSchema.parse(input);
+      await assertCanExecuteProductionOrder(ctx, data.orderId, "pause");
       const order = await loadProductionOrderForExecution(data.orderId);
       assertOrderTransition(order.status, [
         ProductionOrderStatus.CURSO,
@@ -103,8 +118,8 @@ export async function resumeProductionOrderAction(input: unknown) {
     "production-orders.resumeProductionOrder",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const { orderId } = orderIdSchema.parse(input);
+      await assertCanExecuteProductionOrder(ctx, orderId, "resume");
       const order = await loadProductionOrderForExecution(orderId);
       assertOrderTransition(order.status, [ProductionOrderStatus.INT]);
       await prisma.productionOrder.update({
@@ -123,14 +138,28 @@ export async function confirmProductionOrderStepAction(input: unknown) {
     "production-orders.confirmProductionOrderStep",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = confirmStepSchema.parse(input);
+      await assertCanExecuteProductionOrder(ctx, data.orderId, "confirm");
       const order = await loadProductionOrderForExecution(data.orderId);
       assertOrderTransition(order.status, [
         ProductionOrderStatus.CURSO,
         ProductionOrderStatus.MULTI,
       ]);
       const { userNotes, meta } = parseOrderExecutionMeta(order.notes);
+
+      if (data.lineId != null && data.completedUnits != null) {
+        const line = order.lines.find((l) => l.id === data.lineId);
+        if (!line) throw new Error("Línea no encontrada.");
+        const nextCompleted = Math.min(
+          line.units,
+          line.completedUnits + data.completedUnits,
+        );
+        await prisma.productionOrderLine.update({
+          where: { id: data.lineId },
+          data: { completedUnits: nextCompleted },
+        });
+      }
+
       await prisma.productionOrder.update({
         where: { id: data.orderId },
         data: {
@@ -153,8 +182,8 @@ export async function finishProductionOrderAction(input: unknown) {
     "production-orders.finishProductionOrder",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = finishOrderSchema.parse(input);
+      await assertCanExecuteProductionOrder(ctx, data.orderId, "finish");
       const result = await prisma.$transaction(async (tx) =>
         finishProductionOrderTx(tx, {
           orderId: data.orderId,
@@ -173,11 +202,6 @@ export async function finishProductionOrderAction(input: unknown) {
     }),
   );
 }
-
-const planningWeekSchema = z.object({
-  year: z.number().int().min(2020).max(2100),
-  week: z.number().int().min(1).max(53),
-});
 
 export async function previewWorkOrdersFromPlanningAction(input: unknown) {
   return runAuditedMutation(
@@ -217,6 +241,31 @@ export async function generateWorkOrdersFromPlanningAction(input: unknown) {
     },
     (result) => ({
       summary: `Generar ${result.created} OT desde planning`,
+      metadata: result as unknown as Record<string, unknown>,
+    }),
+  );
+}
+
+export async function generateSelectedWorkOrdersAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.generateSelectedWorkOrders",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = generateSelectedSchema.parse(input);
+      const naveIds = await getCoordinatedPlanningNaveIds(ctx);
+      const result = await generateWorkOrdersFromPlanning({
+        naveIds,
+        year: data.year,
+        week: data.week,
+        batchKeys: data.batchKeys,
+      });
+      log.info(result, "selected work orders generated");
+      revalidatePath("/dashboard/ordenes");
+      return result;
+    },
+    (result) => ({
+      summary: `Generar ${result.created} OT seleccionadas`,
       metadata: result as unknown as Record<string, unknown>,
     }),
   );

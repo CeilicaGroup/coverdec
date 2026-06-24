@@ -3,10 +3,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
-import { Role } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { parseOrderExecutionMeta } from "@/features/production-orders/execution";
+import {
+  canExecuteProductionOrders,
+  canManageProductionOrders,
+} from "@/features/production-orders/permissions";
 import { PrintTrigger } from "./print-trigger";
 import { OrderExecutionPanel } from "./order-execution-panel";
 
@@ -17,7 +20,8 @@ export default async function OrdenDetailPage({
 }) {
   const { id } = await params;
   const ctx = await requireDashboardContext();
-  const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const canManage = canManageProductionOrders(ctx.role);
+  const canExecute = canExecuteProductionOrders(ctx.role);
   const order = await prisma.productionOrder.findFirst({
     where: { id },
     include: {
@@ -58,14 +62,23 @@ export default async function OrdenDetailPage({
           </Button>
           <PrintTrigger />
         </div>
-        <OrderExecutionPanel
-          orderId={order.id}
-          status={order.status}
-          step={order.step}
-          plannedHours={order.hours}
-          actualHours={meta.actualHours}
-          canManage={canManage}
-        />
+        {canExecute ? (
+          <OrderExecutionPanel
+            orderId={order.id}
+            status={order.status}
+            step={order.step}
+            plannedHours={order.hours}
+            actualHours={meta.actualHours}
+            canManage={canManage}
+            canExecute={canExecute}
+            lines={order.lines.map((l) => ({
+              id: l.id,
+              units: l.units,
+              completedUnits: l.completedUnits,
+              projectName: l.project?.name ?? l.clientLabel ?? "—",
+            }))}
+          />
+        ) : null}
         <div className="bg-white border rounded-lg p-10 print:border-0 print:rounded-none print:shadow-none">
           <header className="flex items-start justify-between border-b pb-5 mb-6">
             <div>
