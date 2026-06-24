@@ -95,11 +95,28 @@ export function buildPriorPlannedHoursByProjectId(
 interface LampTaskRef {
   id: string;
   lampId: string;
+  lampElementId: string | null;
   order: number;
   process: string;
   pendingToPlanHours: number;
   remainingWorkHours: number;
   estimatedHours: number;
+}
+
+/** Cadena de precedencia: solo tareas del mismo elemento físico (LampElement). */
+function precedenceGroupKey(task: Pick<LampTaskRef, "lampElementId" | "id">): string {
+  return task.lampElementId ?? `task:${task.id}`;
+}
+
+function groupTasksByPrecedenceChain(tasks: LampTaskRef[]): Map<string, LampTaskRef[]> {
+  const byGroup = new Map<string, LampTaskRef[]>();
+  for (const t of tasks) {
+    const key = precedenceGroupKey(t);
+    const list = byGroup.get(key) ?? [];
+    list.push(t);
+    byGroup.set(key, list);
+  }
+  return byGroup;
 }
 
 function taskHasNoPendingWork(task: LampTaskRef): boolean {
@@ -187,16 +204,11 @@ export function computeMinWeekQuarterByTaskId(args: {
   deferredPastHorizon: Set<string>;
 } {
   const deferredPastHorizon = new Set<string>();
-  const byLamp = new Map<string, LampTaskRef[]>();
-  for (const t of args.tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
-    list.push(t);
-    byLamp.set(t.lampId, list);
-  }
+  const byGroup = groupTasksByPrecedenceChain(args.tasks);
 
   const minByTask = new Map<string, number>();
 
-  for (const group of byLamp.values()) {
+  for (const group of byGroup.values()) {
     const sorted = [...group].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );
@@ -258,16 +270,11 @@ export function buildPriorChainStartIsoByTaskId(args: {
   waitHoursByProcess: Map<string, number>;
   holidayDates: Set<string>;
 }): Map<string, string> {
-  const byLamp = new Map<string, LampTaskRef[]>();
-  for (const t of args.tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
-    list.push(t);
-    byLamp.set(t.lampId, list);
-  }
+  const byGroup = groupTasksByPrecedenceChain(args.tasks);
 
   const chainStart = new Map<string, string>();
 
-  for (const group of byLamp.values()) {
+  for (const group of byGroup.values()) {
     const sorted = [...group].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );

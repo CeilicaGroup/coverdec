@@ -737,6 +737,34 @@ def test_owner_person_id_pins_worker():
     assert all(a.personId == "op-b" for a in task_assignments)
 
 
+def test_lamp_edges_only_within_same_lamp_element():
+    from app.model.solve_week_blocks import _build_lamp_edges
+
+    tasks = [
+        EngineTask(
+            id="paint-a",
+            projectId="p1",
+            lampId="l1",
+            lampElementId="elem-a",
+            order=0,
+            process="PINTURA",
+            pendingHours=4,
+        ),
+        EngineTask(
+            id="mount-b",
+            projectId="p1",
+            lampId="l1",
+            lampElementId="elem-b",
+            order=1,
+            process="MONTAJE",
+            pendingHours=4,
+        ),
+    ]
+    edges = _build_lamp_edges(tasks, {})
+    edge_pairs = {(e.predecessor_id, e.successor_id) for e in edges}
+    assert ("paint-a", "mount-b") not in edge_pairs
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from app.main import app

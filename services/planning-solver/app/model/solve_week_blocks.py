@@ -57,6 +57,7 @@ class SchedulerWeights:
     load_balance: float = 1.0
     stability: float = 0.5
     split_penalty: float = 1.0
+    batch_same_work: float = 1.0
     early_start: float = 0.3
     project_priority: float = 0.0
 
@@ -164,16 +165,27 @@ def _delivery_target_q(delivery: date | None, week_start: date) -> int | None:
     return minute_to_week_quarter(day_idx, 17 * 60)
 
 
+def _precedence_group_key(t: EngineTask) -> str:
+    if t.lampElementId:
+        return t.lampElementId
+    return f"task:{t.id}"
+
+
+def _batch_group_key(t: EngineTask) -> tuple[str, str]:
+    elem = t.elementTypeId or t.lampElementId or t.id
+    return (t.process, elem)
+
+
 def _build_lamp_edges(
     tasks: list[EngineTask],
     process_by_code: dict,
 ) -> list[LampEdge]:
-    by_lamp: dict[str, list[EngineTask]] = defaultdict(list)
+    by_group: dict[str, list[EngineTask]] = defaultdict(list)
     for t in tasks:
-        by_lamp[t.lampId].append(t)
+        by_group[_precedence_group_key(t)].append(t)
 
     edges: list[LampEdge] = []
-    for group in by_lamp.values():
+    for group in by_group.values():
         group.sort(key=lambda t: t.order)
         for pred, succ in zip(group, group[1:]):
             proc = process_by_code.get(pred.process)
@@ -317,6 +329,7 @@ def _coerce_weights(
         load_balance=getattr(lw, "wLoadBalance", override.load_balance),
         stability=getattr(lw, "wMove", override.stability),
         project_priority=getattr(lw, "wPriority", override.project_priority),
+        batch_same_work=getattr(lw, "wBatchSameWork", override.batch_same_work),
     )
 
 
@@ -714,6 +727,10 @@ def _build_objective(
     if w_stab > 0:
         _add_stability_terms(model, data, mv, w_stab, terms)
 
+    w_batch = _scale(w.batch_same_work)
+    if w_batch > 0:
+        _add_batch_same_work_terms(model, data, mv, w_batch, terms)
+
     w_bal = _scale(w.load_balance)
     if w_bal > 0:
         _add_balance_terms(model, data, mv, w_bal, terms)
@@ -913,6 +930,33 @@ def _add_split_terms(
         model.Add(extra >= n_active - 1)
         model.Add(extra >= 0)
         terms.append(TIER_COST * w * extra)
+
+
+def _add_batch_same_work_terms(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+    w: int,
+    terms: list,
+) -> None:
+    """Penaliza la dispersión temporal entre bloques del mismo proceso y tipo de elemento."""
+    by_batch: dict[tuple[str, str], list[BlockVars]] = defaultdict(list)
+    for task in data.tasks:
+        key = _batch_group_key(task)
+        by_batch[key].extend(mv.by_task.get(task.id, []))
+
+    for blocks in by_batch.values():
+        if len(blocks) < 2:
+            continue
+        starts = [bv.start_wq for bv in blocks]
+        ends = [bv.end_wq for bv in blocks]
+        min_start = model.NewIntVar(0, HORIZON_Q, f"bs_{len(terms)}")
+        max_end = model.NewIntVar(0, HORIZON_Q + 1, f"be_{len(terms)}")
+        model.AddMinEquality(min_start, starts)
+        model.AddMaxEquality(max_end, ends)
+        span = model.NewIntVar(0, HORIZON_Q + 1, f"bsp_{len(terms)}")
+        model.Add(span == max_end - min_start)
+        terms.append(TIER_COST * w * span)
 
 
 def _delivery_urgency_score(task: EngineTask, week_start: date) -> int:

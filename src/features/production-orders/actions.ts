@@ -1,14 +1,68 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { ProductionOrderKind, Role } from "@/generated/prisma";
+import { getCoordinatedPlanningNaveIds } from "@/features/planning/coordinated-naves";
+import {
+  generateWorkOrdersFromPlanning,
+  previewWorkOrdersFromPlanning,
+} from "./group-from-planning";
 import { createProductionOrderSchema } from "./schema";
 
 const log = childLogger({ module: "production-orders.actions" });
+
+const planningWeekSchema = z.object({
+  year: z.number().int().min(2020).max(2100),
+  week: z.number().int().min(1).max(53),
+});
+
+export async function previewWorkOrdersFromPlanningAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.previewWorkOrdersFromPlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = planningWeekSchema.parse(input);
+      const naveIds = await getCoordinatedPlanningNaveIds(ctx);
+      const batches = await previewWorkOrdersFromPlanning({
+        naveIds,
+        year: data.year,
+        week: data.week,
+      });
+      return { batches };
+    },
+    { summary: "Vista previa de OT desde planning" },
+  );
+}
+
+export async function generateWorkOrdersFromPlanningAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.generateWorkOrdersFromPlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = planningWeekSchema.parse(input);
+      const naveIds = await getCoordinatedPlanningNaveIds(ctx);
+      const result = await generateWorkOrdersFromPlanning({
+        naveIds,
+        year: data.year,
+        week: data.week,
+      });
+      log.info(result, "work orders generated from planning");
+      revalidatePath("/dashboard/ordenes");
+      return result;
+    },
+    (result) => ({
+      summary: `Generar ${result.created} OT desde planning`,
+      metadata: result as unknown as Record<string, unknown>,
+    }),
+  );
+}
 
 export async function createProductionOrder(
   input: Parameters<typeof createProductionOrderSchema.parse>[0],

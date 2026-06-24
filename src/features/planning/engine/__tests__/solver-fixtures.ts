@@ -31,6 +31,8 @@ export function testTask(
     overduePenaltyMultiplier: 2.5,
     projectDeliveryDate: null,
     lampId: "l1",
+    lampElementId: null,
+    elementTypeId: null,
     order: 0,
     process: "CNC",
     naveId: TEST_NAVE_ID,

@@ -341,6 +341,7 @@ export async function loadSolverInput(args: {
         project: { isActive: true },
       },
       include: {
+        lampElement: { select: { id: true, elementTypeId: true } },
         project: {
           select: {
             id: true,
@@ -400,11 +401,13 @@ export async function loadSolverInput(args: {
       select: {
         id: true,
         lampId: true,
+        lampElementId: true,
         order: true,
         process: true,
         estimatedHours: true,
         isCompleted: true,
         naveId: true,
+        lampElement: { select: { elementTypeId: true } },
       },
     }),
   ]);
@@ -556,6 +559,8 @@ export async function loadSolverInput(args: {
       overduePenaltyMultiplier: planningPolicy?.overduePenaltyMultiplier ?? 2.5,
       projectDeliveryDate: t.project.deliveryDate ?? null,
       lampId: t.lampId,
+      lampElementId: t.lampElementId,
+      elementTypeId: t.lampElement?.elementTypeId ?? null,
       order: t.order,
       process: t.process,
       naveId: t.naveId,
@@ -575,6 +580,7 @@ export async function loadSolverInput(args: {
       tasks: precedenceTasksRaw.map((task) => ({
         id: task.id,
         lampId: task.lampId,
+        lampElementId: task.lampElementId,
         order: task.order,
         process: task.process,
         estimatedHours: task.estimatedHours,

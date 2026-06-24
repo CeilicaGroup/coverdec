@@ -120,9 +120,11 @@ model PlanningPolicy {
   wLate        Float    @default(1)
   wUnscheduled Float    @default(1)
   wLoadBalance Float    @default(1)
-  wMove        Float    @default(1)
-  wLaborCost   Float    @default(1)
-  wPriority    Float    @default(0)
+  wMove           Float    @default(1)
+  wLaborCost      Float    @default(1)
+  wPriority       Float    @default(0)
+  /// Penaliza huecos entre bloques del mismo proceso y tipo de elemento (agrupación OT).
+  wBatchSameWork  Float    @default(1)
   deadlineCurveExponent Float @default(2)
   overduePenaltyMultiplier Float @default(2.5)
   createdAt    DateTime @default(now())
@@ -435,10 +437,12 @@ model Task {
   estimatedHours Float
   isCompleted    Boolean  @default(false)
   order          Int      @default(0)
-  naveId         String
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  naveId            String
+  /// Si true, esta tarea no se agrupa con otras en la misma OT al generar desde planning.
+  separateWorkOrder Boolean  @default(false)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   project           Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   lamp              Lamp                 @relation(fields: [lampId], references: [id], onDelete: Cascade)
@@ -447,6 +451,7 @@ model Task {
   nave              Nave                 @relation(fields: [naveId], references: [id])
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
+  productionOrderLines ProductionOrderLine[]
 
   @@index([lampElementId])
 }
@@ -738,10 +743,14 @@ model ProductionOrder {
   naveKey       String?
   elementTypeId String?
   step          Int                   @default(0)
-  parentOrderId String?
-  notes         String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  parentOrderId   String?
+  /// Semana ISO del planning publicado que originó esta OP.
+  scheduledWeek   DateTime?
+  /// planningGroupId de la pasada coordinada que originó esta OP.
+  planningGroupId String?
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
   nave              Nave?              @relation(fields: [naveId], references: [id], onDelete: SetNull)
@@ -754,11 +763,13 @@ model ProductionOrder {
   @@unique([year, serial])
   @@index([status, scheduledAt])
   @@index([elementTypeId, process])
+  @@index([planningGroupId, process, naveId, scheduledWeek])
 }
 
 model ProductionOrderLine {
   id          String                    @id @default(cuid())
   orderId     String
+  taskId      String?
   projectId   String?
   clientLabel String?
   units       Int                       @default(1)
@@ -769,10 +780,12 @@ model ProductionOrderLine {
   updatedAt   DateTime                  @updatedAt
 
   order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  task    Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
   project Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([orderId, lineStatus])
   @@index([projectId])
+  @@index([taskId])
 }
 
 // ---------- Fábrica ----------

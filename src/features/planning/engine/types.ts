@@ -31,6 +31,8 @@ export interface EngineTask {
   overduePenaltyMultiplier: number;
   projectDeliveryDate: Date | null;
   lampId: string;
+  lampElementId: string | null;
+  elementTypeId: string | null;
   order: number;
   process: string;
   naveId: string;

@@ -34,6 +34,7 @@ describe("prior-week-planning", () => {
       {
         id: "pred",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 0,
         process: "PINTURA",
         pendingToPlanHours: 0,
@@ -43,6 +44,7 @@ describe("prior-week-planning", () => {
       {
         id: "succ",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 1,
         process: "MONTAJE",
         pendingToPlanHours: 8,
@@ -76,6 +78,7 @@ describe("prior-week-planning", () => {
       {
         id: "pred-n2",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 0,
         process: "PINTURA",
         pendingToPlanHours: 4,
@@ -85,6 +88,7 @@ describe("prior-week-planning", () => {
       {
         id: "succ-n1",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 1,
         process: "MONTAJE",
         pendingToPlanHours: 8,
@@ -101,5 +105,48 @@ describe("prior-week-planning", () => {
       holidayDates: new Set(),
     });
     expect(deferredPastHorizon.has("succ-n1")).toBe(true);
+  });
+
+  it("does not block successor on a different lamp element in the same lamp", () => {
+    const tasks = [
+      {
+        id: "pred-elem-a",
+        lampId: "l1",
+        lampElementId: "elem-a",
+        order: 0,
+        process: "PINTURA",
+        pendingToPlanHours: 0,
+        remainingWorkHours: 0,
+        estimatedHours: 8,
+      },
+      {
+        id: "succ-elem-b",
+        lampId: "l1",
+        lampElementId: "elem-b",
+        order: 1,
+        process: "MONTAJE",
+        pendingToPlanHours: 8,
+        remainingWorkHours: 8,
+        estimatedHours: 8,
+      },
+    ];
+    const priorEnds = buildLastAssignmentEndByTaskId([
+      {
+        taskId: "pred-elem-a",
+        date: new Date("2026-04-30T00:00:00.000Z"),
+        endSlot: 6,
+        hours: 8,
+      },
+    ]);
+    const { minByTask, deferredPastHorizon } = computeMinWeekQuarterByTaskId({
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["succ-elem-b"]),
+      priorEnds,
+      waitHoursByProcess: new Map([["PINTURA", 72]]),
+      holidayDates: new Set(),
+    });
+    expect(deferredPastHorizon.has("succ-elem-b")).toBe(false);
+    expect(minByTask.has("succ-elem-b")).toBe(false);
   });
 });

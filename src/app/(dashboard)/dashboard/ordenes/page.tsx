@@ -2,8 +2,11 @@ import Link from "next/link";
 import { Printer } from "lucide-react";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
+import { isoWeek, getMondayOf } from "@/lib/week";
+import { Role } from "@/generated/prisma";
 import { PageHeader } from "../../_components/page-header";
 import { CreateOrderDialog } from "./create-order-dialog";
+import { GenerateWorkOrdersPanel } from "./generate-work-orders-panel";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -19,6 +22,9 @@ import { ProcessBadge } from "@/components/process-badge";
 
 export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
+  const { year, week } = isoWeek(getMondayOf(new Date()));
+  const canGenerateOt =
+    ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const [orders, projects, processDefs] = await Promise.all([
     prisma.productionOrder.findMany({
       include: {
@@ -46,6 +52,9 @@ export default async function OrdenesPage() {
         description={`${orders.length} órdenes registradas`}
         actions={<CreateOrderDialog projects={projects} processDefs={processDefs} />}
       />
+      {canGenerateOt ? (
+        <GenerateWorkOrdersPanel initialYear={year} initialWeek={week} />
+      ) : null}
       <Card>
         <CardContent className="p-0">
           <Table>

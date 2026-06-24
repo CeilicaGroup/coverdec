@@ -36,6 +36,7 @@ class PlanningWeights(BaseModel):
     wMove: float
     wLaborCost: float = 1.0
     wPriority: float = 0.0  # project priority by delivery proximity
+    wBatchSameWork: float = 1.0
 
 
 class EngineProcessDef(BaseModel):
@@ -62,6 +63,8 @@ class EngineTask(BaseModel):
     overduePenaltyMultiplier: float = 2.5
     projectDeliveryDate: datetime | None = None
     lampId: str
+    lampElementId: str | None = None
+    elementTypeId: str | None = None
     order: int
     process: str
     naveId: str = ""
