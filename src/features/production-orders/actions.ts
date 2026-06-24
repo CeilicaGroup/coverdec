@@ -6,8 +6,15 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
-import { ProductionOrderKind, Role } from "@/generated/prisma";
+import { ProductionOrderKind, ProductionOrderStatus, Role } from "@/generated/prisma";
 import { getCoordinatedPlanningNaveIds } from "@/features/planning/coordinated-naves";
+import {
+  assertOrderTransition,
+  finishProductionOrderTx,
+  loadProductionOrderForExecution,
+  parseOrderExecutionMeta,
+  serializeOrderNotes,
+} from "./execution";
 import {
   generateWorkOrdersFromPlanning,
   previewWorkOrdersFromPlanning,
@@ -15,6 +22,157 @@ import {
 import { createProductionOrderSchema } from "./schema";
 
 const log = childLogger({ module: "production-orders.actions" });
+
+const orderIdSchema = z.object({ orderId: z.string().min(1) });
+
+const pauseOrderSchema = orderIdSchema.extend({
+  reason: z.string().min(1).max(500),
+});
+
+const confirmStepSchema = orderIdSchema.extend({
+  stepHours: z.number().positive(),
+});
+
+const finishOrderSchema = orderIdSchema.extend({
+  actualHours: z.number().positive().optional(),
+});
+
+function revalidateOrdenesPaths(orderId?: string) {
+  revalidatePath("/dashboard/ordenes");
+  revalidatePath("/dashboard/proyectos");
+  revalidatePath("/dashboard/horas");
+  revalidatePath("/dashboard/semana");
+  if (orderId) revalidatePath(`/dashboard/ordenes/${orderId}`);
+}
+
+export async function startProductionOrderAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.startProductionOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const { orderId } = orderIdSchema.parse(input);
+      const order = await loadProductionOrderForExecution(orderId);
+      assertOrderTransition(order.status, [ProductionOrderStatus.PEND]);
+      await prisma.productionOrder.update({
+        where: { id: orderId },
+        data: {
+          status: ProductionOrderStatus.CURSO,
+          scheduledAt: order.scheduledAt ?? new Date(),
+        },
+      });
+      revalidateOrdenesPaths(orderId);
+      return { ok: true as const };
+    },
+    (result) => ({ summary: "Iniciar orden de producción", entityType: "ProductionOrder" }),
+  );
+}
+
+export async function pauseProductionOrderAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.pauseProductionOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = pauseOrderSchema.parse(input);
+      const order = await loadProductionOrderForExecution(data.orderId);
+      assertOrderTransition(order.status, [
+        ProductionOrderStatus.CURSO,
+        ProductionOrderStatus.MULTI,
+      ]);
+      const { userNotes } = parseOrderExecutionMeta(order.notes);
+      const pauseNote = `[Pausa] ${data.reason.trim()}`;
+      const mergedNotes = userNotes ? `${userNotes}\n${pauseNote}` : pauseNote;
+      const { meta } = parseOrderExecutionMeta(order.notes);
+      await prisma.productionOrder.update({
+        where: { id: data.orderId },
+        data: {
+          status: ProductionOrderStatus.INT,
+          notes: serializeOrderNotes(mergedNotes, meta),
+        },
+      });
+      revalidateOrdenesPaths(data.orderId);
+      return { ok: true as const };
+    },
+    { summary: "Pausar orden de producción", entityType: "ProductionOrder" },
+  );
+}
+
+export async function resumeProductionOrderAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.resumeProductionOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const { orderId } = orderIdSchema.parse(input);
+      const order = await loadProductionOrderForExecution(orderId);
+      assertOrderTransition(order.status, [ProductionOrderStatus.INT]);
+      await prisma.productionOrder.update({
+        where: { id: orderId },
+        data: { status: ProductionOrderStatus.CURSO },
+      });
+      revalidateOrdenesPaths(orderId);
+      return { ok: true as const };
+    },
+    { summary: "Reanudar orden de producción", entityType: "ProductionOrder" },
+  );
+}
+
+export async function confirmProductionOrderStepAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.confirmProductionOrderStep",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = confirmStepSchema.parse(input);
+      const order = await loadProductionOrderForExecution(data.orderId);
+      assertOrderTransition(order.status, [
+        ProductionOrderStatus.CURSO,
+        ProductionOrderStatus.MULTI,
+      ]);
+      const { userNotes, meta } = parseOrderExecutionMeta(order.notes);
+      await prisma.productionOrder.update({
+        where: { id: data.orderId },
+        data: {
+          status: ProductionOrderStatus.MULTI,
+          step: order.step + 1,
+          notes: serializeOrderNotes(userNotes, {
+            actualHours: meta.actualHours + data.stepHours,
+          }),
+        },
+      });
+      revalidateOrdenesPaths(data.orderId);
+      return { ok: true as const };
+    },
+    { summary: "Confirmar paso de orden de producción", entityType: "ProductionOrder" },
+  );
+}
+
+export async function finishProductionOrderAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.finishProductionOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = finishOrderSchema.parse(input);
+      const result = await prisma.$transaction(async (tx) =>
+        finishProductionOrderTx(tx, {
+          orderId: data.orderId,
+          userId: ctx.userId,
+          actualHours: data.actualHours ?? 0,
+        }),
+      );
+      log.info({ orderId: data.orderId, ...result }, "production order finished");
+      revalidateOrdenesPaths(data.orderId);
+      return result;
+    },
+    (result) => ({
+      summary: "Finalizar orden de producción",
+      entityType: "ProductionOrder",
+      metadata: result as unknown as Record<string, unknown>,
+    }),
+  );
+}
 
 const planningWeekSchema = z.object({
   year: z.number().int().min(2020).max(2100),

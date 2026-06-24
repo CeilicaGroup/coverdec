@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
+import { Role } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
 import { formatHours, formatShortDate } from "@/lib/format";
+import { parseOrderExecutionMeta } from "@/features/production-orders/execution";
 import { PrintTrigger } from "./print-trigger";
+import { OrderExecutionPanel } from "./order-execution-panel";
 
 export default async function OrdenDetailPage({
   params,
@@ -12,14 +16,23 @@ export default async function OrdenDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const ctx = await requireDashboardContext();
+  const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const order = await prisma.productionOrder.findFirst({
     where: { id },
     include: {
       project: true,
-      lines: { include: { project: true }, orderBy: { createdAt: "asc" } },
+      nave: { select: { codigo: true, nombre: true } },
+      elementType: { select: { name: true } },
+      lines: {
+        include: { project: true, task: { select: { id: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!order) notFound();
+
+  const { userNotes, meta } = parseOrderExecutionMeta(order.notes);
 
   const projectLabel =
     order.project?.name ??
@@ -45,6 +58,14 @@ export default async function OrdenDetailPage({
           </Button>
           <PrintTrigger />
         </div>
+        <OrderExecutionPanel
+          orderId={order.id}
+          status={order.status}
+          step={order.step}
+          plannedHours={order.hours}
+          actualHours={meta.actualHours}
+          canManage={canManage}
+        />
         <div className="bg-white border rounded-lg p-10 print:border-0 print:rounded-none print:shadow-none">
           <header className="flex items-start justify-between border-b pb-5 mb-6">
             <div>
@@ -104,7 +125,38 @@ export default async function OrdenDetailPage({
               </div>
               <div className="font-mono">{formatShortDate(order.scheduledAt)}</div>
             </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                Semana planning
+              </div>
+              <div className="font-mono text-sm">
+                {order.scheduledWeek
+                  ? formatShortDate(order.scheduledWeek)
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                Nave
+              </div>
+              <div className="text-sm">
+                {order.nave ? `${order.nave.codigo} · ${order.nave.nombre}` : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                Estado
+              </div>
+              <div className="font-mono text-sm">{order.status}</div>
+            </div>
           </section>
+
+          {order.planningGroupId ? (
+            <section className="mb-6 text-xs text-muted-foreground">
+              Planning coordinado:{" "}
+              <span className="font-mono">{order.planningGroupId.slice(0, 12)}…</span>
+            </section>
+          ) : null}
 
           {order.lines.length > 0 && (
             <section className="mb-6">
@@ -117,6 +169,11 @@ export default async function OrdenDetailPage({
                     <span>
                       {line.project?.name ?? line.clientLabel ?? "—"}
                       {line.ral ? ` · RAL ${line.ral}` : ""}
+                      {line.taskId ? (
+                        <span className="text-[10px] text-muted-foreground ml-1">
+                          (tarea {line.taskId.slice(0, 8)}…)
+                        </span>
+                      ) : null}
                     </span>
                     <span className="font-mono text-muted-foreground">{line.units} ud</span>
                   </li>
@@ -125,14 +182,14 @@ export default async function OrdenDetailPage({
             </section>
           )}
 
-          {order.notes && (
+          {userNotes ? (
             <section className="mb-6 border-l-4 border-primary pl-4">
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-1">
                 Notas
               </div>
-              <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
+              <p className="text-sm whitespace-pre-wrap">{userNotes}</p>
             </section>
-          )}
+          ) : null}
 
           <section className="grid grid-cols-3 gap-4 pt-6 border-t">
             <SignatureBox label="Operario" />

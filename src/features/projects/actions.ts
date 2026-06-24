@@ -955,6 +955,39 @@ const updateTaskNotesSchema = z.object({
   notes: z.string().max(500).nullable(),
 });
 
+const updateTaskSeparateWorkOrderSchema = z.object({
+  taskId: z.string().min(1),
+  separateWorkOrder: z.boolean(),
+});
+
+export async function updateTaskSeparateWorkOrder(
+  input: z.infer<typeof updateTaskSeparateWorkOrderSchema>,
+) {
+  return runAuditedMutation(
+    "projects.updateTaskSeparateWorkOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = updateTaskSeparateWorkOrderSchema.parse(input);
+
+      const task = await prisma.task.findFirst({ where: { id: data.taskId } });
+      if (!task) throw new Error("Tarea no encontrada");
+
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { separateWorkOrder: data.separateWorkOrder },
+      });
+
+      revalidatePath("/dashboard/proyectos");
+    },
+    (result) => ({
+      summary: "Actualizar OT separada en tarea",
+      entityType: "Task",
+      entityId: input.taskId,
+    }),
+  );
+}
+
 export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchema>) {
   return runAuditedMutation(
     "projects.updateTaskNotes",
