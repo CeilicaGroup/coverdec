@@ -110,6 +110,7 @@ model Nave {
   plannings           Planning[]      @relation("NavePlannings")
   planningPolicy      PlanningPolicy? @relation("NavePolicy")
   notifications       Notification[]
+  productionOrders    ProductionOrder[]
 }
 
 /// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
@@ -327,6 +328,7 @@ model ElementType {
   updatedAt     DateTime        @updatedAt
 
   defaultNave  Nave?              @relation("ElementTypeDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
+  productionOrders ProductionOrder[]
   processes    ElementTypeProcess[]
   lamps        Lamp[]
   lampElements LampElement[]
@@ -375,6 +377,7 @@ model Project {
   tasks            Task[]
   timeEntries      TimeEntry[]
   productionOrders ProductionOrder[]
+  productionOrderLines ProductionOrderLine[]
   responsibleUser  User? @relation("ProjectResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
   notifications    Notification[]
 }
@@ -698,23 +701,78 @@ model NotificationState {
 
 // ---------- Órdenes de producción ----------
 
-model ProductionOrder {
-  id          String    @id @default(cuid())
-  number      String    @unique
-  year        Int
-  serial      Int
-  projectId   String
-  lampLabel   String?
-  process     String?
-  hours       Float?
-  scheduledAt DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
+enum ProductionOrderKind {
+  PROYECTO
+  STOCK
+  ORT
+}
 
-  project           Project            @relation(fields: [projectId], references: [id])
+enum ProductionOrderStatus {
+  PEND
+  CURSO
+  INT
+  MULTI
+  CERR
+}
+
+enum ProductionOrderLineStatus {
+  ACTIVE
+  CANCELLED
+  FULFILLED
+}
+
+model ProductionOrder {
+  id            String                @id @default(cuid())
+  number        String                @unique
+  year          Int
+  serial        Int
+  kind          ProductionOrderKind   @default(PROYECTO)
+  status        ProductionOrderStatus @default(PEND)
+  /// Proyecto de cabecera (OP simple legacy); destinos reales en líneas.
+  projectId     String?
+  lampLabel     String?
+  process       String?
+  hours         Float?
+  scheduledAt   DateTime?
+  naveId        String?
+  naveKey       String?
+  elementTypeId String?
+  step          Int                   @default(0)
+  parentOrderId String?
+  notes         String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  nave              Nave?              @relation(fields: [naveId], references: [id], onDelete: SetNull)
+  elementType       ElementType?       @relation(fields: [elementTypeId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
+  parentOrder       ProductionOrder?   @relation("ProductionOrderChildren", fields: [parentOrderId], references: [id], onDelete: SetNull)
+  childOrders       ProductionOrder[]  @relation("ProductionOrderChildren")
+  lines             ProductionOrderLine[]
 
   @@unique([year, serial])
+  @@index([status, scheduledAt])
+  @@index([elementTypeId, process])
+}
+
+model ProductionOrderLine {
+  id          String                    @id @default(cuid())
+  orderId     String
+  projectId   String?
+  clientLabel String?
+  units       Int                       @default(1)
+  ral         String?
+  colorHex    String?
+  lineStatus  ProductionOrderLineStatus @default(ACTIVE)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  project Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, lineStatus])
+  @@index([projectId])
 }
 
 // ---------- Fábrica ----------

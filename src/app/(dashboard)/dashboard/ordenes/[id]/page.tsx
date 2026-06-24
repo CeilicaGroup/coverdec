@@ -16,10 +16,22 @@ export default async function OrdenDetailPage({
     where: { id },
     include: {
       project: true,
+      lines: { include: { project: true }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!order) notFound();
 
+  const projectLabel =
+    order.project?.name ??
+    (order.lines
+      .map((l) => l.project?.name ?? l.clientLabel)
+      .filter(Boolean)
+      .join(", ") || "—");
+  const clientLabel =
+    order.project?.client ??
+    order.project?.obra ??
+    order.lines.find((l) => l.clientLabel)?.clientLabel ??
+    "—";
   return (
     <div className="min-h-screen bg-secondary/30 p-6 print:bg-white print:p-0">
       <div className="max-w-3xl mx-auto">
@@ -60,15 +72,13 @@ export default async function OrdenDetailPage({
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                 Proyecto
               </div>
-              <div className="text-base font-bold">{order.project.name}</div>
+              <div className="text-base font-bold">{projectLabel}</div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                 Cliente / Obra
               </div>
-              <div className="text-base">
-                {order.project.client ?? order.project.obra ?? "—"}
-              </div>
+              <div className="text-base">{clientLabel}</div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
@@ -95,6 +105,25 @@ export default async function OrdenDetailPage({
               <div className="font-mono">{formatShortDate(order.scheduledAt)}</div>
             </div>
           </section>
+
+          {order.lines.length > 0 && (
+            <section className="mb-6">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                Destinos
+              </div>
+              <ul className="text-sm space-y-1">
+                {order.lines.map((line) => (
+                  <li key={line.id} className="flex justify-between gap-4">
+                    <span>
+                      {line.project?.name ?? line.clientLabel ?? "—"}
+                      {line.ral ? ` · RAL ${line.ral}` : ""}
+                    </span>
+                    <span className="font-mono text-muted-foreground">{line.units} ud</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {order.notes && (
             <section className="mb-6 border-l-4 border-primary pl-4">

@@ -21,7 +21,10 @@ export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
   const [orders, projects, processDefs] = await Promise.all([
     prisma.productionOrder.findMany({
-      include: { project: true },
+      include: {
+        project: true,
+        lines: { include: { project: true } },
+      },
       orderBy: [{ year: "desc" }, { serial: "desc" }],
       take: 200,
     }),
@@ -49,8 +52,9 @@ export default async function OrdenesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>OP</TableHead>
+                <TableHead>Estado</TableHead>
                 <TableHead>Proyecto</TableHead>
-                <TableHead>Lámpara</TableHead>
+                <TableHead>Líneas</TableHead>
                 <TableHead>Proceso</TableHead>
                 <TableHead>Horas</TableHead>
                 <TableHead>Programada</TableHead>
@@ -60,7 +64,7 @@ export default async function OrdenesPage() {
             <TableBody>
               {orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                     No hay órdenes. Crea la primera.
                   </TableCell>
                 </TableRow>
@@ -68,8 +72,19 @@ export default async function OrdenesPage() {
                 orders.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono font-bold">{o.number}</TableCell>
-                    <TableCell>{o.project.name}</TableCell>
-                    <TableCell>{o.lampLabel ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{o.status}</TableCell>
+                    <TableCell>
+                      {o.project?.name ??
+                        (o.lines
+                          .map((l) => l.project?.name ?? l.clientLabel)
+                          .filter(Boolean)
+                          .join(", ") || "—")}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {o.lines.length > 0
+                        ? `${o.lines.length} · ${o.lines.reduce((a, l) => a + l.units, 0)} ud`
+                        : o.lampLabel ?? "—"}
+                    </TableCell>
                     <TableCell>{o.process ? <ProcessBadge code={o.process} /> : "—"}</TableCell>
                     <TableCell className="font-mono">{formatHours(o.hours)}</TableCell>
                     <TableCell className="font-mono text-xs">
