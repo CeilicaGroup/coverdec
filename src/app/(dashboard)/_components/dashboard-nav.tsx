@@ -51,6 +51,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/dashboard/planta", label: "Planta", icon: Factory },
       { href: "/dashboard/ordenes", label: "Órdenes", icon: ClipboardList, operarioHidden: true },
+      { href: "/dashboard/almacen", label: "Almacén", icon: Warehouse, operarioHidden: true },
       { href: "/dashboard/fichaje-diario", label: "Fichaje diario", icon: Timer },
       { href: "/dashboard/horas", label: "Mis horas", icon: Timer, adminHidden: true },
       { href: "/dashboard/notificaciones", label: "Notificaciones", icon: Bell },

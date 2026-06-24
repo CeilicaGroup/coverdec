@@ -24,6 +24,7 @@ const STATUS_LABELS: Record<ProductionOrderStatus, string> = {
   CURSO: "En curso",
   INT: "Interrumpida",
   MULTI: "Multiday",
+  IMPRIMADO: "Imprimado (almacén)",
   CERR: "Cerrada",
 };
 
@@ -63,7 +64,7 @@ export function OrderExecutionPanel({
     actualHours > 0 ? String(actualHours) : plannedHours ? String(plannedHours) : "",
   );
 
-  if (!canExecute || status === ProductionOrderStatus.CERR) return null;
+  if (!canExecute || status === ProductionOrderStatus.CERR || status === ProductionOrderStatus.IMPRIMADO) return null;
 
   const run = (fn: () => Promise<unknown>, success: string) => {
     startTransition(async () => {

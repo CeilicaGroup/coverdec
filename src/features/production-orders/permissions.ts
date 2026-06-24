@@ -49,6 +49,10 @@ export async function assertCanExecuteProductionOrder(
     throw new Error("La OP ya está cerrada.");
   }
 
+  if (order.status === ProductionOrderStatus.IMPRIMADO) {
+    throw new Error("La OP está en almacén (imprimada); no admite más ejecución.");
+  }
+
   if (order.naveId && !ctx.naveIds.includes(order.naveId)) {
     throw new Error("No tienes acceso a OPs de esa nave.");
   }

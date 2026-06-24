@@ -8,6 +8,11 @@ import { runAuditedMutation } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { ProductionOrderKind, ProductionOrderStatus, Role } from "@/generated/prisma";
 import { getCoordinatedPlanningNaveIds } from "@/features/planning/coordinated-naves";
+import { isPrimerProcess } from "@/features/production-orders/grouping-rules";
+import {
+  assertStockOrderCanStartPaint,
+  createStockItemsFromPrimedOrder,
+} from "@/features/stock/create-from-order";
 import {
   assertOrderTransition,
   finishProductionOrderTx,
@@ -54,6 +59,7 @@ const generateSelectedSchema = planningWeekSchema.extend({
 function revalidateOrdenesPaths(orderId?: string) {
   revalidatePath("/dashboard/ordenes");
   revalidatePath("/dashboard/planta");
+  revalidatePath("/dashboard/almacen");
   revalidatePath("/dashboard/proyectos");
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
@@ -69,6 +75,7 @@ export async function startProductionOrderAction(input: unknown) {
       await assertCanExecuteProductionOrder(ctx, orderId, "start");
       const order = await loadProductionOrderForExecution(orderId);
       assertOrderTransition(order.status, [ProductionOrderStatus.PEND]);
+      assertStockOrderCanStartPaint(order);
       await prisma.productionOrder.update({
         where: { id: orderId },
         data: {
@@ -146,29 +153,56 @@ export async function confirmProductionOrderStepAction(input: unknown) {
         ProductionOrderStatus.MULTI,
       ]);
       const { userNotes, meta } = parseOrderExecutionMeta(order.notes);
+      const newMeta = { actualHours: meta.actualHours + data.stepHours };
+      const isStockPrimer =
+        order.kind === ProductionOrderKind.STOCK &&
+        Boolean(order.process && isPrimerProcess(order.process));
 
-      if (data.lineId != null && data.completedUnits != null) {
-        const line = order.lines.find((l) => l.id === data.lineId);
-        if (!line) throw new Error("Línea no encontrada.");
-        const nextCompleted = Math.min(
-          line.units,
-          line.completedUnits + data.completedUnits,
-        );
-        await prisma.productionOrderLine.update({
-          where: { id: data.lineId },
-          data: { completedUnits: nextCompleted },
+      await prisma.$transaction(async (tx) => {
+        if (data.lineId != null && data.completedUnits != null) {
+          const line = order.lines.find((l) => l.id === data.lineId);
+          if (!line) throw new Error("Línea no encontrada.");
+          const nextCompleted = Math.min(
+            line.units,
+            line.completedUnits + data.completedUnits,
+          );
+          await tx.productionOrderLine.update({
+            where: { id: data.lineId },
+            data: { completedUnits: nextCompleted },
+          });
+        }
+
+        const updatedNotes = serializeOrderNotes(userNotes, newMeta);
+        await tx.productionOrder.update({
+          where: { id: data.orderId },
+          data: {
+            status: isStockPrimer
+              ? ProductionOrderStatus.IMPRIMADO
+              : ProductionOrderStatus.MULTI,
+            step: order.step + 1,
+            notes: updatedNotes,
+          },
         });
-      }
 
-      await prisma.productionOrder.update({
-        where: { id: data.orderId },
-        data: {
-          status: ProductionOrderStatus.MULTI,
-          step: order.step + 1,
-          notes: serializeOrderNotes(userNotes, {
-            actualHours: meta.actualHours + data.stepHours,
-          }),
-        },
+        if (isStockPrimer) {
+          await createStockItemsFromPrimedOrder(tx, {
+            id: order.id,
+            kind: order.kind,
+            process: order.process,
+            elementTypeId: order.elementTypeId,
+            lampLabel: order.lampLabel,
+            notes: updatedNotes,
+            lines: order.lines.map((l) => ({
+              id: l.id,
+              units: l.units,
+              completedUnits: l.completedUnits,
+              lineStatus: l.lineStatus,
+              projectId: l.projectId,
+              ral: l.ral,
+              colorHex: l.colorHex,
+            })),
+          });
+        }
       });
       revalidateOrdenesPaths(data.orderId);
       return { ok: true as const };

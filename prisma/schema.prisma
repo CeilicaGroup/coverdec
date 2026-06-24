@@ -331,6 +331,7 @@ model ElementType {
 
   defaultNave  Nave?              @relation("ElementTypeDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
   productionOrders ProductionOrder[]
+  stockItems       StockItem[]
   processes    ElementTypeProcess[]
   lamps        Lamp[]
   lampElements LampElement[]
@@ -720,6 +721,7 @@ enum ProductionOrderStatus {
   CURSO
   INT
   MULTI
+  IMPRIMADO
   CERR
 }
 
@@ -762,6 +764,7 @@ model ProductionOrder {
   parentOrder       ProductionOrder?   @relation("ProductionOrderChildren", fields: [parentOrderId], references: [id], onDelete: SetNull)
   childOrders       ProductionOrder[]  @relation("ProductionOrderChildren")
   lines             ProductionOrderLine[]
+  stockItems        StockItem[]
 
   @@unique([year, serial])
   @@index([status, scheduledAt])
@@ -790,6 +793,34 @@ model ProductionOrderLine {
   @@index([orderId, lineStatus])
   @@index([projectId])
   @@index([taskId])
+}
+
+enum StockItemState {
+  IMPRIMADO
+  CON_COLOR
+  ASSIGNED
+}
+
+model StockItem {
+  id                    String         @id @default(cuid())
+  elementTypeId         String?
+  lampLabel             String?
+  state                 StockItemState
+  ral                   String?
+  colorHex              String?
+  units                 Int
+  accumulatedMinPerUnit Float          @default(0)
+  sourceOrderId         String?
+  sourceLineId          String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  elementType ElementType?     @relation(fields: [elementTypeId], references: [id], onDelete: SetNull)
+  sourceOrder ProductionOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+
+  @@index([state, elementTypeId])
+  @@index([ral])
+  @@index([sourceOrderId])
 }
 
 // ---------- Fábrica ----------

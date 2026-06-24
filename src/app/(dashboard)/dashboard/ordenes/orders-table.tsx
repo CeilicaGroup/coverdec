@@ -55,6 +55,7 @@ const STATUS_LABELS: Record<ProductionOrderStatus, string> = {
   CURSO: "En curso",
   INT: "Interrumpida",
   MULTI: "Multiday",
+  IMPRIMADO: "Imprimado (almacén)",
   CERR: "Cerrada",
 };
 
