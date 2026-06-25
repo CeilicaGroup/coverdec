@@ -189,23 +189,27 @@ export default async function ResumenPage({
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
               weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
             />
-            {ctx.naveId ? (
+            {(ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION) && (
               <>
-                <PlanningWeightsPopover
-                  initialWeights={planningWeights}
-                  initialDeadlineSettings={deadlineSettings}
-                  role={ctx.role}
-                />
+                {ctx.naveId ? (
+                  <PlanningWeightsPopover
+                    initialWeights={planningWeights}
+                    initialDeadlineSettings={deadlineSettings}
+                    role={ctx.role}
+                  />
+                ) : null}
                 <GenerateButton
                   weekStart={getMondayOf(weekStart).toISOString()}
-                  planningId={planning?.id ?? planningMeta?.id ?? null}
-                  planningStatus={planning?.status ?? planningMeta?.status ?? null}
-                  canUndo={undoState.canUndo}
+                  hasPlanning={undoState.planningIds.length > 0}
+                  hasDraft={undoState.hasDraft}
+                  isPublished={undoState.isPublished}
+                  publishPlanningId={undoState.planningIds[0] ?? planningMeta?.id ?? null}
+                  canUndo={undoState.canUndo && undoState.planningIds.length > 0}
                   hasFuturePlannings={undoState.hasFuturePlannings}
                   futurePlanningWeeks={undoState.futurePlanningWeeks}
                   hasPublishedFuture={undoState.hasPublishedFuture}
                   hasRegistros={undoState.hasRegistros}
-                  isPublished={undoState.isPublished}
+                  coordinatedNaveCount={undoState.coordinatedNaveCount}
                   role={ctx.role}
                   activeProjects={projects.map((p) => ({
                     id: p.id,
@@ -214,17 +218,6 @@ export default async function ResumenPage({
                   }))}
                 />
               </>
-            ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-                    <Button size="sm" disabled>Generar plan</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Selecciona una nave específica para generar el planning
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             )}
           </div>
         }

@@ -20,6 +20,7 @@ describe("normalizePlanningWeights", () => {
       wMove: 1,
     });
     expect(w.wLaborCost).toBe(DEFAULT_PLANNING_WEIGHTS.wLaborCost);
+    expect(w.wBatchSameWork).toBe(DEFAULT_PLANNING_WEIGHTS.wBatchSameWork);
   });
 });
 

@@ -16,6 +16,7 @@ export const planningWeightsSchema = z.object({
   wMove: z.number().min(PLANNING_WEIGHT_MIN).max(PLANNING_WEIGHT_MAX),
   wLaborCost: z.number().min(PLANNING_WEIGHT_MIN).max(PLANNING_WEIGHT_MAX),
   wPriority: z.number().min(PLANNING_WEIGHT_MIN).max(PLANNING_WEIGHT_MAX),
+  wBatchSameWork: z.number().min(PLANNING_WEIGHT_MIN).max(PLANNING_WEIGHT_MAX),
 });
 
 export type PlanningWeights = z.infer<typeof planningWeightsSchema>;
@@ -49,6 +50,7 @@ export const DEFAULT_PLANNING_WEIGHTS = {
   wMove: 1,
   wLaborCost: 1,
   wPriority: 0,
+  wBatchSameWork: 1,
 } as const satisfies PlanningWeights;
 
 export const DEFAULT_PLANNING_STRATEGY = {
@@ -77,6 +79,8 @@ export function normalizePlanningWeights(
     wMove: weights?.wMove ?? DEFAULT_PLANNING_WEIGHTS.wMove,
     wLaborCost: weights?.wLaborCost ?? DEFAULT_PLANNING_WEIGHTS.wLaborCost,
     wPriority: weights?.wPriority ?? DEFAULT_PLANNING_WEIGHTS.wPriority,
+    wBatchSameWork:
+      weights?.wBatchSameWork ?? DEFAULT_PLANNING_WEIGHTS.wBatchSameWork,
   };
 }
 
@@ -105,6 +109,7 @@ export function strategyToWeights(strategy: PlanningStrategy): PlanningWeights {
     wMove,
     wLaborCost,
     wPriority: toWeight(strategy.deliveryPriority),
+    wBatchSameWork: 1,
   };
 }
 

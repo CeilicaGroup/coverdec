@@ -97,10 +97,11 @@ enum ProjectKind {
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
-  id       String  @id @default(cuid())
-  codigo   String  @unique
-  nombre   String
-  isActive Boolean @default(true)
+  id         String   @id @default(cuid())
+  codigo     String   @unique
+  nombre     String
+  isActive   Boolean  @default(true)
+  hourlyRate Decimal? @db.Decimal(10, 2)
 
   tasks               Task[]
   elementTypeDefaults ElementType[] @relation("ElementTypeDefaultNave")
@@ -110,6 +111,7 @@ model Nave {
   plannings           Planning[]      @relation("NavePlannings")
   planningPolicy      PlanningPolicy? @relation("NavePolicy")
   notifications       Notification[]
+  productionOrders    ProductionOrder[]
 }
 
 /// Pesos multi-objetivo del motor CP-SAT (1:1 con nave).
@@ -119,9 +121,11 @@ model PlanningPolicy {
   wLate        Float    @default(1)
   wUnscheduled Float    @default(1)
   wLoadBalance Float    @default(1)
-  wMove        Float    @default(1)
-  wLaborCost   Float    @default(1)
-  wPriority    Float    @default(0)
+  wMove           Float    @default(1)
+  wLaborCost      Float    @default(1)
+  wPriority       Float    @default(0)
+  /// Penaliza huecos entre bloques del mismo proceso y tipo de elemento (agrupación OT).
+  wBatchSameWork  Float    @default(1)
   deadlineCurveExponent Float @default(2)
   overduePenaltyMultiplier Float @default(2.5)
   createdAt    DateTime @default(now())
@@ -308,6 +312,12 @@ enum ElementTypology {
   ILUMINACION
 }
 
+enum ElementRouteType {
+  SIMPLE
+  SEQ_N3_N2
+  PARALLEL
+}
+
 model ElementTypologyNave {
   typology      ElementTypology @id
   defaultNaveId String?
@@ -323,11 +333,17 @@ model ElementType {
   baseUnit      String          @default("m2")
   isActive      Boolean         @default(true)
   defaultNaveId String?
+  routeType     ElementRouteType @default(PARALLEL)
+  routeNaves    String[]         @default([])
+  seqPhases     Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   defaultNave  Nave?              @relation("ElementTypeDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
+  productionOrders ProductionOrder[]
+  stockItems       StockItem[]
   processes    ElementTypeProcess[]
+  bomComponents BomComponent[]
   lamps        Lamp[]
   lampElements LampElement[]
 
@@ -348,6 +364,22 @@ model ElementTypeProcess {
 
   @@unique([elementTypeId, process])
   @@index([elementTypeId, sequence])
+}
+
+model BomComponent {
+  id            String   @id @default(cuid())
+  elementTypeId String
+  componentCode String
+  name          String
+  quantity      Float    @default(1)
+  unitCost      Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  elementType ElementType @relation(fields: [elementTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([elementTypeId, componentCode])
+  @@index([elementTypeId])
 }
 
 // ---------- Proyectos y producción ----------
@@ -375,6 +407,7 @@ model Project {
   tasks            Task[]
   timeEntries      TimeEntry[]
   productionOrders ProductionOrder[]
+  productionOrderLines ProductionOrderLine[]
   responsibleUser  User? @relation("ProjectResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
   notifications    Notification[]
 }
@@ -391,6 +424,9 @@ model Lamp {
   depth         Float?
   units         Int      @default(1)
   surfaceM2     Float?
+  /// Color RAL de acabado (p. ej. 9005) para sub-OPs de pintura.
+  ral           String?
+  colorHex      String?
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -400,6 +436,7 @@ model Lamp {
   elements     LampElement[]
   tasks        Task[]
   timeEntries  TimeEntry[]
+  productionOrders ProductionOrder[]
 
   @@unique([projectId, nameKey])
 }
@@ -432,10 +469,12 @@ model Task {
   estimatedHours Float
   isCompleted    Boolean  @default(false)
   order          Int      @default(0)
-  naveId         String
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  naveId            String
+  /// Si true, esta tarea no se agrupa con otras en la misma OT al generar desde planning.
+  separateWorkOrder Boolean  @default(false)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   project           Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   lamp              Lamp                 @relation(fields: [lampId], references: [id], onDelete: Cascade)
@@ -444,6 +483,7 @@ model Task {
   nave              Nave                 @relation(fields: [naveId], references: [id])
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
+  productionOrderLines ProductionOrderLine[]
 
   @@index([lampElementId])
 }
@@ -451,23 +491,26 @@ model Task {
 // ---------- Planning ----------
 
 model Planning {
-  id          String         @id @default(cuid())
-  naveId      String
-  year        Int
-  week        Int
-  weekStart   DateTime
-  weekEnd     DateTime
-  status      PlanningStatus @default(DRAFT)
-  publishedAt DateTime?
-  notes       String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  naveId           String
+  year             Int
+  week             Int
+  weekStart        DateTime
+  weekEnd          DateTime
+  status           PlanningStatus @default(DRAFT)
+  publishedAt      DateTime?
+  /// Vincula borradores generados en la misma pasada coordinada multi-nave.
+  planningGroupId  String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   nave        Nave                 @relation("NavePlannings", fields: [naveId], references: [id], onDelete: Cascade)
   assignments PlanningAssignment[]
   notifications Notification[]
 
   @@unique([naveId, year, week])
+  @@index([planningGroupId])
 }
 
 model PlanningAssignment {
@@ -695,23 +738,120 @@ model NotificationState {
 
 // ---------- Órdenes de producción ----------
 
-model ProductionOrder {
-  id          String    @id @default(cuid())
-  number      String    @unique
-  year        Int
-  serial      Int
-  projectId   String
-  lampLabel   String?
-  process     String?
-  hours       Float?
-  scheduledAt DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
+enum ProductionOrderKind {
+  PROYECTO
+  STOCK
+  ORT
+}
 
-  project           Project            @relation(fields: [projectId], references: [id])
+enum ProductionOrderStatus {
+  PEND
+  CURSO
+  INT
+  MULTI
+  IMPRIMADO
+  CERR
+}
+
+enum ProductionOrderLineStatus {
+  ACTIVE
+  CANCELLED
+  FULFILLED
+}
+
+model ProductionOrder {
+  id            String                @id @default(cuid())
+  number        String                @unique
+  year          Int
+  serial        Int
+  kind          ProductionOrderKind   @default(PROYECTO)
+  status        ProductionOrderStatus @default(PEND)
+  /// Proyecto de cabecera (OP simple legacy); destinos reales en líneas.
+  projectId     String?
+  lampId        String?
+  lampLabel     String?
+  process       String?
+  hours         Float?
+  scheduledAt   DateTime?
+  naveId        String?
+  naveKey       String?
+  elementTypeId String?
+  step          Int                   @default(0)
+  parentOrderId   String?
+  /// Semana ISO del planning publicado que originó esta OP.
+  scheduledWeek   DateTime?
+  /// planningGroupId de la pasada coordinada que originó esta OP.
+  planningGroupId String?
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lamp              Lamp?              @relation(fields: [lampId], references: [id], onDelete: SetNull)
+  nave              Nave?              @relation(fields: [naveId], references: [id], onDelete: SetNull)
+  elementType       ElementType?       @relation(fields: [elementTypeId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
+  parentOrder       ProductionOrder?   @relation("ProductionOrderChildren", fields: [parentOrderId], references: [id], onDelete: SetNull)
+  childOrders       ProductionOrder[]  @relation("ProductionOrderChildren")
+  lines             ProductionOrderLine[]
+  stockItems        StockItem[]
 
   @@unique([year, serial])
+  @@index([status, scheduledAt])
+  @@index([elementTypeId, process])
+  @@index([planningGroupId, process, naveId, scheduledWeek])
+  @@index([projectId, lampId, naveKey])
+}
+
+model ProductionOrderLine {
+  id          String                    @id @default(cuid())
+  orderId     String
+  taskId      String?
+  projectId   String?
+  clientLabel String?
+  units           Int                       @default(1)
+  completedUnits  Int                       @default(0)
+  ral             String?
+  colorHex    String?
+  lineStatus  ProductionOrderLineStatus @default(ACTIVE)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  task    Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, lineStatus])
+  @@index([projectId])
+  @@index([taskId])
+}
+
+enum StockItemState {
+  IMPRIMADO
+  CON_COLOR
+  ASSIGNED
+}
+
+model StockItem {
+  id                    String         @id @default(cuid())
+  elementTypeId         String?
+  lampLabel             String?
+  state                 StockItemState
+  ral                   String?
+  colorHex              String?
+  units                 Int
+  accumulatedMinPerUnit Float          @default(0)
+  sourceOrderId         String?
+  sourceLineId          String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  elementType ElementType?     @relation(fields: [elementTypeId], references: [id], onDelete: SetNull)
+  sourceOrder ProductionOrder? @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+
+  @@index([state, elementTypeId])
+  @@index([ral])
+  @@index([sourceOrderId])
 }
 
 // ---------- Fábrica ----------

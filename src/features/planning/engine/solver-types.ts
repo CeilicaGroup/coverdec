@@ -50,8 +50,11 @@ export type SolveRequestPayload = {
     overduePenaltyMultiplier: number;
     projectDeliveryDate: string | null;
     lampId: string;
+    lampElementId: string | null;
+    elementTypeId: string | null;
     order: number;
     process: string;
+    naveId: string;
     pendingHours: number;
     minWeekQuarter?: number;
     canFragment?: boolean;
@@ -166,6 +169,8 @@ export function summarizeSolverRequest(payload: SolveRequestPayload) {
     tasks: payload.tasks.map((t) => ({
       id: t.id,
       lampId: t.lampId,
+      lampElementId: t.lampElementId,
+      elementTypeId: t.elementTypeId,
       process: t.process,
       order: t.order,
       pendingHours: t.pendingHours,
@@ -236,8 +241,11 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
         ? t.projectDeliveryDate.toISOString()
         : null,
       lampId: t.lampId,
+      lampElementId: t.lampElementId,
+      elementTypeId: t.elementTypeId,
       order: t.order,
       process: t.process,
+      naveId: t.naveId,
       pendingHours: t.pendingHours,
       minWeekQuarter: t.minWeekQuarter ?? 0,
       canFragment: t.canFragment ?? true,

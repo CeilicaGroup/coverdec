@@ -3,7 +3,6 @@ import { toUtcDay } from "@/lib/week";
 import type { GanttPlanningAssignment } from "@/features/planning/queries";
 import type { getActiveProjectsForGantt } from "@/features/planning/queries";
 import {
-  buildContinuousTimeline,
   buildTaskTimelineBlocks,
   slotToStartMinutes,
   type GanttTimelineBlock,
@@ -457,11 +456,7 @@ function aggregateSlotRange(
   return { estimatedStart, estimatedEnd, startSlot, endSlot };
 }
 
-function groupTasksIntoLamps(
-  tasks: GanttTaskRow[],
-  waitHoursByProcess: Map<string, number>,
-  holidayDates: Set<string>,
-): GanttLampRow[] {
+function groupTasksIntoLamps(tasks: GanttTaskRow[]): GanttLampRow[] {
   const byLamp = new Map<string, GanttTaskRow[]>();
   for (const t of tasks) {
     const list = byLamp.get(t.lampId) ?? [];
@@ -494,12 +489,7 @@ function groupTasksIntoLamps(
       estimatedEnd: range.estimatedEnd,
       startSlot: range.startSlot,
       endSlot: range.endSlot,
-      timelineBlocks: buildContinuousTimeline(
-        ordered,
-        waitHoursByProcess,
-        holidayDates,
-        ordered[0]?.lampName ?? "Lámpara",
-      ),
+      timelineBlocks: ordered.flatMap((t) => t.timelineBlocks),
       operators: mergeOperators(...assigned.map((t) => t.operators)),
       tasks: ordered,
     });
@@ -627,11 +617,7 @@ export function buildGanttProjects({
       taskRows = taskRows.filter((t) => t.id === taskId);
     }
 
-    const lamps = groupTasksIntoLamps(
-      taskRows,
-      waitHoursByProcess,
-      holidayDates,
-    );
+    const lamps = groupTasksIntoLamps(taskRows);
 
     if (lamps.length === 0 && (personId || taskId)) continue;
 
@@ -652,11 +638,8 @@ export function buildGanttProjects({
       estimatedEnd: range.estimatedEnd ?? anchorDateIso,
       startSlot: range.startSlot,
       endSlot: range.endSlot,
-      timelineBlocks: buildContinuousTimeline(
-        lamps.flatMap((l) => l.tasks),
-        waitHoursByProcess,
-        holidayDates,
-        p.name,
+      timelineBlocks: lamps.flatMap((l) =>
+        l.tasks.flatMap((t) => t.timelineBlocks),
       ),
       remainingWorkHours,
       assignedHours,

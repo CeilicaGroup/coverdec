@@ -34,6 +34,7 @@ describe("prior-week-planning", () => {
       {
         id: "pred",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 0,
         process: "PINTURA",
         pendingToPlanHours: 0,
@@ -43,6 +44,7 @@ describe("prior-week-planning", () => {
       {
         id: "succ",
         lampId: "l1",
+        lampElementId: "elem-1",
         order: 1,
         process: "MONTAJE",
         pendingToPlanHours: 8,
@@ -69,5 +71,82 @@ describe("prior-week-planning", () => {
     const minQ = minByTask.get("succ") ?? 0;
     expect(minQ).toBeGreaterThan(0);
     expect(dateTimeToWeekQuarter(WEEK_START, WEEK_START)).toBe(0);
+  });
+
+  it("defers successor when cross-nave predecessor still has pending work", () => {
+    const tasks = [
+      {
+        id: "pred-n2",
+        lampId: "l1",
+        lampElementId: "elem-1",
+        order: 0,
+        process: "PINTURA",
+        pendingToPlanHours: 4,
+        remainingWorkHours: 4,
+        estimatedHours: 8,
+      },
+      {
+        id: "succ-n1",
+        lampId: "l1",
+        lampElementId: "elem-1",
+        order: 1,
+        process: "MONTAJE",
+        pendingToPlanHours: 8,
+        remainingWorkHours: 8,
+        estimatedHours: 8,
+      },
+    ];
+    const { deferredPastHorizon } = computeMinWeekQuarterByTaskId({
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["succ-n1"]),
+      priorEnds: new Map(),
+      waitHoursByProcess: new Map(),
+      holidayDates: new Set(),
+    });
+    expect(deferredPastHorizon.has("succ-n1")).toBe(true);
+  });
+
+  it("does not block successor on a different lamp element in the same lamp", () => {
+    const tasks = [
+      {
+        id: "pred-elem-a",
+        lampId: "l1",
+        lampElementId: "elem-a",
+        order: 0,
+        process: "PINTURA",
+        pendingToPlanHours: 0,
+        remainingWorkHours: 0,
+        estimatedHours: 8,
+      },
+      {
+        id: "succ-elem-b",
+        lampId: "l1",
+        lampElementId: "elem-b",
+        order: 1,
+        process: "MONTAJE",
+        pendingToPlanHours: 8,
+        remainingWorkHours: 8,
+        estimatedHours: 8,
+      },
+    ];
+    const priorEnds = buildLastAssignmentEndByTaskId([
+      {
+        taskId: "pred-elem-a",
+        date: new Date("2026-04-30T00:00:00.000Z"),
+        endSlot: 6,
+        hours: 8,
+      },
+    ]);
+    const { minByTask, deferredPastHorizon } = computeMinWeekQuarterByTaskId({
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["succ-elem-b"]),
+      priorEnds,
+      waitHoursByProcess: new Map([["PINTURA", 72]]),
+      holidayDates: new Set(),
+    });
+    expect(deferredPastHorizon.has("succ-elem-b")).toBe(false);
+    expect(minByTask.has("succ-elem-b")).toBe(false);
   });
 });

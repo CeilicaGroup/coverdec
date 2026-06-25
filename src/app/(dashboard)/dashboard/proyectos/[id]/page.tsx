@@ -27,7 +27,10 @@ import { isManualEstimateProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
+import { ProjectOrdersPanel } from "./project-orders-panel";
+import { ProjectCostPanel } from "./project-cost-panel";
 import { EditProjectDialog } from "../edit-project-dialog";
+import { loadProjectPlanVsReal } from "@/features/costes/plan-vs-real";
 import { Role } from "@/generated/prisma";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
@@ -165,6 +168,7 @@ export default async function ProjectDetailPage({
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
   const totalPending = allTasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
+  const projectCosts = canManage ? await loadProjectPlanVsReal(id) : null;
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -216,6 +220,20 @@ export default async function ProjectDetailPage({
         <Kpi label="Hecho" value={formatHours(totalDone)} sub={`${totalEstimated > 0 ? Math.round((totalDone / totalEstimated) * 100) : 0}% avance`} />
         <Kpi label="Pendiente" value={formatHours(totalPending)} sub={<RiskBadge level={riskFromDelivery(project.deliveryDate)} />} />
       </div>
+
+      {canManage ? (
+        <ProjectOrdersPanel projectId={project.id} canManage={canManage} />
+      ) : null}
+
+      {projectCosts ? (
+        <ProjectCostPanel
+          planMo={projectCosts.planMo}
+          realMo={projectCosts.realMo}
+          planMaterial={projectCosts.planMaterial}
+          realMaterial={projectCosts.realMaterial}
+          ortCost={projectCosts.ortCost}
+        />
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

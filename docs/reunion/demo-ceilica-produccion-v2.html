@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CONTRACT+ · Producción CEILICA — stock y cancelaciones</title>
+<style>
+  :root{
+    --shell:#0d2b24;--shell-2:#16433a;--accent:#0f6e56;--accent-d:#0a5341;
+    --ink:#1c2b27;--muted:#5d6c66;--line:#dde6e2;--bg:#eef2f0;--panel:#fff;
+    --ok:#107e3e;--okbg:#e6f3ec;--warn:#b8761b;--warnbg:#fbf2e2;--bad:#bb0000;--badbg:#fbeaea;
+    --info:#0a6ed1;--infobg:#e8f1fb;--rework:#7a3da8;--reworkbg:#f1e9f8;--stock:#7a5b13;--stockbg:#f7eecd;
+  }
+  *{box-sizing:border-box}html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45}
+  .shell{display:flex;align-items:center;gap:14px;background:var(--shell);color:#fff;padding:0 18px;height:48px}
+  .shell .logo{font-weight:700;letter-spacing:.5px;background:#fff;color:var(--shell);padding:3px 8px;border-radius:3px;font-size:13px}
+  .shell .title{font-size:14px;font-weight:600}.shell .who{margin-left:auto;font-size:12px;color:#bfd7ce}
+  .layout{display:flex;min-height:calc(100vh - 48px)}
+  nav{width:236px;background:var(--panel);border-right:1px solid var(--line);padding:10px 0;flex:0 0 236px}
+  nav .grp{padding:8px 16px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  nav a{display:flex;align-items:center;gap:9px;padding:9px 16px;color:var(--ink);text-decoration:none;cursor:pointer;border-left:3px solid transparent;font-size:13px}
+  nav a:hover{background:#f1f6f4}
+  nav a.active{background:#e7f2ee;border-left-color:var(--accent);color:var(--accent-d);font-weight:600}
+  nav a .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  main{flex:1;padding:22px 26px;overflow:auto}
+  h1{font-size:20px;margin:0 0 2px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:18px;overflow:hidden}
+  .card>h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;display:flex;align-items:center;gap:8px;background:#f6faf8}
+  .card .body{padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;background:#f6faf8}
+  tbody tr:hover{background:#f1f6f4}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.85}
+  .p-pend{color:var(--muted);background:#eef2f0}.p-curso{color:var(--info);background:var(--infobg)}
+  .p-int{color:var(--warn);background:var(--warnbg)}.p-cerr{color:var(--ok);background:var(--okbg)}
+  .p-stock{color:var(--stock);background:var(--stockbg)}.p-proj{color:var(--accent-d);background:#e7f2ee}
+  .p-canc{color:var(--bad);background:var(--badbg)}
+  .btn{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:5px;padding:7px 14px;cursor:pointer}
+  .btn:hover{background:var(--accent-d)}
+  .btn.ghost{background:#fff;color:var(--accent-d)}
+  .btn.warn{background:#fff;border-color:var(--warn);color:var(--warn)}
+  .btn.bad{background:#fff;border-color:var(--bad);color:var(--bad)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .row{display:flex;gap:18px;flex-wrap:wrap}
+  .kv{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;font-size:13px}
+  .kv dt{color:var(--muted)}.kv dd{margin:0;font-weight:500}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}
+  .step{font-size:11px;padding:4px 10px;border-radius:20px;background:#eef2f0;color:var(--muted)}
+  .step.on{background:var(--accent);color:#fff;font-weight:600}.step.done{background:var(--okbg);color:var(--ok)}
+  .step.halt{background:var(--stockbg);color:var(--stock);font-weight:600}
+  .log{font-size:12px;font-family:ui-monospace,monospace;color:var(--muted)}
+  .log div{padding:3px 0;border-bottom:1px dashed var(--line)}
+  .hint{font-size:12px;color:var(--accent-d);background:#e7f2ee;border:1px solid #bfe0d4;border-radius:6px;padding:10px 12px;margin-bottom:16px}
+  .hint.stock{color:var(--stock);background:var(--stockbg);border-color:#e6d6a0}
+  .hint.bad{color:var(--bad);background:var(--badbg);border-color:#eecaca}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .tag{font-size:11px;font-family:ui-monospace,monospace;background:#eef2f0;color:var(--muted);padding:1px 6px;border-radius:3px}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);vertical-align:-1px;margin-right:5px}
+  .view{display:none}.view.active{display:block}
+</style>
+</head>
+<body>
+<div class="shell">
+  <span class="logo">CONTRACT+</span>
+  <span class="title">CEILICA · Producción — stock y cancelaciones</span>
+  <span class="who">ingenieria@coverdec.com · Jefe de producción</span>
+</div>
+<div class="layout">
+  <nav>
+    <div class="grp">Producción</div>
+    <a data-v="op" class="active"><span class="dot"></span>OP por bastidor (líneas)</a>
+    <a data-v="stock"><span class="dot"></span>Stock anticipado</a>
+    <a data-v="cancel"><span class="dot"></span>Cancelaciones</a>
+    <div class="grp">Trazabilidad</div>
+    <a data-v="almacen"><span class="dot"></span>Almacén</a>
+    <a data-v="horas"><span class="dot"></span>Imputación de horas</a>
+    <a data-v="costes"><span class="dot"></span>Costes</a>
+  </nav>
+  <main>
+    <!-- OP -->
+    <section class="view active" id="v-op">
+      <h1>OP por bastidor · líneas con destino</h1>
+      <p class="sub">La OP cuelga del bastidor (MDF 30), no de un proyecto. Cada línea apunta a un destino: un proyecto + RAL, o STOCK (sin color).</p>
+      <div class="hint">CNC, ensamblaje e imprimación se hacen para todo el lote. La pintura se separa en sub-OP por RAL — solo para las líneas que tienen proyecto.</div>
+      <div id="opPanel"></div>
+    </section>
+
+    <!-- STOCK -->
+    <section class="view" id="v-stock">
+      <h1>Stock anticipado (sin proyecto)</h1>
+      <p class="sub">Fabricación adelantada de lámpara estándar. La línea es STOCK, sin RAL: se para en imprimación porque el color depende del proyecto que aún no existe.</p>
+      <div id="stockPanel"></div>
+    </section>
+
+    <!-- CANCEL -->
+    <section class="view" id="v-cancel">
+      <h1>Cancelaciones</h1>
+      <p class="sub">Cancelar un proyecto no destruye lo fabricado: las unidades y sus horas se transfieren al almacén. El coste sale del proyecto y entra en STOCK.</p>
+      <div id="cancelPanel"></div>
+    </section>
+
+    <!-- ALMACEN -->
+    <section class="view" id="v-almacen">
+      <h1>Almacén</h1>
+      <p class="sub">Semielaborado imprimado (reasignable a cualquier proyecto) y unidades con color ya aplicado.</p>
+      <div class="card"><h2>Existencias</h2><div class="body">
+        <table><thead><tr><th>Lámpara</th><th>Bastidor</th><th>Estado</th><th>Color</th><th class="num">Ud</th><th class="num">Horas acum.</th></tr></thead>
+        <tbody id="almTable"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- HORAS -->
+    <section class="view" id="v-horas">
+      <h1>Imputación de horas</h1>
+      <p class="sub">Las horas se imputan por línea. Si una línea es STOCK, van a un colector STOCK; al asignarse a un proyecto, se trasladan.</p>
+      <div class="card"><h2>Movimientos de horas</h2><div class="body">
+        <div class="log" id="horasLog"><div>Sin movimientos todavía.</div></div>
+      </div></div>
+    </section>
+
+    <!-- COSTES -->
+    <section class="view" id="v-costes">
+      <h1>Costes por destino</h1>
+      <p class="sub">Coste acumulado por proyecto y por STOCK. La transferencia por cancelación es visible y trazada.</p>
+      <div class="card"><h2>Resumen por destino</h2><div class="body">
+        <table><thead><tr><th>Destino</th><th class="num">Ud</th><th class="num">Horas</th><th class="num">Coste €</th></tr></thead>
+        <tbody id="costTable"></tbody></table>
+      </div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const RATE=0.65, MAT=71; // material por lámpara (€)
+const fmt=n=>n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+// minutos/ud por proceso
+const PROC=[{p:'CNC',m:9},{p:'Ensamblaje',m:14},{p:'Imprimación',m:6},{p:'Pintura',m:10}];
+const $=s=>document.querySelector(s);
+
+// --- estado global ---
+const S={
+  ops:{},        // id -> op
+  alm:[],        // almacén: {lamp,bast,estado,ral,hex,ud,minAcum}
+  horas:[],      // log de horas
+};
+
+// op: {id,lamp,bast,st,step,lines:[{dest,cli,ud,ral,hex}]}
+function newGroupedOp(){
+  return {id:'OP-2026-0042',lamp:'Cruz',bast:'MDF 30',st:'PEND',step:0,
+    lines:[
+      {dest:'P-2026-018',cli:'Farmacia Centro',ud:6,ral:'9005',hex:'#1d1d1b'},
+      {dest:'P-2026-021',cli:'Clínica Sol',ud:4,ral:'9010',hex:'#f1f0ea'},
+    ]};
+}
+function newStockOp(){
+  return {id:'OP-2026-STOCK-0051',lamp:'Cruz',bast:'MDF 30',st:'PEND',step:0,
+    lines:[{dest:'STOCK',cli:'—',ud:8,ral:null,hex:null}]};
+}
+S.ops['OP-2026-0042']=newGroupedOp();
+
+const totUd=op=>op.lines.reduce((s,l)=>s+l.ud,0);
+const minUdTotal=()=>PROC.reduce((s,p)=>s+p.m,0);
+function logHoras(t){S.horas.unshift(`${new Date().toLocaleTimeString('es-ES')}  ${t}`);}
+
+// ---------- VIEW: OP ----------
+function renderOpPanel(){
+  const op=S.ops['OP-2026-0042'];
+  const order=['PEND','EN CURSO','CERRADA'];
+  const curIdx = op.st==='PEND'?0: op.st==='CERRADA'?2:1;
+  const steps=order.map((s,i)=>`<span class="step ${i<curIdx?'done':i===curIdx?'on':''}">${s}</span>`).join('');
+  const reached=p=>op.step>p || op.st==='CERRADA';
+  const procSteps=PROC.map((pr,i)=>{
+    const cls = (op.step>i||op.st==='CERRADA')?'done':(op.step===i&&op.st!=='PEND')?'on':'';
+    return `<span class="step ${cls}">${pr.p}</span>`;
+  }).join('');
+
+  const linesHtml=op.lines.map(l=>`<tr>
+    <td>${l.dest==='STOCK'?'<span class="pill p-stock">STOCK</span>':`<span class="pill p-proj">${l.dest}</span>`}</td>
+    <td>${l.cli}</td><td class="num">${l.ud}</td>
+    <td>${l.ral?`<span class="swatch" style="background:${l.hex}"></span>RAL ${l.ral}`:'<span class="sub">sin color</span>'}</td></tr>`).join('');
+
+  // sub-OP de pintura (solo líneas con RAL), visible al llegar a pintura
+  let sub='';
+  if(op.step>=3){
+    const proj=op.lines.filter(l=>l.ral);
+    sub=`<div class="card" style="margin-top:14px"><h2>Sub-OP de pintura por RAL <span class="tag">visible solo al pintor</span></h2><div class="body">
+      <table><thead><tr><th>Sub-OP</th><th>Color</th><th class="num">Ud</th></tr></thead><tbody>
+      ${proj.map(l=>`<tr><td><span class="tag">OP-2026-0042-PIN-CRUZ-RAL${l.ral}</span></td>
+        <td><span class="swatch" style="background:${l.hex}"></span>RAL ${l.ral} · ${l.cli}</td><td class="num">${l.ud}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+
+  let acts='';
+  if(op.st==='PEND') acts=`<button class="btn" onclick="opStart()">INICIAR</button>`;
+  else if(op.st==='EN CURSO'){
+    if(op.step<PROC.length) acts=`<button class="btn" onclick="opConfirm()">Confirmar ${PROC[op.step].p}</button>`;
+    else acts=`<button class="btn" onclick="opFinish()">FINALIZAR</button>`;
+  } else acts=`<span class="sub">OP cerrada.</span>`;
+
+  $('#opPanel').innerHTML=`<div class="card"><h2>${op.id} · ${op.lamp} · bastidor ${op.bast}</h2><div class="body">
+    <div class="steps">${steps}</div>
+    <div class="steps">${procSteps}</div>
+    <table style="margin-bottom:8px"><thead><tr><th>Línea / destino</th><th>Cliente</th><th class="num">Ud</th><th>Color</th></tr></thead><tbody>${linesHtml}</tbody></table>
+    <dl class="kv"><dt>Total unidades</dt><dd>${totUd(op)}</dd>
+      <dt>Procesos</dt><dd>${Math.min(op.step,PROC.length)} / ${PROC.length}</dd></dl>
+    <div class="actions">${acts}</div>${sub}
+  </div></div>`;
+}
+function opStart(){const op=S.ops['OP-2026-0042'];op.st='EN CURSO';refresh();}
+function opConfirm(){
+  const op=S.ops['OP-2026-0042'];const pr=PROC[op.step];
+  // pintura solo a líneas con RAL
+  const ud = pr.p==='Pintura'? op.lines.filter(l=>l.ral).reduce((s,l)=>s+l.ud,0) : totUd(op);
+  const h=pr.m*ud/60;
+  op.step++;
+  logHoras(`${op.id} · ${pr.p} · ${ud} ud · ${h.toFixed(2)} h`);
+  refresh();
+}
+function opFinish(){
+  const op=S.ops['OP-2026-0042'];op.st='CERRADA';
+  // entrega líneas con proyecto; (no quedan STOCK en esta OP)
+  op.lines.forEach(l=>{ if(l.ral) logHoras(`${op.id} · entrega ${l.ud} ud a ${l.dest} (RAL ${l.ral})`); });
+  refresh();
+}
+
+// ---------- VIEW: STOCK ----------
+function renderStockPanel(){
+  const op=S.ops['OP-2026-STOCK-0051'];
+  if(!op){
+    $('#stockPanel').innerHTML=`<div class="card"><div class="body">
+      <p>No hay fabricación anticipada en curso.</p>
+      <div class="actions"><button class="btn" onclick="stockCreate()">Fabricar 8× Cruz a stock</button></div></div></div>`;
+    return;
+  }
+  const halted = op.st==='IMPRIMADO';
+  const procSteps=PROC.map((pr,i)=>{
+    let cls=(op.step>i)?'done':(op.step===i&&op.st==='EN CURSO')?'on':'';
+    if(pr.p==='Pintura' && halted) cls='halt';
+    return `<span class="step ${cls}">${pr.p}${pr.p==='Pintura'&&halted?' (bloqueada)':''}</span>`;
+  }).join('');
+
+  let acts='';
+  if(op.st==='PEND') acts=`<button class="btn" onclick="stockStart()">INICIAR</button>`;
+  else if(op.st==='EN CURSO'){
+    const next=PROC[op.step];
+    acts=`<button class="btn" onclick="stockConfirm()">Confirmar ${next.p}</button>`;
+  } else if(halted) acts=`<span class="sub">Lote imprimado en almacén. Asígnalo a un proyecto para pintarlo.</span>`;
+
+  let assign='';
+  const semis=S.alm.find(a=>a.estado==='Imprimado'&&a.ud>0);
+  if(semis){
+    assign=`<div class="card" style="margin-top:14px"><h2>Llega proyecto · asignar desde stock</h2><div class="body">
+      <dl class="kv"><dt>Proyecto</dt><dd>P-2026-030 · Óptica Norte</dd>
+        <dt>Necesita</dt><dd>5× Cruz · <span class="swatch" style="background:#3b5743"></span>RAL 6018</dd>
+        <dt>Disponible imprimado</dt><dd>${semis.ud} ud</dd></dl>
+      <div class="hint stock" style="margin-top:10px">Solo falta pintar: las horas de CNC + ensamblaje + imprimación pasan de STOCK al proyecto; se añaden las horas de pintura.</div>
+      <div class="actions"><button class="btn" onclick="stockAssign()">Asignar 5 ud y pintar</button></div></div></div>`;
+  }
+
+  $('#stockPanel').innerHTML=`<div class="card"><h2>${op.id} · Cruz · bastidor ${op.bast} <span class="pill p-stock">sin proyecto</span></h2><div class="body">
+    <div class="steps">${procSteps}</div>
+    <dl class="kv"><dt>Cantidad</dt><dd>${totUd(op)} ud</dd>
+      <dt>Destino</dt><dd>STOCK (RAL pendiente)</dd></dl>
+    <div class="actions">${acts}</div></div></div>${assign}`;
+}
+function stockCreate(){S.ops['OP-2026-STOCK-0051']=newStockOp();refresh();}
+function stockStart(){S.ops['OP-2026-STOCK-0051'].st='EN CURSO';refresh();}
+function stockConfirm(){
+  const op=S.ops['OP-2026-STOCK-0051'];const pr=PROC[op.step];
+  const ud=totUd(op);const h=pr.m*ud/60;
+  logHoras(`${op.id} · ${pr.p} · ${ud} ud · ${h.toFixed(2)} h → colector STOCK`);
+  op.step++;
+  if(op.step===3){ // tras imprimación: se para
+    op.st='IMPRIMADO';
+    const minAcum=PROC.slice(0,3).reduce((s,p)=>s+p.m,0);
+    S.alm.push({lamp:'Cruz',bast:'MDF 30',estado:'Imprimado',ral:null,hex:null,ud:ud,minAcum:minAcum});
+    logHoras(`${op.id} · BLOQUEADA en pintura (sin RAL) · ${ud} ud → almacén semielaborado`);
+  }
+  refresh();
+}
+function stockAssign(){
+  const semis=S.alm.find(a=>a.estado==='Imprimado'&&a.ud>0);
+  if(!semis) return;
+  const take=5;
+  semis.ud-=take;
+  const minOrig=semis.minAcum*take;             // horas que se trasladan de STOCK a proyecto
+  const minPint=PROC[3].m*take;                  // horas nuevas de pintura
+  S.alm.push({lamp:'Cruz',bast:'MDF 30',estado:'Terminado (proyecto)',ral:'6018',hex:'#3b5743',ud:take,minAcum:semis.minAcum+PROC[3].m});
+  logHoras(`Asignación → P-2026-030 · trasladadas ${(minOrig/60).toFixed(2)} h desde STOCK + ${(minPint/60).toFixed(2)} h de pintura (RAL 6018)`);
+  refresh();
+}
+
+// ---------- VIEW: CANCEL ----------
+function renderCancelPanel(){
+  const op=S.ops['OP-2026-0042'];
+  const painted = op.step>=4 || op.st==='CERRADA';
+  const minDone = PROC.slice(0,Math.min(op.step,4)).reduce((s,p)=>s+p.m,0);
+
+  const rows=op.lines.map((l,i)=>`<tr>
+    <td>${l.dest==='CANCELADO'?'<span class="pill p-canc">cancelado</span>':l.dest==='STOCK'?'<span class="pill p-stock">STOCK</span>':`<span class="pill p-proj">${l.dest}</span>`}</td>
+    <td>${l.cli}</td><td class="num">${l.ud}</td>
+    <td>${l.ral?`RAL ${l.ral}`:'—'}</td></tr>`).join('');
+
+  $('#cancelPanel').innerHTML=`<div class="card"><h2>${op.id} · estado: ${op.st} · proceso ${Math.min(op.step,4)}/4</h2><div class="body">
+    <table style="margin-bottom:8px"><thead><tr><th>Destino</th><th>Cliente</th><th class="num">Ud</th><th>Color</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint ${painted?'bad':''}">${ painted
+      ? 'Las unidades ya están pintadas con su RAL: al cancelar pasan a «stock con color», reutilizables solo si aparece un proyecto con ese mismo RAL.'
+      : 'Las unidades aún no tienen color (paradas en imprimación o antes): al cancelar vuelven a stock imprimado, reasignables a cualquier proyecto.'}</div>
+    <div class="actions">
+      <button class="btn bad" onclick="cancelProject()">Cancelar proyecto P-2026-021 (4 ud)</button>
+      <button class="btn warn" onclick="cancelUnits()">Cancelar 2 ud de P-2026-018</button>
+    </div>
+    <div class="hint" style="margin-top:14px">Avanza la OP en «OP por bastidor» antes de cancelar para ver cómo cambia el resultado según el proceso alcanzado.</div>
+  </div></div>`;
+}
+function cancelProject(){
+  const op=S.ops['OP-2026-0042'];
+  const l=op.lines.find(x=>x.dest==='P-2026-021');
+  if(!l||l.ud===0) return;
+  const painted = op.step>=4 || op.st==='CERRADA';
+  const minDone = PROC.slice(0,Math.min(op.step,4)).reduce((s,p)=>s+p.m,0);
+  const transferMin=minDone*l.ud;
+  S.alm.push({lamp:'Cruz',bast:'MDF 30',estado:painted?'Stock con color':'Imprimado',ral:painted?l.ral:null,hex:painted?l.hex:null,ud:l.ud,minAcum:minDone});
+  logHoras(`CANCELACIÓN P-2026-021 · ${l.ud} ud → almacén (${painted?'con color RAL '+l.ral:'imprimado'}) · ${(transferMin/60).toFixed(2)} h trasladadas de proyecto a STOCK · ${fmt(transferMin/60*60*RATE)} €`);
+  l.dest='CANCELADO'; l.cli='→ stock'; l.ud=0;
+  refresh();
+}
+function cancelUnits(){
+  const op=S.ops['OP-2026-0042'];
+  const l=op.lines.find(x=>x.dest==='P-2026-018');
+  if(!l||l.ud<2) return;
+  const painted = op.step>=4 || op.st==='CERRADA';
+  const minDone = PROC.slice(0,Math.min(op.step,4)).reduce((s,p)=>s+p.m,0);
+  l.ud-=2;
+  if(op.step===0){
+    logHoras(`Cancelación parcial P-2026-018 · 2 ud antes de fabricar · sin coste (solo se reduce la OP)`);
+  } else {
+    S.alm.push({lamp:'Cruz',bast:'MDF 30',estado:painted?'Stock con color':'Imprimado',ral:painted?l.ral:null,hex:painted?l.hex:null,ud:2,minAcum:minDone});
+    logHoras(`Cancelación parcial P-2026-018 · 2 ud en proceso → almacén · ${(minDone*2/60).toFixed(2)} h trasladadas a STOCK`);
+  }
+  refresh();
+}
+
+// ---------- VIEWS pasivas ----------
+function renderAlmacen(){
+  $('#almTable').innerHTML = S.alm.filter(a=>a.ud>0).length
+    ? S.alm.filter(a=>a.ud>0).map(a=>`<tr><td>${a.lamp}</td><td>${a.bast}</td>
+        <td><span class="pill ${a.estado.includes('Imprimado')?'p-stock':'p-cerr'}">${a.estado}</span></td>
+        <td>${a.ral?`<span class="swatch" style="background:${a.hex}"></span>RAL ${a.ral}`:'<span class="sub">sin color</span>'}</td>
+        <td class="num">${a.ud}</td><td class="num">${(a.minAcum/60).toFixed(2)}</td></tr>`).join('')
+    : `<tr><td colspan="6" class="sub">Almacén vacío. Genera stock o cancela un proyecto para ver entradas.</td></tr>`;
+}
+function renderHoras(){
+  $('#horasLog').innerHTML = S.horas.length ? S.horas.map(l=>`<div>${l}</div>`).join('') : '<div>Sin movimientos todavía.</div>';
+}
+function renderCostes(){
+  const agg={};
+  const add=(k,ud,min)=>{agg[k]=agg[k]||{ud:0,min:0};agg[k].ud+=ud;agg[k].min+=min;};
+  // OP agrupada en curso/cerrada
+  const op=S.ops['OP-2026-0042'];
+  const minDone=PROC.slice(0,Math.min(op.step,4)).reduce((s,p)=>s+p.m,0);
+  op.lines.forEach(l=>{ if(l.ud>0 && l.dest.startsWith('P-')) add(l.dest,l.ud,minDone*l.ud); });
+  // almacén = STOCK
+  S.alm.forEach(a=>{ if(a.ud>0) add(a.estado.includes('proyecto')?'P-2026-030':'STOCK', a.ud, a.minAcum*a.ud); });
+  const rows=Object.entries(agg).map(([k,v])=>{
+    const coste=v.min/60*60*RATE + MAT*v.ud;
+    return `<tr><td>${k==='STOCK'?'<span class="pill p-stock">STOCK</span>':`<span class="pill p-proj">${k}</span>`}</td>
+      <td class="num">${v.ud}</td><td class="num">${(v.min/60).toFixed(2)}</td><td class="num">${fmt(coste)}</td></tr>`;
+  }).join('');
+  $('#costTable').innerHTML = rows || `<tr><td colspan="4" class="sub">Sin coste acumulado todavía.</td></tr>`;
+}
+
+function refresh(){renderOpPanel();renderStockPanel();renderCancelPanel();renderAlmacen();renderHoras();renderCostes();}
+function go(v){
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('nav a').forEach(a=>a.onclick=()=>go(a.dataset.v));
+refresh();
+</script>
+</body>
+</html>

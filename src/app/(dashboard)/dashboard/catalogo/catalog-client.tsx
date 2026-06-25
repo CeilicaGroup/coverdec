@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
 import type { ProcessCode } from "@/types/process";
 import { handleActionResult } from "@/lib/mutation-error";
-import { ElementTypology } from "@/generated/prisma";
+import { ElementRouteType, ElementTypology } from "@/generated/prisma";
 import { ELEMENT_TYPOLOGIES, ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
 
 interface ProcessDefOption {
@@ -78,9 +78,17 @@ interface FrameRow {
   isActive: boolean;
   defaultNaveId: string | null;
   defaultNave: NaveOption | null;
+  routeType: ElementRouteType;
+  routeNaves: string[];
   processes: FrameProcessRow[];
   lampCount: number;
 }
+
+const ROUTE_TYPE_LABELS: Record<ElementRouteType, string> = {
+  SIMPLE: "Simple",
+  SEQ_N3_N2: "N3→N2 secuencial",
+  PARALLEL: "Paralelo",
+};
 
 const INHERIT_TYPOLOGY_NAVALUE = "__inherit_typology__";
 
@@ -195,6 +203,8 @@ export function CatalogoCatalogClient({
   const [rows, setRows] = useState<ProcessFormRow[]>([]);
   const [typology, setTypology] = useState<ElementTypology>(ElementTypology.BASTIDOR);
   const [defaultNaveId, setDefaultNaveId] = useState("");
+  const [routeType, setRouteType] = useState<ElementRouteType>(ElementRouteType.PARALLEL);
+  const [routeNavesText, setRouteNavesText] = useState("N1,N2,N3");
 
   const activeCount = useMemo(() => frames.filter((f) => f.isActive).length, [frames]);
 
@@ -206,6 +216,8 @@ export function CatalogoCatalogClient({
     setDescription("");
     setTypology(ElementTypology.BASTIDOR);
     setDefaultNaveId("");
+    setRouteType(ElementRouteType.PARALLEL);
+    setRouteNavesText("N1,N2,N3");
     const used = new Set<ProcessCode>();
     const first = defaultProcessRow(processDefs, used);
     setRows(first ? [first] : []);
@@ -220,6 +232,8 @@ export function CatalogoCatalogClient({
     setDescription(frame.description ?? "");
     setTypology(frame.typology);
     setDefaultNaveId(frame.defaultNaveId ?? "");
+    setRouteType(frame.routeType);
+    setRouteNavesText(frame.routeNaves.join(","));
     setRows(
       frame.processes.length > 0
         ? frame.processes.map((p) => ({
@@ -282,6 +296,10 @@ export function CatalogoCatalogClient({
           return;
         }
       }
+      const routeNaves = routeNavesText
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
       const result = await upsertElementType({
           code: code.trim().toUpperCase(),
           name: name.trim(),
@@ -289,6 +307,8 @@ export function CatalogoCatalogClient({
           typology,
           isActive: true,
           defaultNaveId: defaultNaveId || null,
+          routeType,
+          routeNaves,
           processes,
         });
       const outcome = handleActionResult("catalog.element.upsert", result);
@@ -386,6 +406,7 @@ export function CatalogoCatalogClient({
                 <TableHead>Nombre</TableHead>
                 <TableHead>Tipología</TableHead>
                 <TableHead>Nave por defecto</TableHead>
+                <TableHead>Ruta CEILICA</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Procesos</TableHead>
                 {canManage ? <TableHead className="w-[152px] text-right">Acciones</TableHead> : null}
@@ -395,7 +416,7 @@ export function CatalogoCatalogClient({
               {frames.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={canManage ? 7 : 6}
+                    colSpan={canManage ? 8 : 7}
                     className="text-center text-muted-foreground py-6"
                   >
                     Catálogo vacío. Importa PRODUCCION.xlsx o crea un elemento.
@@ -416,6 +437,18 @@ export function CatalogoCatalogClient({
                     </TableCell>
                     <TableCell>
                       <CatalogNaveDisplay frame={f} typologyNaves={typologyNaves} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs space-y-0.5">
+                        <Badge variant="outline" className="text-[10px] font-mono">
+                          {ROUTE_TYPE_LABELS[f.routeType]}
+                        </Badge>
+                        {f.routeNaves.length > 0 ? (
+                          <div className="font-mono text-[10px] text-muted-foreground">
+                            {f.routeNaves.join(" · ")}
+                          </div>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {f.isActive ? (
@@ -619,6 +652,35 @@ export function CatalogoCatalogClient({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Ruta multi-nave (CEILICA)</Label>
+              <Select
+                value={routeType}
+                onValueChange={(v) => setRouteType(v as ElementRouteType)}
+                disabled={pending}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue>{ROUTE_TYPE_LABELS[routeType]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ROUTE_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                value={routeNavesText}
+                onChange={(e) => setRouteNavesText(e.target.value)}
+                disabled={pending}
+                placeholder="N1,N2,N3 o N1,SEQ"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Códigos de nave separados por coma. SEQ agrupa fases N3→N2 en una sola OP.
+              </p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">

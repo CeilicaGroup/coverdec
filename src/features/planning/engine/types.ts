@@ -15,6 +15,8 @@ export interface EnginePerson {
   iniciales: string;
   primary: string[];
   fallback: string[];
+  /** Naves en las que puede trabajar (filtra candidatos multi-nave). */
+  naveIds: string[];
   /** Average weekday capacity derived from configured work windows. */
   capacityHours: number;
   hourlyRate: number;
@@ -29,8 +31,11 @@ export interface EngineTask {
   overduePenaltyMultiplier: number;
   projectDeliveryDate: Date | null;
   lampId: string;
+  lampElementId: string | null;
+  elementTypeId: string | null;
   order: number;
   process: string;
+  naveId: string;
   pendingHours: number;
   /** Earliest week-quarter index (from prior-week planning on the same lamp). */
   minWeekQuarter?: number;

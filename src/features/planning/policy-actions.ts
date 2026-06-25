@@ -38,6 +38,7 @@ export async function savePlanningWeightsAction(
           wMove: data.wMove,
           wLaborCost: data.wLaborCost,
           wPriority: data.wPriority,
+          wBatchSameWork: data.wBatchSameWork,
         },
         update: {
           wLate: data.wLate,
@@ -46,6 +47,7 @@ export async function savePlanningWeightsAction(
           wMove: data.wMove,
           wLaborCost: data.wLaborCost,
           wPriority: data.wPriority,
+          wBatchSameWork: data.wBatchSameWork,
         },
       });
 

@@ -73,3 +73,19 @@ Imagen **Docker** multi-stage con `output: "standalone"`. Al arrancar se ejecuta
 ## Datos iniciales
 
 `prisma/seed.ts` crea procesos, personas, festivos 2026, tres empresas y un usuario admin (`admin@coverdec.local` / `admin12345` en desarrollo). Los Excel de `docs/` se importan con scripts en `scripts/import-excels.ts`.
+
+## Evolución planificada (post-MVP)
+
+### Planning coordinado multi-nave
+
+Hoy `generatePlanning` opera sobre **una nave** (`ctx.naveId`). Las tareas se cargan con `naveId` único y la precedencia por `lampId` no ve predecesoras en otras naves. Existe `crossNaveAssignments` para evitar solapamiento de personas entre naves la misma semana, pero no coordina cadenas de proceso inter-nave.
+
+**Planificado (Fase 0):** generación conjunta de todas las naves en un solo paso de solver, precedencia global y `planningGroupId` para publicar/deshacer borradores sincronizados. Ver [`docs/specs/planning-coordinado-multinave.md`](specs/planning-coordinado-multinave.md).
+
+### Módulo de producción CEILICA
+
+Capa de **ejecución en planta** sobre el planning: OPs agrupadas entre proyectos, confirmaciones en tablet, stock anticipado, rutas multi-nave (N1/N2/N3) y costes trazados. El `ProductionOrder` actual es un registro manual simple; la evolución añade líneas de destino, estados y agrupación.
+
+- Visión y glosario: [`docs/specs/modulo-produccion-ceilica.md`](specs/modulo-produccion-ceilica.md)
+- Roadmap por fases: [`docs/roadmap-post-mvp.md`](roadmap-post-mvp.md)
+- Prototipos de reunión: [`docs/reunion/README.md`](reunion/README.md)

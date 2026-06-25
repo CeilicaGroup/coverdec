@@ -1,4 +1,4 @@
-import { ElementTypology, PrismaClient, Role } from "../src/generated/prisma";
+import { ElementRouteType, ElementTypology, PrismaClient, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 import {
@@ -358,13 +358,14 @@ async function main() {
 
   console.log("Seeding naves...");
   const navesData = [
-    { codigo: "N1", nombre: "Nave 1" },
-    { codigo: "N2", nombre: "Nave 2" },
+    { codigo: "N1", nombre: "Nave 1 · Telas", hourlyRate: 28 },
+    { codigo: "N2", nombre: "Nave 2 · Bastidores", hourlyRate: 52 },
+    { codigo: "N3", nombre: "Nave 3 · Iluminación", hourlyRate: 38 },
   ];
   for (const nave of navesData) {
     await prisma.nave.upsert({
       where: { codigo: nave.codigo },
-      update: nave,
+      update: { nombre: nave.nombre, hourlyRate: nave.hourlyRate },
       create: nave,
     });
   }
@@ -384,8 +385,8 @@ async function main() {
     codigo: string;
   }> = [
     { typology: ElementTypology.TELA, codigo: "N1" },
-    { typology: ElementTypology.BASTIDOR, codigo: "N1" },
-    { typology: ElementTypology.ILUMINACION, codigo: "N2" },
+    { typology: ElementTypology.BASTIDOR, codigo: "N2" },
+    { typology: ElementTypology.ILUMINACION, codigo: "N3" },
   ];
   for (const row of typologyNaveByCodigo) {
     const naveId = naveByCodigo.get(row.codigo);
@@ -396,6 +397,77 @@ async function main() {
       create: { typology: row.typology, defaultNaveId: naveId },
     });
   }
+
+  console.log("Seeding planning policies...");
+  for (const naveId of naveByCodigo.values()) {
+    await prisma.planningPolicy.upsert({
+      where: { naveId },
+      update: {},
+      create: { naveId },
+    });
+  }
+
+  const SELCOS_SEQ_PHASES = [
+    { process: "ENSAMBLAJE", naveCodigo: "N3", sequence: 0, hoursPerUnit: 0.23, fixedHours: 0.17 },
+    { process: "LIMPIEZA", naveCodigo: "N3", sequence: 1, hoursPerUnit: 0.17, fixedHours: 0.13 },
+    { process: "ENSAMBLAJE", naveCodigo: "N2", sequence: 2, hoursPerUnit: 0.25, fixedHours: 0.2 },
+    { process: "PERFILES", naveCodigo: "N2", sequence: 3, hoursPerUnit: 0.15, fixedHours: 0.1 },
+    { process: "EMBALAJE", naveCodigo: "N2", sequence: 4, hoursPerUnit: 0.12, fixedHours: 0.08 },
+  ];
+
+  const CEILICA_ELEMENT_TYPES = [
+    {
+      code: "LAMP-CRUZ",
+      name: "Cruz",
+      typology: ElementTypology.BASTIDOR,
+      description: "Lámpara Cruz — ruta paralela 3 naves",
+      routeType: ElementRouteType.PARALLEL,
+      routeNaves: ["N1", "N2", "N3"],
+      processes: [
+        { process: "CORTE_MANUAL", sequence: 0, hoursPerUnit: 0.13, fixedHours: 0.25, notes: "N1" },
+        { process: "PERFILES", sequence: 1, hoursPerUnit: 0.2, fixedHours: 0.08, notes: "N1" },
+        { process: "CNC", sequence: 2, hoursPerUnit: 0.15, fixedHours: 0.42, notes: "N2" },
+        { process: "IMPRIMACION", sequence: 3, hoursPerUnit: 0.1, fixedHours: 0.25, notes: "N2" },
+        { process: "PINTURA", sequence: 4, hoursPerUnit: 0.17, fixedHours: 0.33, notes: "N2" },
+        { process: "ENSAMBLAJE", sequence: 5, hoursPerUnit: 0.23, fixedHours: 0.17, notes: "N3" },
+        { process: "LIMPIEZA", sequence: 6, hoursPerUnit: 0.17, fixedHours: 0.13, notes: "N3" },
+      ],
+    },
+    {
+      code: "LAMP-SELCOS",
+      name: "Selcos MC",
+      typology: ElementTypology.BASTIDOR,
+      description: "Selcos metacrilato — N1 + SEQ N3→N2",
+      routeType: ElementRouteType.SEQ_N3_N2,
+      routeNaves: ["N1", "SEQ"],
+      seqPhases: SELCOS_SEQ_PHASES,
+      processes: [
+        { process: "CORTE_MANUAL", sequence: 0, hoursPerUnit: 0.13, fixedHours: 0.25, notes: "N1" },
+        { process: "PERFILES", sequence: 1, hoursPerUnit: 0.2, fixedHours: 0.08, notes: "N1" },
+        ...SELCOS_SEQ_PHASES.map((p, i) => ({
+          process: p.process,
+          sequence: i + 2,
+          hoursPerUnit: p.hoursPerUnit ?? 0,
+          fixedHours: p.fixedHours ?? 0,
+          notes: p.naveCodigo,
+        })),
+      ],
+    },
+    {
+      code: "LAMP-LUM",
+      name: "Luminaria",
+      typology: ElementTypology.TELA,
+      description: "Luminaria — N1 + N3 sin bastidor",
+      routeType: ElementRouteType.PARALLEL,
+      routeNaves: ["N1", "N3"],
+      processes: [
+        { process: "CORTE_MANUAL", sequence: 0, hoursPerUnit: 0.13, fixedHours: 0.25, notes: "N1" },
+        { process: "PERFILES", sequence: 1, hoursPerUnit: 0.2, fixedHours: 0.08, notes: "N1" },
+        { process: "ENSAMBLAJE", sequence: 2, hoursPerUnit: 0.23, fixedHours: 0.17, notes: "N3" },
+        { process: "LIMPIEZA", sequence: 3, hoursPerUnit: 0.17, fixedHours: 0.13, notes: "N3" },
+      ],
+    },
+  ] as const;
 
   console.log("Seeding element types...");
   const elementTypeByCode = new Map<string, { id: string; name: string }>();
@@ -417,6 +489,93 @@ async function main() {
         where: { elementTypeId_process: { elementTypeId: created.id, process: ep.process } },
         update: { hoursPerUnit: ep.hoursPerUnit, fixedHours: ep.fixedHours, sequence: ep.sequence },
         create: { elementTypeId: created.id, ...ep },
+      });
+    }
+  }
+
+  for (const et of CEILICA_ELEMENT_TYPES) {
+    const { processes, ...etData } = et;
+    const seqPhases = "seqPhases" in et ? et.seqPhases : undefined;
+    const created = await prisma.elementType.upsert({
+      where: { code: etData.code },
+      update: {
+        name: etData.name,
+        description: etData.description,
+        typology: etData.typology,
+        routeType: etData.routeType,
+        routeNaves: [...etData.routeNaves],
+        seqPhases: seqPhases ?? undefined,
+        defaultNaveId: null,
+      },
+      create: {
+        ...etData,
+        routeNaves: [...etData.routeNaves],
+        seqPhases: seqPhases ?? undefined,
+        defaultNaveId: null,
+      },
+    });
+    elementTypeByCode.set(etData.code, created);
+    for (const ep of processes) {
+      await prisma.elementTypeProcess.upsert({
+        where: { elementTypeId_process: { elementTypeId: created.id, process: ep.process } },
+        update: {
+          sequence: ep.sequence,
+          hoursPerUnit: ep.hoursPerUnit,
+          fixedHours: ep.fixedHours,
+          notes: ep.notes ?? null,
+        },
+        create: {
+          elementTypeId: created.id,
+          process: ep.process,
+          sequence: ep.sequence,
+          hoursPerUnit: ep.hoursPerUnit,
+          fixedHours: ep.fixedHours,
+          notes: ep.notes ?? null,
+        },
+      });
+    }
+  }
+
+  const BOM_BY_ELEMENT_CODE: Record<
+    string,
+    Array<{ componentCode: string; name: string; quantity: number; unitCost: number }>
+  > = {
+    "LAMP-CRUZ": [
+      { componentCode: "MDF-30", name: "MDF 30mm", quantity: 2.5, unitCost: 12.5 },
+      { componentCode: "PERFIL-ALU", name: "Perfil aluminio", quantity: 4.2, unitCost: 3.8 },
+      { componentCode: "LED-KIT", name: "Kit LED", quantity: 1, unitCost: 45 },
+    ],
+    "LAMP-SELCOS": [
+      { componentCode: "PMMA-8", name: "PMMA 8mm", quantity: 1.8, unitCost: 18 },
+      { componentCode: "PERFIL-ALU", name: "Perfil aluminio", quantity: 3.5, unitCost: 3.8 },
+      { componentCode: "TIRAS-LED", name: "Tiras LED", quantity: 2, unitCost: 22 },
+    ],
+  };
+
+  console.log("Seeding BOM components...");
+  for (const [code, components] of Object.entries(BOM_BY_ELEMENT_CODE)) {
+    const elementType = elementTypeByCode.get(code);
+    if (!elementType) continue;
+    for (const row of components) {
+      await prisma.bomComponent.upsert({
+        where: {
+          elementTypeId_componentCode: {
+            elementTypeId: elementType.id,
+            componentCode: row.componentCode,
+          },
+        },
+        update: {
+          name: row.name,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+        },
+        create: {
+          elementTypeId: elementType.id,
+          componentCode: row.componentCode,
+          name: row.name,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+        },
       });
     }
   }

@@ -81,6 +81,19 @@ Reunión con Ana, Oleh y John. Demo en vivo del sistema completo. Entrega de acc
 - Nombres exactos de las tres empresas [PENDIENTE]
 - Prompt maestro que usaban en Claude [PromptMaestro](PromptMaestro.html)
 
+## FASE POST-MVP — Módulo CEILICA (producción)
+
+Documentación y prototipos acordados en reunión con el cliente (`docs/reunion/`). Evolución del MVP hacia ejecución en planta con OPs agrupadas, stock, tres naves y planning coordinado.
+
+| Documento | Contenido |
+|-----------|-----------|
+| [roadmap-post-mvp.md](roadmap-post-mvp.md) | Fases 0–E de implementación |
+| [specs/modulo-produccion-ceilica.md](specs/modulo-produccion-ceilica.md) | Visión, glosario, equivalencias SAP |
+| [specs/planning-coordinado-multinave.md](specs/planning-coordinado-multinave.md) | Generar todas las naves a la vez (prerequisito) |
+| [reunion/README.md](reunion/README.md) | Índice de prototipos HTML interactivos |
+
+**Fase 0 (bloqueante):** planning coordinado multi-nave — sin ello las dependencias N3→N2 y cadenas de lámpara entre naves producen planificaciones inválidas.
+
 ## MEJORAS IDENTIFICADAS — FUERA DEL MVP
 Para fases siguientes, presupuestadas y aprobadas de forma independiente:
 - Alertas automáticas cada lunes: notificación vía WhatsApp o email al jefe de producción con el estado de riesgo semanal de todos los proyectos. Estimación: 1 día de trabajo.

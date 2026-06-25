@@ -1,27 +1,43 @@
-import Link from "next/link";
-import { Printer } from "lucide-react";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
+import { isoWeek, getMondayOf, toUtcDay } from "@/lib/week";
+import { Role } from "@/generated/prisma";
 import { PageHeader } from "../../_components/page-header";
 import { CreateOrderDialog } from "./create-order-dialog";
-import { Card, CardContent } from "@/components/ui/card";
+import { GenerateWorkOrdersPanel } from "./generate-work-orders-panel";
+import { OrdersPageTabs } from "./orders-page-tabs";
+import { IN_PROGRESS, type OrderRow } from "./orders-table";
+import type { OrderDetailData } from "./order-detail-drawer";
+import type { CalendarOrderBlock } from "./orders-calendar";
+import { parseOrderExecutionMeta } from "@/features/production-orders/execution";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { formatHours, formatShortDate } from "@/lib/format";
-import { Button } from "@/components/ui/button";
-import { ProcessBadge } from "@/components/process-badge";
+  canExecuteProductionOrders,
+  canManageProductionOrders,
+} from "@/features/production-orders/permissions";
+import { loadOrderMetricsByOrderId } from "@/features/production-orders/queries";
+import { loadNaveOrderKpis } from "@/features/costes/nave-breakdown";
+import { loadTopOrderDeviations } from "@/features/costes/plan-vs-real";
+import { OrdersNaveKpis } from "./orders-nave-kpis";
+import { OrdersDeviationPanel } from "./orders-deviation-panel";
 
 export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
-  const [orders, projects, processDefs] = await Promise.all([
+  const weekStart = getMondayOf(new Date());
+  const weekStartIso = weekStart.toISOString().slice(0, 10);
+  const { year, week } = isoWeek(weekStart);
+  const canGenerateOt =
+    ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const canManage = canManageProductionOrders(ctx.role);
+  const canExecute = canExecuteProductionOrders(ctx.role);
+
+  const [orders, projects, processDefs, elementTypes, naves, naveKpis, topDeviations] =
+    await Promise.all([
     prisma.productionOrder.findMany({
-      include: { project: true },
+      include: {
+        project: true,
+        nave: { select: { codigo: true, nombre: true } },
+        lines: { include: { project: true } },
+      },
       orderBy: [{ year: "desc" }, { serial: "desc" }],
       take: 200,
     }),
@@ -34,65 +50,143 @@ export default async function OrdenesPage() {
       select: { code: true, label: true },
       orderBy: { label: "asc" },
     }),
+    prisma.elementType.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.nave.findMany({
+      where: { isActive: true },
+      select: { id: true, codigo: true, nombre: true },
+      orderBy: { codigo: "asc" },
+    }),
+    loadNaveOrderKpis(weekStart),
+    loadTopOrderDeviations({ weekStart, limit: 5 }),
   ]);
+
+  const metricsById = await loadOrderMetricsByOrderId(orders.map((o) => o.id));
+
+  const rows: OrderRow[] = orders.map((o) => {
+    const metrics = metricsById.get(o.id);
+    return {
+      id: o.id,
+      number: o.number,
+      kind: o.kind,
+      status: o.status,
+      process: o.process,
+      hours: o.hours,
+      actualHours: metrics?.actualHours ?? 0,
+      deviationPct: metrics?.deviationPct ?? null,
+      totalUnits: metrics?.totalUnits ?? o.lines.reduce((a, l) => a + l.units, 0),
+      completedUnits: metrics?.completedUnits ?? o.lines.reduce((a, l) => a + l.completedUnits, 0),
+      scheduledAt: o.scheduledAt?.toISOString() ?? null,
+      scheduledWeek: o.scheduledWeek
+        ? toUtcDay(o.scheduledWeek).toISOString().slice(0, 10)
+        : null,
+      planningGroupId: o.planningGroupId,
+      naveLabel: o.nave ? `${o.nave.codigo} · ${o.nave.nombre}` : null,
+      projectLabel:
+        o.project?.name ??
+        (o.lines
+          .map((l) => l.project?.name ?? l.clientLabel)
+          .filter(Boolean)
+          .join(", ") || "—"),
+      linesSummary:
+        o.lines.length > 0
+          ? `${o.lines.length} · ${o.lines.reduce((a, l) => a + l.units, 0)} ud`
+          : o.lampLabel ?? "—",
+    };
+  });
+
+  const weekOrders = rows.filter((o) => o.scheduledWeek === weekStartIso);
+  const weekDeviations = weekOrders
+    .map((o) => o.deviationPct)
+    .filter((d): d is number => d != null);
+  const kpis = {
+    weekTotal: weekOrders.length,
+    weekHours: weekOrders.reduce((sum, o) => sum + (o.hours ?? 0), 0),
+    inProgress: rows.filter((o) => IN_PROGRESS.has(o.status)).length,
+    avgDeviationPct:
+      weekDeviations.length > 0
+        ? Math.round(
+            (weekDeviations.reduce((a, b) => a + b, 0) / weekDeviations.length) * 10,
+          ) / 10
+        : null,
+  };
+
+  const processOptions = [
+    ...new Set(rows.map((o) => o.process).filter((p): p is string => Boolean(p))),
+  ].sort((a, b) => a.localeCompare(b, "es"));
+
+  const calendarOrders: CalendarOrderBlock[] = rows
+    .filter((o) => o.scheduledAt)
+    .map((o) => ({
+      id: o.id,
+      number: o.number,
+      process: o.process,
+      hours: o.hours,
+      scheduledAt: o.scheduledAt,
+      status: o.status,
+    }));
+
+  const orderDetailsById: Record<string, OrderDetailData> = {};
+  for (const o of orders) {
+    const row = rows.find((r) => r.id === o.id)!;
+    const { userNotes, meta } = parseOrderExecutionMeta(o.notes);
+    orderDetailsById[o.id] = {
+      id: o.id,
+      number: o.number,
+      status: o.status,
+      process: o.process,
+      hours: o.hours,
+      actualHours: row.actualHours || meta.actualHours,
+      step: o.step,
+      scheduledAt: row.scheduledAt,
+      scheduledWeek: row.scheduledWeek,
+      planningGroupId: o.planningGroupId,
+      naveLabel: row.naveLabel,
+      userNotes,
+      totalUnits: row.totalUnits,
+      completedUnits: row.completedUnits,
+      canManage,
+      canExecute,
+      lines: o.lines.map((l) => ({
+        id: l.id,
+        taskId: l.taskId,
+        projectName: l.project?.name ?? l.clientLabel ?? "—",
+        units: l.units,
+        completedUnits: l.completedUnits,
+        ral: l.ral,
+      })),
+    };
+  }
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title="Órdenes de producción"
         description={`${orders.length} órdenes registradas`}
-        actions={<CreateOrderDialog projects={projects} processDefs={processDefs} />}
+        actions={
+          <CreateOrderDialog
+            projects={projects}
+            processDefs={processDefs}
+            elementTypes={elementTypes}
+            naves={naves}
+          />
+        }
       />
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>OP</TableHead>
-                <TableHead>Proyecto</TableHead>
-                <TableHead>Lámpara</TableHead>
-                <TableHead>Proceso</TableHead>
-                <TableHead>Horas</TableHead>
-                <TableHead>Programada</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
-                    No hay órdenes. Crea la primera.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                orders.map((o) => (
-                  <TableRow key={o.id}>
-                    <TableCell className="font-mono font-bold">{o.number}</TableCell>
-                    <TableCell>{o.project.name}</TableCell>
-                    <TableCell>{o.lampLabel ?? "—"}</TableCell>
-                    <TableCell>{o.process ? <ProcessBadge code={o.process} /> : "—"}</TableCell>
-                    <TableCell className="font-mono">{formatHours(o.hours)}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {formatShortDate(o.scheduledAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        nativeButton={false}
-                        render={<Link href={`/dashboard/ordenes/${o.id}`} />}
-                      >
-                        <Printer className="size-3.5 mr-1" />
-                        Imprimir
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {canGenerateOt ? (
+        <GenerateWorkOrdersPanel initialYear={year} initialWeek={week} />
+      ) : null}
+      <OrdersNaveKpis rows={naveKpis} />
+      <OrdersDeviationPanel rows={topDeviations} />
+      <OrdersPageTabs
+        orders={rows}
+        kpis={kpis}
+        processOptions={processOptions}
+        calendarOrders={calendarOrders}
+        orderDetailsById={orderDetailsById}
+      />
     </div>
   );
 }

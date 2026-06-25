@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -42,6 +43,7 @@ import {
   updateTaskHours,
   updateTaskNave,
   updateTaskNotes,
+  updateTaskSeparateWorkOrder,
 } from "@/features/projects/actions";
 import {
   describeNaveAssignment,
@@ -62,6 +64,7 @@ interface LampTaskRow {
   pendingHours: number;
   order: number;
   notes: string | null;
+  separateWorkOrder: boolean;
   naveId: string;
   nave: NaveSummary | null;
   lampElement:
@@ -598,6 +601,7 @@ export function LampTasksPanel({
   const [editTask, setEditTask] = useState<LampTaskRow | null>(null);
   const [editHours, setEditHours] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editSeparateWorkOrder, setEditSeparateWorkOrder] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addGroupKey, setAddGroupKey] = useState<string | null>(null);
   const [addProcess, setAddProcess] = useState("");
@@ -917,6 +921,7 @@ export function LampTasksPanel({
                                       setEditTask(t);
                                       setEditHours(String(t.estimatedHours));
                                       setEditNotes(t.notes ?? "");
+                                      setEditSeparateWorkOrder(t.separateWorkOrder);
                                     }}
                                     aria-label="Editar tarea"
                                   >
@@ -1027,6 +1032,10 @@ export function LampTasksPanel({
                       taskId: editTask.id,
                       notes: editNotes.trim() || null,
                     });
+                    await updateTaskSeparateWorkOrder({
+                      taskId: editTask.id,
+                      separateWorkOrder: editSeparateWorkOrder,
+                    });
                     toast.success("Tarea actualizada");
                     setEditTask(null);
                     router.refresh();
@@ -1066,6 +1075,18 @@ export function LampTasksPanel({
                   rows={2}
                 />
               </div>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={editSeparateWorkOrder}
+                  onCheckedChange={(v) => setEditSeparateWorkOrder(v === true)}
+                />
+                <span>
+                  OT separada al generar desde planning
+                  <span className="block text-xs text-muted-foreground">
+                    Esta tarea no se agrupará con otras del mismo proceso y tipo de elemento.
+                  </span>
+                </span>
+              </label>
               <DialogFooter>
                 <Button type="submit" disabled={pending}>
                   Guardar

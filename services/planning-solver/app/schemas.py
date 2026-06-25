@@ -36,6 +36,7 @@ class PlanningWeights(BaseModel):
     wMove: float
     wLaborCost: float = 1.0
     wPriority: float = 0.0  # project priority by delivery proximity
+    wBatchSameWork: float = 1.0
 
 
 class EngineProcessDef(BaseModel):
@@ -48,6 +49,7 @@ class EnginePerson(BaseModel):
     iniciales: str
     primary: list[str]
     fallback: list[str]
+    naveIds: list[str] = Field(default_factory=list)
     capacityHours: float
     hourlyRate: float
     overtimeHourlyRate: float
@@ -61,8 +63,11 @@ class EngineTask(BaseModel):
     overduePenaltyMultiplier: float = 2.5
     projectDeliveryDate: datetime | None = None
     lampId: str
+    lampElementId: str | None = None
+    elementTypeId: str | None = None
     order: int
     process: str
+    naveId: str = ""
     pendingHours: float
     canFragment: bool = True
     minWeekQuarter: int = 0

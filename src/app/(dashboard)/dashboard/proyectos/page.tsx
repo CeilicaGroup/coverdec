@@ -82,7 +82,7 @@ export default async function ProyectosPage({
       if (r.projectId) blocksProject.add(r.projectId);
     }
     for (const r of poRows) {
-      blocksProject.add(r.projectId);
+      if (r.projectId) blocksProject.add(r.projectId);
     }
     for (const entry of entryRows) {
       if (!entry.projectId) continue;
