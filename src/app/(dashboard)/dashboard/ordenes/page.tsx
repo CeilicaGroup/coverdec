@@ -26,7 +26,7 @@ export default async function OrdenesPage() {
   const canManage = canManageProductionOrders(ctx.role);
   const canExecute = canExecuteProductionOrders(ctx.role);
 
-  const [orders, projects, processDefs] = await Promise.all([
+  const [orders, projects, processDefs, elementTypes, naves] = await Promise.all([
     prisma.productionOrder.findMany({
       include: {
         project: true,
@@ -45,6 +45,16 @@ export default async function OrdenesPage() {
       select: { code: true, label: true },
       orderBy: { label: "asc" },
     }),
+    prisma.elementType.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.nave.findMany({
+      where: { isActive: true },
+      select: { id: true, codigo: true, nombre: true },
+      orderBy: { codigo: "asc" },
+    }),
   ]);
 
   const metricsById = await loadOrderMetricsByOrderId(orders.map((o) => o.id));
@@ -54,6 +64,7 @@ export default async function OrdenesPage() {
     return {
       id: o.id,
       number: o.number,
+      kind: o.kind,
       status: o.status,
       process: o.process,
       hours: o.hours,
@@ -148,7 +159,14 @@ export default async function OrdenesPage() {
       <PageHeader
         title="Órdenes de producción"
         description={`${orders.length} órdenes registradas`}
-        actions={<CreateOrderDialog projects={projects} processDefs={processDefs} />}
+        actions={
+          <CreateOrderDialog
+            projects={projects}
+            processDefs={processDefs}
+            elementTypes={elementTypes}
+            naves={naves}
+          />
+        }
       />
       {canGenerateOt ? (
         <GenerateWorkOrdersPanel initialYear={year} initialWeek={week} />

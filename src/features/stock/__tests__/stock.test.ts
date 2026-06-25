@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { StockItemState } from "@/generated/prisma";
+import { ProductionOrderKind, StockItemState } from "@/generated/prisma";
 import { resolveCancelStockState } from "@/features/stock/assign-to-project";
+import { assertStockOrderCanStartPaint } from "@/features/stock/create-from-order";
+
+describe("assertStockOrderCanStartPaint", () => {
+  it("blocks paint on stock without RAL", () => {
+    expect(() =>
+      assertStockOrderCanStartPaint({
+        kind: ProductionOrderKind.STOCK,
+        process: "PINTURA",
+        lines: [{ ral: null, units: 8 }],
+      }),
+    ).toThrow(/RAL/);
+  });
+
+  it("allows paint on stock when line has RAL", () => {
+    expect(() =>
+      assertStockOrderCanStartPaint({
+        kind: ProductionOrderKind.STOCK,
+        process: "PINTURA",
+        lines: [{ ral: "9005", units: 8 }],
+      }),
+    ).not.toThrow();
+  });
+});
+
 
 describe("resolveCancelStockState", () => {
   it("returns null before fabrication", () => {

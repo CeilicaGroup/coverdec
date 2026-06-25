@@ -27,7 +27,10 @@ import {
 import {
   assertCanExecuteProductionOrder,
 } from "./permissions";
-import { createProductionOrderSchema } from "./schema";
+import {
+  createProductionOrderSchema,
+  normalizeCreateProductionOrderLines,
+} from "./schema";
 
 const log = childLogger({ module: "production-orders.actions" });
 
@@ -314,12 +317,8 @@ export async function createProductionOrder(
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = createProductionOrderSchema.parse(input);
-
-      const lines =
-        data.lines ??
-        (data.projectId
-          ? [{ projectId: data.projectId, units: 1 }]
-          : []);
+      const kind = data.kind ?? ProductionOrderKind.PROYECTO;
+      const lines = normalizeCreateProductionOrderLines(data);
 
       if (lines.length === 0) {
         throw new Error("Indica al menos una línea de destino (proyecto y unidades)");
@@ -333,14 +332,16 @@ export async function createProductionOrder(
       const serial = (last?.serial ?? 0) + 1;
       const number = `OP${String(serial).padStart(4, "0")}-${year}`;
       const headerProjectId =
-        data.projectId ?? lines.find((l) => l.projectId)?.projectId;
+        kind === ProductionOrderKind.STOCK
+          ? null
+          : (data.projectId ?? lines.find((l) => l.projectId)?.projectId);
 
       const order = await prisma.productionOrder.create({
         data: {
           number,
           year,
           serial,
-          kind: data.kind ?? ProductionOrderKind.PROYECTO,
+          kind,
           projectId: headerProjectId,
           lampLabel: data.lampLabel,
           process: data.process,

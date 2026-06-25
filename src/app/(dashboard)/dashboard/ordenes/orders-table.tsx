@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { PanelRightOpen, Printer } from "lucide-react";
-import { ProductionOrderStatus } from "@/generated/prisma";
+import { ProductionOrderKind, ProductionOrderStatus } from "@/generated/prisma";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 export interface OrderRow {
   id: string;
   number: string;
+  kind: ProductionOrderKind;
   status: ProductionOrderStatus;
   process: string | null;
   hours: number | null;
@@ -202,19 +204,26 @@ export function OrdersTable({
                 filtered.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell className="font-mono font-bold">
-                      {onOpenOrder ? (
-                        <button
-                          type="button"
-                          className="hover:underline text-left"
-                          onClick={() => onOpenOrder(o.id)}
-                        >
-                          {o.number}
-                        </button>
-                      ) : (
-                        <Link href={`/dashboard/ordenes/${o.id}`} className="hover:underline">
-                          {o.number}
-                        </Link>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {onOpenOrder ? (
+                          <button
+                            type="button"
+                            className="hover:underline text-left"
+                            onClick={() => onOpenOrder(o.id)}
+                          >
+                            {o.number}
+                          </button>
+                        ) : (
+                          <Link href={`/dashboard/ordenes/${o.id}`} className="hover:underline">
+                            {o.number}
+                          </Link>
+                        )}
+                        {o.kind === ProductionOrderKind.STOCK ? (
+                          <Badge variant="secondary" className="text-[10px] font-mono px-1 py-0">
+                            STOCK
+                          </Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="text-xs">{STATUS_LABELS[o.status]}</TableCell>
                     <TableCell>{o.projectLabel}</TableCell>
