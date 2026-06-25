@@ -16,7 +16,9 @@ import {
 } from "@/features/production-orders/permissions";
 import { loadOrderMetricsByOrderId } from "@/features/production-orders/queries";
 import { loadNaveOrderKpis } from "@/features/costes/nave-breakdown";
+import { loadTopOrderDeviations } from "@/features/costes/plan-vs-real";
 import { OrdersNaveKpis } from "./orders-nave-kpis";
+import { OrdersDeviationPanel } from "./orders-deviation-panel";
 
 export default async function OrdenesPage() {
   const ctx = await requireDashboardContext();
@@ -28,7 +30,8 @@ export default async function OrdenesPage() {
   const canManage = canManageProductionOrders(ctx.role);
   const canExecute = canExecuteProductionOrders(ctx.role);
 
-  const [orders, projects, processDefs, elementTypes, naves, naveKpis] = await Promise.all([
+  const [orders, projects, processDefs, elementTypes, naves, naveKpis, topDeviations] =
+    await Promise.all([
     prisma.productionOrder.findMany({
       include: {
         project: true,
@@ -58,6 +61,7 @@ export default async function OrdenesPage() {
       orderBy: { codigo: "asc" },
     }),
     loadNaveOrderKpis(weekStart),
+    loadTopOrderDeviations({ weekStart, limit: 5 }),
   ]);
 
   const metricsById = await loadOrderMetricsByOrderId(orders.map((o) => o.id));
@@ -175,6 +179,7 @@ export default async function OrdenesPage() {
         <GenerateWorkOrdersPanel initialYear={year} initialWeek={week} />
       ) : null}
       <OrdersNaveKpis rows={naveKpis} />
+      <OrdersDeviationPanel rows={topDeviations} />
       <OrdersPageTabs
         orders={rows}
         kpis={kpis}

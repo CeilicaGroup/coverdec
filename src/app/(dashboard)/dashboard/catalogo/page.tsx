@@ -4,12 +4,13 @@ import { Role } from "@/generated/prisma";
 import { CatalogoCatalogClient } from "./catalog-client";
 import { ProcessDefinitionsPanel } from "./process-definitions-panel";
 import { TypologyNavesPanel } from "./typology-naves-panel";
+import { BomPanel } from "./bom-panel";
 
 export default async function CatalogoPage() {
   const ctx = await requireDashboardContext();
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
 
-  const [framesRaw, processDefs, naves, typologyNaves] = await Promise.all([
+  const [framesRaw, processDefs, naves, typologyNaves, bomRaw] = await Promise.all([
     prisma.elementType.findMany({
       where: {},
       include: {
@@ -39,6 +40,17 @@ export default async function CatalogoPage() {
     prisma.elementTypologyNave.findMany({
       include: {
         defaultNave: { select: { id: true, codigo: true, nombre: true } },
+      },
+    }),
+    prisma.bomComponent.findMany({
+      orderBy: [{ elementTypeId: "asc" }, { componentCode: "asc" }],
+      select: {
+        id: true,
+        elementTypeId: true,
+        componentCode: true,
+        name: true,
+        quantity: true,
+        unitCost: true,
       },
     }),
   ]);
@@ -76,6 +88,16 @@ export default async function CatalogoPage() {
           defaultNave: row.defaultNave,
         }))}
         naves={naves}
+        canManage={canManage}
+      />
+      <BomPanel
+        elementTypes={framesRaw
+          .filter((f) => f.isActive)
+          .map((f) => ({ id: f.id, code: f.code, name: f.name }))}
+        bomRows={bomRaw.map((row) => ({
+          ...row,
+          unitCost: Number(row.unitCost),
+        }))}
         canManage={canManage}
       />
       <CatalogoCatalogClient

@@ -29,6 +29,7 @@ import {
 import { formatEuros, formatHours } from "@/lib/format";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
 import { loadNaveCostBreakdown } from "@/features/costes/nave-breakdown";
+import { loadWeeklyProjectPlanVsReal } from "@/features/costes/plan-vs-real";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 
@@ -46,12 +47,13 @@ export default async function CostesPage({
   const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
-  const [planning, planningMeta, people, holidays, naveCosts] = await Promise.all([
+  const [planning, planningMeta, people, holidays, naveCosts, planVsReal] = await Promise.all([
     getPlanningForWeek({ naveScope, weekStart, viewMode }),
     getPlanningWeekMeta({ naveScope, weekStart }),
     getNavePersonnel(naveScope),
     getHolidaysForRange(weekMon, weekFri),
     loadNaveCostBreakdown({ weekStart }),
+    loadWeeklyProjectPlanVsReal(weekStart),
   ]);
   const workDays = Math.max(1, 5 - holidays.length);
 
@@ -209,6 +211,76 @@ export default async function CostesPage({
           </Table>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Plan vs real por proyecto</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Proyecto</TableHead>
+                <TableHead>MO plan</TableHead>
+                <TableHead>MO real</TableHead>
+                <TableHead>Material plan</TableHead>
+                <TableHead>Material real</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {planVsReal.projects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
+                    Sin datos de OP o imputaciones esta semana.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                planVsReal.projects.map((row) => (
+                  <TableRow key={row.projectId}>
+                    <TableCell>{row.projectName}</TableCell>
+                    <TableCell className="font-mono">{formatEuros(row.planMo)}</TableCell>
+                    <TableCell className="font-mono">{formatEuros(row.realMo)}</TableCell>
+                    <TableCell className="font-mono">{formatEuros(row.planMaterial)}</TableCell>
+                    <TableCell className="font-mono">{formatEuros(row.realMaterial)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {planVsReal.ortOrders.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Retrabajos (ORT)</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ORT</TableHead>
+                  <TableHead>OP origen</TableHead>
+                  <TableHead>Horas</TableHead>
+                  <TableHead>Coste</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {planVsReal.ortOrders.map((row) => (
+                  <TableRow key={row.orderId}>
+                    <TableCell className="font-mono">{row.number}</TableCell>
+                    <TableCell className="font-mono text-muted-foreground">
+                      {row.parentNumber ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono">{formatHours(row.hours)}</TableCell>
+                    <TableCell className="font-mono">{formatEuros(row.cost)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

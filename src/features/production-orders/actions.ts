@@ -32,6 +32,7 @@ import {
   createProductionOrdersFromProject,
   previewProductionOrdersFromProject,
 } from "./create-from-project";
+import { createReworkOrder } from "./create-rework-order";
 import {
   createProductionOrderSchema,
   normalizeCreateProductionOrderLines,
@@ -358,6 +359,33 @@ export async function createProductionOrdersFromProjectAction(input: unknown) {
     (result) => ({
       summary: `Generar ${result.created} OP desde proyecto`,
       metadata: result as unknown as Record<string, unknown>,
+    }),
+  );
+}
+
+export async function createReworkOrderAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.createReworkOrder",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = z
+        .object({
+          parentOrderId: z.string().min(1),
+          process: z.string().optional(),
+          hours: z.number().positive().optional(),
+          notes: z.string().max(500).optional(),
+        })
+        .parse(input);
+      const result = await createReworkOrder(data);
+      revalidateOrdenesPaths(result.id);
+      revalidatePath("/dashboard/costes");
+      return result;
+    },
+    (result) => ({
+      summary: `Crear ORT ${result.number}`,
+      entityType: "ProductionOrder",
+      entityId: result.id,
     }),
   );
 }

@@ -536,6 +536,50 @@ async function main() {
     }
   }
 
+  const BOM_BY_ELEMENT_CODE: Record<
+    string,
+    Array<{ componentCode: string; name: string; quantity: number; unitCost: number }>
+  > = {
+    "LAMP-CRUZ": [
+      { componentCode: "MDF-30", name: "MDF 30mm", quantity: 2.5, unitCost: 12.5 },
+      { componentCode: "PERFIL-ALU", name: "Perfil aluminio", quantity: 4.2, unitCost: 3.8 },
+      { componentCode: "LED-KIT", name: "Kit LED", quantity: 1, unitCost: 45 },
+    ],
+    "LAMP-SELCOS": [
+      { componentCode: "PMMA-8", name: "PMMA 8mm", quantity: 1.8, unitCost: 18 },
+      { componentCode: "PERFIL-ALU", name: "Perfil aluminio", quantity: 3.5, unitCost: 3.8 },
+      { componentCode: "TIRAS-LED", name: "Tiras LED", quantity: 2, unitCost: 22 },
+    ],
+  };
+
+  console.log("Seeding BOM components...");
+  for (const [code, components] of Object.entries(BOM_BY_ELEMENT_CODE)) {
+    const elementType = elementTypeByCode.get(code);
+    if (!elementType) continue;
+    for (const row of components) {
+      await prisma.bomComponent.upsert({
+        where: {
+          elementTypeId_componentCode: {
+            elementTypeId: elementType.id,
+            componentCode: row.componentCode,
+          },
+        },
+        update: {
+          name: row.name,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+        },
+        create: {
+          elementTypeId: elementType.id,
+          componentCode: row.componentCode,
+          name: row.name,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+        },
+      });
+    }
+  }
+
   console.log("Seeding projects...");
   for (const proj of PROJECTS) {
     const { lamps, ...projData } = proj;

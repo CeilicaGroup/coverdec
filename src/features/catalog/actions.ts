@@ -368,3 +368,61 @@ export async function deleteProcessDefinition(
   revalidatePath("/dashboard/personal");
   });
 }
+
+const bomUpsertSchema = z.object({
+  elementTypeId: z.string().min(1),
+  componentCode: z.string().min(1),
+  name: z.string().min(1),
+  quantity: z.number().positive(),
+  unitCost: z.number().nonnegative(),
+});
+
+const bomDeleteSchema = z.object({
+  id: z.string().min(1),
+});
+
+export async function upsertBomComponent(
+  input: z.infer<typeof bomUpsertSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  return runServerAction("catalog.upsertBomComponent", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = bomUpsertSchema.parse(input);
+
+    const row = await prisma.bomComponent.upsert({
+      where: {
+        elementTypeId_componentCode: {
+          elementTypeId: data.elementTypeId,
+          componentCode: data.componentCode.trim().toUpperCase(),
+        },
+      },
+      update: {
+        name: data.name.trim(),
+        quantity: data.quantity,
+        unitCost: data.unitCost,
+      },
+      create: {
+        elementTypeId: data.elementTypeId,
+        componentCode: data.componentCode.trim().toUpperCase(),
+        name: data.name.trim(),
+        quantity: data.quantity,
+        unitCost: data.unitCost,
+      },
+    });
+
+    revalidatePath("/dashboard/catalogo");
+    return { id: row.id };
+  });
+}
+
+export async function deleteBomComponent(
+  input: z.infer<typeof bomDeleteSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.deleteBomComponent", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = bomDeleteSchema.parse(input);
+    await prisma.bomComponent.delete({ where: { id: data.id } });
+    revalidatePath("/dashboard/catalogo");
+  });
+}

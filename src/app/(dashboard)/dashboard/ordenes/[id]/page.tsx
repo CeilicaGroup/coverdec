@@ -16,6 +16,7 @@ import {
 } from "@/features/production-orders/permissions";
 import { PrintTrigger } from "./print-trigger";
 import { OrderExecutionPanel } from "./order-execution-panel";
+import { ReworkOrderButton } from "./rework-order-button";
 
 export default async function OrdenDetailPage({
   params,
@@ -66,7 +67,19 @@ export default async function OrdenDetailPage({
           >
             <ArrowLeft className="size-4 mr-1" /> Volver
           </Button>
-          <PrintTrigger />
+          <div className="flex items-center gap-2">
+            {canManage ? (
+              <ReworkOrderButton
+                orderId={order.id}
+                status={order.status}
+                kind={order.kind}
+                canManage={canManage}
+                defaultHours={order.hours}
+                defaultProcess={order.process}
+              />
+            ) : null}
+            <PrintTrigger />
+          </div>
         </div>
         {canExecute ? (
           <OrderExecutionPanel
@@ -173,6 +186,12 @@ export default async function OrdenDetailPage({
                   </span>
                 ) : null}
               </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                Tipo
+              </div>
+              <div className="font-mono text-sm">{order.kind}</div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">

@@ -343,6 +343,7 @@ model ElementType {
   productionOrders ProductionOrder[]
   stockItems       StockItem[]
   processes    ElementTypeProcess[]
+  bomComponents BomComponent[]
   lamps        Lamp[]
   lampElements LampElement[]
 
@@ -363,6 +364,22 @@ model ElementTypeProcess {
 
   @@unique([elementTypeId, process])
   @@index([elementTypeId, sequence])
+}
+
+model BomComponent {
+  id            String   @id @default(cuid())
+  elementTypeId String
+  componentCode String
+  name          String
+  quantity      Float    @default(1)
+  unitCost      Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  elementType ElementType @relation(fields: [elementTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([elementTypeId, componentCode])
+  @@index([elementTypeId])
 }
 
 // ---------- Proyectos y producción ----------
