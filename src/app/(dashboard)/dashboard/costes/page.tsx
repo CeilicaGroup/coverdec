@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { formatEuros, formatHours } from "@/lib/format";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { loadNaveCostBreakdown } from "@/features/costes/nave-breakdown";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 
@@ -45,11 +46,12 @@ export default async function CostesPage({
   const weekFri = new Date(weekMon.getTime() + 4 * 86400000);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
-  const [planning, planningMeta, people, holidays] = await Promise.all([
+  const [planning, planningMeta, people, holidays, naveCosts] = await Promise.all([
     getPlanningForWeek({ naveScope, weekStart, viewMode }),
     getPlanningWeekMeta({ naveScope, weekStart }),
     getNavePersonnel(naveScope),
     getHolidaysForRange(weekMon, weekFri),
+    loadNaveCostBreakdown({ weekStart }),
   ]);
   const workDays = Math.max(1, 5 - holidays.length);
 
@@ -164,6 +166,49 @@ export default async function CostesPage({
           accent={nonBillableCost > 0 ? "warn" : "muted"}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Por nave</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nave</TableHead>
+                <TableHead>Horas</TableHead>
+                <TableHead>Tarifa/h</TableHead>
+                <TableHead>Coste</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {naveCosts.map((row) => (
+                <TableRow key={row.codigo}>
+                  <TableCell>
+                    <span className="font-mono font-bold">{row.codigo}</span>
+                    <span className="text-muted-foreground text-xs ml-2">{row.nombre}</span>
+                  </TableCell>
+                  <TableCell className="font-mono">{formatHours(row.hours)}</TableCell>
+                  <TableCell className="font-mono">{formatEuros(row.hourlyRate)}</TableCell>
+                  <TableCell className="font-mono">{formatEuros(row.cost)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="font-bold">Total</TableCell>
+                <TableCell className="font-mono font-bold">
+                  {formatHours(naveCosts.reduce((s, r) => s + r.hours, 0))}
+                </TableCell>
+                <TableCell />
+                <TableCell className="font-mono font-bold">
+                  {formatEuros(naveCosts.reduce((s, r) => s + r.cost, 0))}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

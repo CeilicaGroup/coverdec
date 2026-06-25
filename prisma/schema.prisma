@@ -97,10 +97,11 @@ enum ProjectKind {
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
-  id       String  @id @default(cuid())
-  codigo   String  @unique
-  nombre   String
-  isActive Boolean @default(true)
+  id         String   @id @default(cuid())
+  codigo     String   @unique
+  nombre     String
+  isActive   Boolean  @default(true)
+  hourlyRate Decimal? @db.Decimal(10, 2)
 
   tasks               Task[]
   elementTypeDefaults ElementType[] @relation("ElementTypeDefaultNave")
@@ -311,6 +312,12 @@ enum ElementTypology {
   ILUMINACION
 }
 
+enum ElementRouteType {
+  SIMPLE
+  SEQ_N3_N2
+  PARALLEL
+}
+
 model ElementTypologyNave {
   typology      ElementTypology @id
   defaultNaveId String?
@@ -326,6 +333,9 @@ model ElementType {
   baseUnit      String          @default("m2")
   isActive      Boolean         @default(true)
   defaultNaveId String?
+  routeType     ElementRouteType @default(PARALLEL)
+  routeNaves    String[]         @default([])
+  seqPhases     Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -409,6 +419,7 @@ model Lamp {
   elements     LampElement[]
   tasks        Task[]
   timeEntries  TimeEntry[]
+  productionOrders ProductionOrder[]
 
   @@unique([projectId, nameKey])
 }
@@ -740,6 +751,7 @@ model ProductionOrder {
   status        ProductionOrderStatus @default(PEND)
   /// Proyecto de cabecera (OP simple legacy); destinos reales en líneas.
   projectId     String?
+  lampId        String?
   lampLabel     String?
   process       String?
   hours         Float?
@@ -758,6 +770,7 @@ model ProductionOrder {
   updatedAt       DateTime              @updatedAt
 
   project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lamp              Lamp?              @relation(fields: [lampId], references: [id], onDelete: SetNull)
   nave              Nave?              @relation(fields: [naveId], references: [id], onDelete: SetNull)
   elementType       ElementType?       @relation(fields: [elementTypeId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition? @relation(fields: [process], references: [code], onDelete: SetNull, onUpdate: Cascade)
@@ -770,6 +783,7 @@ model ProductionOrder {
   @@index([status, scheduledAt])
   @@index([elementTypeId, process])
   @@index([planningGroupId, process, naveId, scheduledWeek])
+  @@index([projectId, lampId, naveKey])
 }
 
 model ProductionOrderLine {

@@ -21,6 +21,7 @@ import {
   getPriorPlanningOwnerByTaskIdForNaves,
   type PriorPlanningAssignment,
 } from "@/features/planning/prior-week-planning";
+import { applySeqRoutePrecedence } from "@/features/planning/seq-route-precedence";
 import { isSameUtcDay, isoWeek, toUtcDay } from "@/lib/week";
 import {
   defaultWeeklyTemplate,
@@ -574,7 +575,7 @@ export async function loadSolverInput(args: {
   const priorEnds = buildLastAssignmentEndByTaskId(
     args.priorWeekAssignments ?? [],
   );
-  const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
+  const { minByTask: minWeekQuarterByTaskBase, deferredPastHorizon } =
     computeMinWeekQuarterByTaskId({
       weekStart,
       tasks: precedenceTasksRaw.map((task) => ({
@@ -596,6 +597,33 @@ export async function loadSolverInput(args: {
       ),
       holidayDates,
     });
+
+  const seqLampIds = [...new Set(precedenceTasksRaw.map((t) => t.lampId))];
+  const [seqLamps, seqNaves] = await Promise.all([
+    prisma.lamp.findMany({
+      where: { id: { in: seqLampIds } },
+      select: { id: true, elementType: { select: { routeType: true } } },
+    }),
+    prisma.nave.findMany({
+      where: { id: { in: naveIds } },
+      select: { id: true, codigo: true },
+    }),
+  ]);
+  const minWeekQuarterByTask = applySeqRoutePrecedence({
+    tasks: precedenceTasksRaw.map((t) => ({
+      id: t.id,
+      lampId: t.lampId,
+      naveId: t.naveId,
+      minWeekQuarter: minWeekQuarterByTaskBase.get(t.id),
+    })),
+    minByTask: minWeekQuarterByTaskBase,
+    lampRouteByLampId: new Map(
+      seqLamps
+        .filter((l) => l.elementType)
+        .map((l) => [l.id, { routeType: l.elementType!.routeType }]),
+    ),
+    naveCodigoById: new Map(seqNaves.map((n) => [n.id, n.codigo])),
+  });
 
   ({ firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
     relaxFirstSchedulableDayForChain(

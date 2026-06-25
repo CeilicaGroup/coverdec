@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { ElementTypology, Role } from "@/generated/prisma";
+import { ElementRouteType, ElementTypology, Role } from "@/generated/prisma";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { getFallbackNaveId } from "@/features/projects/task-nave";
 import type { ActionResult } from "@/lib/action-result";
@@ -24,6 +24,8 @@ const elementUpsertSchema = z
     typology: z.nativeEnum(ElementTypology),
     isActive: z.boolean().default(true),
     defaultNaveId: z.string().min(1).nullable().optional(),
+    routeType: z.nativeEnum(ElementRouteType).optional(),
+    routeNaves: z.array(z.string().min(1)).optional(),
     processes: z.array(processRowSchema).default([]),
   })
   .superRefine((data, ctx) => {
@@ -81,6 +83,8 @@ export async function upsertElementType(
       ...(data.defaultNaveId !== undefined
         ? { defaultNaveId: data.defaultNaveId }
         : {}),
+      ...(data.routeType !== undefined ? { routeType: data.routeType } : {}),
+      ...(data.routeNaves !== undefined ? { routeNaves: data.routeNaves } : {}),
     },
     create: {
       code: data.code,
@@ -89,6 +93,8 @@ export async function upsertElementType(
       typology: data.typology,
       isActive: data.isActive,
       defaultNaveId: data.defaultNaveId ?? null,
+      routeType: data.routeType ?? ElementRouteType.PARALLEL,
+      routeNaves: data.routeNaves ?? [],
     },
   });
 

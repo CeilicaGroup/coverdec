@@ -52,6 +52,8 @@ export default async function CatalogoPage() {
     isActive: f.isActive,
     defaultNaveId: f.defaultNaveId,
     defaultNave,
+    routeType: f.routeType,
+    routeNaves: f.routeNaves,
     processes: processes.map((p) => ({
       id: p.id,
       process: p.process,

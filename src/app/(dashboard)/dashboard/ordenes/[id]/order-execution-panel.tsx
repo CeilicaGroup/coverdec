@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ProductionOrderStatus } from "@/generated/prisma";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,6 +44,8 @@ export function OrderExecutionPanel({
   actualHours,
   canManage,
   canExecute = canManage,
+  naveKey = null,
+  seqPhaseCodigo = null,
   lines = [],
 }: {
   orderId: string;
@@ -52,6 +55,8 @@ export function OrderExecutionPanel({
   actualHours: number;
   canManage: boolean;
   canExecute?: boolean;
+  naveKey?: string | null;
+  seqPhaseCodigo?: string | null;
   lines?: ExecutionLine[];
 }) {
   const router = useRouter();
@@ -85,7 +90,14 @@ export function OrderExecutionPanel({
     <section className="no-print mb-6 rounded-lg border bg-muted/20 p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold">Ejecución</div>
+          <div className="text-sm font-semibold flex flex-wrap items-center gap-2">
+            Ejecución
+            {naveKey === "SEQ" ? (
+              <Badge variant="outline" className="font-mono text-[10px]">
+                SEQ{seqPhaseCodigo ? ` · ${seqPhaseCodigo}` : ""}
+              </Badge>
+            ) : null}
+          </div>
           <div className="text-xs text-muted-foreground">
             Estado: {STATUS_LABELS[status]} · Paso {step}
             {actualHours > 0 ? ` · ${formatHours(actualHours)} h acumuladas` : null}

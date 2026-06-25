@@ -28,6 +28,11 @@ import {
   assertCanExecuteProductionOrder,
 } from "./permissions";
 import {
+  applySeqTransferOnConfirm,
+  createProductionOrdersFromProject,
+  previewProductionOrdersFromProject,
+} from "./create-from-project";
+import {
   createProductionOrderSchema,
   normalizeCreateProductionOrderLines,
 } from "./schema";
@@ -187,6 +192,12 @@ export async function confirmProductionOrderStepAction(input: unknown) {
           },
         });
 
+        await applySeqTransferOnConfirm({
+          tx,
+          orderId: data.orderId,
+          completedStep: order.step,
+        });
+
         if (isStockPrimer) {
           await createStockItemsFromPrimedOrder(tx, {
             id: order.id,
@@ -303,6 +314,49 @@ export async function generateSelectedWorkOrdersAction(input: unknown) {
     },
     (result) => ({
       summary: `Generar ${result.created} OT seleccionadas`,
+      metadata: result as unknown as Record<string, unknown>,
+    }),
+  );
+}
+
+export async function previewProductionOrdersFromProjectAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.previewProductionOrdersFromProject",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = z
+        .object({
+          projectId: z.string().min(1),
+          lampIds: z.array(z.string()).optional(),
+        })
+        .parse(input);
+      return previewProductionOrdersFromProject(data);
+    },
+    { summary: "Vista previa OPs desde proyecto" },
+  );
+}
+
+export async function createProductionOrdersFromProjectAction(input: unknown) {
+  return runAuditedMutation(
+    "production-orders.createProductionOrdersFromProject",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = z
+        .object({
+          projectId: z.string().min(1),
+          lampIds: z.array(z.string()).optional(),
+        })
+        .parse(input);
+      const result = await createProductionOrdersFromProject(data);
+      log.info(result, "production orders created from project");
+      revalidateOrdenesPaths();
+      revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+      return result;
+    },
+    (result) => ({
+      summary: `Generar ${result.created} OP desde proyecto`,
       metadata: result as unknown as Record<string, unknown>,
     }),
   );

@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button";
 import { formatHours, formatShortDate } from "@/lib/format";
 import { parseOrderExecutionMeta } from "@/features/production-orders/execution";
 import {
+  getSeqPhaseAtStep,
+  parseOrderRouteMeta,
+} from "@/features/production-orders/route-meta";
+import {
   canExecuteProductionOrders,
   canManageProductionOrders,
 } from "@/features/production-orders/permissions";
@@ -37,6 +41,8 @@ export default async function OrdenDetailPage({
   if (!order) notFound();
 
   const { userNotes, meta } = parseOrderExecutionMeta(order.notes);
+  const { route } = parseOrderRouteMeta(order.notes);
+  const seqPhase = getSeqPhaseAtStep(route, order.step);
 
   const projectLabel =
     order.project?.name ??
@@ -71,6 +77,8 @@ export default async function OrdenDetailPage({
             actualHours={meta.actualHours}
             canManage={canManage}
             canExecute={canExecute}
+            naveKey={order.naveKey}
+            seqPhaseCodigo={seqPhase?.naveCodigo ?? null}
             lines={order.lines.map((l) => ({
               id: l.id,
               units: l.units,
@@ -154,6 +162,16 @@ export default async function OrdenDetailPage({
               </div>
               <div className="text-sm">
                 {order.nave ? `${order.nave.codigo} · ${order.nave.nombre}` : "—"}
+                {order.naveKey === "SEQ" ? (
+                  <span className="ml-2 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-mono font-bold">
+                    SEQ
+                    {seqPhase ? ` · fase ${seqPhase.naveCodigo}` : null}
+                  </span>
+                ) : order.naveKey ? (
+                  <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                    ({order.naveKey})
+                  </span>
+                ) : null}
               </div>
             </div>
             <div>

@@ -27,6 +27,7 @@ import { isManualEstimateProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
 import { ProjectDangerZone } from "./project-danger-zone";
+import { ProjectOrdersPanel } from "./project-orders-panel";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
@@ -216,6 +217,10 @@ export default async function ProjectDetailPage({
         <Kpi label="Hecho" value={formatHours(totalDone)} sub={`${totalEstimated > 0 ? Math.round((totalDone / totalEstimated) * 100) : 0}% avance`} />
         <Kpi label="Pendiente" value={formatHours(totalPending)} sub={<RiskBadge level={riskFromDelivery(project.deliveryDate)} />} />
       </div>
+
+      {canManage ? (
+        <ProjectOrdersPanel projectId={project.id} canManage={canManage} />
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
