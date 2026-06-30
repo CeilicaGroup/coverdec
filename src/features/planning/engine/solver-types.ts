@@ -50,6 +50,7 @@ export type SolveRequestPayload = {
     overduePenaltyMultiplier: number;
     projectDeliveryDate: string | null;
     lampId: string;
+    lampElementId?: string | null;
     order: number;
     process: string;
     pendingHours: number;
@@ -236,6 +237,7 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
         ? t.projectDeliveryDate.toISOString()
         : null,
       lampId: t.lampId,
+      lampElementId: t.lampElementId ?? null,
       order: t.order,
       process: t.process,
       pendingHours: t.pendingHours,

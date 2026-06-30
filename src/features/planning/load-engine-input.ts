@@ -505,6 +505,7 @@ export async function loadSolverInput(args: {
       overduePenaltyMultiplier: planningPolicy?.overduePenaltyMultiplier ?? 2.5,
       projectDeliveryDate: t.project.deliveryDate ?? null,
       lampId: t.lampId,
+      lampElementId: t.lampElementId ?? null,
       order: t.order,
       process: t.process,
       pendingHours: pending,
@@ -523,6 +524,7 @@ export async function loadSolverInput(args: {
       tasks: tasksRaw.map((task) => ({
         id: task.id,
         lampId: task.lampId,
+        lampElementId: task.lampElementId,
         order: task.order,
         process: task.process,
         estimatedHours: task.estimatedHours,

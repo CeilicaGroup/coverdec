@@ -6,6 +6,7 @@ import {
 } from "@/features/planning/engine/slot-format";
 import { addWallClockWait } from "@/features/planning/gantt-timeline";
 import { formatHours, formatShortDate } from "@/lib/format";
+import { taskChainKey } from "@/features/planning/task-chain-key";
 import { toUtcDay } from "@/lib/week";
 
 /** Slice mínimo de asignación para construir la línea de tiempo. */
@@ -30,6 +31,7 @@ export interface PlanningAssignmentSlice {
     isCompleted: boolean;
     projectId: string;
     lampId: string;
+    lampElementId?: string | null;
     lamp: { name: string | null; elementType?: { name: string } | null } | null;
     lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
     project: { name: string };
@@ -44,6 +46,7 @@ export interface ProcessWaitInfo {
 export interface LampTaskChainItem {
   id: string;
   lampId: string;
+  lampElementId?: string | null;
   order: number;
   process: ProcessCode;
 }
@@ -155,7 +158,7 @@ function scheduleGapLabel(
 }
 
 /**
- * Inserta pseudotareas de secado entre procesos consecutivos de la misma lámpara.
+ * Inserta pseudotareas de secado entre procesos consecutivos del mismo elemento.
  * Usa el waitHours del proceso anterior (igual que el solver CP-SAT).
  */
 export function buildPlanningTimeline(
@@ -163,100 +166,84 @@ export function buildPlanningTimeline(
   processByCode: Map<ProcessCode, ProcessWaitInfo>,
   lampTaskChains?: LampTaskChainItem[],
 ): PlanningTimelineItem[] {
-  const byLamp = new Map<string, Map<string, PlanningAssignmentSlice[]>>();
+  const byTask = new Map<string, PlanningAssignmentSlice[]>();
 
   for (const a of assignments) {
-    const lampId = a.task.lampId;
-    const byTask = byLamp.get(lampId) ?? new Map();
     const list = byTask.get(a.task.id) ?? [];
     list.push(a);
     byTask.set(a.task.id, list);
-    byLamp.set(lampId, byTask);
   }
 
-  const chainsByLamp = new Map<string, LampTaskChainItem[]>();
+  const chainsByKey = new Map<string, LampTaskChainItem[]>();
   if (lampTaskChains) {
     for (const item of lampTaskChains) {
-      const list = chainsByLamp.get(item.lampId) ?? [];
+      const key = taskChainKey({
+        lampId: item.lampId,
+        lampElementId: item.lampElementId,
+      });
+      const list = chainsByKey.get(key) ?? [];
       list.push(item);
-      chainsByLamp.set(item.lampId, list);
+      chainsByKey.set(key, list);
     }
-    for (const list of chainsByLamp.values()) {
+    for (const list of chainsByKey.values()) {
       list.sort(
         (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
       );
+    }
+  } else {
+    const fallbackChains = new Map<string, LampTaskChainItem[]>();
+    for (const slices of byTask.values()) {
+      const sample = slices[0];
+      if (!sample) continue;
+      const key = taskChainKey(sample.task);
+      const list = fallbackChains.get(key) ?? [];
+      list.push({
+        id: sample.task.id,
+        lampId: sample.task.lampId,
+        lampElementId: sample.task.lampElementId,
+        order: sample.task.order,
+        process: sample.process,
+      });
+      fallbackChains.set(key, list);
+    }
+    for (const [key, list] of fallbackChains) {
+      list.sort(
+        (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
+      );
+      chainsByKey.set(key, list);
     }
   }
 
   const dryWaits: DryWaitTimelineItem[] = [];
 
-  const lampIds = new Set([
-    ...byLamp.keys(),
-    ...chainsByLamp.keys(),
-  ]);
+  for (const chain of chainsByKey.values()) {
+    const lampId = chain[0]?.lampId ?? "";
+    const lampName =
+      [...byTask.values()]
+        .map((slices) => slices[0]?.task.lamp?.name ?? null)
+        .find((name) => name != null) ?? null;
 
-  for (const lampId of lampIds) {
-    const byTask = byLamp.get(lampId) ?? new Map();
+    for (let i = 0; i < chain.length - 1; i++) {
+      const pred = chain[i]!;
+      const succ = chain[i + 1]!;
 
-    const taskMeta = new Map<
-      string,
-      { order: number; process: ProcessCode; lampName: string | null }
-    >();
-
-    for (const slices of byTask.values()) {
-      const sample = slices[0];
-      if (!sample) continue;
-      taskMeta.set(sample.task.id, {
-        order: sample.task.order,
-        process: sample.process,
-        lampName: sample.task.lamp?.name ?? null,
-      });
-    }
-
-    const chain = chainsByLamp.get(lampId);
-    if (chain) {
-      const lampName =
-        [...byTask.values()]
-          .map((slices) => slices[0]?.task.lamp?.name ?? null)
-          .find((name) => name != null) ?? null;
-      for (const item of chain) {
-        taskMeta.set(item.id, {
-          order: item.order,
-          process: item.process,
-          lampName,
-        });
-      }
-    }
-
-    const orderedTaskIds = chain
-      ? chain.map((t) => t.id)
-      : [...taskMeta.entries()]
-          .sort((a, b) => a[1].order - b[1].order)
-          .map(([id]) => id);
-
-    for (let i = 0; i < orderedTaskIds.length - 1; i++) {
-      const predId = orderedTaskIds[i]!;
-      const succId = orderedTaskIds[i + 1]!;
-      const predMeta = taskMeta.get(predId);
-      if (!predMeta) continue;
-
-      const proc = processByCode.get(predMeta.process);
+      const proc = processByCode.get(pred.process);
       const waitHours = proc?.waitHours ?? 0;
       if (waitHours <= 0) continue;
 
-      const predSlices = byTask.get(predId) ?? [];
+      const predSlices = byTask.get(pred.id) ?? [];
       if (predSlices.length === 0) continue;
 
-      const succSlices = byTask.get(succId) ?? [];
+      const succSlices = byTask.get(succ.id) ?? [];
       const predEnd = lastSlice(predSlices);
       const succStart = succSlices.length > 0 ? firstSlice(succSlices) : null;
 
       dryWaits.push({
         kind: "dry-wait",
-        id: `dry-${lampId}-${predId}-${succId}`,
+        id: `dry-${lampId}-${pred.id}-${succ.id}`,
         lampId,
-        lampName: predMeta.lampName,
-        afterProcess: predMeta.process,
+        lampName,
+        afterProcess: pred.process,
         waitHours,
         date: predEnd.date,
         scheduleLabel: scheduleGapLabel(predEnd, succStart, waitHours),

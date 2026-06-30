@@ -29,10 +29,11 @@ export interface EngineTask {
   overduePenaltyMultiplier: number;
   projectDeliveryDate: Date | null;
   lampId: string;
+  lampElementId?: string | null;
   order: number;
   process: string;
   pendingHours: number;
-  /** Earliest week-quarter index (from prior-week planning on the same lamp). */
+  /** Earliest week-quarter index (from prior-week planning on the same element chain). */
   minWeekQuarter?: number;
   /** When false, task must be scheduled in a single calendar day. */
   canFragment?: boolean;

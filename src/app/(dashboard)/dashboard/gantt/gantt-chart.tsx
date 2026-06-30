@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   toPlanningDayIso,
+  type GanttElementRow,
   type GanttLampRow,
   type GanttOperator,
   type GanttProjectRow,
@@ -42,7 +43,7 @@ import { TaskCompletionAction } from "@/features/time-tracking/task-progress-act
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type { GanttProjectRow, GanttLampRow, GanttTaskRow, GanttOperator };
+export type { GanttProjectRow, GanttLampRow, GanttElementRow, GanttTaskRow, GanttOperator };
 
 export interface GanttMilestone {
   dateKey: string;
@@ -59,6 +60,7 @@ interface GanttChartProps {
   milestones: GanttMilestone[];
   autoExpandProjectId?: string;
   autoExpandLampId?: string;
+  autoExpandElementId?: string;
   processStyles: Record<string, ProcessBadgeStyle>;
   mode: "plan" | "actual";
   plannedItemsByTask: Map<string, ProgressStripe[]>;
@@ -109,6 +111,10 @@ function riskColor(risk: GanttProjectRow["risk"]): string {
 
 function lampKey(projectId: string, lampId: string): string {
   return `${projectId}:${lampId}`;
+}
+
+function elementKey(projectId: string, lampId: string, elementId: string): string {
+  return `${projectId}:${lampId}:${elementId}`;
 }
 
 const LABEL_COL = "minmax(220px, 260px)";
@@ -510,7 +516,7 @@ function LampGanttRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const hasTasks = lamp.tasks.length > 0;
+  const hasElements = lamp.elements.length > 0;
 
   return (
     <div
@@ -519,11 +525,11 @@ function LampGanttRow({
     >
       <div className="p-2 pl-6 space-y-1">
         <div className="flex items-center gap-1">
-          {hasTasks ? (
+          {hasElements ? (
             <ExpandButton
               expanded={expanded}
               onToggle={onToggle}
-              label={expanded ? "Ocultar procesos" : "Ver procesos"}
+              label={expanded ? "Ocultar elementos" : "Ver elementos"}
             />
           ) : (
             <span className="size-6 shrink-0" />
@@ -556,6 +562,76 @@ function LampGanttRow({
           axis={axis}
           total={total}
           color="#64748B"
+          timeAxis={timeAxis}
+        />
+      </GanttBarTrack>
+    </div>
+  );
+}
+
+function ElementGanttRow({
+  element,
+  axis,
+  total,
+  todayIdx,
+  timeAxis,
+  expanded,
+  onToggle,
+}: {
+  element: GanttElementRow;
+  axis: string[];
+  total: number;
+  todayIdx: number;
+  timeAxis: GanttTimeAxisContext;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const hasTasks = element.tasks.length > 0;
+
+  return (
+    <div
+      className="grid border-t items-center min-h-[38px] bg-muted/20"
+      style={{ gridTemplateColumns: gridCols(axis.length) }}
+    >
+      <div className="p-2 pl-10 space-y-1">
+        <div className="flex items-center gap-1">
+          {hasTasks ? (
+            <ExpandButton
+              expanded={expanded}
+              onToggle={onToggle}
+              label={expanded ? "Ocultar procesos" : "Ver procesos"}
+            />
+          ) : (
+            <span className="size-6 shrink-0" />
+          )}
+          <div className="text-xs truncate min-w-0">
+            {element.name ?? "Elemento"}
+          </div>
+        </div>
+        <div className="pl-7">
+          <GanttPlanningStatus
+            isPlanningComplete={false}
+            isAssigned={element.isAssigned}
+            operators={element.operators}
+          />
+        </div>
+      </div>
+      <GanttBarTrack
+        axis={axis}
+        total={total}
+        todayIdx={todayIdx}
+        timeAxis={timeAxis}
+        gridDayIso={element.estimatedStart ?? axis[0] ?? ""}
+      >
+        <GanttBarContent
+          isPlanningComplete={false}
+          isAssigned={element.isAssigned}
+          estimatedStart={element.estimatedStart}
+          estimatedEnd={element.estimatedEnd}
+          timelineBlocks={element.timelineBlocks}
+          axis={axis}
+          total={total}
+          color="#94A3B8"
           timeAxis={timeAxis}
         />
       </GanttBarTrack>
@@ -596,7 +672,7 @@ function TaskGanttRow({
       className="grid border-t items-center min-h-[36px] bg-muted/25"
       style={{ gridTemplateColumns: gridCols(axis.length) }}
     >
-      <div className="p-2 pl-12 space-y-1">
+      <div className="p-2 pl-14 space-y-1">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -611,11 +687,6 @@ function TaskGanttRow({
               : "Sin planificación"}
           </TooltipContent>
         </Tooltip>
-        {task.lampFrameLabel ? (
-          <div className="text-[10px] text-muted-foreground leading-tight">
-            Bastidor: <span className="text-foreground">{task.lampFrameLabel}</span>
-          </div>
-        ) : null}
         <TaskProgressInline
           progress={computeTaskProgress({
             isCompleted: task.isPlanningComplete,
@@ -676,6 +747,7 @@ export function GanttChart({
   milestones,
   autoExpandProjectId,
   autoExpandLampId,
+  autoExpandElementId,
   processStyles,
   mode,
   plannedItemsByTask,
@@ -702,6 +774,9 @@ export function GanttChart({
   const [expandedLampKeys, setExpandedLampKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  const [expandedElementKeys, setExpandedElementKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     if (autoExpandProjectId) {
@@ -716,6 +791,16 @@ export function GanttChart({
       );
     }
   }, [autoExpandProjectId, autoExpandLampId]);
+
+  useEffect(() => {
+    if (autoExpandProjectId && autoExpandLampId && autoExpandElementId) {
+      setExpandedElementKeys((prev) =>
+        new Set(prev).add(
+          elementKey(autoExpandProjectId, autoExpandLampId, autoExpandElementId),
+        ),
+      );
+    }
+  }, [autoExpandProjectId, autoExpandLampId, autoExpandElementId]);
 
   const toggleProject = (id: string) => {
     setExpandedProjectIds((prev) => {
@@ -736,6 +821,20 @@ export function GanttChart({
     });
   };
 
+  const toggleElement = (
+    projectId: string,
+    lampId: string,
+    elementId: string,
+  ) => {
+    const key = elementKey(projectId, lampId, elementId);
+    setExpandedElementKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <TooltipProvider>
     <div className="space-y-6">
@@ -745,7 +844,9 @@ export function GanttChart({
             className="grid border-b bg-muted/40"
             style={{ gridTemplateColumns: gridCols(axis.length) }}
           >
-            <div className="p-2 text-xs font-semibold">Proyecto / lámpara / proceso</div>
+            <div className="p-2 text-xs font-semibold">
+              Proyecto / lámpara / elemento / proceso
+            </div>
             {axis.map((iso) => {
               const bounds = timeAxis.boundsForDayIso(iso);
               return (
@@ -801,22 +902,58 @@ export function GanttChart({
                               onToggle={() => toggleLamp(p.id, lamp.id)}
                             />
                             {lampExpanded
-                              ? lamp.tasks.map((task) => (
-                                  <TaskGanttRow
-                                    key={task.id}
-                                    task={task}
-                                    axis={axis}
-                                    total={total}
-                                    todayIdx={todayIdx}
-                                    timeAxis={timeAxis}
-                                    processStyles={processStyles}
-                                    mode={mode}
-                                    plannedItemsByTask={plannedItemsByTask}
-                                    actualItemsByTask={actualItemsByTask}
-                                    plannedDueByTask={plannedDueByTask}
-                                    canManageTasks={canManageTasks}
-                                  />
-                                ))
+                              ? lamp.elements.map((element) => {
+                                  const elementKeyStr = elementKey(
+                                    p.id,
+                                    lamp.id,
+                                    element.id,
+                                  );
+                                  const elementExpanded =
+                                    expandedElementKeys.has(elementKeyStr);
+                                  return (
+                                    <div key={elementKeyStr}>
+                                      <ElementGanttRow
+                                        element={element}
+                                        axis={axis}
+                                        total={total}
+                                        todayIdx={todayIdx}
+                                        timeAxis={timeAxis}
+                                        expanded={elementExpanded}
+                                        onToggle={() =>
+                                          toggleElement(
+                                            p.id,
+                                            lamp.id,
+                                            element.id,
+                                          )
+                                        }
+                                      />
+                                      {elementExpanded
+                                        ? element.tasks.map((task) => (
+                                            <TaskGanttRow
+                                              key={task.id}
+                                              task={task}
+                                              axis={axis}
+                                              total={total}
+                                              todayIdx={todayIdx}
+                                              timeAxis={timeAxis}
+                                              processStyles={processStyles}
+                                              mode={mode}
+                                              plannedItemsByTask={
+                                                plannedItemsByTask
+                                              }
+                                              actualItemsByTask={
+                                                actualItemsByTask
+                                              }
+                                              plannedDueByTask={
+                                                plannedDueByTask
+                                              }
+                                              canManageTasks={canManageTasks}
+                                            />
+                                          ))
+                                        : null}
+                                    </div>
+                                  );
+                                })
                               : null}
                           </div>
                         );

@@ -538,6 +538,7 @@ export async function getLampTaskChains(
     select: {
       id: true,
       lampId: true,
+      lampElementId: true,
       order: true,
       process: true,
     },
@@ -546,6 +547,7 @@ export async function getLampTaskChains(
   return rows.map((row) => ({
     id: row.id,
     lampId: row.lampId,
+    lampElementId: row.lampElementId,
     order: row.order,
     process: row.process as ProcessCode,
   }));

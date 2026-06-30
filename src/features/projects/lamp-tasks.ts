@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { prisma } from "@/lib/db";
+import { taskChainKey } from "@/features/planning/task-chain-key";
 
 export interface TaskBlueprint {
   process: ProcessCode;
@@ -256,20 +257,28 @@ export async function getNextTaskOrder(
 }
 
 export function filterUnlockedTasks<
-  T extends { id: string; lampId: string; order: number; pendingHours: number; isCompleted?: boolean },
+  T extends {
+    id: string;
+    lampId: string;
+    lampElementId?: string | null;
+    order: number;
+    pendingHours: number;
+    isCompleted?: boolean;
+  },
 >(tasks: T[]): T[] {
-  const byLamp = new Map<string, T[]>();
+  const byChain = new Map<string, T[]>();
   for (const t of tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
+    const key = taskChainKey(t);
+    const list = byChain.get(key) ?? [];
     list.push(t);
-    byLamp.set(t.lampId, list);
+    byChain.set(key, list);
   }
-  for (const list of byLamp.values()) {
+  for (const list of byChain.values()) {
     list.sort((a, b) => a.order - b.order);
   }
   return tasks.filter((task) => {
-    const lampTasks = byLamp.get(task.lampId) ?? [];
-    for (const prev of lampTasks) {
+    const chainTasks = byChain.get(taskChainKey(task)) ?? [];
+    for (const prev of chainTasks) {
       if (prev.order >= task.order) break;
       if (typeof prev.isCompleted === "boolean") {
         if (!prev.isCompleted) return false;
@@ -287,7 +296,7 @@ export async function isTaskUnlocked(
 ): Promise<boolean> {
   const task = await tx.task.findUnique({
     where: { id: taskId },
-    select: { lampId: true, order: true, isCompleted: true },
+    select: { lampId: true, lampElementId: true, order: true, isCompleted: true },
   });
   if (!task) return false;
   if (task.isCompleted) return false;
@@ -295,6 +304,7 @@ export async function isTaskUnlocked(
   const blockers = await tx.task.count({
     where: {
       lampId: task.lampId,
+      lampElementId: task.lampElementId,
       order: { lt: task.order },
       isCompleted: false,
     },

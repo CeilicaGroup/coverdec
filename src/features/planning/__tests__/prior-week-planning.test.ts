@@ -70,4 +70,46 @@ describe("prior-week-planning", () => {
     expect(minQ).toBeGreaterThan(0);
     expect(dateTimeToWeekQuarter(WEEK_START, WEEK_START)).toBe(0);
   });
+
+  it("does not block successor in another element on same lamp", () => {
+    const tasks = [
+      {
+        id: "elem1-pred",
+        lampId: "l1",
+        lampElementId: "elem-1",
+        order: 0,
+        process: "PINTURA",
+        pendingToPlanHours: 0,
+        remainingWorkHours: 0,
+        estimatedHours: 8,
+      },
+      {
+        id: "elem2-succ",
+        lampId: "l1",
+        lampElementId: "elem-2",
+        order: 1000,
+        process: "CNC",
+        pendingToPlanHours: 4,
+        remainingWorkHours: 4,
+        estimatedHours: 4,
+      },
+    ];
+    const priorEnds = buildLastAssignmentEndByTaskId([
+      {
+        taskId: "elem1-pred",
+        date: new Date("2026-04-30T00:00:00.000Z"),
+        endSlot: 6,
+        hours: 8,
+      },
+    ]);
+    const { minByTask } = computeMinWeekQuarterByTaskId({
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["elem2-succ"]),
+      priorEnds,
+      waitHoursByProcess: new Map([["PINTURA", 72]]),
+      holidayDates: new Set(),
+    });
+    expect(minByTask.has("elem2-succ")).toBe(false);
+  });
 });

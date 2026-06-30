@@ -8,6 +8,7 @@ import {
   slotToStartMinutes,
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-timeline";
+import { taskChainKey } from "@/features/planning/task-chain-key";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 
 export type { GanttTimelineBlock } from "@/features/planning/gantt-timeline";
@@ -54,6 +55,7 @@ export interface GanttOperator {
 export interface GanttTaskRow {
   id: string;
   lampId: string;
+  lampElementId: string | null;
   lampName: string | null;
   process: string;
   order: number;
@@ -76,6 +78,22 @@ export interface GanttTaskRow {
   operators: GanttOperator[];
 }
 
+export interface GanttElementRow {
+  id: string;
+  lampId: string;
+  name: string | null;
+  remainingWorkHours: number;
+  assignedHours: number;
+  isAssigned: boolean;
+  estimatedStart: string | null;
+  estimatedEnd: string | null;
+  startSlot: number | null;
+  endSlot: number | null;
+  timelineBlocks: GanttTimelineBlock[];
+  operators: GanttOperator[];
+  tasks: GanttTaskRow[];
+}
+
 export interface GanttLampRow {
   id: string;
   name: string | null;
@@ -88,7 +106,7 @@ export interface GanttLampRow {
   endSlot: number | null;
   timelineBlocks: GanttTimelineBlock[];
   operators: GanttOperator[];
-  tasks: GanttTaskRow[];
+  elements: GanttElementRow[];
 }
 
 export interface GanttProjectRow {
@@ -306,21 +324,22 @@ function buildTasksWithEstimates(
   priorChainStartByTaskId: Map<string, string> = new Map(),
   nextChainAfterPriorTaskByTaskId: Map<string, string> = new Map(),
 ): GanttTaskRow[] {
-  const byLamp = new Map<string, RawTask[]>();
+  const byChain = new Map<string, RawTask[]>();
   for (const t of tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
+    const key = taskChainKey({ lampId: t.lampId, lampElementId: t.lampElementId });
+    const list = byChain.get(key) ?? [];
     list.push(t);
-    byLamp.set(t.lampId, list);
+    byChain.set(key, list);
   }
 
   const rows: GanttTaskRow[] = [];
 
-  for (const lampTasks of byLamp.values()) {
-    const sorted = [...lampTasks].sort(
+  for (const chainTasks of byChain.values()) {
+    const sorted = [...chainTasks].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );
     let chainStartIso: string | null = null;
-    const lampRows: GanttTaskRow[] = [];
+    const chainRows: GanttTaskRow[] = [];
 
     for (let ti = 0; ti < sorted.length; ti++) {
       const t = sorted[ti]!;
@@ -373,9 +392,10 @@ function buildTasksWithEstimates(
         capBefore,
       );
 
-      lampRows.push({
+      chainRows.push({
         id: t.id,
         lampId: t.lampId,
+        lampElementId: t.lampElementId,
         lampName: t.lamp.name,
         process: t.process,
         order: t.order,
@@ -397,7 +417,7 @@ function buildTasksWithEstimates(
       });
     }
 
-    rows.push(...enforceSequentialTasks(lampRows, holidayDates));
+    rows.push(...enforceSequentialTasks(chainRows, holidayDates));
   }
 
   return rows;
@@ -457,6 +477,62 @@ function aggregateSlotRange(
   return { estimatedStart, estimatedEnd, startSlot, endSlot };
 }
 
+function groupTasksIntoElements(
+  tasks: GanttTaskRow[],
+  waitHoursByProcess: Map<string, number>,
+  holidayDates: Set<string>,
+): GanttElementRow[] {
+  const byChain = new Map<string, GanttTaskRow[]>();
+  for (const t of tasks) {
+    const key = taskChainKey({ lampId: t.lampId, lampElementId: t.lampElementId });
+    const list = byChain.get(key) ?? [];
+    list.push(t);
+    byChain.set(key, list);
+  }
+
+  const elements: GanttElementRow[] = [];
+  for (const [chainId, elementTasks] of byChain) {
+    const ordered = [...elementTasks].sort(
+      (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
+    );
+    const assigned = ordered.filter(
+      (t) => t.isAssigned && t.estimatedStart && t.estimatedEnd,
+    );
+    const range = aggregateSlotRange(assigned);
+    const assignedHours = ordered.reduce((a, t) => a + t.assignedHours, 0);
+    const remainingWorkHours = ordered.reduce(
+      (a, t) => a + t.remainingWorkHours,
+      0,
+    );
+    const label = ordered[0]?.lampFrameLabel ?? null;
+
+    elements.push({
+      id: chainId,
+      lampId: ordered[0]?.lampId ?? "",
+      name: label,
+      remainingWorkHours,
+      assignedHours,
+      isAssigned: assigned.length > 0,
+      estimatedStart: range.estimatedStart,
+      estimatedEnd: range.estimatedEnd,
+      startSlot: range.startSlot,
+      endSlot: range.endSlot,
+      timelineBlocks: buildContinuousTimeline(
+        ordered,
+        waitHoursByProcess,
+        holidayDates,
+        label ?? "Elemento",
+      ),
+      operators: mergeOperators(...assigned.map((t) => t.operators)),
+      tasks: ordered,
+    });
+  }
+
+  return elements.sort((a, b) =>
+    (a.name ?? "").localeCompare(b.name ?? "", "es"),
+  );
+}
+
 function groupTasksIntoLamps(
   tasks: GanttTaskRow[],
   waitHoursByProcess: Map<string, number>,
@@ -471,22 +547,25 @@ function groupTasksIntoLamps(
 
   const lamps: GanttLampRow[] = [];
   for (const [lampId, lampTasks] of byLamp) {
-    const ordered = [...lampTasks].sort(
-      (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
+    const elements = groupTasksIntoElements(
+      lampTasks,
+      waitHoursByProcess,
+      holidayDates,
     );
-    const assigned = ordered.filter(
-      (t) => t.isAssigned && t.estimatedStart && t.estimatedEnd,
+    const assigned = elements.filter(
+      (e) => e.isAssigned && e.estimatedStart && e.estimatedEnd,
     );
     const range = aggregateSlotRange(assigned);
-    const assignedHours = ordered.reduce((a, t) => a + t.assignedHours, 0);
-    const remainingWorkHours = ordered.reduce(
-      (a, t) => a + t.remainingWorkHours,
+    const assignedHours = elements.reduce((a, e) => a + e.assignedHours, 0);
+    const remainingWorkHours = elements.reduce(
+      (a, e) => a + e.remainingWorkHours,
       0,
     );
+    const lampName = lampTasks[0]?.lampName ?? null;
 
     lamps.push({
       id: lampId,
-      name: ordered[0]?.lampName ?? null,
+      name: lampName,
       remainingWorkHours,
       assignedHours,
       isAssigned: assigned.length > 0,
@@ -495,13 +574,13 @@ function groupTasksIntoLamps(
       startSlot: range.startSlot,
       endSlot: range.endSlot,
       timelineBlocks: buildContinuousTimeline(
-        ordered,
+        elements.flatMap((e) => e.tasks),
         waitHoursByProcess,
         holidayDates,
-        ordered[0]?.lampName ?? "Lámpara",
+        lampName ?? "Lámpara",
       ),
-      operators: mergeOperators(...assigned.map((t) => t.operators)),
-      tasks: ordered,
+      operators: mergeOperators(...assigned.map((e) => e.operators)),
+      elements,
     });
   }
 
@@ -523,9 +602,13 @@ function collectScheduledDates(
     for (const l of p.lamps) {
       if (l.estimatedStart) starts.push(l.estimatedStart);
       if (l.estimatedEnd) ends.push(l.estimatedEnd);
-      for (const t of l.tasks) {
-        if (t.estimatedStart) starts.push(t.estimatedStart);
-        if (t.estimatedEnd) ends.push(t.estimatedEnd);
+      for (const e of l.elements) {
+        if (e.estimatedStart) starts.push(e.estimatedStart);
+        if (e.estimatedEnd) ends.push(e.estimatedEnd);
+        for (const t of e.tasks) {
+          if (t.estimatedStart) starts.push(t.estimatedStart);
+          if (t.estimatedEnd) ends.push(t.estimatedEnd);
+        }
       }
     }
   }
@@ -653,7 +736,7 @@ export function buildGanttProjects({
       startSlot: range.startSlot,
       endSlot: range.endSlot,
       timelineBlocks: buildContinuousTimeline(
-        lamps.flatMap((l) => l.tasks),
+        lamps.flatMap((l) => l.elements.flatMap((e) => e.tasks)),
         waitHoursByProcess,
         holidayDates,
         p.name,
@@ -786,12 +869,14 @@ function formatDayLabel(iso: string): string {
 export function findGanttExpandTargets(
   projects: GanttProjectRow[],
   taskId?: string,
-): { projectId?: string; lampId?: string } {
+): { projectId?: string; lampId?: string; elementId?: string } {
   if (!taskId) return {};
   for (const p of projects) {
     for (const l of p.lamps) {
-      if (l.tasks.some((t) => t.id === taskId)) {
-        return { projectId: p.id, lampId: l.id };
+      for (const e of l.elements) {
+        if (e.tasks.some((t) => t.id === taskId)) {
+          return { projectId: p.id, lampId: l.id, elementId: e.id };
+        }
       }
     }
   }

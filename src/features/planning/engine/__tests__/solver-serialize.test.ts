@@ -106,6 +106,29 @@ describe("serializeSolverInput", () => {
     expect(payload.tasks[0]?.ownerPersonId).toBe("p1");
   });
 
+  it("serializes lampElementId on tasks", () => {
+    const input: SolverInput = minimalSolverInput({
+      tasks: [
+        {
+          id: "t1",
+          projectId: "pr1",
+          projectPriority: 50,
+          deadlineCurveExponent: 2,
+          overduePenaltyMultiplier: 2.5,
+          projectDeliveryDate: null,
+          lampId: "l1",
+          lampElementId: "elem-1",
+          order: 0,
+          process: "CNC",
+          pendingHours: 4,
+        },
+      ],
+    });
+
+    const payload = serializeSolverInput(input);
+    expect(payload.tasks[0]?.lampElementId).toBe("elem-1");
+  });
+
   it("defaults canFragment to true and ownerPersonId to null", () => {
     const input: SolverInput = minimalSolverInput({
       tasks: [

@@ -101,7 +101,7 @@ class BlockVars:
     end_wq: cp_model.IntVar
     duration_wq: cp_model.IntVar
     worker_iv: cp_model.IntervalVar
-    lamp_iv: cp_model.IntervalVar
+    chain_iv: cp_model.IntervalVar
     day_load: dict[int, cp_model.IntVar]
 
 
@@ -110,7 +110,7 @@ class ModelVars:
     all_blocks: list[BlockVars] = field(default_factory=list)
     by_task: dict[str, list[BlockVars]] = field(default_factory=dict)
     worker_ivs: dict[str, list[cp_model.IntervalVar]] = field(default_factory=dict)
-    lamp_ivs: dict[str, list[cp_model.IntervalVar]] = field(default_factory=dict)
+    chain_ivs: dict[str, list[cp_model.IntervalVar]] = field(default_factory=dict)
     load_by_person_day: dict[tuple[str, int], list[cp_model.IntVar]] = field(
         default_factory=dict
     )
@@ -170,16 +170,20 @@ def _delivery_target_q(delivery: date | None, week_start: date) -> int | None:
     return minute_to_week_quarter(day_idx, 17 * 60)
 
 
+def _task_chain_key(task: EngineTask) -> str:
+    return task.lampElementId or task.lampId
+
+
 def _build_lamp_edges(
     tasks: list[EngineTask],
     process_by_code: dict,
 ) -> list[LampEdge]:
-    by_lamp: dict[str, list[EngineTask]] = defaultdict(list)
+    by_chain: dict[str, list[EngineTask]] = defaultdict(list)
     for t in tasks:
-        by_lamp[t.lampId].append(t)
+        by_chain[_task_chain_key(t)].append(t)
 
     edges: list[LampEdge] = []
-    for group in by_lamp.values():
+    for group in by_chain.values():
         group.sort(key=lambda t: t.order)
         for pred, succ in zip(group, group[1:]):
             proc = process_by_code.get(pred.process)
@@ -478,8 +482,8 @@ def _build_block_variables(
             worker_iv = model.NewOptionalIntervalVar(
                 start_wq, duration_wq, end_wq, presence, f"wiv_{tag}"
             )
-            lamp_iv = model.NewOptionalIntervalVar(
-                start_wq, duration_wq, end_wq, presence, f"liv_{tag}"
+            chain_iv = model.NewOptionalIntervalVar(
+                start_wq, duration_wq, end_wq, presence, f"civ_{tag}"
             )
 
             block = TaskBlock(
@@ -501,13 +505,13 @@ def _build_block_variables(
                 end_wq=end_wq,
                 duration_wq=duration_wq,
                 worker_iv=worker_iv,
-                lamp_iv=lamp_iv,
+                chain_iv=chain_iv,
                 day_load=day_load,
             )
             mv.all_blocks.append(bv)
             mv.by_task.setdefault(task.id, []).append(bv)
             mv.worker_ivs.setdefault(person.id, []).append(worker_iv)
-            mv.lamp_ivs.setdefault(task.lampId, []).append(lamp_iv)
+            mv.chain_ivs.setdefault(_task_chain_key(task), []).append(chain_iv)
             for day_idx, dv in day_load.items():
                 mv.load_by_person_day.setdefault((person.id, day_idx), []).append(dv)
 
@@ -609,7 +613,7 @@ def _add_constraints(
         if len(ivs) > 1:
             model.AddNoOverlap(ivs)
 
-    for ivs in mv.lamp_ivs.values():
+    for ivs in mv.chain_ivs.values():
         if len(ivs) > 1:
             model.AddNoOverlap(ivs)
 

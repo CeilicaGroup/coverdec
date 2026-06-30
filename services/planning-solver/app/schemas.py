@@ -61,6 +61,7 @@ class EngineTask(BaseModel):
     overduePenaltyMultiplier: float = 2.5
     projectDeliveryDate: datetime | None = None
     lampId: str
+    lampElementId: str | None = None
     order: int
     process: str
     pendingHours: float

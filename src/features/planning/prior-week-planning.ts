@@ -8,11 +8,13 @@ function toPlanningDayIso(d: Date): string {
   return toUtcDay(d).toISOString().slice(0, 10);
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { taskChainKey } from "@/features/planning/task-chain-key";
 import {
   PLANNING_HORIZON_DAYS,
   PLANNING_HORIZON_QUARTERS,
 } from "@/features/planning/week-progress";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QUARTERS_PER_DAY = 24 * 4;
 const HORIZON_Q = PLANNING_HORIZON_QUARTERS;
@@ -95,6 +97,7 @@ export function buildPriorPlannedHoursByProjectId(
 interface LampTaskRef {
   id: string;
   lampId: string;
+  lampElementId?: string | null;
   order: number;
   process: string;
   pendingToPlanHours: number;
@@ -187,16 +190,17 @@ export function computeMinWeekQuarterByTaskId(args: {
   deferredPastHorizon: Set<string>;
 } {
   const deferredPastHorizon = new Set<string>();
-  const byLamp = new Map<string, LampTaskRef[]>();
+  const byChain = new Map<string, LampTaskRef[]>();
   for (const t of args.tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
+    const key = taskChainKey(t);
+    const list = byChain.get(key) ?? [];
     list.push(t);
-    byLamp.set(t.lampId, list);
+    byChain.set(key, list);
   }
 
   const minByTask = new Map<string, number>();
 
-  for (const group of byLamp.values()) {
+  for (const group of byChain.values()) {
     const sorted = [...group].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );
@@ -254,16 +258,17 @@ export function buildPriorChainStartIsoByTaskId(args: {
   waitHoursByProcess: Map<string, number>;
   holidayDates: Set<string>;
 }): Map<string, string> {
-  const byLamp = new Map<string, LampTaskRef[]>();
+  const byChain = new Map<string, LampTaskRef[]>();
   for (const t of args.tasks) {
-    const list = byLamp.get(t.lampId) ?? [];
+    const key = taskChainKey(t);
+    const list = byChain.get(key) ?? [];
     list.push(t);
-    byLamp.set(t.lampId, list);
+    byChain.set(key, list);
   }
 
   const chainStart = new Map<string, string>();
 
-  for (const group of byLamp.values()) {
+  for (const group of byChain.values()) {
     const sorted = [...group].sort(
       (a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"),
     );

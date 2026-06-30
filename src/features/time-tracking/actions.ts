@@ -108,7 +108,7 @@ export async function startTimer(
   const unlocked = await isTaskUnlocked(data.taskId);
   if (!unlocked) {
     throw new Error(
-      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+      "Esta tarea está bloqueada: completa antes los procesos anteriores del mismo elemento.",
     );
   }
   await prisma.timeEntry.create({
@@ -232,7 +232,7 @@ export async function createManualEntry(
   const unlocked = await isTaskUnlocked(data.taskId);
   if (!unlocked) {
     throw new Error(
-      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+      "Esta tarea está bloqueada: completa antes los procesos anteriores del mismo elemento.",
     );
   }
   const startedAt = new Date(data.startedAt);
@@ -287,7 +287,7 @@ export async function createManualEntriesFromRanges(
   const unlocked = await isTaskUnlocked(data.taskId);
   if (!unlocked) {
     throw new Error(
-      "Esta tarea está bloqueada: completa antes los procesos anteriores de la misma lámpara.",
+      "Esta tarea está bloqueada: completa antes los procesos anteriores del mismo elemento.",
     );
   }
 
