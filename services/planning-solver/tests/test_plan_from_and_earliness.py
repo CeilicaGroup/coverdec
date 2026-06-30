@@ -232,6 +232,63 @@ def test_early_start_schedules_successor_next_day_not_later():
         )
 
 
+def test_task_b_starts_right_after_task_a_same_morning():
+    """Two short tasks on one worker: B follows A in the morning, not at 15:00."""
+    worker = EnginePerson(
+        id="op1",
+        iniciales="OP",
+        primary=["CNC"],
+        fallback=[],
+        capacityHours=8,
+        hourlyRate=14.75,
+        overtimeHourlyRate=22.13,
+    )
+    monday = date(2026, 5, 4)
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[worker],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-a",
+                    order=0,
+                    process="CNC",
+                    pendingHours=3,
+                ),
+                EngineTask(
+                    id="task-b",
+                    projectId="p2",
+                    projectPriority=10,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="lamp-b",
+                    order=0,
+                    process="CNC",
+                    pendingHours=2,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=[PersonScheduleInput(personId="op1", weekly=WEEKLY, overrides=[])],
+        ),
+    )
+    assert result.unscheduledHours == 0
+    monday_a = [a for a in result.assignments if a.taskId == "task-a" and a.date == monday]
+    monday_b = [a for a in result.assignments if a.taskId == "task-b" and a.date == monday]
+    assert monday_a and monday_b
+    a_end = max(a.endSlot for a in monday_a)
+    b_start = min(a.startSlot for a in monday_b)
+    assert b_start <= a_end + 0.01, (
+        f"task-b should start right after task-a ends ({a_end}), got {b_start}"
+    )
+    assert b_start < 6.0, "task-b should not wait for afternoon (slot 6.0) when morning has room"
+
+
 def test_afternoon_used_when_morning_full():
     """When a worker's morning is full, a second task should use the afternoon."""
     worker = EnginePerson(

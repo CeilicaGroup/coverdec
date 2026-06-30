@@ -15,7 +15,7 @@
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | Misma URL que `BETTER_AUTH_URL` para el cliente de auth en el navegador. |
 | `PLANNING_SOLVER_URL` | URL del microservicio OR-Tools (ej. `http://planning-solver:8000` en Compose). |
 
-Opcional: `LOG_LEVEL` (`info` en producción), `SOLVER_MAX_SECONDS` (límite CP-SAT, default `60` en el servicio Python).
+Opcional: `LOG_LEVEL` (`info` en producción), `SOLVER_MAX_SECONDS` (límite CP-SAT, default `180` en el servicio Python), `SOLVER_NUM_WORKERS` (hilos de búsqueda OR-Tools, default `4`), `PLANNING_SOLVER_TIMEOUT_MS` (timeout HTTP Node hacia el solver; por defecto `max(240s, SOLVER_MAX_SECONDS + 60s)`).
 
 ## Desarrollo local
 

@@ -9,6 +9,8 @@ worker-week calendar table. Worker continuity is structural via global NoOverlap
 from __future__ import annotations
 
 import logging
+import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -19,8 +21,11 @@ from ortools.sat.python import cp_model
 from app.model.candidates import pick_candidates
 from app.model.timeline import (
     QUARTERS_PER_HOUR,
+    BlockPlacement,
     WorkerDayTimeline,
+    WorkerPlacementCatalog,
     WorkerWeekTimeline,
+    build_placement_catalog,
     minute_to_week_quarter,
 )
 from app.schemas import (
@@ -64,7 +69,7 @@ class SchedulerWeights:
 @dataclass(frozen=True)
 class SchedulerConfig:
     horizon_days: int = HORIZON_DAYS
-    max_solve_seconds: int = 60
+    max_solve_seconds: int = 180
     weights: SchedulerWeights = field(default_factory=SchedulerWeights)
 
 
@@ -126,6 +131,7 @@ class ProblemData:
     weights: SchedulerWeights
     fixed_assignments: list[FixedAssignment]
     busy_slots: list[BusySlotEntry]
+    placement_catalogs: dict[str, WorkerPlacementCatalog]
 
 
 def _add_days(d: date, n: int) -> date:
@@ -218,6 +224,23 @@ def _filter_timeline_from_quarter(
     )
 
 
+def _max_demand_by_person(
+    tasks: list[EngineTask],
+    people: list[EnginePerson],
+    process_by_code: dict,
+) -> dict[str, int]:
+    result: dict[str, int] = defaultdict(int)
+    for task in tasks:
+        if task.process not in process_by_code:
+            continue
+        demand_q = round(task.pendingHours * QUARTERS_PER_HOUR)
+        for person in pick_candidates(people, task.process):
+            if task.ownerPersonId and person.id != task.ownerPersonId:
+                continue
+            result[person.id] = max(result[person.id], demand_q)
+    return dict(result)
+
+
 def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | None:
     week_start = request.weekStart
     days = [_add_days(week_start, i) for i in range(config.horizon_days)]
@@ -286,6 +309,17 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
 
     weights = _coerce_weights(request, config.weights)
     process_by_code = {p.code: p for p in request.processes}
+    max_demand_by_person = _max_demand_by_person(tasks, request.people, process_by_code)
+    placement_catalogs: dict[str, WorkerPlacementCatalog] = {}
+    for person_id, week_tl in week_timelines.items():
+        max_q = max_demand_by_person.get(person_id, 0)
+        if max_q > 0 and week_tl.cap > 0:
+            placement_catalogs[person_id] = build_placement_catalog(
+                person_id,
+                week_tl,
+                max_q,
+                config.horizon_days,
+            )
 
     return ProblemData(
         tasks=tasks,
@@ -301,6 +335,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         weights=weights,
         fixed_assignments=list(request.fixedAssignments),
         busy_slots=list(request.busySlots),
+        placement_catalogs=placement_catalogs,
     )
 
 
@@ -320,55 +355,62 @@ def _coerce_weights(
     )
 
 
-@dataclass(frozen=True)
-class BlockPlacement:
-    start_idx: int
-    assigned_q: int
-    start_wq: int
-    end_wq: int
-    day_load: tuple[int, ...]
-
-
-def _feasible_placements(
-    week_tl: WorkerWeekTimeline,
+def _link_block_placements(
+    model: cp_model.CpModel,
+    *,
+    tag: str,
+    presence: cp_model.BoolVar,
+    placement_idx: cp_model.IntVar,
+    placements: tuple[BlockPlacement, ...],
+    start_idx: cp_model.IntVar,
+    assigned_q: cp_model.IntVar,
+    start_wq: cp_model.IntVar,
+    end_wq: cp_model.IntVar,
+    day_load: dict[int, cp_model.IntVar],
     demand_q: int,
-    min_week_quarter: int,
-    can_fragment: bool,
-) -> list[BlockPlacement]:
-    """Valid (start, duration) pairs aligned to segment boundaries."""
-    placements: list[BlockPlacement] = []
-    if week_tl.cap <= 0:
-        return placements
-    max_d = min(demand_q, week_tl.cap)
-    for i in week_tl.segment_start_indices():
-        if week_tl.start_wqs[i] < min_week_quarter:
-            continue
-        for d in range(1, max_d + 1):
-            if i + d > week_tl.cap:
-                break
-            if not can_fragment and not week_tl.same_day_span(i, d):
-                continue
-            by_day = [0] * HORIZON_DAYS
-            for ref in week_tl.quarters[i : i + d]:
-                by_day[ref.day_index] += 1
-            placements.append(
-                BlockPlacement(
-                    start_idx=i,
-                    assigned_q=d,
-                    start_wq=week_tl.start_wqs[i],
-                    end_wq=week_tl.end_exclusive[i][d],
-                    day_load=tuple(by_day),
-                )
-            )
-    return placements
+    week_tl_cap: int,
+) -> None:
+    """Map placement_idx → block fields via AddElement (compact vs AllowedAssignments)."""
+    n = len(placements)
+    if n == 0:
+        return
+
+    model.Add(placement_idx >= 0).OnlyEnforceIf(presence)
+    model.Add(placement_idx <= n - 1).OnlyEnforceIf(presence)
+
+    start_idx_arr = [pl.start_idx for pl in placements]
+    assigned_q_arr = [pl.assigned_q for pl in placements]
+    start_wq_arr = [pl.start_wq for pl in placements]
+    end_wq_arr = [pl.end_wq for pl in placements]
+
+    elem_start_idx = model.NewIntVar(0, max(0, week_tl_cap - 1), f"esi_{tag}")
+    elem_assigned_q = model.NewIntVar(0, demand_q, f"eaq_{tag}")
+    elem_start_wq = model.NewIntVar(0, HORIZON_Q, f"esw_{tag}")
+    elem_end_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eeq_{tag}")
+
+    model.AddElement(placement_idx, start_idx_arr, elem_start_idx)
+    model.AddElement(placement_idx, assigned_q_arr, elem_assigned_q)
+    model.AddElement(placement_idx, start_wq_arr, elem_start_wq)
+    model.AddElement(placement_idx, end_wq_arr, elem_end_wq)
+
+    model.Add(start_idx == elem_start_idx).OnlyEnforceIf(presence)
+    model.Add(assigned_q == elem_assigned_q).OnlyEnforceIf(presence)
+    model.Add(start_wq == elem_start_wq).OnlyEnforceIf(presence)
+    model.Add(end_wq == elem_end_wq).OnlyEnforceIf(presence)
+
+    for day_idx, dv in day_load.items():
+        dl_arr = [pl.day_load[day_idx] for pl in placements]
+        elem_dl = model.NewIntVar(0, week_tl_cap, f"edl_{tag}_{day_idx}")
+        model.AddElement(placement_idx, dl_arr, elem_dl)
+        model.Add(dv == elem_dl).OnlyEnforceIf(presence)
 
 
 def _build_block_variables(
     model: cp_model.CpModel,
     data: ProblemData,
-) -> ModelVars:
+) -> tuple[ModelVars, int]:
     mv = ModelVars()
-    task_by_id = {t.id: t for t in data.tasks}
+    placement_rows_total = 0
 
     for task in data.tasks:
         demand_q = data.demand_q[task.id]
@@ -379,12 +421,12 @@ def _build_block_variables(
         for person in pick_candidates(data.people, task.process):
             if task.ownerPersonId and person.id != task.ownerPersonId:
                 continue
-            week_tl = data.week_timelines.get(person.id)
-            if week_tl is None or week_tl.cap <= 0:
+            catalog = data.placement_catalogs.get(person.id)
+            if catalog is None:
                 continue
+            week_tl = catalog.week_tl
 
-            placements = _feasible_placements(
-                week_tl,
+            placements = catalog.for_task(
                 demand_q,
                 task.minWeekQuarter or 0,
                 task.canFragment,
@@ -392,8 +434,12 @@ def _build_block_variables(
             if not placements:
                 continue
 
+            placement_rows_total += len(placements)
+            n_placements = len(placements)
+
             tag = f"{task.id}_{person.id}"
             presence = model.NewBoolVar(f"bp_{tag}")
+            placement_idx = model.NewIntVar(0, max(0, n_placements - 1), f"bpi_{tag}")
             start_idx = model.NewIntVar(0, week_tl.cap - 1, f"bi_{tag}")
             assigned_q = model.NewIntVar(0, demand_q, f"bq_{tag}")
             start_wq = model.NewIntVar(0, HORIZON_Q, f"bs_{tag}")
@@ -406,23 +452,26 @@ def _build_block_variables(
                     0, week_tl.cap, f"bdl_{tag}_{day_idx}"
                 )
 
-            placement_vars: list[cp_model.BoolVar] = []
-            for pidx, pl in enumerate(placements):
-                pv = model.NewBoolVar(f"bpl_{tag}_{pidx}")
-                placement_vars.append(pv)
-                model.Add(start_idx == pl.start_idx).OnlyEnforceIf(pv)
-                model.Add(assigned_q == pl.assigned_q).OnlyEnforceIf(pv)
-                model.Add(start_wq == pl.start_wq).OnlyEnforceIf(pv)
-                model.Add(end_wq == pl.end_wq).OnlyEnforceIf(pv)
-                for day_idx in range(HORIZON_DAYS):
-                    model.Add(day_load[day_idx] == pl.day_load[day_idx]).OnlyEnforceIf(
-                        pv
-                    )
-
-            model.Add(sum(placement_vars) == presence)
+            _link_block_placements(
+                model,
+                tag=tag,
+                presence=presence,
+                placement_idx=placement_idx,
+                placements=placements,
+                start_idx=start_idx,
+                assigned_q=assigned_q,
+                start_wq=start_wq,
+                end_wq=end_wq,
+                day_load=day_load,
+                demand_q=demand_q,
+                week_tl_cap=week_tl.cap,
+            )
             model.Add(assigned_q == 0).OnlyEnforceIf(presence.Not())
+            model.Add(start_idx == 0).OnlyEnforceIf(presence.Not())
             model.Add(start_wq == 0).OnlyEnforceIf(presence.Not())
             model.Add(end_wq == 0).OnlyEnforceIf(presence.Not())
+            for day_idx in range(HORIZON_DAYS):
+                model.Add(day_load[day_idx] == 0).OnlyEnforceIf(presence.Not())
             model.Add(duration_wq == end_wq - start_wq).OnlyEnforceIf(presence)
             model.Add(duration_wq == 0).OnlyEnforceIf(presence.Not())
 
@@ -462,7 +511,7 @@ def _build_block_variables(
             for day_idx, dv in day_load.items():
                 mv.load_by_person_day.setdefault((person.id, day_idx), []).append(dv)
 
-    return mv
+    return mv, placement_rows_total
 
 
 def _block_debug_rows(data: ProblemData, mv: ModelVars) -> list[dict]:
@@ -1077,15 +1126,21 @@ def _infeasible_response(
     tasks: list[EngineTask],
     status: int,
     solver: cp_model.CpSolver,
+    max_solve_seconds: int,
 ) -> SolveResponse:
-    logger.warning("solver status=%s tasks=%d", solver.StatusName(status), len(tasks))
+    status_name = solver.StatusName(status)
+    logger.warning("solver status=%s tasks=%d", status_name, len(tasks))
     if status == cp_model.INFEASIBLE:
         reason = (
             "No hay solución factible con las restricciones actuales "
             "(capacidad, especialidad o precedencia)."
         )
     else:
-        reason = "El optimizador no encontró solución a tiempo."
+        reason = (
+            f"El optimizador no encontró solución a tiempo "
+            f"(presupuesto {max_solve_seconds}s, estado {status_name}). "
+            "Regenera el planning o aumenta SOLVER_MAX_SECONDS."
+        )
     return SolveResponse(
         assignments=[],
         warnings=[EngineWarning(taskId=tasks[0].id, reason=reason)],
@@ -1100,7 +1155,10 @@ def solve_week(
     if config is None:
         config = SchedulerConfig()
 
+    solve_started = time.perf_counter()
+    prepare_started = time.perf_counter()
     data = _prepare(request, config)
+    prepare_ms = int((time.perf_counter() - prepare_started) * 1000)
     if data is None:
         return SolveResponse(assignments=[], warnings=[], unscheduledHours=0.0)
 
@@ -1112,13 +1170,18 @@ def solve_week(
         )
 
     model = cp_model.CpModel()
-    mv = _build_block_variables(model, data)
+    model_started = time.perf_counter()
+    mv, placement_rows_total = _build_block_variables(model, data)
+    model_build_ms = int((time.perf_counter() - model_started) * 1000)
+    block_count = len(mv.all_blocks)
     task_debug = _block_debug_rows(data, mv)
     logger.info(
-        "task blocks: tasks=%d with_blocks=%d without_blocks=%d",
+        "task blocks: tasks=%d with_blocks=%d without_blocks=%d blockCount=%d placementRows=%d",
         len(task_debug),
         sum(1 for r in task_debug if r["blockCount"] > 0),
         sum(1 for r in task_debug if r["blockCount"] == 0),
+        block_count,
+        placement_rows_total,
     )
     logger.info("task blocks detail: %s", task_debug)
 
@@ -1138,11 +1201,30 @@ def solve_week(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.max_solve_seconds
-    solver.parameters.num_search_workers = 0
+    num_workers = int(os.environ.get("SOLVER_NUM_WORKERS", "4"))
+    solver.parameters.num_search_workers = max(0, num_workers)
+    solve_started_cp = time.perf_counter()
     status = solver.Solve(model)
+    solve_ms = int((time.perf_counter() - solve_started_cp) * 1000)
+    status_name = solver.StatusName(status)
+
+    logger.info(
+        "solver metrics: taskCount=%d blockCount=%d placementRows=%d "
+        "prepareMs=%d modelBuildMs=%d solveMs=%d totalMs=%d status=%s",
+        len(data.tasks),
+        block_count,
+        placement_rows_total,
+        prepare_ms,
+        model_build_ms,
+        solve_ms,
+        int((time.perf_counter() - solve_started) * 1000),
+        status_name,
+    )
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return _infeasible_response(data.tasks, status, solver)
+        return _infeasible_response(
+            data.tasks, status, solver, config.max_solve_seconds
+        )
 
     response = _extract_solution(mv, unscheduled, solver, request.fixedAssignments)
     if response.unscheduledHours > 0:

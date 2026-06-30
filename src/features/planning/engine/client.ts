@@ -14,7 +14,22 @@ import type { EngineResult } from "./types";
 
 const log = childLogger({ module: "planning.solver-client" });
 
-const DEFAULT_TIMEOUT_MS = 120_000;
+/** Margen sobre SOLVER_MAX_SECONDS para serialización y build del modelo CP-SAT. */
+const SOLVER_HTTP_MARGIN_MS = 60_000;
+const MIN_HTTP_TIMEOUT_MS = 240_000;
+
+function solverTimeoutMs(): number {
+  const explicit = process.env.PLANNING_SOLVER_TIMEOUT_MS?.trim();
+  if (explicit) {
+    const parsed = Number(explicit);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(30_000, parsed);
+    }
+  }
+  const solverSec = Number(process.env.SOLVER_MAX_SECONDS ?? 180);
+  const fromSolver = (Number.isFinite(solverSec) ? solverSec : 180) * 1000 + SOLVER_HTTP_MARGIN_MS;
+  return Math.max(MIN_HTTP_TIMEOUT_MS, fromSolver);
+}
 
 function solverBaseUrl(): string {
   const url = process.env.PLANNING_SOLVER_URL?.trim();
@@ -51,7 +66,7 @@ export async function callPlanningSolver(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      signal: AbortSignal.timeout(solverTimeoutMs()),
     });
   } catch (err) {
     log.error({ err, base }, "planning solver request failed");
@@ -127,6 +142,15 @@ export async function callPlanningSolver(
     result.warnings.some((w) => w.reason.includes("factible"))
   ) {
     throw new SolverInfeasibleError(result.warnings[0]?.reason ?? "Sin solución factible.");
+  }
+
+  const timeoutWarning = result.warnings.find((w) =>
+    w.reason.includes("solución a tiempo"),
+  );
+  if (result.assignments.length === 0 && timeoutWarning) {
+    throw new SolverInfeasibleError(
+      `${timeoutWarning.reason} Regenera el planning o aumenta SOLVER_MAX_SECONDS en el entorno.`,
+    );
   }
 
   return result;

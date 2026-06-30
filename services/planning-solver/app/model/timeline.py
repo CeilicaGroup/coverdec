@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import bisect
+from dataclasses import dataclass, field
 from datetime import date
 
 from app.schemas import (
@@ -484,10 +485,126 @@ class WorkerWeekTimeline:
                 continue
             if i + size_q > self.cap:
                 continue
-            if not self.same_day_span(i, size_q):
-                continue
             dist = abs(ref.ui_slot - start_slot)
             if dist < best_dist:
                 best_dist = dist
                 best = i
         return best
+
+
+@dataclass(frozen=True)
+class BlockPlacement:
+    start_idx: int
+    assigned_q: int
+    start_wq: int
+    end_wq: int
+    day_load: tuple[int, ...]
+
+
+def build_placement_catalog(
+    person_id: str,
+    week_tl: WorkerWeekTimeline,
+    max_demand_q: int,
+    horizon_days: int = 5,
+) -> WorkerPlacementCatalog:
+    """Precompute all valid (start, duration) pairs for one worker week."""
+    return WorkerPlacementCatalog.build(
+        person_id, week_tl, max_demand_q, horizon_days
+    )
+
+
+@dataclass
+class WorkerPlacementCatalog:
+    """Shared placement grid for one worker; filtered per task on demand."""
+
+    person_id: str
+    week_tl: WorkerWeekTimeline
+    placements: tuple[BlockPlacement, ...]
+    horizon_days: int = 5
+    start_wqs: tuple[int, ...] = ()
+    _task_cache: dict[tuple[int, int, bool], tuple[BlockPlacement, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+
+    @staticmethod
+    def build(
+        person_id: str,
+        week_tl: WorkerWeekTimeline,
+        max_demand_q: int,
+        horizon_days: int = 5,
+    ) -> WorkerPlacementCatalog:
+        if week_tl.cap <= 0 or max_demand_q <= 0:
+            return WorkerPlacementCatalog(person_id, week_tl, (), horizon_days, ())
+
+        seen: set[tuple[int, int]] = set()
+        placements: list[BlockPlacement] = []
+        cap = week_tl.cap
+        max_d = min(max_demand_q, cap)
+
+        for i in range(cap):
+            for d in range(1, min(max_d, cap - i) + 1):
+                key = (i, d)
+                if key in seen:
+                    continue
+                end_wq = week_tl.end_wq_for(i, d)
+                if end_wq is None:
+                    continue
+                seen.add(key)
+                by_day = [0] * horizon_days
+                for ref in week_tl.quarters[i : i + d]:
+                    by_day[ref.day_index] += 1
+                placements.append(
+                    BlockPlacement(
+                        start_idx=i,
+                        assigned_q=d,
+                        start_wq=week_tl.start_wqs[i],
+                        end_wq=end_wq,
+                        day_load=tuple(by_day),
+                    )
+                )
+
+        placements.sort(key=lambda p: (p.start_wq, p.start_idx, p.assigned_q))
+        start_wqs = tuple(p.start_wq for p in placements)
+
+        return WorkerPlacementCatalog(
+            person_id,
+            week_tl,
+            tuple(placements),
+            horizon_days,
+            start_wqs,
+        )
+
+    def for_task(
+        self,
+        demand_q: int,
+        min_week_quarter: int,
+        can_fragment: bool,
+    ) -> tuple[BlockPlacement, ...]:
+        if demand_q <= 0 or not self.placements:
+            return ()
+
+        cache_key = (demand_q, min_week_quarter, can_fragment)
+        cached = self._task_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        filtered: list[BlockPlacement] = []
+        scan_from = 0
+        if self.start_wqs:
+            scan_from = bisect.bisect_left(self.start_wqs, min_week_quarter)
+        for pl in self.placements[scan_from:]:
+            if pl.assigned_q > demand_q:
+                continue
+            if pl.start_wq < min_week_quarter:
+                continue
+            if not can_fragment and not self.week_tl.same_day_span(
+                pl.start_idx, pl.assigned_q
+            ):
+                continue
+            filtered.append(pl)
+
+        result = tuple(filtered)
+        self._task_cache[cache_key] = result
+        return result

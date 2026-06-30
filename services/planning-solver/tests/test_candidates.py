@@ -38,6 +38,21 @@ def test_pick_candidates_includes_fallback_after_primary():
     ]
 
 
+def test_pick_candidates_caps_at_three_workers():
+    people = [
+        _person(f"primary-{i}", primary=["CNC"])
+        for i in range(4)
+    ] + [
+        _person(f"fallback-{i}", primary=[], fallback=["CNC"])
+        for i in range(3)
+    ]
+
+    result = pick_candidates(people, "CNC")
+
+    assert len(result) == 3
+    assert [p.id for p in result] == ["primary-0", "primary-1", "primary-2"]
+
+
 def test_pick_candidates_returns_all_people_for_manual_estimation():
     people = [
         _person("cnc-op", primary=["CNC"]),

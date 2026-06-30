@@ -46,10 +46,10 @@ def test_six_and_half_hours_monday_morning_to_afternoon():
     size_q = 26  # 6.5 h
     assert week.same_day_span(0, size_q)
     slices = week.to_daily_slices(0, size_q)
-    assert len(slices) == 1
-    assert slices[0].hours == 6.5
+    assert len(slices) == 2
+    assert sum(s.hours for s in slices) == 6.5
     assert slices[0].start_slot == 0.0
-    assert slices[0].end_slot > AFTERNOON_UI_OFFSET
+    assert slices[1].start_slot >= 6.0
 
 
 def test_ten_hours_from_monday_crosses_to_tuesday():
@@ -59,7 +59,7 @@ def test_ten_hours_from_monday_crosses_to_tuesday():
     size_q = 40  # 10 h
     assert not week.same_day_span(0, size_q)
     slices = week.to_daily_slices(0, size_q)
-    assert len(slices) == 2
+    assert len(slices) == 3
     assert sum(s.hours for s in slices) == 10.0
 
 

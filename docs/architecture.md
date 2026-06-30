@@ -28,12 +28,14 @@ El reparto semanal usa un **microservicio Python** ([`services/planning-solver/`
 | `Project.deliveryDate` | Objetivo suave (`wLate`) | Penaliza acabar la lámpara después de la fecha de entrega del proyecto. |
 | Precedencia por lámpara | Restricción dura | La tarea N+1 no empieza hasta que N esté totalmente asignada en la semana. |
 | `waitHours` del proceso anterior | Restricción dura | Espera mínima entre procesos consecutivos (ej. 12 h tras imprimación). |
-| Continuidad del operario | Restricción dura (`NoOverlap`) | Un operario no intercala tareas (sin patrones A→B→A). |
+| Continuidad del operario | Restricción dura (`NoOverlap`) | Un operario no intercala tareas (sin patrones A→B→A). La siguiente tarea puede empezar en cualquier cuarto productivo libre (p. ej. 11:00 tras una de 3 h), no solo al inicio de mañana/tarde. |
 | `wUnscheduled` | Objetivo suave (tier 0) | Minimizar horas pendientes sin asignar en la semana. |
 | `wLaborCost` | Objetivo suave (tier 2) | Minimizar coste de horas normales y extra. |
 | `wLoadBalance` / `wMove` | Objetivo suave (tier 2) | Equilibrar carga entre operarios / estabilidad vs plan anterior. |
 
 El solver usa **prioridades por tiers** (cobertura ×10⁶, plazos ×10³, coste ×1) para que un peso no pise a otro por accidente. Los floats del panel se traducen en `_coerce_weights` dentro de `solve_week.py`.
+
+El dominio de inicio de cada bloque se precalcula en un **catálogo por operario** (`WorkerPlacementCatalog` en `timeline.py`): todos los pares `(inicio, duración)` en cuartos de hora productivos, filtrados por tarea (`demand_q`, `minWeekQuarter`, `canFragment`). La compactación temporal (evitar huecos) es objetivo suave (`early_start`), no prohibición CP-SAT.
 
 Los huecos «Libre» en el grid suelen ser capacidad que **no se puede usar** hasta que termine el proceso anterior de la misma lámpara (u otro operario), no necesariamente holgura ignorada por el optimizador.
 
