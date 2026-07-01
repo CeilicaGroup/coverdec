@@ -150,6 +150,33 @@ describe("serializeSolverInput", () => {
     const payload = serializeSolverInput(input);
     expect(payload.tasks[0]?.canFragment).toBe(true);
     expect(payload.tasks[0]?.ownerPersonId).toBeNull();
+    expect(payload.tasks[0]?.workOrderId).toBeNull();
+    expect(payload.tasks[0]?.workOrderSequence).toBeNull();
+  });
+
+  it("serializes workOrderId and workOrderSequence on tasks", () => {
+    const input: SolverInput = minimalSolverInput({
+      tasks: [
+        {
+          id: "t1",
+          projectId: "pr1",
+          projectPriority: 50,
+          deadlineCurveExponent: 2,
+          overduePenaltyMultiplier: 2.5,
+          projectDeliveryDate: null,
+          lampId: "l1",
+          order: 0,
+          process: "CNC",
+          pendingHours: 4,
+          workOrderId: "wo-1",
+          workOrderSequence: 2,
+        },
+      ],
+    });
+
+    const payload = serializeSolverInput(input);
+    expect(payload.tasks[0]?.workOrderId).toBe("wo-1");
+    expect(payload.tasks[0]?.workOrderSequence).toBe(2);
   });
 
   it("includes all people in schedules even without workWindows", () => {

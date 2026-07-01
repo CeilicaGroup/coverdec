@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { ProcessBadge } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { PersonAvatar } from "@/components/person-avatar";
 import { RiskBadge } from "@/components/risk-badge";
 import { Button } from "@/components/ui/button";
@@ -669,7 +671,7 @@ function TaskGanttRow({
 
   return (
     <div
-      className="grid border-t items-center min-h-[36px] bg-muted/25"
+      {...withWorkOrderHighlight(task.workOrderNumber, "grid border-t items-center min-h-[36px] bg-muted/25")}
       style={{ gridTemplateColumns: gridCols(axis.length) }}
     >
       <div className="p-2 pl-14 space-y-1">
@@ -678,6 +680,10 @@ function TaskGanttRow({
             render={
               <div className="flex items-center gap-1 flex-wrap cursor-default">
                 <ProcessBadge code={task.process} definition={processStyle} />
+                <WorkOrderBadge
+                  number={task.workOrderNumber}
+                  status={task.workOrderStatus ?? undefined}
+                />
               </div>
             }
           />

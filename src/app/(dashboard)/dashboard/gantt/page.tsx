@@ -128,6 +128,8 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
             return `${first.task.project.name} · ${first.task.lamp.name ?? "Lámpara"}${bastidor}`;
           })(),
           process: first.process,
+          workOrderNumber: first.task.workOrder?.number ?? null,
+          workOrderStatus: first.task.workOrder?.status ?? null,
           estimatedStart: first.date.toISOString().slice(0, 10),
           estimatedEnd: last.date.toISOString().slice(0, 10),
           isAssigned: true,

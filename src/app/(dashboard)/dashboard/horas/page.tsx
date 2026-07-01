@@ -129,6 +129,7 @@ export default async function HorasPage() {
             order: true,
             project: { select: { id: true, name: true } },
             lamp: { select: { id: true, name: true } },
+            workOrder: { select: { number: true, status: true } },
           },
         });
 
@@ -199,6 +200,8 @@ export default async function HorasPage() {
       plannedRanges: taskRanges.get(t.id) ?? [],
       plannedDateRanges: taskDateRanges.get(t.id) ?? [],
       blockedReason: blockedReasonForTask(t),
+      workOrderNumber: t.workOrder?.number ?? null,
+      workOrderStatus: t.workOrder?.status ?? null,
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 

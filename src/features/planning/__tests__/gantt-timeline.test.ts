@@ -48,6 +48,7 @@ function assignment(
       project: { id: "proj", name: "Proyecto" },
       lamp: { id: "l1", name: "L1", elementType: { name: "Bastidor 1" } },
       lampElement: null,
+      workOrder: null,
     },
   };
 }

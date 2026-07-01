@@ -56,6 +56,7 @@ export default async function ProjectDetailPage({
             orderBy: { order: "asc" },
             include: {
               nave: { select: { id: true, codigo: true, nombre: true } },
+              workOrder: { select: { number: true, status: true } },
               lampElement: {
                 select: {
                   id: true,

@@ -4,8 +4,10 @@ import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Play, Square, CheckCircle2, ClipboardPenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WorkOrderBadge } from "@/components/work-order-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { toast } from "sonner";
 import { completeTask, startTimer, stopTimer } from "@/features/time-tracking/actions";
 import { ManualEntryForm } from "./manual-entry-form";
@@ -21,6 +23,8 @@ export interface WorkerQueueTask {
   plannedRanges: string[];
   plannedDateRanges: { startedAt: string; endedAt: string }[];
   blockedReason: string | null;
+  workOrderNumber: string | null;
+  workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
 }
 
 export interface OpenTimerInfo {
@@ -93,11 +97,15 @@ export function TaskQueuePanel({
             <div className="text-sm text-muted-foreground">No tienes tareas pendientes.</div>
           ) : (
             <>
-              <div className="space-y-1">
+              <div {...withWorkOrderHighlight(nextTask.workOrderNumber, "space-y-1")}>
                 <div className="text-xs text-muted-foreground">{nextTask.projectName}</div>
                 <div className="text-lg font-semibold">{nextTask.lampName}</div>
-                <div className="text-sm text-muted-foreground">
-                  {processLabels[nextTask.process] ?? nextTask.process} · No completada
+                <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                  <span>{processLabels[nextTask.process] ?? nextTask.process} · No completada</span>
+                  <WorkOrderBadge
+                    number={nextTask.workOrderNumber}
+                    status={nextTask.workOrderStatus ?? undefined}
+                  />
                 </div>
                 {nextTask.blockedReason ? (
                   <div className="text-xs text-amber-700 dark:text-amber-400">
@@ -234,9 +242,12 @@ export function TaskQueuePanel({
                 return (
                   <li
                     key={t.id}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
-                      isCurrent && "border-primary",
+                    {...withWorkOrderHighlight(
+                      t.workOrderNumber,
+                      cn(
+                        "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+                        isCurrent && "border-primary",
+                      ),
                     )}
                   >
                     <div className="min-w-0">
@@ -244,8 +255,12 @@ export function TaskQueuePanel({
                       <div className="font-medium truncate">
                         {idx + 1}. {t.lampName}
                       </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {processLabels[t.process] ?? t.process}
+                      <div className="text-xs text-muted-foreground truncate flex items-center gap-1 flex-wrap">
+                        <span>{processLabels[t.process] ?? t.process}</span>
+                        <WorkOrderBadge
+                          number={t.workOrderNumber}
+                          status={t.workOrderStatus ?? undefined}
+                        />
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate">
                         {t.plannedRanges.length > 0

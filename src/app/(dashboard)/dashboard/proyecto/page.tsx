@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ProcessBadge } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
 import { DryWaitBadge } from "@/components/dry-wait-badge";
 import { PersonAvatar } from "@/components/person-avatar";
 import { RiskBadge } from "@/components/risk-badge";
@@ -59,6 +60,7 @@ import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { Role } from "@/generated/prisma";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
@@ -347,7 +349,7 @@ function ActualProjectTable({
           </TableRow>
         ) : (
           entries.map((e) => (
-            <TableRow key={e.id}>
+            <TableRow key={e.id} {...withWorkOrderHighlight(e.task?.workOrder?.number)}>
               <TableCell className="font-mono text-xs">
                 {formatShortDate(new Date(e.date + "T00:00:00Z"))}
               </TableCell>
@@ -374,10 +376,16 @@ function ActualProjectTable({
               </TableCell>
               <TableCell>
                 {e.process ? (
-                  <ProcessBadge
-                    code={e.process}
-                    definition={processByCode.get(e.process)?.badge}
-                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <ProcessBadge
+                      code={e.process}
+                      definition={processByCode.get(e.process)?.badge}
+                    />
+                    <WorkOrderBadge
+                      number={e.task?.workOrder?.number}
+                      status={e.task?.workOrder?.status}
+                    />
+                  </div>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
@@ -547,7 +555,10 @@ function PlanProjectTable({
                   process: entry.process ?? entry.task?.process ?? null,
                 }));
               return (
-              <TableRow key={item.assignment.id}>
+              <TableRow
+                key={item.assignment.id}
+                {...withWorkOrderHighlight(item.assignment.task.workOrder?.number)}
+              >
                 <TableCell className="font-mono text-xs">{formatShortDate(item.assignment.date)}</TableCell>
                 <TableCell className="font-mono text-xs">
                   {rangeLabel(item.assignment.startSlot, item.assignment.endSlot)}
@@ -569,10 +580,16 @@ function PlanProjectTable({
                   <TaskLampBastidor label={getTaskLampElementLabel(item.assignment.task)} />
                 </TableCell>
                 <TableCell>
-                  <ProcessBadge
-                    code={item.assignment.process}
-                    definition={processByCode.get(item.assignment.process)?.badge}
-                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <ProcessBadge
+                      code={item.assignment.process}
+                      definition={processByCode.get(item.assignment.process)?.badge}
+                    />
+                    <WorkOrderBadge
+                      number={item.assignment.task.workOrder?.number}
+                      status={item.assignment.task.workOrder?.status}
+                    />
+                  </div>
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs font-semibold">
                   {formatHours(item.assignment.hours)}

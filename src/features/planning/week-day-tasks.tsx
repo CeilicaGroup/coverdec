@@ -3,6 +3,7 @@ import {
   processColor,
   type ProcessBadgeStyle,
 } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
 import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
@@ -10,6 +11,7 @@ import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 import { formatHours } from "@/lib/format";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { WeekGridCell } from "./week-person-grid";
 import type { buildEntriesByPersonDayTask } from "./week-person-grid";
 
@@ -110,10 +112,15 @@ export function WeekDayTasks({
             ? (entriesByPersonDayTask.get(`${personId}|${dayKey}|${t.taskId}`) ?? [])
             : [];
 
+        const woHighlight = withWorkOrderHighlight(
+          t.workOrderNumber,
+          "rounded px-2 py-1.5 border-l-[3px] text-xs leading-tight",
+        );
+
         return (
           <div
             key={t.id}
-            className="rounded px-2 py-1.5 border-l-[3px] text-xs leading-tight"
+            {...woHighlight}
             style={{
               background: colors.bgColor,
               borderColor: colors.borderColor,
@@ -136,8 +143,9 @@ export function WeekDayTasks({
               </div>
             ) : null}
             <TaskLampBastidor label={t.bastidor} className="text-[10px] opacity-80" />
-            <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <ProcessBadge code={t.process} definition={processStyles.get(t.process)} />
+              <WorkOrderBadge number={t.workOrderNumber} status={t.workOrderStatus ?? undefined} />
               <span
                 className="font-mono text-[10px] font-bold ml-auto"
                 style={{ color: colors.fgColor }}

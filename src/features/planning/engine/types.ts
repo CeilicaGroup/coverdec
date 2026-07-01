@@ -39,6 +39,9 @@ export interface EngineTask {
   canFragment?: boolean;
   /** When set, only this worker may be assigned (task already started). */
   ownerPersonId?: string | null;
+  /** Open work-order grouping: same worker, sequential placement. */
+  workOrderId?: string | null;
+  workOrderSequence?: number | null;
 }
 
 export interface EngineAbsence {

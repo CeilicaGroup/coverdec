@@ -5,6 +5,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { taskWorkOrderSummary } from "@/features/work-orders/display";
 import {
   getNavePersonnel,
   getPlanningForWeek,
@@ -37,6 +38,8 @@ export function toWeekPersonListItem(
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
+import type { WorkOrderStatus } from "@/generated/prisma";
+
 export interface WeekGridCell {
   id: string;
   taskId: string | null;
@@ -54,6 +57,8 @@ export interface WeekGridCell {
   project: string;
   lamp: string | null;
   bastidor: string | null;
+  workOrderNumber: string | null;
+  workOrderStatus: WorkOrderStatus | null;
   startedAt: string | null;
   endedAt: string | null;
   notes: string | null;
@@ -123,6 +128,7 @@ export function buildPlanGrid(
     if (!personMap) continue;
     const key = a.date.toISOString().slice(0, 10);
     const cell = personMap.get(key) ?? [];
+    const wo = taskWorkOrderSummary(a.task);
     cell.push({
       id: a.id,
       taskId: a.taskId,
@@ -140,6 +146,8 @@ export function buildPlanGrid(
       project: a.task.project.name,
       lamp: a.task.lamp?.name ?? null,
       bastidor: getTaskLampElementLabel(a.task),
+      workOrderNumber: wo?.number ?? null,
+      workOrderStatus: wo?.status ?? null,
       startedAt: null,
       endedAt: null,
       notes: null,
@@ -182,6 +190,8 @@ export function buildActualGrid(
       project: e.project?.name ?? "—",
       lamp: e.lamp?.name ?? null,
       bastidor: e.task ? getTaskLampElementLabel(e.task) : null,
+      workOrderNumber: e.task?.workOrder?.number ?? null,
+      workOrderStatus: e.task?.workOrder?.status ?? null,
       startedAt: e.startedAt.toISOString(),
       endedAt: e.endedAt?.toISOString() ?? null,
       notes: e.notes,

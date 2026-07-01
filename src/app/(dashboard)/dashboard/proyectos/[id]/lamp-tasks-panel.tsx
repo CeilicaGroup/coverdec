@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { formatHours } from "@/lib/format";
 import type { ProcessCode } from "@/types/process";
 import {
@@ -72,6 +74,7 @@ interface LampTaskRow {
         elementType: { id: string; name: string };
       }
     | null;
+  workOrder: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
 }
 
 type TaskViewMode = "agrupada" | "detalle";
@@ -772,15 +775,24 @@ export function LampTasksPanel({
                           waitHoursByProcess,
                         );
                         return (
-                          <tr key={t.id} className="border-t border-border/50">
+                          <tr
+                            key={t.id}
+                            {...withWorkOrderHighlight(t.workOrder?.number, "border-t border-border/50")}
+                          >
                             <td className="py-1.5 px-3 text-muted-foreground">
                               {t.order + 1}
                             </td>
                             <td className="py-1.5 px-2">
-                              <ProcessBadge
-                                code={t.process}
-                                definition={processStylesByCode[t.process]}
-                              />
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <ProcessBadge
+                                  code={t.process}
+                                  definition={processStylesByCode[t.process]}
+                                />
+                                <WorkOrderBadge
+                                  number={t.workOrder?.number}
+                                  status={t.workOrder?.status}
+                                />
+                              </div>
                             </td>
                             {group.unitCount > 1 ? (
                               <td className="py-1.5 px-2 text-muted-foreground">
@@ -1036,10 +1048,14 @@ export function LampTasksPanel({
                 });
               }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <ProcessBadge
                   code={editTask.process}
                   definition={processStylesByCode[editTask.process]}
+                />
+                <WorkOrderBadge
+                  number={editTask.workOrder?.number}
+                  status={editTask.workOrder?.status}
                 />
                 {editTask.lampElement?.label ? (
                   <span className="text-xs text-muted-foreground">

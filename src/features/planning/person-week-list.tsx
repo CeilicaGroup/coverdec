@@ -1,4 +1,5 @@
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
 import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
@@ -7,6 +8,7 @@ import {
   type PlanningTimelineItem,
 } from "@/features/planning/planning-timeline";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { ActualHourEntry } from "@/features/planning/queries";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
@@ -75,7 +77,10 @@ export function PersonWeekList({
               </TableRow>
             ) : (
               entries.map((e) => (
-                <TableRow key={e.id}>
+                <TableRow
+                  key={e.id}
+                  {...withWorkOrderHighlight(e.task?.workOrder?.number)}
+                >
                   <TableCell className="font-mono text-xs">
                     {formatShortDate(new Date(e.date + "T00:00:00Z"))}
                   </TableCell>
@@ -93,10 +98,16 @@ export function PersonWeekList({
                   </TableCell>
                   <TableCell>
                     {e.process ? (
-                      <ProcessBadge
-                        code={e.process}
-                        definition={processByCode.get(e.process)?.badge}
-                      />
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <ProcessBadge
+                          code={e.process}
+                          definition={processByCode.get(e.process)?.badge}
+                        />
+                        <WorkOrderBadge
+                          number={e.task?.workOrder?.number}
+                          status={e.task?.workOrder?.status}
+                        />
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
@@ -231,7 +242,10 @@ export function PersonWeekList({
                 }));
 
               return (
-                <TableRow key={item.assignment.id}>
+                <TableRow
+                  key={item.assignment.id}
+                  {...withWorkOrderHighlight(item.assignment.task.workOrder?.number)}
+                >
                   <TableCell className="font-mono text-xs">
                     {formatShortDate(item.assignment.date)}
                   </TableCell>
@@ -250,10 +264,16 @@ export function PersonWeekList({
                     <TaskLampBastidor label={getTaskLampElementLabel(item.assignment.task)} />
                   </TableCell>
                   <TableCell>
-                    <ProcessBadge
-                      code={item.assignment.process}
-                      definition={processByCode.get(item.assignment.process)?.badge}
-                    />
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <ProcessBadge
+                        code={item.assignment.process}
+                        definition={processByCode.get(item.assignment.process)?.badge}
+                      />
+                      <WorkOrderBadge
+                        number={item.assignment.task.workOrder?.number}
+                        status={item.assignment.task.workOrder?.status}
+                      />
+                    </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs font-semibold">
                     {formatHours(item.assignment.hours)}

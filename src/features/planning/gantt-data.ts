@@ -76,6 +76,8 @@ export interface GanttTaskRow {
   /** Solo se rellena si el usuario debe verlo (p.ej. lámpara con >1 bastidor). */
   lampFrameLabel: string | null;
   operators: GanttOperator[];
+  workOrderNumber: string | null;
+  workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
 }
 
 export interface GanttElementRow {
@@ -414,6 +416,8 @@ function buildTasksWithEstimates(
         personIds: schedule.personIds,
         lampFrameLabel: getTaskLampElementLabel(t),
         operators: schedule.operators,
+        workOrderNumber: t.workOrder?.number ?? null,
+        workOrderStatus: t.workOrder?.status ?? null,
       });
     }
 

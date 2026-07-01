@@ -35,6 +35,7 @@ export interface PlanningAssignmentSlice {
     lamp: { name: string | null; elementType?: { name: string } | null } | null;
     lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
     project: { name: string };
+    workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   };
 }
 

@@ -68,6 +68,8 @@ class EngineTask(BaseModel):
     canFragment: bool = True
     minWeekQuarter: int = 0
     ownerPersonId: str | None = None
+    workOrderId: str | None = None
+    workOrderSequence: int | None = None
 
 
 class EngineAbsence(BaseModel):

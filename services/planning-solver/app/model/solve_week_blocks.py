@@ -19,6 +19,14 @@ from typing import NamedTuple
 from ortools.sat.python import cp_model
 
 from app.model.candidates import pick_candidates
+from app.model.work_order_collapse import (
+    WoCollapseGroup,
+    collapse_work_order_tasks,
+    display_task_id,
+    expand_collapsed_assignments,
+    expand_unscheduled_warning,
+    remap_previous_hours,
+)
 from app.model.timeline import (
     QUARTERS_PER_HOUR,
     BlockPlacement,
@@ -132,6 +140,8 @@ class ProblemData:
     fixed_assignments: list[FixedAssignment]
     busy_slots: list[BusySlotEntry]
     placement_catalogs: dict[str, WorkerPlacementCatalog]
+    wo_collapse: dict[str, WoCollapseGroup] = field(default_factory=dict)
+    candidate_ids_by_task: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _add_days(d: date, n: int) -> date:
@@ -194,6 +204,25 @@ def _build_lamp_edges(
             )
             edges.append(LampEdge(pred.id, succ.id, wait_q))
     return edges
+
+
+def _rewire_lamp_edges(
+    edges: list[LampEdge],
+    member_to_synthetic: dict[str, str],
+) -> list[LampEdge]:
+    if not member_to_synthetic:
+        return edges
+
+    merged: dict[tuple[str, str], int] = {}
+    for edge in edges:
+        pred = member_to_synthetic.get(edge.predecessor_id, edge.predecessor_id)
+        succ = member_to_synthetic.get(edge.successor_id, edge.successor_id)
+        if pred == succ:
+            continue
+        key = (pred, succ)
+        merged[key] = max(merged.get(key, 0), edge.dry_quarters)
+
+    return [LampEdge(pred, succ, dry_q) for (pred, succ), dry_q in merged.items()]
 
 
 def _empty_timeline(person_id: str, day: date, day_index: int) -> WorkerDayTimeline:
@@ -265,6 +294,30 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
     if not tasks and not request.fixedAssignments:
         return None
 
+    process_by_code = {p.code: p for p in request.processes}
+    fixed_task_ids = {fixed.taskId for fixed in request.fixedAssignments}
+    lamp_edges = _build_lamp_edges(tasks, process_by_code)
+    tasks, wo_collapse, candidate_ids_by_task, member_to_synthetic = (
+        collapse_work_order_tasks(
+            tasks,
+            request.people,
+            fixed_task_ids=fixed_task_ids,
+        )
+    )
+    if member_to_synthetic:
+        lamp_edges = _rewire_lamp_edges(lamp_edges, member_to_synthetic)
+        logger.info(
+            "work-order collapse: groups=%d tasksBefore=%d tasksAfter=%d",
+            len(wo_collapse),
+            len(tasks) + sum(len(group.members) - 1 for group in wo_collapse.values()),
+            len(tasks),
+        )
+
+    prev_q = remap_previous_hours(
+        {entry.key: entry.quarters for entry in request.previousHours},
+        wo_collapse,
+    )
+
     timelines: dict[tuple[str, int], WorkerDayTimeline] = {}
     week_timelines: dict[str, WorkerWeekTimeline] = {}
 
@@ -312,7 +365,6 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         week_timelines[person.id] = WorkerWeekTimeline.build_from_days(day_tls)
 
     weights = _coerce_weights(request, config.weights)
-    process_by_code = {p.code: p for p in request.processes}
     max_demand_by_person = _max_demand_by_person(tasks, request.people, process_by_code)
     placement_catalogs: dict[str, WorkerPlacementCatalog] = {}
     for person_id, week_tl in week_timelines.items():
@@ -333,13 +385,15 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         timelines=timelines,
         week_timelines=week_timelines,
         process_by_code=process_by_code,
-        prev_q={e.key: e.quarters for e in request.previousHours},
+        prev_q=prev_q,
         people=request.people,
-        lamp_edges=_build_lamp_edges(tasks, process_by_code),
+        lamp_edges=lamp_edges,
         weights=weights,
         fixed_assignments=list(request.fixedAssignments),
         busy_slots=list(request.busySlots),
         placement_catalogs=placement_catalogs,
+        wo_collapse=wo_collapse,
+        candidate_ids_by_task=candidate_ids_by_task,
     )
 
 
@@ -422,7 +476,7 @@ def _build_block_variables(
         if proc is None:
             continue
 
-        for person in pick_candidates(data.people, task.process):
+        for person in _task_candidates(data, task):
             if task.ownerPersonId and person.id != task.ownerPersonId:
                 continue
             catalog = data.placement_catalogs.get(person.id)
@@ -516,6 +570,14 @@ def _build_block_variables(
                 mv.load_by_person_day.setdefault((person.id, day_idx), []).append(dv)
 
     return mv, placement_rows_total
+
+
+def _task_candidates(data: ProblemData, task: EngineTask) -> list[EnginePerson]:
+    override_ids = data.candidate_ids_by_task.get(task.id)
+    if override_ids is not None:
+        allowed = set(override_ids)
+        return [person for person in data.people if person.id in allowed]
+    return pick_candidates(data.people, task.process)
 
 
 def _block_debug_rows(data: ProblemData, mv: ModelVars) -> list[dict]:
@@ -617,10 +679,168 @@ def _add_constraints(
         if len(ivs) > 1:
             model.AddNoOverlap(ivs)
 
+    by_wo = _tasks_by_work_order(data.tasks)
     _add_lamp_ordering(model, data, mv)
+    _add_work_order_constraints(model, data, mv, by_wo)
+    _add_work_order_no_interleave(model, mv, by_wo)
     _add_max_one_worker_per_task(model, data, mv)
 
     return unscheduled
+
+
+def _tasks_by_work_order(tasks: list[EngineTask]) -> dict[str, list[EngineTask]]:
+    by_wo: dict[str, list[EngineTask]] = defaultdict(list)
+    for task in tasks:
+        if task.workOrderId:
+            by_wo[task.workOrderId].append(task)
+    for group in by_wo.values():
+        group.sort(key=lambda t: t.workOrderSequence or 0)
+    return by_wo
+
+
+def _add_work_order_constraints(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+    by_wo: dict[str, list[EngineTask]] | None = None,
+) -> None:
+    if by_wo is None:
+        by_wo = _tasks_by_work_order(data.tasks)
+    for wo_tasks in by_wo.values():
+        if len(wo_tasks) < 2:
+            continue
+
+        blocks_by_person: dict[str, list[BlockVars]] = defaultdict(list)
+        for task in wo_tasks:
+            for bv in mv.by_task.get(task.id, []):
+                blocks_by_person[bv.block.person_id].append(bv)
+
+        for person_blocks in blocks_by_person.values():
+            if len(person_blocks) < 2:
+                continue
+            hub = person_blocks[0].presence
+            for bv in person_blocks[1:]:
+                model.Add(bv.presence == hub)
+
+        person_hubs = [
+            blocks[0].presence
+            for blocks in blocks_by_person.values()
+            if blocks
+        ]
+        if len(person_hubs) > 1:
+            model.Add(sum(person_hubs) <= 1)
+
+        for pred, succ in zip(wo_tasks, wo_tasks[1:]):
+            pred_demand = data.demand_q.get(pred.id, 0)
+            if pred_demand <= 0:
+                continue
+
+            pred_blocks = mv.by_task.get(pred.id, [])
+            succ_blocks = mv.by_task.get(succ.id, [])
+            if not pred_blocks or not succ_blocks:
+                continue
+
+            pred_done = model.NewBoolVar(f"wo_done_{pred.id}")
+            total_pred = model.NewIntVar(0, pred_demand, f"wo_tp_{pred.id}")
+            model.Add(total_pred == sum(bv.assigned_q for bv in pred_blocks))
+            model.Add(total_pred == pred_demand).OnlyEnforceIf(pred_done)
+            model.Add(total_pred < pred_demand).OnlyEnforceIf(pred_done.Not())
+
+            pred_end_terms: list = []
+            for bv in pred_blocks:
+                contrib = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pec_{_block_tag(bv)}")
+                model.Add(contrib == bv.end_wq).OnlyEnforceIf(bv.presence)
+                model.Add(contrib == 0).OnlyEnforceIf(bv.presence.Not())
+                pred_end_terms.append(contrib)
+
+            pred_end = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pend_{pred.id}")
+            if pred_end_terms:
+                model.AddMaxEquality(pred_end, pred_end_terms)
+            else:
+                model.Add(pred_end == 0)
+
+            earliest = model.NewIntVar(0, HORIZON_Q + 1, f"wo_early_{succ.id}")
+            model.Add(earliest == pred_end).OnlyEnforceIf(pred_done)
+            model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(pred_done.Not())
+
+            for bv in succ_blocks:
+                model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
+                model.Add(bv.presence == 0).OnlyEnforceIf(pred_done.Not())
+
+
+def _add_work_order_no_interleave(
+    model: cp_model.CpModel,
+    mv: ModelVars,
+    by_wo: dict[str, list[EngineTask]],
+) -> None:
+    """Once a worker starts an OT, no other task may be scheduled between its blocks."""
+    if not by_wo:
+        return
+
+    blocks_by_person: dict[str, list[BlockVars]] = defaultdict(list)
+    for bv in mv.all_blocks:
+        blocks_by_person[bv.block.person_id].append(bv)
+
+    horizon = HORIZON_Q + 1
+    for wo_id, wo_tasks in by_wo.items():
+        # Una sola tarea en la OT: un bloque contiguo; NoOverlap del operario ya basta.
+        if len(wo_tasks) < 2:
+            continue
+
+        wo_task_ids = {task.id for task in wo_tasks}
+        persons: set[str] = set()
+        for task in wo_tasks:
+            for bv in mv.by_task.get(task.id, []):
+                persons.add(bv.block.person_id)
+
+        for person_id in persons:
+            ot_blocks = [
+                bv
+                for task in wo_tasks
+                for bv in mv.by_task.get(task.id, [])
+                if bv.block.person_id == person_id
+            ]
+            if not ot_blocks:
+                continue
+
+            # Presencia ya acoplada en _add_work_order_constraints.
+            wo_active = ot_blocks[0].presence
+
+            wo_start = model.NewIntVar(0, horizon, f"wo_ns_{wo_id}_{person_id}")
+            wo_end = model.NewIntVar(0, horizon, f"wo_ne_{wo_id}_{person_id}")
+
+            start_terms: list = []
+            end_terms: list = []
+            for bv in ot_blocks:
+                start_fv = model.NewIntVar(0, horizon, f"wo_nss_{wo_id}_{_block_tag(bv)}")
+                model.Add(start_fv == bv.start_wq).OnlyEnforceIf(bv.presence)
+                model.Add(start_fv == horizon).OnlyEnforceIf(bv.presence.Not())
+                start_terms.append(start_fv)
+
+                end_fv = model.NewIntVar(0, horizon, f"wo_nse_{wo_id}_{_block_tag(bv)}")
+                model.Add(end_fv == bv.end_wq).OnlyEnforceIf(bv.presence)
+                model.Add(end_fv == 0).OnlyEnforceIf(bv.presence.Not())
+                end_terms.append(end_fv)
+
+            model.AddMinEquality(wo_start, start_terms)
+            model.AddMaxEquality(wo_end, end_terms)
+
+            for foreign in blocks_by_person.get(person_id, []):
+                if foreign.block.task_id in wo_task_ids:
+                    continue
+
+                before = model.NewBoolVar(
+                    f"wo_nfb_{wo_id}_{person_id}_{_block_tag(foreign)}",
+                )
+                after = model.NewBoolVar(
+                    f"wo_nfa_{wo_id}_{person_id}_{_block_tag(foreign)}",
+                )
+                model.Add(foreign.end_wq <= wo_start).OnlyEnforceIf(before)
+                model.Add(foreign.start_wq >= wo_end).OnlyEnforceIf(after)
+                # Si la OT y la tarea ajena están activas, debe ir antes o después del bloque OT.
+                model.AddBoolOr(
+                    [before, after, wo_active.Not(), foreign.presence.Not()],
+                )
 
 
 def _add_max_one_worker_per_task(
@@ -1073,6 +1293,7 @@ def _extract_solution(
     unscheduled: dict[str, cp_model.IntVar],
     solver: cp_model.CpSolver,
     fixed_list: list[FixedAssignment],
+    data: ProblemData,
 ) -> SolveResponse:
     assignments: list[EngineAssignment] = []
 
@@ -1084,6 +1305,12 @@ def _extract_solution(
             continue
         start_idx = solver.Value(bv.start_idx)
         slices = bv.block.week_tl.to_daily_slices(start_idx, assigned_q)
+        group = data.wo_collapse.get(bv.block.task_id)
+        if group is not None:
+            assignments.extend(
+                expand_collapsed_assignments(group, slices, bv.block.person_id)
+            )
+            continue
         for sl in slices:
             assignments.append(
                 EngineAssignment(
@@ -1102,14 +1329,27 @@ def _extract_solution(
     total_unscheduled_q = 0
     for task_id, u_var in unscheduled.items():
         uq = solver.Value(u_var)
-        if uq > 0:
-            total_unscheduled_q += uq
-            warnings.append(
-                EngineWarning(
-                    taskId=task_id,
-                    reason=f"Quedan {uq / QUARTERS_PER_HOUR:.2f}h sin asignar",
+        if uq <= 0:
+            continue
+        total_unscheduled_q += uq
+        group = data.wo_collapse.get(task_id)
+        if group is not None:
+            for member_id, hours in expand_unscheduled_warning(
+                group, uq / QUARTERS_PER_HOUR
+            ):
+                warnings.append(
+                    EngineWarning(
+                        taskId=member_id,
+                        reason=f"Quedan {hours:.2f}h sin asignar",
+                    )
                 )
+            continue
+        warnings.append(
+            EngineWarning(
+                taskId=task_id,
+                reason=f"Quedan {uq / QUARTERS_PER_HOUR:.2f}h sin asignar",
             )
+        )
 
     seen = {(a.taskId, a.personId, a.date, a.startSlot) for a in assignments}
     for fixed in fixed_list:
@@ -1131,6 +1371,7 @@ def _infeasible_response(
     status: int,
     solver: cp_model.CpSolver,
     max_solve_seconds: int,
+    wo_collapse: dict[str, WoCollapseGroup] | None = None,
 ) -> SolveResponse:
     status_name = solver.StatusName(status)
     logger.warning("solver status=%s tasks=%d", status_name, len(tasks))
@@ -1145,9 +1386,13 @@ def _infeasible_response(
             f"(presupuesto {max_solve_seconds}s, estado {status_name}). "
             "Regenera el planning o aumenta SOLVER_MAX_SECONDS."
         )
+    first_task_id = display_task_id(
+        tasks[0].id,
+        wo_collapse or {},
+    )
     return SolveResponse(
         assignments=[],
-        warnings=[EngineWarning(taskId=tasks[0].id, reason=reason)],
+        warnings=[EngineWarning(taskId=first_task_id, reason=reason)],
         unscheduledHours=sum(t.pendingHours for t in tasks),
     )
 
@@ -1213,11 +1458,12 @@ def solve_week(
     status_name = solver.StatusName(status)
 
     logger.info(
-        "solver metrics: taskCount=%d blockCount=%d placementRows=%d "
+        "solver metrics: taskCount=%d blockCount=%d placementRows=%d woCollapsed=%d "
         "prepareMs=%d modelBuildMs=%d solveMs=%d totalMs=%d status=%s",
         len(data.tasks),
         block_count,
         placement_rows_total,
+        len(data.wo_collapse),
         prepare_ms,
         model_build_ms,
         solve_ms,
@@ -1227,10 +1473,12 @@ def solve_week(
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return _infeasible_response(
-            data.tasks, status, solver, config.max_solve_seconds
+            data.tasks, status, solver, config.max_solve_seconds, data.wo_collapse
         )
 
-    response = _extract_solution(mv, unscheduled, solver, request.fixedAssignments)
+    response = _extract_solution(
+        mv, unscheduled, solver, request.fixedAssignments, data
+    )
     if response.unscheduledHours > 0:
         unscheduled_by_task = {
             task_id: solver.Value(u_var) / QUARTERS_PER_HOUR

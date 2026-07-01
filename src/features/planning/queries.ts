@@ -110,6 +110,7 @@ export async function getPlanningForWeek({
             project: true,
             lamp: { include: { elementType: { select: { name: true } } } },
             lampElement: { include: { elementType: { select: { name: true } } } },
+            workOrder: { select: { number: true, status: true } },
           },
         },
       },
@@ -186,6 +187,7 @@ export interface PlanningWeekAssignmentInput {
     lamp: PlanningAssignmentSlice["task"]["lamp"];
     lampElement?: PlanningAssignmentSlice["task"]["lampElement"];
     project: { name: string };
+    workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   };
 }
 
@@ -217,6 +219,7 @@ export function toPlanningAssignmentSlices(
       lamp: a.task.lamp,
       lampElement: a.task.lampElement,
       project: { name: a.task.project.name },
+      workOrder: a.task.workOrder ?? null,
     },
   }));
 }
@@ -336,6 +339,7 @@ export interface ActualHourEntry {
     isCompleted: boolean;
     lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
     lamp?: { elementType?: { name: string } | null } | null;
+    workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   } | null;
   project: { id: string; name: string } | null;
   lamp: { id: string; name: string } | null;
@@ -385,6 +389,7 @@ export async function getActualHoursForWeek({
             select: { label: true, elementType: { select: { name: true } } },
           },
           lamp: { select: { elementType: { select: { name: true } } } },
+          workOrder: { select: { number: true, status: true } },
         },
       },
     },
@@ -424,6 +429,7 @@ export async function getActualHoursForWeek({
           isCompleted: e.task.isCompleted,
           lampElement: e.task.lampElement,
           lamp: e.task.lamp,
+          workOrder: e.task.workOrder,
         }
       : null,
     project: e.project,
@@ -612,6 +618,7 @@ export async function getGanttPlanningAssignments(
               elementType: { select: { name: true } },
             },
           },
+          workOrder: { select: { number: true, status: true } },
         },
       },
     },
@@ -691,6 +698,7 @@ export async function getGanttActualAssignments(
               elementType: { select: { name: true } },
             },
           },
+          workOrder: { select: { number: true, status: true } },
         },
       },
     },
@@ -768,6 +776,7 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
               elementType: { select: { name: true } },
             },
           },
+          workOrder: { select: { number: true, status: true } },
         },
         orderBy: [{ order: "asc" }, { process: "asc" }],
       },
@@ -1721,6 +1730,7 @@ export async function getActualHoursForDateRange({
             select: { label: true, elementType: { select: { name: true } } },
           },
           lamp: { select: { elementType: { select: { name: true } } } },
+          workOrder: { select: { number: true, status: true } },
         },
       },
     },
@@ -1767,6 +1777,7 @@ export async function getActualHoursForDateRange({
             isCompleted: e.task.isCompleted,
             lampElement: e.task.lampElement,
             lamp: e.task.lamp,
+            workOrder: e.task.workOrder,
           }
         : null,
       project: e.project,

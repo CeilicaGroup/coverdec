@@ -14,13 +14,17 @@ import {
 } from "@/generated/prisma";
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
 import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
+import { assertSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
+import { assertPlanningAssignmentsWorkOrderWorkers } from "@/features/work-orders/validate-planning-assignments";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
 import { emitNotificationTx } from "@/features/notifications/service";
 import {
   assertSingleWorkerPerTask,
+  assertSingleWorkerPerWorkOrder,
   findTasksWithMultipleWorkers,
 } from "@/features/planning/validate-assignments";
+import { buildWorkOrderIdByTaskId } from "@/features/work-orders/planning";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
@@ -99,6 +103,10 @@ export async function generatePlanning(
     priorWeekAssignments,
   });
 
+  await assertSchedulableTasksHaveOpenWorkOrder(
+    engineInput.tasks.map((task) => task.id),
+  );
+
   if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
     throw new Error(
       "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige una fecha anterior o navega a otra semana.",
@@ -157,6 +165,15 @@ export async function generatePlanning(
     );
   }
   assertSingleWorkerPerTask(result.assignments);
+
+  const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
+    engineInput.tasks.map((t) => ({ id: t.id, workOrderId: t.workOrderId })),
+  );
+  assertSingleWorkerPerWorkOrder(
+    result.assignments,
+    workOrderIdByTaskId,
+    engineInput.workOrderNumberById,
+  );
 
   const totalUnplaced = result.unscheduledHours + deferredHours;
   if (
@@ -252,6 +269,8 @@ export async function generatePlanning(
 
 export async function publishPlanning(planningId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    await assertPlanningAssignmentsWorkOrderWorkers(tx, planningId);
+
     const planning = await tx.planning.update({
       where: { id: planningId },
       data: { status: PlanningStatus.PUBLISHED, publishedAt: new Date() },

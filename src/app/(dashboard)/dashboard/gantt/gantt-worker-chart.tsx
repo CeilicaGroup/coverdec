@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { PersonAvatar } from "@/components/person-avatar";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { ProcessBadge } from "@/components/process-badge";
+import { WorkOrderBadge } from "@/components/work-order-badge";
+import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { GanttTimelineBlock } from "@/features/planning/gantt-data";
 import { toPlanningDayIso } from "@/features/planning/gantt-data";
@@ -39,6 +41,8 @@ export interface GanttWorkerTaskRow {
   estimatedEnd: string | null;
   isAssigned: boolean;
   timelineBlocks: GanttTimelineBlock[];
+  workOrderNumber: string | null;
+  workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
 }
 
 export interface GanttWorkerRow {
@@ -258,10 +262,21 @@ export function GanttWorkerChart({
                   const processStyle = processStyles[task.process];
                   const barColor = processStyle?.borderColor ?? "#6B7280";
                   return (
-                    <div key={task.id} className="grid border-t items-center min-h-[36px] bg-muted/25" style={{ gridTemplateColumns: gridCols(axis.length) }}>
+                    <div
+                      key={task.id}
+                      {...withWorkOrderHighlight(
+                        task.workOrderNumber,
+                        "grid border-t items-center min-h-[36px] bg-muted/25",
+                      )}
+                      style={{ gridTemplateColumns: gridCols(axis.length) }}
+                    >
                       <div className="p-2 pl-10 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <ProcessBadge code={task.process} definition={processStyle} />
+                          <WorkOrderBadge
+                            number={task.workOrderNumber}
+                            status={task.workOrderStatus ?? undefined}
+                          />
                           <span className="text-[10px] text-muted-foreground truncate">{task.label}</span>
                         </div>
                         <Tooltip>

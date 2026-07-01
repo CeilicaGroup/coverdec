@@ -94,6 +94,11 @@ enum ProjectKind {
   PRESUPUESTO
 }
 
+enum WorkOrderStatus {
+  OPEN
+  CLOSED
+}
+
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
@@ -423,6 +428,22 @@ model LampElement {
   @@index([elementTypeId])
 }
 
+model WorkOrder {
+  id        String          @id @default(cuid())
+  number    String          @unique
+  year      Int
+  serial    Int
+  status    WorkOrderStatus @default(OPEN)
+  notes     String?
+  closedAt  DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  tasks Task[]
+
+  @@unique([year, serial])
+}
+
 model Task {
   id             String   @id @default(cuid())
   projectId      String
@@ -434,6 +455,8 @@ model Task {
   order          Int      @default(0)
   naveId         String
   notes          String?
+  workOrderId       String?
+  workOrderSequence Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -442,10 +465,12 @@ model Task {
   lampElement       LampElement?         @relation(fields: [lampElementId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition    @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
   nave              Nave                 @relation(fields: [naveId], references: [id])
+  workOrder         WorkOrder?           @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
 
   @@index([lampElementId])
+  @@index([workOrderId, workOrderSequence])
 }
 
 // ---------- Planning ----------

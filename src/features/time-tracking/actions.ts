@@ -17,6 +17,10 @@ import {
 import { computeTaskHourTotals } from "@/features/time-tracking/task-hours-derived";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
+import {
+  closeWorkOrderIfAllTasksComplete,
+  reopenWorkOrderIfClosed,
+} from "@/features/work-orders/close";
 
 const log = childLogger({ module: "time-tracking.actions" });
 function revalidateHorasAndLoad() {
@@ -27,6 +31,7 @@ function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/proyecto");
   revalidatePath("/dashboard/gantt");
   revalidatePath("/dashboard/desviaciones-tiempos");
+  revalidatePath("/dashboard/admin/ordenes-trabajo");
 }
 
 function assertCanEditEntry(ctx: Awaited<ReturnType<typeof requireDashboardContext>>, entryUserId: string) {
@@ -171,7 +176,7 @@ export async function completeTask(
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, isCompleted: true },
+      select: { id: true, isCompleted: true, workOrderId: true },
     });
     if (!task) throw new Error("Tarea no encontrada.");
     if (task.isCompleted) return;
@@ -181,6 +186,9 @@ export async function completeTask(
         isCompleted: true,
       },
     });
+    if (task.workOrderId) {
+      await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
+    }
   });
 
   log.info({ userId: ctx.userId, taskId: data.taskId }, "task completed");
@@ -202,9 +210,19 @@ export async function uncompleteTask(
   const ctx = await requireDashboardContext();
   const data = completeTaskSchema.parse(input);
   await assertTaskAccessible(ctx, data.taskId);
-  await prisma.task.update({
-    where: { id: data.taskId },
-    data: { isCompleted: false },
+  await prisma.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: { id: data.taskId },
+      select: { workOrderId: true },
+    });
+    if (!task) throw new Error("Tarea no encontrada.");
+    await tx.task.update({
+      where: { id: data.taskId },
+      data: { isCompleted: false },
+    });
+    if (task.workOrderId) {
+      await reopenWorkOrderIfClosed(tx, task.workOrderId);
+    }
   });
   log.info({ userId: ctx.userId, taskId: data.taskId }, "task uncompleted");
   revalidateHorasAndLoad();

@@ -49,6 +49,12 @@ import {
   effectivePendingHours,
   isTaskClosedForPlanning,
 } from "./task-planning-status";
+import {
+  openWorkOrderFields,
+  propagateWorkOrderOwnerByTaskId,
+  assertConsistentWorkOrderOwners,
+  buildWorkOrderIdByTaskId,
+} from "@/features/work-orders/planning";
 
 export { effectivePendingHours } from "./task-planning-status";
 
@@ -125,12 +131,12 @@ function buildOwnerFromCurrentWeekAssignments(
   weekStart: Date,
   firstSchedulableDayIndex: number,
 ): Map<string, string> {
-  const { beforeAnchor } = partitionAssignmentsByPlanFrom(
+  const { beforeAnchor, fromAnchor } = partitionAssignmentsByPlanFrom(
     assignments,
     weekStart,
     firstSchedulableDayIndex,
   );
-  return buildOwnerPersonIdByTaskId(beforeAnchor);
+  return buildOwnerPersonIdByTaskId([...beforeAnchor, ...fromAnchor]);
 }
 
 /** Fija asignaciones de tareas cerradas y de días anteriores al ancla al regenerar. */
@@ -257,6 +263,10 @@ export function buildFixedAssignmentsFromPrevious(
   return fixed;
 }
 
+export interface LoadedSolverInput extends SolverInput {
+  workOrderNumberById: Map<string, string>;
+}
+
 export async function loadSolverInput(args: {
   naveId: string;
   weekStart: Date;
@@ -338,6 +348,7 @@ export async function loadSolverInput(args: {
             planningDeadlineBoost: true,
           },
         },
+        workOrder: { select: { id: true, status: true, number: true } },
       },
     }),
     prisma.timeEntry.findMany({
@@ -407,11 +418,16 @@ export async function loadSolverInput(args: {
     weekStart,
     firstSchedulableDayIndex,
   );
-  const ownerPersonIdByTask = resolveOwnerPersonIdByTaskId(
+  const resolvedOwners = resolveOwnerPersonIdByTaskId(
     taskIds,
     primaryWorkerByTask,
     priorOwnerByTask,
     currentWeekOwnerByTask,
+  );
+  assertConsistentWorkOrderOwners(tasksRaw, resolvedOwners);
+  const ownerPersonIdByTask = propagateWorkOrderOwnerByTaskId(
+    tasksRaw,
+    resolvedOwners,
   );
   const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
     args.priorWeekAssignments ?? [],
@@ -511,6 +527,7 @@ export async function loadSolverInput(args: {
       pendingHours: pending,
       canFragment: processCanFragment.get(t.process) ?? true,
       ownerPersonId: ownerPersonIdByTask.get(t.id) ?? null,
+      ...openWorkOrderFields(t),
       };
     });
 
@@ -723,7 +740,14 @@ export async function loadSolverInput(args: {
     );
   }
 
-  return input;
+  const workOrderNumberById = new Map<string, string>();
+  for (const task of tasksRaw) {
+    if (task.workOrderId && task.workOrder?.number) {
+      workOrderNumberById.set(task.workOrderId, task.workOrder.number);
+    }
+  }
+
+  return { ...input, workOrderNumberById };
 }
 
 export type { PlanningWeights };
