@@ -19,6 +19,7 @@ import { assertPlanningAssignmentsWorkOrderWorkers } from "@/features/work-order
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
 import { emitNotificationTx } from "@/features/notifications/service";
+import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import {
   assertSingleWorkerPerTask,
   assertSingleWorkerPerWorkOrder,
@@ -290,6 +291,25 @@ export async function publishPlanning(planningId: string): Promise<void> {
   });
 }
 
+export async function publishAllPlanningsForWeek(
+  weekStart: Date,
+): Promise<{ publishedCount: number }> {
+  const monday = getMondayOf(weekStart);
+  const { year, week } = isoWeek(monday);
+  const drafts = await prisma.planning.findMany({
+    where: { year, week, status: PlanningStatus.DRAFT },
+    select: { id: true },
+    orderBy: { naveId: "asc" },
+  });
+
+  for (const draft of drafts) {
+    await publishPlanning(draft.id);
+  }
+
+  log.info({ year, week, publishedCount: drafts.length }, "all plannings published for week");
+  return { publishedCount: drafts.length };
+}
+
 export async function hasFuturePlannings(
   naveId: string,
   weekStart: Date,
@@ -376,9 +396,41 @@ export async function undoPlanning(args: {
   return { deletedCount };
 }
 
+export async function undoPlanningAllNaves(args: {
+  weekStart: Date;
+  includeFutureWeeks?: boolean;
+}): Promise<{ deletedCount: number }> {
+  const naveIds = await loadActiveNaveIdsOrdered();
+  let deletedCount = 0;
+
+  for (const naveId of naveIds) {
+    try {
+      const result = await undoPlanning({
+        naveId,
+        weekStart: args.weekStart,
+        includeFutureWeeks: args.includeFutureWeeks,
+      });
+      deletedCount += result.deletedCount;
+    } catch (err) {
+      if (err instanceof Error && err.message === "No hay planning para esta semana.") {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (deletedCount === 0) {
+    throw new Error("No hay planning para esta semana.");
+  }
+
+  return { deletedCount };
+}
+
 export {
   clearFutureDraftPlannings,
   hasPublishedFuturePlannings,
+  clearFutureDraftPlanningsAll,
+  hasPublishedFuturePlanningsAll,
 } from "@/features/planning/planning-horizon";
 
 export { getMondayOf, isoWeek };

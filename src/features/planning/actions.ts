@@ -2,31 +2,30 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { runAuditedMutation } from "@/lib/server-action";
 import { getMondayOf, isoWeek } from "@/lib/week";
+import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import {
-  generatePlanning,
-  hasRegistrosFromWeek,
+  publishAllPlanningsForWeek,
+  undoPlanningAllNaves,
   listFuturePlannings,
-  publishPlanning,
-  undoPlanning,
 } from "@/features/planning/service";
+import { generatePlanningAllNaves } from "@/features/planning/planning-all-naves";
 import {
   addWeeks,
-  clearFutureDraftPlannings,
-  countPendingPlanningHours,
-  hasPublishedFuturePlannings,
+  clearFutureDraftPlanningsAll,
+  countPendingPlanningHoursAll,
+  hasPublishedFuturePlanningsAll,
   isMultiWeekMode,
   relevantPendingHours,
   shouldContinueHorizon,
 } from "@/features/planning/planning-horizon";
 import { planningHorizonModeSchema } from "@/features/planning/planning-horizon-schema";
-import {
-  assertPlanFromDateInWorkWeek,
-} from "@/features/planning/plan-from";
-import { Role } from "@/generated/prisma";
+import { assertPlanFromDateInWorkWeek } from "@/features/planning/plan-from";
+import { hasRegistrosFromWeekAll } from "@/features/planning/planning-registros";
+import { prisma } from "@/lib/db";
+import { Role, PlanningStatus } from "@/generated/prisma";
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -46,7 +45,11 @@ export async function generatePlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+      if (ctx.naveId) {
+        throw new Error(
+          "El planning se genera para todas las naves. Quita el filtro de nave.",
+        );
+      }
       const { weekStart, horizonMode, planFromDate } = generateSchema.parse(input);
 
       const planFrom =
@@ -58,8 +61,7 @@ export async function generatePlanningAction(input: {
         assertPlanFromDateInWorkWeek(weekStart, planFromDate!);
       }
 
-      const result = await generatePlanning({
-        naveId: ctx.naveId,
+      const result = await generatePlanningAllNaves({
         weekStart: new Date(weekStart),
         replaceDraft: true,
         planFrom,
@@ -69,16 +71,22 @@ export async function generatePlanningAction(input: {
             : new Date(),
       });
       revalidatePath("/dashboard", "layout");
-      return result;
+      return {
+        planningId: result.planningIds[0] ?? "",
+        warnings: result.warnings,
+        unscheduledHours: result.unscheduledHours,
+        assignmentsCount: result.assignmentsCount,
+      };
     },
     (result) => ({
-      summary: `Generar planning semana ${input.weekStart}`,
+      summary: `Generar planning global semana ${input.weekStart}`,
       entityType: "Planning",
       entityId: result.planningId,
       metadata: {
         weekStart: input.weekStart,
         horizonMode: input.horizonMode,
         planFromDate: input.planFromDate,
+        global: true,
       },
     }),
   );
@@ -93,25 +101,30 @@ export async function prepareHorizonGenerationAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
+      if (ctx.naveId) {
+        throw new Error(
+          "El planning se genera para todas las naves. Quita el filtro de nave.",
+        );
+      }
 
+      const naveIds = await loadActiveNaveIdsOrdered();
       const { weekStart, horizonMode } = generateSchema.parse(input);
       const anchor = getMondayOf(new Date(weekStart));
 
       if (isMultiWeekMode(horizonMode)) {
-        if (await hasPublishedFuturePlannings(ctx.naveId, anchor)) {
+        if (await hasPublishedFuturePlanningsAll(naveIds, anchor)) {
           throw new Error(
             "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
           );
         }
-        await clearFutureDraftPlannings(ctx.naveId, anchor);
+        await clearFutureDraftPlanningsAll(naveIds, anchor);
       }
 
       revalidatePath("/dashboard", "layout");
       return { ok: true as const };
     },
     {
-      summary: `Preparar horizonte de planning desde ${input.weekStart}`,
+      summary: `Preparar horizonte de planning global desde ${input.weekStart}`,
       metadata: input,
     },
   );
@@ -125,15 +138,8 @@ export async function getPlanningHorizonProgressAction(input: {
   projectPendingBeforeHours: number;
   lastWeekOutstandingHours?: number;
 }) {
-  const ctx = await requireDashboardContext();
-  if (!ctx.naveId) {
-    return {
-      totalPendingHours: 0,
-      projectPendingHours: 0,
-      shouldContinue: false,
-      stallReason: undefined as string | undefined,
-    };
-  }
+  await requireDashboardContext();
+  const naveIds = await loadActiveNaveIdsOrdered();
 
   const parsed = generateSchema.parse({
     weekStart: input.weekStart,
@@ -143,8 +149,8 @@ export async function getPlanningHorizonProgressAction(input: {
   const projectId =
     parsed.horizonMode.kind === "PROJECT" ? parsed.horizonMode.projectId : undefined;
 
-  const snapshot = await countPendingPlanningHours({
-    naveId: ctx.naveId,
+  const snapshot = await countPendingPlanningHoursAll({
+    naveIds,
     beforeWeekStart: addWeeks(anchor, input.weeksGenerated),
     projectId,
   });
@@ -178,30 +184,30 @@ export async function getPlanningHorizonProgressAction(input: {
   };
 }
 
-const publishSchema = z.object({ planningId: z.string().min(1) });
+const publishSchema = z.object({ weekStart: z.string().min(8) });
 
-export async function publishPlanningAction(input: { planningId: string }) {
+export async function publishPlanningAction(input: { weekStart: string }) {
   return runAuditedMutation(
     "planning.publishPlanning",
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
-      const { planningId } = publishSchema.parse(input);
-      const planning = await prisma.planning.findUnique({
-        where: { id: planningId },
-        select: { naveId: true },
-      });
-      if (!planning || planning.naveId !== ctx.naveId) throw new Error("No autorizado");
-      await publishPlanning(planningId);
+      const { weekStart } = publishSchema.parse(input);
+      const result = await publishAllPlanningsForWeek(new Date(weekStart));
+      if (result.publishedCount === 0) {
+        throw new Error("No hay plannings en borrador para publicar esta semana.");
+      }
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const };
+      return { ok: true as const, publishedCount: result.publishedCount };
     },
-    {
-      summary: "Publicar planning",
+    (result) => ({
+      summary: `Publicar planning global semana ${input.weekStart}`,
       entityType: "Planning",
-      entityId: input.planningId,
-    },
+      metadata: {
+        weekStart: input.weekStart,
+        publishedCount: result.publishedCount,
+      },
+    }),
   );
 }
 
@@ -219,10 +225,8 @@ export async function undoPlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de planificar");
       const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
-      const result = await undoPlanning({
-        naveId: ctx.naveId,
+      const result = await undoPlanningAllNaves({
         weekStart: new Date(weekStart),
         includeFutureWeeks,
       });
@@ -230,7 +234,7 @@ export async function undoPlanningAction(input: {
       return result;
     },
     {
-      summary: `Deshacer planning semana ${input.weekStart}`,
+      summary: `Deshacer planning global semana ${input.weekStart}`,
       metadata: input,
     },
   );
@@ -243,27 +247,21 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
   hasPublishedFuture: boolean;
   hasRegistros: boolean;
   isPublished: boolean;
+  hasPlanning: boolean;
+  anyDraft: boolean;
 }> {
-  const ctx = await requireDashboardContext();
-  if (!ctx.naveId) {
-    return {
-      canUndo: false,
-      hasFuturePlannings: false,
-      futurePlanningWeeks: [],
-      hasPublishedFuture: false,
-      hasRegistros: false,
-      isPublished: false,
-    };
-  }
+  await requireDashboardContext();
   const weekStart = getMondayOf(new Date(weekStartIso));
+  const naveIds = await loadActiveNaveIdsOrdered();
   const { year, week } = isoWeek(weekStart);
 
-  const planning = await prisma.planning.findUnique({
-    where: {
-      naveId_year_week: { naveId: ctx.naveId, year, week },
-    },
+  const plannings = await prisma.planning.findMany({
+    where: { year, week, naveId: { in: naveIds } },
+    select: { id: true, status: true },
   });
-  if (!planning) {
+
+  const hasPlanning = plannings.length > 0;
+  if (!hasPlanning) {
     return {
       canUndo: false,
       hasFuturePlannings: false,
@@ -271,19 +269,32 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
       hasPublishedFuture: false,
       hasRegistros: false,
       isPublished: false,
+      hasPlanning: false,
+      anyDraft: false,
     };
   }
 
-  const [futurePlannings, registros] = await Promise.all([
-    listFuturePlannings(ctx.naveId, weekStart),
-    hasRegistrosFromWeek(ctx.naveId, weekStart),
-  ]);
+  const futureByNave = await Promise.all(
+    naveIds.map((naveId) => listFuturePlannings(naveId, weekStart)),
+  );
+  const futurePlannings = futureByNave.flat();
+  const futureWeekSet = new Set(
+    futurePlannings.map((p) => p.weekStart.toISOString()),
+  );
+  const futurePlanningWeeks = [...futureWeekSet].sort();
+
+  const hasRegistros = await hasRegistrosFromWeekAll(naveIds, weekStart);
+
   return {
-    canUndo: !registros,
+    canUndo: !hasRegistros,
     hasFuturePlannings: futurePlannings.length > 0,
-    futurePlanningWeeks: futurePlannings.map((p) => p.weekStart.toISOString()),
-    hasPublishedFuture: futurePlannings.some((p) => p.status === "PUBLISHED"),
-    hasRegistros: registros,
-    isPublished: planning.status === "PUBLISHED",
+    futurePlanningWeeks,
+    hasPublishedFuture: futurePlannings.some(
+      (p) => p.status === PlanningStatus.PUBLISHED,
+    ),
+    hasRegistros,
+    isPublished: plannings.every((p) => p.status === PlanningStatus.PUBLISHED),
+    hasPlanning: true,
+    anyDraft: plannings.some((p) => p.status === PlanningStatus.DRAFT),
   };
 }

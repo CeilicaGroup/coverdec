@@ -59,7 +59,7 @@ type FormState = {
   email: string;
   password: string;
   role: string;
-  naveIds: string[];
+  naveId: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -67,7 +67,7 @@ const emptyForm = (): FormState => ({
   email: "",
   password: "",
   role: "OPERARIO",
-  naveIds: [],
+  naveId: "",
 });
 
 export function UsuariosAdminClient({
@@ -97,7 +97,7 @@ export function UsuariosAdminClient({
       email: u.email,
       password: "",
       role: u.role,
-      naveIds: u.person?.personNaves.map((pn) => pn.nave.id) ?? [],
+      naveId: u.person?.personNaves[0]?.nave.id ?? "",
     });
     setEditUserId(u.id);
     setDialogMode("edit");
@@ -107,13 +107,17 @@ export function UsuariosAdminClient({
     e.preventDefault();
     startTransition(async () => {
       try {
+        if (form.role === "OPERARIO" && !form.naveId) {
+          toast.error("Selecciona una nave para el operario");
+          return;
+        }
         if (dialogMode === "create") {
           const result = await createUser({
             name: form.name,
             email: form.email,
             password: form.password,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            naveIds: form.naveIds,
+            naveIds: form.naveId ? [form.naveId] : undefined,
           });
           if (!result.ok) {
             toast.error(result.error);
@@ -127,7 +131,7 @@ export function UsuariosAdminClient({
             email: form.email,
             password: form.password.trim().length > 0 ? form.password : undefined,
             role: form.role as "ADMIN" | "JEFE_PRODUCCION" | "OPERARIO",
-            naveIds: form.naveIds,
+            naveIds: form.naveId ? [form.naveId] : undefined,
           });
           if (!result.ok) {
             toast.error(result.error);
@@ -163,11 +167,11 @@ export function UsuariosAdminClient({
                 <div className="text-xs text-muted-foreground truncate">{u.email}</div>
                 <div className="flex flex-wrap gap-1 mt-1">
                   <Badge variant="outline" className="text-[10px] font-mono">{u.role}</Badge>
-                  {u.person?.personNaves.map((pn) => (
-                    <Badge key={pn.nave.id} variant="secondary" className="text-[10px]">
-                      {pn.nave.codigo}
+                  {u.person?.personNaves[0] ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {u.person.personNaves[0].nave.codigo}
                     </Badge>
-                  ))}
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -252,28 +256,21 @@ export function UsuariosAdminClient({
             </div>
             {naves.length > 0 && form.role === "OPERARIO" && (
               <div className="space-y-2">
-                <Label>Naves</Label>
+                <Label>Nave</Label>
                 <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
-                  {naves.map((n) => {
-                    const checked = form.naveIds.includes(n.id);
-                    return (
-                      <label key={n.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              naveIds: e.target.checked
-                                ? [...f.naveIds, n.id]
-                                : f.naveIds.filter((id) => id !== n.id),
-                            }))
-                          }
-                        />
-                        {n.codigo} · {n.nombre}
-                      </label>
-                    );
-                  })}
+                  {naves.map((n) => (
+                    <label key={n.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="user-nave"
+                        checked={form.naveId === n.id}
+                        onChange={() =>
+                          setForm((f) => ({ ...f, naveId: n.id }))
+                        }
+                      />
+                      {n.codigo} · {n.nombre}
+                    </label>
+                  ))}
                 </div>
               </div>
             )}

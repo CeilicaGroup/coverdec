@@ -232,3 +232,61 @@ export async function countPendingPlanningHours(args: {
 
   return { totalPendingHours, projectPendingHours };
 }
+
+export async function hasPublishedFuturePlanningsAll(
+  naveIds: string[],
+  fromWeekStart: Date,
+): Promise<boolean> {
+  if (naveIds.length === 0) return false;
+  const monday = getMondayOf(fromWeekStart);
+  const count = await prisma.planning.count({
+    where: {
+      naveId: { in: naveIds },
+      weekStart: { gt: monday },
+      status: PlanningStatus.PUBLISHED,
+    },
+  });
+  return count > 0;
+}
+
+export async function clearFutureDraftPlanningsAll(
+  naveIds: string[],
+  fromWeekStart: Date,
+): Promise<number> {
+  if (naveIds.length === 0) return 0;
+  const monday = getMondayOf(fromWeekStart);
+  const result = await prisma.planning.deleteMany({
+    where: {
+      naveId: { in: naveIds },
+      weekStart: { gt: monday },
+      status: PlanningStatus.DRAFT,
+    },
+  });
+  return result.count;
+}
+
+export async function countPendingPlanningHoursAll(args: {
+  naveIds: string[];
+  beforeWeekStart: Date;
+  projectId?: string;
+}): Promise<PendingPlanningSnapshot> {
+  let totalPendingHours = 0;
+  const projectPendingHours = new Map<string, number>();
+
+  for (const naveId of args.naveIds) {
+    const snapshot = await countPendingPlanningHours({
+      naveId,
+      beforeWeekStart: args.beforeWeekStart,
+      projectId: args.projectId,
+    });
+    totalPendingHours += snapshot.totalPendingHours;
+    for (const [projectId, hours] of snapshot.projectPendingHours) {
+      projectPendingHours.set(
+        projectId,
+        (projectPendingHours.get(projectId) ?? 0) + hours,
+      );
+    }
+  }
+
+  return { totalPendingHours, projectPendingHours };
+}

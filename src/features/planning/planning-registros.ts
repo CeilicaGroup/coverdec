@@ -18,3 +18,22 @@ export async function hasRegistrosFromWeek(
   });
   return count > 0;
 }
+
+/** Hay registros de horas desde el lunes de esta semana (personas de cualquiera de las naves). */
+export async function hasRegistrosFromWeekAll(
+  naveIds: string[],
+  weekStart: Date,
+): Promise<boolean> {
+  if (naveIds.length === 0) return false;
+  const monday = getMondayOf(weekStart);
+  const count = await prisma.timeEntry.count({
+    where: {
+      startedAt: { gte: monday },
+      user: {
+        personId: { not: null },
+        person: { personNaves: { some: { naveId: { in: naveIds } } } },
+      },
+    },
+  });
+  return count > 0;
+}

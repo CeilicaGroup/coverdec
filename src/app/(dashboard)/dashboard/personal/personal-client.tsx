@@ -132,7 +132,7 @@ export function PersonalTeamClient({
   const [overtimeHourlyRate, setOvertimeHourlyRate] = useState("22.13");
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
-  const [naveIds, setNaveIds] = useState<string[]>([]);
+  const [naveId, setNaveId] = useState("");
   const [userId, setUserId] = useState<string>("none");
   const [specMap, setSpecMap] = useState<Record<string, SpecMode>>(() =>
     emptySpecMap(editableProcessDefs),
@@ -158,7 +158,7 @@ export function PersonalTeamClient({
     setOvertimeHourlyRate("22.13");
     setNotes("");
     setIsActive(true);
-    setNaveIds([]);
+    setNaveId(naves[0]?.id ?? "");
     setUserId("none");
     setSpecMap(emptySpecMap(editableProcessDefs));
     setOpen(true);
@@ -172,7 +172,7 @@ export function PersonalTeamClient({
     setOvertimeHourlyRate(String(p.overtimeHourlyRate));
     setNotes(p.notes ?? "");
     setIsActive(p.isActive);
-    setNaveIds(p.naveIds);
+    setNaveId(p.naveIds[0] ?? "");
     const linked = users.find((u) => u.personId === p.id);
     setUserId(linked?.id ?? "none");
     const next = emptySpecMap(editableProcessDefs);
@@ -196,8 +196,8 @@ export function PersonalTeamClient({
           toast.error("Tarifas horarias inválidas");
           return;
         }
-        if (naveIds.length === 0) {
-          toast.error("Selecciona al menos una nave");
+        if (!naveId) {
+          toast.error("Selecciona una nave");
           return;
         }
         if (!userId || userId === "none") {
@@ -223,7 +223,7 @@ export function PersonalTeamClient({
           overtimeHourlyRate: otRate,
           notes: notes.trim() || undefined,
           isActive,
-          naveIds,
+          naveIds: [naveId],
           userId,
           specialties,
         });
@@ -333,14 +333,15 @@ export function PersonalTeamClient({
               </CardHeader>
               <CardContent className="space-y-3 py-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                  {p.naveIds.map((personNaveId) => {
-                    const n = naves.find((x) => x.id === personNaveId);
+                  {(() => {
+                    const personNaveId = p.naveIds[0];
+                    const n = personNaveId ? naves.find((x) => x.id === personNaveId) : null;
                     return n ? (
-                      <Badge key={n.id} variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-[10px]">
                         {n.codigo} · {n.nombre}
                       </Badge>
                     ) : null;
-                  })}
+                  })()}
                   {(() => {
                     const linkedUser = users.find((u) => u.personId === p.id);
                     return linkedUser ? (
@@ -445,27 +446,19 @@ export function PersonalTeamClient({
             </div>
             {naves.length > 0 && (
               <div className="space-y-2">
-                <Label>Naves</Label>
+                <Label>Nave</Label>
                 <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
-                  {naves.map((n) => {
-                    const checked = naveIds.includes(n.id);
-                    return (
-                      <label key={n.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) =>
-                            setNaveIds((prev) =>
-                              e.target.checked
-                                ? [...prev, n.id]
-                                : prev.filter((id) => id !== n.id),
-                            )
-                          }
-                        />
-                        {n.codigo} · {n.nombre}
-                      </label>
-                    );
-                  })}
+                  {naves.map((n) => (
+                    <label key={n.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="person-nave"
+                        checked={naveId === n.id}
+                        onChange={() => setNaveId(n.id)}
+                      />
+                      {n.codigo} · {n.nombre}
+                    </label>
+                  ))}
                 </div>
               </div>
             )}

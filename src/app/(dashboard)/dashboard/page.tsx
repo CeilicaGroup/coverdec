@@ -6,13 +6,6 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
@@ -38,6 +31,7 @@ import {
   getHolidaysForRange,
   getPlanningForWeek,
   getPlanningWeekMeta,
+  getPlanningWeekMetaAll,
   getPlanningDeadlineSettings,
   getPlanningWeights,
   getProcessBadgeStylesByCode,
@@ -97,10 +91,11 @@ export default async function ResumenPage({
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
-  const [planning, planningMeta, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments, timeDeviations] =
+  const [planning, planningMeta, weekMetaAll, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments, timeDeviations] =
     await Promise.all([
     getPlanningForWeek({ naveScope, weekStart, viewMode }),
     getPlanningWeekMeta({ naveScope, weekStart }),
+    getPlanningWeekMetaAll({ weekStart }),
     getNavePersonnel(naveScope),
     getActiveProjectsWithLoad(naveScope),
     getHolidaysForRange(days[0], days[4]),
@@ -190,42 +185,35 @@ export default async function ResumenPage({
               weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
             />
             {ctx.naveId ? (
-              <>
-                <PlanningWeightsPopover
-                  initialWeights={planningWeights}
-                  initialDeadlineSettings={deadlineSettings}
-                  role={ctx.role}
-                />
-                <GenerateButton
-                  weekStart={getMondayOf(weekStart).toISOString()}
-                  planningId={planning?.id ?? planningMeta?.id ?? null}
-                  planningStatus={planning?.status ?? planningMeta?.status ?? null}
-                  canUndo={undoState.canUndo}
-                  hasFuturePlannings={undoState.hasFuturePlannings}
-                  futurePlanningWeeks={undoState.futurePlanningWeeks}
-                  hasPublishedFuture={undoState.hasPublishedFuture}
-                  hasRegistros={undoState.hasRegistros}
-                  isPublished={undoState.isPublished}
-                  role={ctx.role}
-                  activeProjects={projects.map((p) => ({
-                    id: p.id,
-                    name: p.name,
-                    pendingHours: p.tasks.reduce((a, t) => a + t.pendingHours, 0),
-                  }))}
-                />
-              </>
-            ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger render={<span tabIndex={0} className="inline-flex" />}>
-                    <Button size="sm" disabled>Generar plan</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Selecciona una nave específica para generar el planning
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+              <PlanningWeightsPopover
+                initialWeights={planningWeights}
+                initialDeadlineSettings={deadlineSettings}
+                role={ctx.role}
+              />
+            ) : null}
+            <GenerateButton
+              weekStart={getMondayOf(weekStart).toISOString()}
+              hasPlanning={weekMetaAll.hasPlanning}
+              anyDraft={weekMetaAll.anyDraft}
+              canUndo={undoState.canUndo}
+              hasFuturePlannings={undoState.hasFuturePlannings}
+              futurePlanningWeeks={undoState.futurePlanningWeeks}
+              hasPublishedFuture={undoState.hasPublishedFuture}
+              hasRegistros={undoState.hasRegistros}
+              isPublished={undoState.isPublished}
+              role={ctx.role}
+              activeProjects={projects.map((p) => ({
+                id: p.id,
+                name: p.name,
+                pendingHours: p.tasks.reduce((a, t) => a + t.pendingHours, 0),
+              }))}
+              disabled={!!ctx.naveId}
+              disabledReason={
+                ctx.naveId
+                  ? "El planning se genera para todas las naves. Quita el filtro de nave."
+                  : undefined
+              }
+            />
           </div>
         }
       />

@@ -89,6 +89,65 @@ export async function getPlanningWeekMeta({
   return rows[0] ?? null;
 }
 
+export interface PlanningWeekMetaAll {
+  perNave: Array<{
+    naveId: string;
+    planningId: string | null;
+    status: PlanningStatus | null;
+    publishedAt: Date | null;
+  }>;
+  hasPlanning: boolean;
+  anyDraft: boolean;
+  allPublished: boolean;
+}
+
+/** Metadatos agregados del planning de la semana en todas las naves activas. */
+export async function getPlanningWeekMetaAll({
+  weekStart,
+}: {
+  weekStart: Date;
+}): Promise<PlanningWeekMetaAll> {
+  const monday = getMondayOf(weekStart);
+  const { year, week } = isoWeek(monday);
+
+  const naves = await prisma.nave.findMany({
+    where: { isActive: true },
+    orderBy: { codigo: "asc" },
+    select: { id: true },
+  });
+
+  const plannings = await prisma.planning.findMany({
+    where: {
+      year,
+      week,
+      naveId: { in: naves.map((n) => n.id) },
+    },
+    select: { id: true, status: true, publishedAt: true, naveId: true },
+  });
+
+  const byNave = new Map(plannings.map((p) => [p.naveId, p]));
+  const perNave = naves.map((nave) => {
+    const planning = byNave.get(nave.id);
+    return {
+      naveId: nave.id,
+      planningId: planning?.id ?? null,
+      status: planning?.status ?? null,
+      publishedAt: planning?.publishedAt ?? null,
+    };
+  });
+
+  const withPlanning = perNave.filter((row) => row.planningId != null);
+
+  return {
+    perNave,
+    hasPlanning: withPlanning.length > 0,
+    anyDraft: withPlanning.some((row) => row.status === PlanningStatus.DRAFT),
+    allPublished:
+      withPlanning.length > 0 &&
+      withPlanning.every((row) => row.status === PlanningStatus.PUBLISHED),
+  };
+}
+
 export async function getPlanningForWeek({
   naveScope,
   weekStart,

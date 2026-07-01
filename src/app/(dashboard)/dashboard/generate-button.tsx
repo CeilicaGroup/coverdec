@@ -46,7 +46,7 @@ import {
   weekWorkdayIsoRange,
 } from "@/features/planning/plan-from";
 import { formatWeekRange } from "@/lib/week";
-import type { PlanningStatus, Role } from "@/generated/prisma";
+import type { Role } from "@/generated/prisma";
 
 export interface GenerateButtonProject {
   id: string;
@@ -79,8 +79,8 @@ function weekIsoFromDate(d: Date): string {
 
 export function GenerateButton({
   weekStart,
-  planningId,
-  planningStatus,
+  hasPlanning,
+  anyDraft,
   canUndo,
   hasFuturePlannings,
   futurePlanningWeeks,
@@ -89,10 +89,12 @@ export function GenerateButton({
   isPublished,
   role,
   activeProjects,
+  disabled = false,
+  disabledReason,
 }: {
   weekStart: string;
-  planningId: string | null;
-  planningStatus: PlanningStatus | null;
+  hasPlanning: boolean;
+  anyDraft: boolean;
   canUndo: boolean;
   hasFuturePlannings: boolean;
   futurePlanningWeeks: string[];
@@ -101,6 +103,8 @@ export function GenerateButton({
   isPublished: boolean;
   role: Role;
   activeProjects: GenerateButtonProject[];
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [undoing, startUndoTransition] = useTransition();
@@ -276,11 +280,14 @@ export function GenerateButton({
   };
 
   const onPublish = async () => {
-    if (!planningId) return;
     setPublishing(true);
     try {
-      await publishPlanningAction({ planningId });
-      toast.success("Planning publicado");
+      const result = await publishPlanningAction({ weekStart });
+      toast.success(
+        result.publishedCount === 1
+          ? "Planning publicado"
+          : `Planning publicado (${result.publishedCount} naves)`,
+      );
     } catch (err) {
       toast.error(reportMutationError("Error publicando planning", err));
     }
@@ -508,18 +515,41 @@ export function GenerateButton({
           />
         </div>
 
-        <Button onClick={onGenerate} disabled={pending} className="gap-2">
-          {pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Sparkles className="size-4" />
-          )}
-          {progressLabel ?? (planningId ? "Regenerar" : "Generar planning")}
-        </Button>
-        {planningId && planningStatus === "DRAFT" && (
+        {disabled && disabledReason ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    tabIndex={0}
+                    className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                }
+              >
+                <Button onClick={onGenerate} disabled className="gap-2">
+                  <Sparkles className="size-4" />
+                  {hasPlanning ? "Regenerar" : "Generar planning"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs text-center">
+                {disabledReason}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Button onClick={onGenerate} disabled={pending} className="gap-2">
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            {progressLabel ?? (hasPlanning ? "Regenerar" : "Generar planning")}
+          </Button>
+        )}
+        {anyDraft && (
           <Button
             onClick={onPublish}
-            disabled={publishing}
+            disabled={publishing || disabled}
             variant="outline"
             className="gap-2"
           >
@@ -531,7 +561,7 @@ export function GenerateButton({
             Publicar
           </Button>
         )}
-        {planningId &&
+        {hasPlanning &&
           (undoBlockedReason ? (
             <TooltipProvider>
               <Tooltip>

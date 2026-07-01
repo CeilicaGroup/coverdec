@@ -6,15 +6,15 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { replacePersonNaves } from "@/features/people/person-naves";
+import { assertSingleNaveId, setPersonNave } from "@/features/people/person-naves";
 import { Role } from "@/generated/prisma";
 import { ensureDefaultSubscriptions } from "@/features/notifications/service";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
 
-const naveIdsSchema = z.array(z.string().min(1));
+const operarioNaveIdsSchema = z.array(z.string().min(1)).length(1);
 
-async function applyPersonNavesForUser(
+async function applyPersonNaveForUser(
   userId: string,
   role: Role,
   naveIds: string[],
@@ -29,10 +29,8 @@ async function applyPersonNavesForUser(
       "El usuario debe tener una persona de personal vinculada antes de asignar naves.",
     );
   }
-  if (naveIds.length === 0) {
-    throw new Error("Selecciona al menos una nave.");
-  }
-  await replacePersonNaves(user.personId, naveIds);
+  const naveId = assertSingleNaveId(naveIds);
+  await setPersonNave(user.personId, naveId);
 }
 
 const createUserSchema = z.object({
@@ -40,7 +38,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: z.nativeEnum(Role),
-  naveIds: naveIdsSchema.optional(),
+  naveIds: operarioNaveIdsSchema.optional(),
 });
 
 export async function createUser(
@@ -69,7 +67,7 @@ export async function createUser(
     });
 
     if (data.role === Role.OPERARIO && data.naveIds?.length) {
-      await applyPersonNavesForUser(user.id, data.role, data.naveIds);
+      await applyPersonNaveForUser(user.id, data.role, data.naveIds);
     }
     if (data.role === Role.ADMIN || data.role === Role.JEFE_PRODUCCION) {
       await ensureDefaultSubscriptions(user.id);
@@ -86,7 +84,7 @@ const updateUserSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(8).optional(),
   role: z.nativeEnum(Role),
-  naveIds: naveIdsSchema.optional(),
+  naveIds: operarioNaveIdsSchema.optional(),
 });
 
 export async function updateUser(
@@ -127,7 +125,7 @@ export async function updateUser(
     }
 
     if (data.role === Role.OPERARIO) {
-      await applyPersonNavesForUser(
+      await applyPersonNaveForUser(
         data.userId,
         data.role,
         data.naveIds ?? [],

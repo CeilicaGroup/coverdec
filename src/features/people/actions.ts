@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { childLogger } from "@/lib/logger";
-import { replacePersonNaves } from "@/features/people/person-naves";
+import { setPersonNave } from "@/features/people/person-naves";
 import { ABSENCE_REASON_MAX_LENGTH } from "@/features/people/absence-constants";
 import {
   FULL_DAY_BLOCK_END,
@@ -368,7 +368,7 @@ const savePersonSchema = z
     overtimeHourlyRate: z.number().min(0).default(22.13),
     notes: z.string().optional(),
     isActive: z.boolean().default(true),
-    naveIds: z.array(z.string().min(1)).min(1),
+    naveIds: z.array(z.string().min(1)).length(1),
     userId: z.string().min(1),
     specialties: z.array(specialtySchema).default([]),
   })
@@ -429,7 +429,7 @@ export async function savePerson(
         });
         personId = created.id;
       }
-      await replacePersonNaves(personId, data.naveIds, tx);
+      await setPersonNave(personId, data.naveIds[0]!, tx);
       await tx.personSpecialty.deleteMany({ where: { personId } });
       if (specialtyRows.length > 0) {
         await tx.personSpecialty.createMany({
