@@ -309,41 +309,99 @@ export function PersonWeekCalendar({
   entriesByPersonDayTask,
 }: PersonWeekCalendarProps) {
   return (
-    <div className="overflow-x-auto">
-      <div
-        className="grid min-w-[520px] border rounded-md overflow-hidden"
-        style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
-      >
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <div
+          className="grid min-w-[520px] border rounded-md overflow-hidden"
+          style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
+        >
+          {days.map((d, idx) => {
+            const key = d.toISOString().slice(0, 10);
+            const isHoliday = holidayDates.has(key);
+            return (
+              <div
+                key={key}
+                className="bg-muted px-2 py-2 text-xs font-semibold text-center border-b border-r last:border-r-0"
+              >
+                {DAY_LABELS[idx]}
+                <div className="text-[10px] text-muted-foreground font-normal">
+                  {formatDayMonthYear(d)}
+                </div>
+                {isHoliday ? (
+                  <div className="text-[10px] text-orange-600 font-bold mt-0.5">Festivo</div>
+                ) : null}
+              </div>
+            );
+          })}
+
+          {days.map((d) => {
+            const key = d.toISOString().slice(0, 10);
+            const tasks = cells.get(key) ?? [];
+            const isAbsent = absences.some((a) => absenceCoversCivilIso(a, key));
+            const dayTotal = tasks.reduce((sum, t) => sum + t.hours, 0);
+            return (
+              <div
+                key={`cell-${key}`}
+                className="border-b border-r last:border-r-0 px-1.5 py-1.5 min-h-[88px] space-y-1 bg-card flex flex-col"
+              >
+                <div className="flex-1">
+                  <WeekDayTasks
+                    personId={personId}
+                    dayKey={key}
+                    tasks={tasks}
+                    view={view}
+                    isAbsent={isAbsent}
+                    plannedHoursByTask={plannedHoursByTask}
+                    plannedDueHoursByTask={plannedDueHoursByTask}
+                    actualHoursByTask={actualHoursByTask}
+                    plannedItemsByTask={plannedItemsByTask}
+                    actualRunningByTask={actualRunningByTask}
+                    completedByTask={completedByTask}
+                    processStyles={processStyles}
+                    canEditEntries={canEditEntries}
+                    canSeeRecords={canSeeRecords}
+                    entriesByPersonDayTask={entriesByPersonDayTask}
+                  />
+                </div>
+                {dayTotal > 0 ? (
+                  <div className="text-center text-[10px] font-semibold text-muted-foreground border-t pt-1">
+                    {formatHours(dayTotal)}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="md:hidden space-y-3 p-3">
         {days.map((d, idx) => {
           const key = d.toISOString().slice(0, 10);
-          const isHoliday = holidayDates.has(key);
-          return (
-            <div
-              key={key}
-              className="bg-muted px-2 py-2 text-xs font-semibold text-center border-b border-r last:border-r-0"
-            >
-              {DAY_LABELS[idx]}
-              <div className="text-[10px] text-muted-foreground font-normal">
-                {formatDayMonthYear(d)}
-              </div>
-              {isHoliday ? (
-                <div className="text-[10px] text-orange-600 font-bold mt-0.5">Festivo</div>
-              ) : null}
-            </div>
-          );
-        })}
-
-        {days.map((d) => {
-          const key = d.toISOString().slice(0, 10);
           const tasks = cells.get(key) ?? [];
+          const isHoliday = holidayDates.has(key);
           const isAbsent = absences.some((a) => absenceCoversCivilIso(a, key));
           const dayTotal = tasks.reduce((sum, t) => sum + t.hours, 0);
           return (
-            <div
-              key={`cell-${key}`}
-              className="border-b border-r last:border-r-0 px-1.5 py-1.5 min-h-[88px] space-y-1 bg-card flex flex-col"
-            >
-              <div className="flex-1">
+            <div key={key} className="rounded-lg border bg-card/50 overflow-hidden">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
+                <div>
+                  <div className="text-xs font-semibold">{DAY_LABELS[idx]}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {formatDayMonthYear(d)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isHoliday ? (
+                    <span className="text-[10px] font-bold text-orange-600">Festivo</span>
+                  ) : null}
+                  {dayTotal > 0 ? (
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {formatHours(dayTotal)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="p-3">
                 <WeekDayTasks
                   personId={personId}
                   dayKey={key}
@@ -360,18 +418,14 @@ export function PersonWeekCalendar({
                   canEditEntries={canEditEntries}
                   canSeeRecords={canSeeRecords}
                   entriesByPersonDayTask={entriesByPersonDayTask}
+                  emptyClassName="text-xs"
                 />
               </div>
-              {dayTotal > 0 ? (
-                <div className="text-center text-[10px] font-semibold text-muted-foreground border-t pt-1">
-                  {formatHours(dayTotal)}
-                </div>
-              ) : null}
             </div>
           );
         })}
       </div>
-    </div>
+    </>
   );
 }
 

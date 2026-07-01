@@ -21,6 +21,32 @@ export function canSeePersonRecords(
   return true;
 }
 
+export function isOperarioSelfPersonaView(
+  ctx: Pick<DashboardContext, "role">,
+): boolean {
+  return ctx.role === Role.OPERARIO;
+}
+
+export function personnelForPersonaView<T extends { id: string }>(
+  ctx: Pick<DashboardContext, "role" | "personId">,
+  people: T[],
+): T[] {
+  if (ctx.role !== Role.OPERARIO) return people;
+  if (!ctx.personId) return [];
+  return people.filter((person) => person.id === ctx.personId);
+}
+
+export function planningAssignmentsForPersonaView<
+  T extends { personId: string },
+>(
+  ctx: Pick<DashboardContext, "role" | "personId">,
+  assignments: T[],
+): T[] {
+  if (ctx.role !== Role.OPERARIO) return assignments;
+  if (!ctx.personId) return [];
+  return assignments.filter((assignment) => assignment.personId === ctx.personId);
+}
+
 export function enrichActualSummariesWithTeam(
   summariesByDay: Map<string, DayPlanningSummary>,
   teamPeople: Array<{ id: string; iniciales: string; color: string }>,

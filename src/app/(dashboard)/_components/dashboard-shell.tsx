@@ -64,14 +64,7 @@ export function DashboardShell({
           onSwitchNave={onSwitchNave}
         />
         <div className="border-t p-3">
-          <DashboardUserMenu
-            user={user}
-            person={person}
-            naves={naves}
-            activeNave={activeNave}
-            isAdmin={isAdmin}
-            onSwitchNave={onSwitchNave}
-          />
+          <DashboardUserMenu user={user} person={person} />
         </div>
       </aside>
 
@@ -92,19 +85,14 @@ export function DashboardShell({
             compact
           />
         </div>
-        <DashboardUserMenu
-          user={user}
-          person={person}
-          naves={naves}
-          activeNave={activeNave}
-          isAdmin={isAdmin}
-          onSwitchNave={onSwitchNave}
-          compact
-        />
+        <DashboardUserMenu user={user} person={person} compact />
       </header>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-[min(18rem,calc(100vw-2rem))] p-0 gap-0">
+        <SheetContent
+          side="left"
+          className="flex h-full max-h-dvh w-[min(18rem,calc(100vw-2rem))] flex-col gap-0 p-0"
+        >
           <DashboardBrand
             activeNave={activeNave}
             assignedNaves={assignedNaves}
@@ -117,7 +105,11 @@ export function DashboardShell({
             planningViewMode={planningViewMode}
             onSwitchNave={onSwitchNave}
             onNavigate={() => setMobileNavOpen(false)}
+            className="min-h-0 flex-1 overflow-y-auto"
           />
+          <div className="shrink-0 border-t bg-card p-3">
+            <DashboardUserMenu user={user} person={person} />
+          </div>
         </SheetContent>
       </Sheet>
 

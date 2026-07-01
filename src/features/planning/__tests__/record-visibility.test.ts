@@ -4,6 +4,9 @@ import {
   actualRecordsUserIdForContext,
   canSeePersonRecords,
   enrichActualSummariesWithTeam,
+  isOperarioSelfPersonaView,
+  personnelForPersonaView,
+  planningAssignmentsForPersonaView,
 } from "@/features/planning/record-visibility";
 
 describe("record-visibility", () => {
@@ -35,6 +38,29 @@ describe("record-visibility", () => {
     expect(
       canSeePersonRecords({ role: Role.OPERARIO, personId: null }, "p1"),
     ).toBe(false);
+  });
+
+  it("operario en vista por persona solo ve su fila y asignaciones", () => {
+    const people = [
+      { id: "p1", nombre: "Ana" },
+      { id: "p2", nombre: "Luis" },
+    ];
+    const assignments = [
+      { id: "a1", personId: "p1" },
+      { id: "a2", personId: "p2" },
+    ];
+
+    expect(
+      personnelForPersonaView({ role: Role.OPERARIO, personId: "p1" }, people),
+    ).toEqual([{ id: "p1", nombre: "Ana" }]);
+    expect(
+      planningAssignmentsForPersonaView(
+        { role: Role.OPERARIO, personId: "p1" },
+        assignments,
+      ),
+    ).toEqual([{ id: "a1", personId: "p1" }]);
+    expect(isOperarioSelfPersonaView({ role: Role.OPERARIO })).toBe(true);
+    expect(isOperarioSelfPersonaView({ role: Role.ADMIN })).toBe(false);
   });
 
   it("admin y jefe ven registros de cualquier persona", () => {

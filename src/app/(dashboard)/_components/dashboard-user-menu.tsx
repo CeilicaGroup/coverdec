@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Warehouse } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
@@ -17,29 +17,15 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
-interface NaveSummary {
-  id: string;
-  codigo: string;
-  nombre: string;
-}
-
 interface DashboardUserMenuProps {
   user: { name: string; role: string; email: string };
   person: { iniciales: string; color: string } | null;
-  naves: NaveSummary[];
-  activeNave: NaveSummary | null;
-  isAdmin: boolean;
-  onSwitchNave: (naveId: string) => void;
   compact?: boolean;
 }
 
 export function DashboardUserMenu({
   user,
   person,
-  naves,
-  activeNave,
-  isAdmin,
-  onSwitchNave,
   compact = false,
 }: DashboardUserMenuProps) {
   const router = useRouter();
@@ -63,7 +49,7 @@ export function DashboardUserMenu({
           />
         }
       >
-        <Avatar className={compact ? "size-8" : "size-8"}>
+        <Avatar className="size-8">
           <AvatarFallback
             style={person ? { background: person.color, color: "white" } : undefined}
           >
@@ -77,7 +63,12 @@ export function DashboardUserMenu({
           </div>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent
+        align={compact ? "end" : "start"}
+        side="bottom"
+        sideOffset={8}
+        className="z-[60] w-56"
+      >
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             <div className="space-y-0.5">
@@ -88,26 +79,6 @@ export function DashboardUserMenu({
             </div>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
-        {isAdmin && naves.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Nave activa
-              </DropdownMenuLabel>
-              {naves.map((n) => (
-                <DropdownMenuItem
-                  key={n.id}
-                  onClick={() => onSwitchNave(n.id)}
-                  className={cn(n.id === activeNave?.id && "bg-secondary font-semibold")}
-                >
-                  <Warehouse className="size-3.5 mr-1.5 opacity-60" />
-                  {n.nombre}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </>
-        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut} className="text-destructive">
           <LogOut className="size-4 mr-2" />
