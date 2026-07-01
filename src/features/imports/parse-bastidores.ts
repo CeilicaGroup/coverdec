@@ -3,13 +3,15 @@ import { resolveImportProcessCode } from "./resolve-import-process";
 import type { RawMappedRow } from "./excel-workbook";
 import type { BastidorRowDraft, ImportIssue } from "./types";
 
-function asString(value: string | number | null | undefined): string {
+function asString(value: string | number | Date | null | undefined): string {
   if (value == null) return "";
+  if (value instanceof Date) return "";
   return String(value).trim();
 }
 
-function asNumber(value: string | number | null | undefined): number | null {
+function asNumber(value: string | number | Date | null | undefined): number | null {
   if (value == null || value === "") return null;
+  if (value instanceof Date) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const cleaned = String(value).replace(/\./g, "").replace(",", ".");
   const n = Number(cleaned);

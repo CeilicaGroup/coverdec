@@ -10,12 +10,13 @@ import {
 } from "@/components/ui/select";
 import { labelForColumnIndex } from "@/features/imports/excel-columns";
 import { getFieldDefinitions } from "@/features/imports/import-fields";
-import type { ImportMapping, SheetColumnOption } from "@/features/imports/types";
+import type { ImportKind, ImportMapping, SheetColumnOption } from "@/features/imports/types";
 
 interface ImportMappingStepProps {
   sheetNames: string[];
   columnOptions: SheetColumnOption[];
   mapping: ImportMapping;
+  importKind: ImportKind;
   onMappingChange: (mapping: ImportMapping) => void;
   disabled?: boolean;
 }
@@ -24,10 +25,11 @@ export function ImportMappingStep({
   sheetNames,
   columnOptions,
   mapping,
+  importKind,
   onMappingChange,
   disabled,
 }: ImportMappingStepProps) {
-  const fields = getFieldDefinitions();
+  const fields = getFieldDefinitions(importKind);
 
   function setSheet(sheetName: string) {
     onMappingChange({ ...mapping, sheetName });

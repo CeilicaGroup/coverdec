@@ -1,19 +1,43 @@
 import ExcelJS from "exceljs";
 import { readString } from "@/lib/excel/cell";
 import {
+  readMappedDateCell,
   readMappedNumberCell,
   readMappedTextCell,
 } from "./excel-cell-values";
-import type { BastidorFieldKey, ImportFieldKey, ImportMapping } from "./types";
+import { readExcelTimeOfDay } from "./excel-date-time";
+import type { ImportFieldKey, ImportMapping } from "./types";
 import { IMPORT_MAX_ROWS } from "./types";
 
-const TEXT_FIELDS = new Set<BastidorFieldKey>([
+const TEXT_FIELDS = new Set<ImportFieldKey>([
   "frameName",
   "processName",
   "frameCode",
+  "projectName",
+  "lampName",
+  "frameTypeName",
+  "areaName",
+  "taskStatus",
+  "projectStatus",
+  "operatorName",
+  "notes",
 ]);
 
-const NUMBER_FIELDS = new Set<BastidorFieldKey>(["hoursPerUnit"]);
+const NUMBER_FIELDS = new Set<ImportFieldKey>([
+  "hoursPerUnit",
+  "surfaceM2",
+  "hrPlan",
+  "hrTotal",
+  "hrNormal",
+  "hrExtra",
+  "hrPending",
+  "normalHours",
+  "extraHours",
+]);
+
+const DATE_FIELDS = new Set<ImportFieldKey>(["deliveryDate", "workDate"]);
+
+const TIME_FIELDS = new Set<ImportFieldKey>(["startTime", "endTime"]);
 
 export async function loadWorkbookFromBuffer(
   buffer: Buffer,
@@ -55,7 +79,7 @@ export function readSheetHeaders(
 
 export interface RawMappedRow {
   rowIndex: number;
-  values: Partial<Record<ImportFieldKey, string | number | null>>;
+  values: Partial<Record<ImportFieldKey, string | number | Date | null>>;
 }
 
 function readCellValue(
@@ -63,13 +87,19 @@ function readCellValue(
   rowIndex: number,
   col: number | null | undefined,
   field: ImportFieldKey,
-): string | number | null {
+): string | number | Date | null {
   if (col == null || col < 1) return null;
   const cell = sheet.getRow(rowIndex).getCell(col).value;
-  if (NUMBER_FIELDS.has(field as BastidorFieldKey)) {
+  if (DATE_FIELDS.has(field)) {
+    return readMappedDateCell(cell);
+  }
+  if (TIME_FIELDS.has(field)) {
+    return readExcelTimeOfDay(cell);
+  }
+  if (NUMBER_FIELDS.has(field)) {
     return readMappedNumberCell(cell);
   }
-  if (TEXT_FIELDS.has(field as BastidorFieldKey)) {
+  if (TEXT_FIELDS.has(field)) {
     return readMappedTextCell(cell);
   }
   return readMappedTextCell(cell);
@@ -85,7 +115,8 @@ export function extractMappedRows(
   const rows: RawMappedRow[] = [];
 
   for (let r = startRow; r <= endRow; r++) {
-    const values: Partial<Record<ImportFieldKey, string | number | null>> = {};
+    const values: Partial<Record<ImportFieldKey, string | number | Date | null>> =
+      {};
     for (const [field, col] of Object.entries(mapping.columnMap)) {
       values[field as ImportFieldKey] = readCellValue(
         sheet,
@@ -94,9 +125,11 @@ export function extractMappedRows(
         field as ImportFieldKey,
       );
     }
-    const hasData = Object.values(values).some(
-      (v) => v != null && String(v).trim() !== "",
-    );
+    const hasData = Object.values(values).some((v) => {
+      if (v == null) return false;
+      if (v instanceof Date) return !Number.isNaN(v.getTime());
+      return String(v).trim() !== "";
+    });
     if (!hasData) continue;
     rows.push({ rowIndex: r, values });
   }
