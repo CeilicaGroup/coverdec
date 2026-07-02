@@ -26,6 +26,21 @@ export function workOrderExemptTaskWhere(): Prisma.TaskWhereInput {
   };
 }
 
+/**
+ * Tareas productivas elegibles para OT.
+ * No usar `NOT workOrderExemptTaskWhere()`: en SQL, `NOT (NULL = enum)` excluye
+ * filas con systemKind null, que es el caso de las tareas de catálogo recién creadas.
+ */
 export function excludeWorkOrderExemptTasksWhere(): Prisma.TaskWhereInput {
-  return { NOT: workOrderExemptTaskWhere() };
+  return {
+    process: { notIn: [IMPREVISTA_PROCESS_CODE, TRANSPORT_PROCESS_CODE] },
+    OR: [
+      { systemKind: null },
+      {
+        systemKind: {
+          notIn: [TaskSystemKind.AD_HOC, TaskSystemKind.TRANSPORT],
+        },
+      },
+    ],
+  };
 }
