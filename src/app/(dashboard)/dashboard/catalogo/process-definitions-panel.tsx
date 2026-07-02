@@ -35,6 +35,7 @@ import { TRANSPORT_PROCESS_CODE } from "@/features/projects/transport-tasks";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
+import { deriveProcessColors } from "@/lib/color";
 import { handleActionResult } from "@/lib/mutation-error";
 
 export interface ProcessRow {

@@ -182,8 +182,10 @@ export function PersonWeekList({
           {entries.map((e) => (
             <div
               key={e.id}
-              className="rounded-lg border bg-card p-3 space-y-2"
-              {...withWorkOrderHighlight(e.task?.workOrder?.number)}
+              {...withWorkOrderHighlight(
+                e.task?.workOrder?.number,
+                "rounded-lg border bg-card p-3 space-y-2",
+              )}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="font-mono text-xs">
@@ -458,8 +460,10 @@ export function PersonWeekList({
         return (
           <div
             key={item.assignment.id}
-            className="rounded-lg border bg-card p-3 space-y-2"
-            {...withWorkOrderHighlight(item.assignment.task.workOrder?.number)}
+            {...withWorkOrderHighlight(
+              item.assignment.task.workOrder?.number,
+              "rounded-lg border bg-card p-3 space-y-2",
+            )}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="font-mono text-xs">

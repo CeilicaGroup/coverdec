@@ -93,6 +93,7 @@ describe("openWorkOrderFields", () => {
   it("returns null fields for closed work orders", () => {
     expect(
       openWorkOrderFields({
+        id: "t1",
         workOrderId: "wo-1",
         workOrderSequence: 1,
         workOrder: { status: "CLOSED" },
@@ -103,6 +104,7 @@ describe("openWorkOrderFields", () => {
   it("keeps fields for open work orders", () => {
     expect(
       openWorkOrderFields({
+        id: "t1",
         workOrderId: "wo-1",
         workOrderSequence: 2,
         workOrder: { status: "OPEN" },
