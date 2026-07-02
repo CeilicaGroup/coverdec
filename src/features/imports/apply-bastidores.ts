@@ -1,8 +1,8 @@
-import { prisma } from "@/lib/db";
 import type { ProcessCode } from "@/types/process";
 import { isIsoTimestampString } from "./excel-cell-values";
 import { ensureProcessDefinitions } from "./ensure-process-definitions";
 import { importSlug } from "./slug";
+import { runImportTransaction } from "./transaction";
 import type { BastidorApplySummary, BastidorRowDraft } from "./types";
 
 export async function applyBastidorRows(
@@ -48,7 +48,7 @@ export async function applyBastidorRows(
     }
   }
 
-  await prisma.$transaction(async (tx) => {
+  await runImportTransaction(async (tx) => {
     const processResult = await ensureProcessDefinitions(
       tx,
       [...processDefs.entries()].map(([code, label]) => ({ code, label })),

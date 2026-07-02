@@ -2,6 +2,7 @@ import { TimeEntrySource } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import type { HorasApplySummary, HorasRowDraft } from "./types";
 import { legacyHorasImportNote } from "./types";
+import { runImportTransaction } from "./transaction";
 
 export async function applyHorasRows(
   rows: HorasRowDraft[],
@@ -36,7 +37,7 @@ export async function applyHorasRows(
     existing.map((e) => e.notes).filter(Boolean) as string[],
   );
 
-  await prisma.$transaction(async (tx) => {
+  await runImportTransaction(async (tx) => {
     for (const row of importable) {
       const fingerprint = legacyHorasImportNote(row.rowIndex);
       if (importedRows.has(fingerprint)) {

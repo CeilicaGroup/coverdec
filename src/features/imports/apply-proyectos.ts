@@ -11,6 +11,7 @@ import {
   matchElementTypeByBastidorName,
   projectCodeFromName,
 } from "./match-legacy-entities";
+import { runImportTransaction } from "./transaction";
 import type { ProyectoApplySummary, ProyectoRowDraft } from "./types";
 import { isTerminatedStatus } from "./types";
 
@@ -92,15 +93,17 @@ export async function applyProyectoRows(
 
   const archiveProjectNames = new Set<string>();
 
-  await prisma.$transaction(async (tx) => {
+  const [index, naveContext] = await Promise.all([
+    loadApplyIndex(),
+    loadTaskNaveContext(prisma),
+  ]);
+
+  await runImportTransaction(async (tx) => {
     const processResult = await ensureProcessDefinitions(
       tx,
       [...processDefs.entries()].map(([code, label]) => ({ code, label })),
     );
     void processResult;
-
-    const naveContext = await loadTaskNaveContext(tx);
-    const index = await loadApplyIndex();
 
     const taskOrderByLamp = new Map<string, number>();
 
