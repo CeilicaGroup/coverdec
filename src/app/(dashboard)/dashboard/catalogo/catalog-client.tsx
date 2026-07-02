@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
@@ -61,6 +61,8 @@ interface FrameProcessRow {
   process: ProcessCode;
   hoursPerUnit: number;
   fixedHours: number;
+  naveId: string | null;
+  nave: NaveOption | null;
 }
 
 interface TypologyNaveRow {
@@ -83,6 +85,16 @@ interface FrameRow {
 }
 
 const INHERIT_TYPOLOGY_NAVALUE = "__inherit_typology__";
+const INHERIT_ELEMENT_NAVALUE = "__inherit_element__";
+
+function effectiveElementNaveId(
+  defaultNaveId: string,
+  typology: ElementTypology,
+  typologyNaves: TypologyNaveRow[],
+): string | null {
+  if (defaultNaveId) return defaultNaveId;
+  return typologyNaves.find((row) => row.typology === typology)?.defaultNaveId ?? null;
+}
 
 function naveLabel(nave: NaveOption | null): string {
   return nave ? `${nave.codigo} · ${nave.nombre}` : "—";
@@ -155,6 +167,7 @@ interface ProcessFormRow {
   process: ProcessCode;
   hoursPerUnit: string;
   fixedHours: string;
+  naveId: string;
 }
 
 function defaultProcessRow(
@@ -168,6 +181,7 @@ function defaultProcessRow(
     process: next.code,
     hoursPerUnit: "0",
     fixedHours: "0",
+    naveId: "",
   };
 }
 
@@ -227,6 +241,7 @@ export function CatalogoCatalogClient({
             process: p.process,
             hoursPerUnit: String(p.hoursPerUnit),
             fixedHours: String(p.fixedHours),
+            naveId: p.naveId ?? "",
           }))
         : defaultProcessRow(processDefs, new Set())
           ? [defaultProcessRow(processDefs, new Set())!]
@@ -271,6 +286,7 @@ export function CatalogoCatalogClient({
           process: r.process,
           hoursPerUnit: Number(r.hoursPerUnit),
           fixedHours: Number(r.fixedHours),
+          naveId: r.naveId || null,
         }));
       for (const r of rows) {
         if (Number.isNaN(Number(r.hoursPerUnit)) || Number(r.hoursPerUnit) < 0) {
@@ -429,7 +445,15 @@ export function CatalogoCatalogClient({
                         {f.processes.length === 0 ? (
                           <span className="text-muted-foreground text-xs">Sin procesos</span>
                         ) : (
-                          f.processes.map((p) => (
+                          f.processes.map((p) => {
+                            const elementNaveId = effectiveElementNaveId(
+                              f.defaultNaveId ?? "",
+                              f.typology,
+                              typologyNaves,
+                            );
+                            const hasCustomNave =
+                              p.naveId != null && p.naveId !== elementNaveId;
+                            return (
                             <span
                               key={p.id}
                               className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-[10px]"
@@ -445,11 +469,21 @@ export function CatalogoCatalogClient({
                                   }
                                 }
                               />
+                              {hasCustomNave && p.nave ? (
+                                <span
+                                  className="inline-flex items-center gap-0.5 font-mono text-amber-700 dark:text-amber-400"
+                                  title={naveLabel(p.nave)}
+                                >
+                                  <MapPin className="size-2.5" />
+                                  {p.nave.codigo}
+                                </span>
+                              ) : null}
                               <span className="font-mono font-semibold">
                                 {formatHours(p.hoursPerUnit)}/m²
                               </span>
                             </span>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </TableCell>
@@ -631,10 +665,20 @@ export function CatalogoCatalogClient({
                 <p className="text-xs text-muted-foreground">Sin filas. Pulsa «Añadir proceso».</p>
               ) : (
                 <div className="space-y-2">
-                  {rows.map((r, rowIdx) => (
+                  {rows.map((r, rowIdx) => {
+                    const elementNaveLabel = (() => {
+                      const effectiveId = effectiveElementNaveId(
+                        defaultNaveId,
+                        typology,
+                        typologyNaves,
+                      );
+                      if (!effectiveId) return "sin definir";
+                      return naveSelectLabel(effectiveId, naves);
+                    })();
+                    return (
                     <div
                       key={r.key}
-                      className="grid grid-cols-[auto_1fr_72px_72px_auto] gap-2 items-end border rounded-md p-2"
+                      className="grid grid-cols-[auto_1fr_minmax(7rem,1fr)_72px_72px_auto] gap-2 items-end border rounded-md p-2"
                     >
                       <div className="flex flex-col gap-0.5 pb-0.5">
                         <Button
@@ -682,6 +726,39 @@ export function CatalogoCatalogClient({
                         </Select>
                       </div>
                       <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Nave</span>
+                        <Select
+                          value={r.naveId || INHERIT_ELEMENT_NAVALUE}
+                          onValueChange={(value) =>
+                            updateRow(r.key, {
+                              naveId:
+                                value === INHERIT_ELEMENT_NAVALUE ? "" : (value ?? ""),
+                            })
+                          }
+                          disabled={pending}
+                        >
+                          <SelectTrigger className="h-9 text-xs">
+                            <SelectValue placeholder="Elemento">
+                              <span className="truncate">
+                                {r.naveId
+                                  ? naveSelectLabel(r.naveId, naves)
+                                  : `Elemento · ${elementNaveLabel}`}
+                              </span>
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={INHERIT_ELEMENT_NAVALUE}>
+                              Elemento · {elementNaveLabel}
+                            </SelectItem>
+                            {naves.map((nave) => (
+                              <SelectItem key={nave.id} value={nave.id}>
+                                {nave.codigo} · {nave.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
                         <span className="text-[10px] text-muted-foreground">h/m²</span>
                         <Input
                           className="h-9 font-mono text-xs px-2"
@@ -713,7 +790,8 @@ export function CatalogoCatalogClient({
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

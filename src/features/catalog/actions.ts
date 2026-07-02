@@ -14,6 +14,7 @@ const processRowSchema = z.object({
   process: z.string().min(1),
   hoursPerUnit: z.number().nonnegative(),
   fixedHours: z.number().nonnegative().default(0),
+  naveId: z.string().min(1).nullable().optional(),
 });
 
 const elementUpsertSchema = z
@@ -71,6 +72,22 @@ export async function upsertElementType(
     if (!nave) throw new Error("La nave por defecto no está activa.");
   }
 
+  const processNaveIds = [
+    ...new Set(
+      data.processes
+        .map((p) => p.naveId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (processNaveIds.length > 0) {
+    const activeCount = await prisma.nave.count({
+      where: { id: { in: processNaveIds }, isActive: true },
+    });
+    if (activeCount !== processNaveIds.length) {
+      throw new Error("Alguna nave de proceso no está activa.");
+    }
+  }
+
   const element = await prisma.elementType.upsert({
     where: { code: data.code },
     update: {
@@ -102,6 +119,7 @@ export async function upsertElementType(
         sequence: i,
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
+        naveId: p.naveId ?? null,
       },
       create: {
         elementTypeId: element.id,
@@ -109,6 +127,7 @@ export async function upsertElementType(
         sequence: i,
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
+        naveId: p.naveId ?? null,
       },
     });
   }

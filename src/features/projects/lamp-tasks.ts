@@ -2,11 +2,16 @@ import type { Prisma } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { prisma } from "@/lib/db";
 import { taskChainKey } from "@/features/planning/task-chain-key";
+import {
+  loadTaskNaveContext,
+  resolveNaveForElementProcess,
+} from "@/features/projects/task-nave";
 
 export interface TaskBlueprint {
   process: ProcessCode;
   estimatedHours: number;
   order: number;
+  naveId: string;
 }
 
 export interface ElementProcessInput {
@@ -14,6 +19,7 @@ export interface ElementProcessInput {
   hoursPerUnit: number;
   fixedHours: number;
   sequence: number;
+  naveId?: string | null;
 }
 
 /** @deprecated Use ElementProcessInput */
@@ -196,8 +202,9 @@ export function scaleBlueprintHoursForUnits(
 }
 
 export function computeTaskBlueprintsFromProcesses(
-  processes: ElementProcessInput[],
+  processes: Array<ElementProcessInput & { naveId?: string | null }>,
   surfaceM2: number,
+  fallbackNaveId = "",
 ): TaskBlueprint[] {
   const sorted = [...processes].sort((a, b) => a.sequence - b.sequence);
   const blueprints: TaskBlueprint[] = [];
@@ -209,6 +216,7 @@ export function computeTaskBlueprintsFromProcesses(
       process: fp.process,
       estimatedHours: hours,
       order: order++,
+      naveId: fp.naveId ?? fallbackNaveId,
     });
   }
   return blueprints;
@@ -218,16 +226,27 @@ export async function buildTasksFromElement(
   elementTypeId: string,
   surfaceM2: number,
 ): Promise<TaskBlueprint[]> {
-  const elementProcesses = await prisma.elementTypeProcess.findMany({
-    where: { elementTypeId },
-    orderBy: { sequence: "asc" },
-  });
+  const [elementProcesses, { fallbackNaveId, elementTypeDefaultNaves }] =
+    await Promise.all([
+      prisma.elementTypeProcess.findMany({
+        where: { elementTypeId },
+        orderBy: { sequence: "asc" },
+      }),
+      loadTaskNaveContext(prisma),
+    ]);
+
   return computeTaskBlueprintsFromProcesses(
     elementProcesses.map((fp) => ({
       process: fp.process as ProcessCode,
       hoursPerUnit: fp.hoursPerUnit,
       fixedHours: fp.fixedHours,
       sequence: fp.sequence,
+      naveId: resolveNaveForElementProcess({
+        processNaveId: fp.naveId,
+        elementTypeId,
+        elementTypeDefaultNaves,
+        fallbackNaveId,
+      }),
     })),
     surfaceM2,
   );

@@ -16,6 +16,9 @@ import {
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
 import { EditLampElementsDialog } from "./edit-lamp-elements-dialog";
+import {
+  buildCatalogNaveByProcess,
+} from "@/features/projects/task-nave";
 import { LampTasksPanel } from "./lamp-tasks-panel";
 import {
   fallbackLampConfig,
@@ -145,6 +148,46 @@ export default async function ProjectDetailPage({
         fallbackNaveId,
     ]),
   ) as Record<string, string | null>;
+  const elementTypeDefaultNavesMap = new Map(
+    Object.entries(elementTypeDefaultNaves).filter(
+      (entry): entry is [string, string] => entry[1] != null,
+    ),
+  );
+  const catalogNaveByElementProcess = Object.fromEntries(
+    elementTypes.map((elementType) => [
+      elementType.id,
+      Object.fromEntries(
+        buildCatalogNaveByProcess({
+          elementTypeId: elementType.id,
+          processes: elementType.processes.map((process) => ({
+            process: process.process,
+            naveId: process.naveId,
+          })),
+          elementTypeDefaultNaves: elementTypeDefaultNavesMap,
+          fallbackNaveId: fallbackNaveId ?? "",
+        }),
+      ),
+    ]),
+  ) as Record<string, Record<string, string>>;
+
+  function mapElementTypeProcesses(
+    elementType: (typeof elementTypes)[number],
+  ) {
+    return elementType.processes.map((p) => ({
+      process: p.process,
+      hoursPerUnit: p.hoursPerUnit,
+      fixedHours: p.fixedHours,
+      sequence: p.sequence,
+      naveId:
+        catalogNaveByElementProcess[elementType.id]?.[p.process] ??
+        fallbackNaveId ??
+        "",
+      label: p.definition.label,
+      bgColor: p.definition.bgColor,
+      fgColor: p.definition.fgColor,
+      borderColor: p.definition.borderColor,
+    }));
+  }
 
   const waitHoursByProcess = Object.fromEntries(
     processDefs.map((p) => [p.code, p.waitHours]),
@@ -229,16 +272,7 @@ export default async function ProjectDetailPage({
                 id: f.id,
                 name: f.name,
                 typology: f.typology,
-                processes: f.processes.map((p) => ({
-                  process: p.process,
-                  hoursPerUnit: p.hoursPerUnit,
-                  fixedHours: p.fixedHours,
-                  sequence: p.sequence,
-                  label: p.definition.label,
-                  bgColor: p.definition.bgColor,
-                  fgColor: p.definition.fgColor,
-                  borderColor: p.definition.borderColor,
-                })),
+                processes: mapElementTypeProcesses(f),
               }))}
             />
           ) : null}
@@ -305,16 +339,7 @@ export default async function ProjectDetailPage({
                             id: f.id,
                             name: f.name,
                             typology: f.typology,
-                            processes: f.processes.map((p) => ({
-                              process: p.process,
-                              hoursPerUnit: p.hoursPerUnit,
-                              fixedHours: p.fixedHours,
-                              sequence: p.sequence,
-                              label: p.definition.label,
-                              bgColor: p.definition.bgColor,
-                              fgColor: p.definition.fgColor,
-                              borderColor: p.definition.borderColor,
-                            })),
+                            processes: mapElementTypeProcesses(f),
                           }))}
                         />
                       ) : null}
@@ -334,6 +359,7 @@ export default async function ProjectDetailPage({
                       canManage={canManage}
                       naves={naves}
                       elementTypeDefaultNaves={elementTypeDefaultNaves}
+                      catalogNaveByElementProcess={catalogNaveByElementProcess}
                     />
                   </div>
                 );

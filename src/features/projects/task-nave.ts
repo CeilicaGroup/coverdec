@@ -115,6 +115,40 @@ export function resolveNaveForElementType(
   return elementTypeDefaultNaves.get(elementTypeId) ?? fallbackNaveId;
 }
 
+/** Nave de catálogo para un proceso: override del proceso o herencia del elemento. */
+export function resolveNaveForElementProcess(args: {
+  processNaveId: string | null | undefined;
+  elementTypeId: string | null;
+  elementTypeDefaultNaves: Map<string, string>;
+  fallbackNaveId: string;
+}): string {
+  if (args.processNaveId) return args.processNaveId;
+  return resolveNaveForElementType(
+    args.elementTypeId,
+    args.elementTypeDefaultNaves,
+    args.fallbackNaveId,
+  );
+}
+
+export function buildCatalogNaveByProcess(args: {
+  elementTypeId: string;
+  processes: Array<{ process: string; naveId: string | null }>;
+  elementTypeDefaultNaves: Map<string, string>;
+  fallbackNaveId: string;
+}): Map<string, string> {
+  return new Map(
+    args.processes.map((row) => [
+      row.process,
+      resolveNaveForElementProcess({
+        processNaveId: row.naveId,
+        elementTypeId: args.elementTypeId,
+        elementTypeDefaultNaves: args.elementTypeDefaultNaves,
+        fallbackNaveId: args.fallbackNaveId,
+      }),
+    ]),
+  );
+}
+
 export function formatNaveLabel(
   nave: NaveSummary | undefined,
   naveId: string,
@@ -124,23 +158,26 @@ export function formatNaveLabel(
 
 export function isCustomNaveAssignment(
   naveId: string,
-  elementTypeDefaultNaveId: string | null | undefined,
+  catalogNaveId: string | null | undefined,
 ): boolean {
-  if (!elementTypeDefaultNaveId) return false;
-  return naveId !== elementTypeDefaultNaveId;
+  if (!catalogNaveId) return false;
+  return naveId !== catalogNaveId;
 }
 
 export type NaveAssignmentKind = "default" | "custom" | "mixed" | "unknown";
 
 export function describeNaveAssignment(args: {
   naveIds: string[];
-  elementTypeDefaultNaveId: string | null | undefined;
+  catalogNaveId?: string | null | undefined;
+  /** @deprecated Use catalogNaveId */
+  elementTypeDefaultNaveId?: string | null | undefined;
 }): NaveAssignmentKind {
+  const catalogNaveId = args.catalogNaveId ?? args.elementTypeDefaultNaveId;
   const unique = [...new Set(args.naveIds)];
   if (unique.length === 0) return "unknown";
   if (unique.length > 1) return "mixed";
-  if (!args.elementTypeDefaultNaveId) return "unknown";
-  return unique[0] === args.elementTypeDefaultNaveId ? "default" : "custom";
+  if (!catalogNaveId) return "unknown";
+  return unique[0] === catalogNaveId ? "default" : "custom";
 }
 
 export function summarizeNaveIds(

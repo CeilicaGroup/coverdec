@@ -13,7 +13,7 @@ export default async function CatalogoPage() {
     prisma.elementType.findMany({
       where: {},
       include: {
-        processes: { orderBy: { sequence: "asc" } },
+        processes: { orderBy: { sequence: "asc" }, include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
         defaultNave: { select: { id: true, codigo: true, nombre: true } },
         _count: { select: { lamps: true } },
       },
@@ -57,6 +57,8 @@ export default async function CatalogoPage() {
       process: p.process,
       hoursPerUnit: p.hoursPerUnit,
       fixedHours: p.fixedHours,
+      naveId: p.naveId,
+      nave: p.nave,
     })),
     lampCount: _count.lamps,
   }));

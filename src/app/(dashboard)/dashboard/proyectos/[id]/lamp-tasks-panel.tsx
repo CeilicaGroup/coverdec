@@ -402,6 +402,7 @@ function AggregatedTaskTable({
   groupKey,
   lampId,
   defaultNaveId,
+  catalogNaveByProcess,
   naves,
   navesById,
   processStylesByCode,
@@ -416,6 +417,7 @@ function AggregatedTaskTable({
   groupKey: string;
   lampId: string;
   defaultNaveId: string | null | undefined;
+  catalogNaveByProcess: Record<string, string>;
   naves: NaveSummary[];
   navesById: Map<string, NaveSummary>;
   processStylesByCode: Record<string, ProcessBadgeStyle>;
@@ -452,9 +454,11 @@ function AggregatedTaskTable({
             navesById,
           );
           const displayNaveId = naveSummary.naveId ?? matching[0]?.naveId ?? "";
+          const catalogNaveId =
+            catalogNaveByProcess[row.process] ?? defaultNaveId ?? null;
           const assignmentKind = describeNaveAssignment({
             naveIds: matching.map((task) => task.naveId),
-            elementTypeDefaultNaveId: defaultNaveId,
+            catalogNaveId,
           });
           const canDelete = matching.every((task) => task.doneHours <= 0);
 
@@ -478,7 +482,7 @@ function AggregatedTaskTable({
                 {canManage && naves.length > 0 ? (
                   <NaveCell
                     naveId={displayNaveId}
-                    defaultNaveId={defaultNaveId}
+                    defaultNaveId={catalogNaveId}
                     naves={naves}
                     navesById={navesById}
                     assignmentKind={assignmentKind}
@@ -507,7 +511,7 @@ function AggregatedTaskTable({
                     <span className="text-muted-foreground whitespace-nowrap">
                       {naveSummary.label}
                     </span>
-                    {defaultNaveId ? (
+                    {catalogNaveId ? (
                       <NaveAssignmentHint kind={assignmentKind} />
                     ) : null}
                   </div>
@@ -584,6 +588,7 @@ export function LampTasksPanel({
   canManage,
   naves = [],
   elementTypeDefaultNaves = {},
+  catalogNaveByElementProcess = {},
 }: {
   lampId: string;
   tasks: LampTaskRow[];
@@ -593,6 +598,7 @@ export function LampTasksPanel({
   canManage: boolean;
   naves?: NaveSummary[];
   elementTypeDefaultNaves?: Record<string, string | null>;
+  catalogNaveByElementProcess?: Record<string, Record<string, string>>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -624,7 +630,18 @@ export function LampTasksPanel({
 
   const bastidorGroups = useMemo(() => groupTasksByBastidor(sorted), [sorted]);
 
-  function defaultNaveIdForExtraTask(groupKey: string | null): string {
+  function defaultNaveIdForExtraTask(
+    groupKey: string | null,
+    process?: string,
+  ): string {
+    if (groupKey && process) {
+      return (
+        catalogNaveByElementProcess[groupKey]?.[process] ??
+        elementTypeDefaultNaves[groupKey] ??
+        naves[0]?.id ??
+        ""
+      );
+    }
     if (groupKey) {
       return elementTypeDefaultNaves[groupKey] ?? naves[0]?.id ?? "";
     }
@@ -638,7 +655,7 @@ export function LampTasksPanel({
     setAddGroupKey(groupKey);
     setAddProcess(processes[0] ?? "");
     setAddHours("");
-    setAddNaveId(defaultNaveIdForExtraTask(groupKey));
+    setAddNaveId(defaultNaveIdForExtraTask(groupKey, processes[0]));
     setAddOpen(true);
   }
 
@@ -708,6 +725,7 @@ export function LampTasksPanel({
           const showSectionLabel =
             hasMultipleBastidores || group.unitCount > 1;
           const groupDefaultNaveId = elementTypeDefaultNaves[group.key] ?? null;
+          const groupCatalogNaves = catalogNaveByElementProcess[group.key] ?? {};
           const typeDefaultNaveLabel = defaultNaveLabelForGroup(
             group.key,
             elementTypeDefaultNaves,
@@ -738,6 +756,7 @@ export function LampTasksPanel({
                   groupKey={group.key}
                   lampId={lampId}
                   defaultNaveId={groupDefaultNaveId}
+                  catalogNaveByProcess={groupCatalogNaves}
                   naves={naves}
                   navesById={navesById}
                   processStylesByCode={processStylesByCode}
@@ -774,6 +793,14 @@ export function LampTasksPanel({
                           t.process,
                           waitHoursByProcess,
                         );
+                        const catalogNaveId =
+                          groupCatalogNaves[t.process] ??
+                          groupDefaultNaveId ??
+                          null;
+                        const taskAssignmentKind = describeNaveAssignment({
+                          naveIds: [t.naveId],
+                          catalogNaveId,
+                        });
                         return (
                           <tr
                             key={t.id}
@@ -805,13 +832,10 @@ export function LampTasksPanel({
                               {canManage && naves.length > 0 ? (
                                 <NaveCell
                                   naveId={t.naveId}
-                                  defaultNaveId={groupDefaultNaveId}
+                                  defaultNaveId={catalogNaveId}
                                   naves={naves}
                                   navesById={navesById}
-                                  assignmentKind={describeNaveAssignment({
-                                    naveIds: [t.naveId],
-                                    elementTypeDefaultNaveId: groupDefaultNaveId,
-                                  })}
+                                  assignmentKind={taskAssignmentKind}
                                   disabled={pending}
                                   onChange={(naveId) => {
                                     if (naveId === t.naveId) return;
@@ -840,12 +864,9 @@ export function LampTasksPanel({
                                       t.naveId,
                                     )}
                                   </span>
-                                  {groupDefaultNaveId ? (
+                                  {catalogNaveId ? (
                                     <NaveAssignmentHint
-                                      kind={describeNaveAssignment({
-                                        naveIds: [t.naveId],
-                                        elementTypeDefaultNaveId: groupDefaultNaveId,
-                                      })}
+                                      kind={taskAssignmentKind}
                                     />
                                   ) : null}
                                 </div>
@@ -1138,7 +1159,16 @@ export function LampTasksPanel({
           >
             <div className="space-y-2">
               <Label>Proceso</Label>
-              <Select value={addProcess} onValueChange={(v) => setAddProcess(v ?? "")}>
+              <Select
+                value={addProcess}
+                onValueChange={(v) => {
+                  const process = v ?? "";
+                  setAddProcess(process);
+                  if (addGroupKey && process) {
+                    setAddNaveId(defaultNaveIdForExtraTask(addGroupKey, process));
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ElementTypology } from "@/generated/prisma";
 import {
   buildProjectNavesByProjectId,
+  buildCatalogNaveByProcess,
   describeNaveAssignment,
   elementTaskScopeWhere,
   elementTypeIdFromGroupKey,
@@ -10,6 +11,7 @@ import {
   isCustomNaveAssignment,
   MANUAL_ELEMENT_KEY,
   resolveEffectiveElementTypeNaveId,
+  resolveNaveForElementProcess,
   resolveNaveForElementType,
   summarizeNaveIds,
 } from "@/features/projects/task-nave";
@@ -66,6 +68,48 @@ describe("resolveNaveForElementType", () => {
     expect(resolveNaveForElementType(null, defaults, "fallback")).toBe(
       "fallback",
     );
+  });
+});
+
+describe("resolveNaveForElementProcess", () => {
+  const elementDefaults = new Map([["et-1", "nave-element"]]);
+
+  it("uses process override when defined", () => {
+    expect(
+      resolveNaveForElementProcess({
+        processNaveId: "nave-process",
+        elementTypeId: "et-1",
+        elementTypeDefaultNaves: elementDefaults,
+        fallbackNaveId: "fallback",
+      }),
+    ).toBe("nave-process");
+  });
+
+  it("inherits element nave when process has no override", () => {
+    expect(
+      resolveNaveForElementProcess({
+        processNaveId: null,
+        elementTypeId: "et-1",
+        elementTypeDefaultNaves: elementDefaults,
+        fallbackNaveId: "fallback",
+      }),
+    ).toBe("nave-element");
+  });
+});
+
+describe("buildCatalogNaveByProcess", () => {
+  it("builds per-process catalog naves", () => {
+    const map = buildCatalogNaveByProcess({
+      elementTypeId: "et-1",
+      processes: [
+        { process: "CNC", naveId: "nave-b" },
+        { process: "LIJADO", naveId: null },
+      ],
+      elementTypeDefaultNaves: new Map([["et-1", "nave-a"]]),
+      fallbackNaveId: "fallback",
+    });
+    expect(map.get("CNC")).toBe("nave-b");
+    expect(map.get("LIJADO")).toBe("nave-a");
   });
 });
 

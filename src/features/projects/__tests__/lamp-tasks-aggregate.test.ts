@@ -11,12 +11,12 @@ import { lampElementsToConfig } from "@/features/projects/sync-lamp-elements";
 describe("scaleBlueprintHoursForUnits", () => {
   it("multiplies hours when units > 1", () => {
     const blueprints = [
-      { process: "CNC" as const, estimatedHours: 1.7, order: 0 },
-      { process: "ENSAMBLAJE" as const, estimatedHours: 3.2, order: 1 },
+      { process: "CNC" as const, estimatedHours: 1.7, order: 0, naveId: "n1" },
+      { process: "ENSAMBLAJE" as const, estimatedHours: 3.2, order: 1, naveId: "n1" },
     ];
     expect(scaleBlueprintHoursForUnits(blueprints, 4)).toEqual([
-      { process: "CNC", estimatedHours: 6.8, order: 0 },
-      { process: "ENSAMBLAJE", estimatedHours: 12.8, order: 1 },
+      { process: "CNC", estimatedHours: 6.8, order: 0, naveId: "n1" },
+      { process: "ENSAMBLAJE", estimatedHours: 12.8, order: 1, naveId: "n1" },
     ]);
   });
 });

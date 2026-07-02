@@ -110,6 +110,7 @@ model Nave {
   tasks               Task[]
   elementTypeDefaults ElementType[] @relation("ElementTypeDefaultNave")
   typologyDefaults    ElementTypologyNave[] @relation("TypologyDefaultNave")
+  elementTypeProcesses ElementTypeProcess[] @relation("ElementTypeProcessNave")
   activeUsers         User[]          @relation("ActiveNave")
   personNaves         PersonNave[]
   plannings           Planning[]      @relation("NavePlannings")
@@ -347,9 +348,11 @@ model ElementTypeProcess {
   hoursPerUnit  Float
   fixedHours    Float   @default(0)
   notes         String?
+  naveId        String?
 
   elementType ElementType       @relation(fields: [elementTypeId], references: [id], onDelete: Cascade)
   definition  ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  nave        Nave?             @relation("ElementTypeProcessNave", fields: [naveId], references: [id], onDelete: SetNull)
 
   @@unique([elementTypeId, process])
   @@index([elementTypeId, sequence])

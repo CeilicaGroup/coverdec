@@ -6,7 +6,6 @@ import {
   type TaskBlueprint,
 } from "@/features/projects/lamp-tasks";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
-import { resolveNaveForElementType } from "@/features/projects/task-nave";
 
 export interface LampElementConfig {
   typology: ElementTypology;
@@ -177,11 +176,7 @@ async function createElementWithTasks(
       process: bp.process,
       estimatedHours: bp.estimatedHours,
       order: bp.order + physicalElementIndex * 1000,
-      naveId: resolveNaveForElementType(
-        elementTypeId,
-        elementTypeDefaultNaves,
-        fallbackNaveId,
-      ),
+      naveId: bp.naveId,
     })),
   });
 }

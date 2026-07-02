@@ -37,9 +37,11 @@ import {
   type LampElementConfig,
 } from "@/features/projects/sync-lamp-elements";
 import {
+  buildCatalogNaveByProcess,
   elementTaskScopeWhere,
   elementTypeIdFromGroupKey,
   loadTaskNaveContext,
+  resolveNaveForElementProcess,
   resolveNaveForElementType,
 } from "@/features/projects/task-nave";
 
@@ -399,11 +401,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                   process: bp.process,
                   estimatedHours: bp.estimatedHours,
                   order: bp.order + physicalElementIndex * 1000,
-                  naveId: resolveNaveForElementType(
-                    element.elementTypeId,
-                    elementTypeDefaultNaves,
-                    fallbackNaveId,
-                  ),
+                  naveId: bp.naveId,
                 });
               }
   
@@ -601,10 +599,30 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     const { fallbackNaveId, elementTypeDefaultNaves } =
       await loadTaskNaveContext(prisma);
   
-    async function resolveExtraTaskNaveId(elementTypeId: string | null) {
+    async function resolveExtraTaskNaveId(
+      elementTypeId: string | null,
+      process: string,
+    ) {
       if (data.naveId) {
         await assertActiveNaveId(data.naveId);
         return data.naveId;
+      }
+      if (elementTypeId) {
+        const catalogProcess = await prisma.elementTypeProcess.findUnique({
+          where: {
+            elementTypeId_process: {
+              elementTypeId,
+              process,
+            },
+          },
+          select: { naveId: true },
+        });
+        return resolveNaveForElementProcess({
+          processNaveId: catalogProcess?.naveId,
+          elementTypeId,
+          elementTypeDefaultNaves,
+          fallbackNaveId,
+        });
       }
       return resolveNaveForElementType(
         elementTypeId,
@@ -626,7 +644,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         throw new Error("Ese proceso ya existe en este elemento.");
       }
   
-      const naveId = await resolveExtraTaskNaveId(elementTypeId);
+      const naveId = await resolveExtraTaskNaveId(elementTypeId, data.process);
   
       await prisma.$transaction(async (tx) => {
         let order = await getNextTaskOrder(tx, lamp.id);
@@ -699,7 +717,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       if (exists > 0) throw new Error("Ese proceso ya existe en esta lámpara.");
     }
   
-    const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId);
+    const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId, data.process);
   
     await prisma.$transaction(async (tx) => {
       const order = await getNextTaskOrder(tx, lamp.id);
@@ -829,11 +847,24 @@ export async function applyDefaultNavesToElement(
     const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
     const { fallbackNaveId, elementTypeDefaultNaves } =
       await loadTaskNaveContext(prisma);
-    const defaultNaveId = resolveNaveForElementType(
-      elementTypeId,
-      elementTypeDefaultNaves,
-      fallbackNaveId,
-    );
+
+    const catalogProcesses =
+      elementTypeId != null
+        ? await prisma.elementTypeProcess.findMany({
+            where: { elementTypeId },
+            select: { process: true, naveId: true },
+          })
+        : [];
+    const catalogNaveByProcess =
+      elementTypeId != null
+        ? buildCatalogNaveByProcess({
+            elementTypeId,
+            processes: catalogProcesses,
+            elementTypeDefaultNaves,
+            fallbackNaveId,
+          })
+        : new Map<string, string>();
+
     const tasks = await prisma.task.findMany({
       where: elementTaskScopeWhere({
         lampId: data.lampId,
@@ -841,22 +872,33 @@ export async function applyDefaultNavesToElement(
       }),
       select: {
         id: true,
+        process: true,
         lamp: { select: { projectId: true } },
         _count: { select: { assignments: true } },
       },
     });
-  
+
     if (tasks.some((task) => task._count.assignments > 0)) {
       throw new Error(
         "Alguna tarea tiene asignaciones de planning; no se puede cambiar la nave.",
       );
     }
-  
+
     await prisma.$transaction(
       tasks.map((task) =>
         prisma.task.update({
           where: { id: task.id },
-          data: { naveId: defaultNaveId },
+          data: {
+            naveId:
+              elementTypeId != null
+                ? (catalogNaveByProcess.get(task.process) ??
+                  resolveNaveForElementType(
+                    elementTypeId,
+                    elementTypeDefaultNaves,
+                    fallbackNaveId,
+                  ))
+                : fallbackNaveId,
+          },
         }),
       ),
     );
