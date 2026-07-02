@@ -44,6 +44,17 @@ import {
   resolveNaveForElementProcess,
   resolveNaveForElementType,
 } from "@/features/projects/task-nave";
+import {
+  assertTasksNotPlanned,
+  assertTasksNotPlannedFromRows,
+  taskHasPlanningAssignments,
+} from "@/features/projects/task-planning-lock";
+import {
+  blueprintToTaskCreateData,
+  isSystemTransportTask,
+  syncTransportTasksForLamp,
+  TRANSPORT_PROCESS_CODE,
+} from "@/features/projects/transport-tasks";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -69,12 +80,15 @@ async function loadScopedTaskIds(args: {
   lampId: string;
   elementTypeId: string | null;
   process?: string;
+  excludeTransport?: boolean;
 }) {
   const tasks = await prisma.task.findMany({
     where: elementTaskScopeWhere(args),
-    select: { id: true },
+    select: { id: true, systemKind: true, process: true },
   });
-  return tasks.map((task) => task.id);
+  return tasks
+    .filter((task) => !args.excludeTransport || !isSystemTransportTask(task))
+    .map((task) => task.id);
 }
 
 async function persistTasksNave(taskIds: string[], naveId: string) {
@@ -85,20 +99,30 @@ async function persistTasksNave(taskIds: string[], naveId: string) {
     where: { id: { in: taskIds } },
     select: {
       id: true,
+      lampId: true,
+      systemKind: true,
+      process: true,
       lamp: { select: { projectId: true } },
       _count: { select: { assignments: true } },
     },
   });
 
-  if (tasks.some((task) => task._count.assignments > 0)) {
-    throw new Error(
-      "Alguna tarea tiene asignaciones de planning; no se puede cambiar la nave.",
-    );
+  if (tasks.some((task) => isSystemTransportTask(task))) {
+    throw new Error("Las tareas de transporte automático no permiten cambiar la nave manualmente.");
   }
+
+  assertTasksNotPlannedFromRows(tasks);
 
   await prisma.task.updateMany({
     where: { id: { in: taskIds } },
     data: { naveId },
+  });
+
+  const lampIds = [...new Set(tasks.map((task) => task.lampId))];
+  await prisma.$transaction(async (tx) => {
+    for (const lampId of lampIds) {
+      await syncTransportTasksForLamp(tx, lampId);
+    }
   });
 
   const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
@@ -360,15 +384,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
             },
           });
   
-          const tasksToCreate: Array<{
-            projectId: string;
-            lampId: string;
-            lampElementId: string;
-            process: string;
-            estimatedHours: number;
-            order: number;
-            naveId: string;
-          }> = [];
+          const tasksToCreate: Array<ReturnType<typeof blueprintToTaskCreateData>> = [];
   
           let physicalElementIndex = 0;
   
@@ -394,15 +410,14 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
               });
   
               for (const bp of blueprints) {
-                tasksToCreate.push({
-                  projectId: data.projectId,
-                  lampId: created.id,
-                  lampElementId: lampElement.id,
-                  process: bp.process,
-                  estimatedHours: bp.estimatedHours,
-                  order: bp.order + physicalElementIndex * 1000,
-                  naveId: bp.naveId,
-                });
+                tasksToCreate.push(
+                  blueprintToTaskCreateData(bp, {
+                    projectId: data.projectId,
+                    lampId: created.id,
+                    lampElementId: lampElement.id,
+                    order: bp.order + physicalElementIndex * 1000,
+                  }),
+                );
               }
   
               physicalElementIndex += 1;
@@ -412,7 +427,9 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
           if (tasksToCreate.length > 0) {
             await tx.task.createMany({ data: tasksToCreate });
           }
-  
+
+          await syncTransportTasksForLamp(tx, created.id);
+
           return created;
         });
         catalogLampId = lamp.id;
@@ -562,6 +579,8 @@ export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchem
   
     const task = await prisma.task.findFirst({ where: { id: data.taskId } });
     if (!task) throw new Error("Tarea no encontrada");
+
+    await assertTasksNotPlanned([task.id]);
   
     await prisma.task.update({
       where: { id: task.id },
@@ -589,7 +608,10 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = addExtraTaskSchema.parse(input);
-  
+    if (data.process === TRANSPORT_PROCESS_CODE) {
+      throw new Error("Las tareas de transporte se generan automáticamente entre naves.");
+    }
+
     const lamp = await prisma.lamp.findFirst({
       where: { id: data.lampId },
       select: { id: true, projectId: true, elementTypeId: true },
@@ -686,6 +708,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
             },
           });
         }
+        await syncTransportTasksForLamp(tx, lamp.id);
       });
   
       revalidatePath("/dashboard/proyectos");
@@ -732,6 +755,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
           naveId,
         },
       });
+      await syncTransportTasksForLamp(tx, lamp.id);
     });
   
     revalidatePath("/dashboard/proyectos");
@@ -796,6 +820,7 @@ export async function assignElementTasksNave(
     const taskIds = await loadScopedTaskIds({
       lampId: data.lampId,
       elementTypeId: elementTypeIdFromGroupKey(data.elementGroupKey),
+      excludeTransport: true,
     });
     await persistTasksNave(taskIds, data.naveId);
     },
@@ -873,36 +898,42 @@ export async function applyDefaultNavesToElement(
       select: {
         id: true,
         process: true,
+        systemKind: true,
         lamp: { select: { projectId: true } },
         _count: { select: { assignments: true } },
       },
     });
 
-    if (tasks.some((task) => task._count.assignments > 0)) {
+    const productionTasks = tasks.filter((task) => !isSystemTransportTask(task));
+
+    if (productionTasks.some((task) => taskHasPlanningAssignments(task))) {
       throw new Error(
         "Alguna tarea tiene asignaciones de planning; no se puede cambiar la nave.",
       );
     }
 
-    await prisma.$transaction(
-      tasks.map((task) =>
-        prisma.task.update({
-          where: { id: task.id },
-          data: {
-            naveId:
-              elementTypeId != null
-                ? (catalogNaveByProcess.get(task.process) ??
-                  resolveNaveForElementType(
-                    elementTypeId,
-                    elementTypeDefaultNaves,
-                    fallbackNaveId,
-                  ))
-                : fallbackNaveId,
-          },
-        }),
-      ),
-    );
-  
+    await prisma.$transaction(async (tx) => {
+      await Promise.all(
+        productionTasks.map((task) =>
+          tx.task.update({
+            where: { id: task.id },
+            data: {
+              naveId:
+                elementTypeId != null
+                  ? (catalogNaveByProcess.get(task.process) ??
+                    resolveNaveForElementType(
+                      elementTypeId,
+                      elementTypeDefaultNaves,
+                      fallbackNaveId,
+                    ))
+                  : fallbackNaveId,
+            },
+          }),
+        ),
+      );
+      await syncTransportTasksForLamp(tx, data.lampId);
+    });
+
     const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
     revalidatePath("/dashboard/proyectos");
     for (const projectId of projectIds) {
@@ -928,7 +959,10 @@ export async function deleteProcessTasks(
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = deleteProcessTasksSchema.parse(input);
-  
+    if (data.process === TRANSPORT_PROCESS_CODE) {
+      throw new Error("Las tareas de transporte se gestionan automáticamente.");
+    }
+
     const tasks = await prisma.task.findMany({
       where: elementTaskScopeWhere({
         lampId: data.lampId,
@@ -945,11 +979,7 @@ export async function deleteProcessTasks(
     if (tasks.some((task) => task._count.timeEntries > 0)) {
       throw new Error("No se puede eliminar: alguna tarea tiene horas registradas.");
     }
-    if (tasks.some((task) => task._count.assignments > 0)) {
-      throw new Error(
-        "No se puede eliminar: alguna tarea tiene asignaciones de planning.",
-      );
-    }
+    assertTasksNotPlannedFromRows(tasks);
   
     await prisma.task.deleteMany({
       where: { id: { in: tasks.map((task) => task.id) } },
@@ -975,15 +1005,15 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
       include: { _count: { select: { assignments: true, timeEntries: true } } },
     });
     if (!task) throw new Error("Tarea no encontrada");
+
+    if (isSystemTransportTask(task)) {
+      throw new Error("Las tareas de transporte automático no se pueden eliminar manualmente.");
+    }
   
     if (task._count.timeEntries > 0) {
       throw new Error("No se puede eliminar: la tarea tiene horas registradas.");
     }
-    if (task._count.assignments > 0 || task._count.timeEntries > 0) {
-      throw new Error(
-        "No se puede eliminar: hay asignaciones de planning o partes de trabajo.",
-      );
-    }
+    assertTasksNotPlannedFromRows([task]);
   
     await prisma.task.delete({ where: { id: task.id } });
     revalidatePath("/dashboard/proyectos");
@@ -1035,10 +1065,14 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
     await prisma.$transaction(async (tx) => {
       const task = await tx.task.findUnique({
         where: { id: data.taskId },
-        select: { id: true, lampId: true, order: true },
+        select: { id: true, lampId: true, order: true, systemKind: true, process: true },
       });
       if (!task) throw new Error("Tarea no encontrada");
-  
+      if (isSystemTransportTask(task)) {
+        throw new Error("Las tareas de transporte automático no se pueden reordenar manualmente.");
+      }
+      await assertTasksNotPlanned([task.id]);
+
       const sibling = await tx.task.findFirst({
         where: {
           lampId: task.lampId,
@@ -1051,6 +1085,8 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
         select: { id: true, order: true },
       });
       if (!sibling) return;
+
+      await assertTasksNotPlanned([sibling.id]);
   
       await tx.task.update({
         where: { id: task.id },

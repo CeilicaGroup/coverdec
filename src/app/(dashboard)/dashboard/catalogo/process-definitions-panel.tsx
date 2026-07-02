@@ -31,7 +31,7 @@ import {
   updateProcessDefinition,
   type ProcessDefinitionUsage,
 } from "@/features/catalog/actions";
-import { deriveProcessColors } from "@/lib/color";
+import { TRANSPORT_PROCESS_CODE } from "@/features/projects/transport-tasks";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
@@ -41,6 +41,7 @@ export interface ProcessRow {
   code: string;
   label: string;
   waitHours: number;
+  setupHours: number;
   bgColor: string;
   fgColor: string;
   borderColor: string;
@@ -92,6 +93,7 @@ export function ProcessDefinitionsPanel({
 
   const [editing, setEditing] = useState<ProcessRow | null>(null);
   const [eWait, setEWait] = useState("");
+  const [eSetup, setESetup] = useState("");
   const [eLabel, setELabel] = useState("");
   const [eColor, setEColor] = useState("#64748b");
   const [eCanFragment, setECanFragment] = useState(true);
@@ -120,6 +122,7 @@ export function ProcessDefinitionsPanel({
   function openEdit(row: ProcessRow) {
     setEditing(row);
     setEWait(String(row.waitHours));
+    setESetup(String(row.setupHours));
     setELabel(row.label);
     setEColor(row.fgColor.startsWith("#") && row.fgColor.length === 7 ? row.fgColor : "#64748b");
     setECanFragment(row.canFragment);
@@ -162,8 +165,17 @@ export function ProcessDefinitionsPanel({
   function submitEdit() {
     if (!editing) return;
     const wh = Number(eWait);
+    const setupHours =
+      editing.code === TRANSPORT_PROCESS_CODE ? Number(eSetup) : undefined;
     if (Number.isNaN(wh) || wh < 0) {
       toast.error("Horas de espera inválidas");
+      return;
+    }
+    if (
+      editing.code === TRANSPORT_PROCESS_CODE &&
+      (setupHours === undefined || Number.isNaN(setupHours) || setupHours <= 0)
+    ) {
+      toast.error("Indica una duración válida para el transporte");
       return;
     }
     if (!eLabel.trim()) {
@@ -175,6 +187,7 @@ export function ProcessDefinitionsPanel({
       const result = await updateProcessDefinition({
           code: editing.code,
           waitHours: wh,
+          setupHours,
           label: eLabel.trim(),
           bgColor: colors.bgColor,
           fgColor: colors.fgColor,
@@ -255,7 +268,11 @@ export function ProcessDefinitionsPanel({
                   </div>
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs">
-                  {p.waitHours > 0 ? p.waitHours : "—"}
+                  {p.code === TRANSPORT_PROCESS_CODE
+                    ? (p.setupHours > 0 ? p.setupHours : "—")
+                    : p.waitHours > 0
+                      ? p.waitHours
+                      : "—"}
                 </TableCell>
                 {canManage ? (
                   <TableCell className="text-right space-x-1">
@@ -390,6 +407,22 @@ export function ProcessDefinitionsPanel({
                   onChange={(e) => setEWait(e.target.value)}
                 />
               </div>
+              {editing.code === TRANSPORT_PROCESS_CODE ? (
+                <div className="space-y-2">
+                  <Label>Duración por transporte (h)</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Horas por defecto de cada tarea automática entre naves distintas.
+                  </p>
+                  <Input
+                    type="number"
+                    min={0.25}
+                    max={24}
+                    step={0.25}
+                    value={eSetup}
+                    onChange={(e) => setESetup(e.target.value)}
+                  />
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label>Color</Label>
                 <div className="flex items-center gap-3">

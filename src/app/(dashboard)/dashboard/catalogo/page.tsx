@@ -25,6 +25,7 @@ export default async function CatalogoPage() {
         code: true,
         label: true,
         waitHours: true,
+        setupHours: true,
         bgColor: true,
         fgColor: true,
         borderColor: true,

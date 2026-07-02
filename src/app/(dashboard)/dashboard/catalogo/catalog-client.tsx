@@ -37,6 +37,7 @@ import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown, MapPin } from "l
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
+import { TRANSPORT_PROCESS_CODE } from "@/features/projects/transport-tasks";
 import type { ProcessCode } from "@/types/process";
 import { handleActionResult } from "@/lib/mutation-error";
 import { ElementTypology } from "@/generated/prisma";
@@ -211,6 +212,10 @@ export function CatalogoCatalogClient({
   const [defaultNaveId, setDefaultNaveId] = useState("");
 
   const activeCount = useMemo(() => frames.filter((f) => f.isActive).length, [frames]);
+  const elementProcessDefs = useMemo(
+    () => processDefs.filter((d) => d.code !== TRANSPORT_PROCESS_CODE),
+    [processDefs],
+  );
 
   function openCreate() {
     setMode("create");
@@ -221,7 +226,7 @@ export function CatalogoCatalogClient({
     setTypology(ElementTypology.BASTIDOR);
     setDefaultNaveId("");
     const used = new Set<ProcessCode>();
-    const first = defaultProcessRow(processDefs, used);
+    const first = defaultProcessRow(elementProcessDefs, used);
     setRows(first ? [first] : []);
     setDialogOpen(true);
   }
@@ -243,8 +248,8 @@ export function CatalogoCatalogClient({
             fixedHours: String(p.fixedHours),
             naveId: p.naveId ?? "",
           }))
-        : defaultProcessRow(processDefs, new Set())
-          ? [defaultProcessRow(processDefs, new Set())!]
+        : defaultProcessRow(elementProcessDefs, new Set())
+          ? [defaultProcessRow(elementProcessDefs, new Set())!]
           : [],
     );
     setDialogOpen(true);
@@ -252,7 +257,7 @@ export function CatalogoCatalogClient({
 
   function addRow() {
     const used = new Set(rows.map((r) => r.process));
-    const row = defaultProcessRow(processDefs, used);
+    const row = defaultProcessRow(elementProcessDefs, used);
     if (row) setRows((prev) => [...prev, row]);
     else toast.error("No quedan procesos libres para añadir");
   }
@@ -717,7 +722,7 @@ export function CatalogoCatalogClient({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {processDefs.map((d) => (
+                            {elementProcessDefs.map((d) => (
                               <SelectItem key={d.code} value={d.code}>
                                 {d.label}
                               </SelectItem>

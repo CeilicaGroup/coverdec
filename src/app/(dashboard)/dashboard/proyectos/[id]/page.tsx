@@ -59,6 +59,8 @@ export default async function ProjectDetailPage({
             orderBy: { order: "asc" },
             include: {
               nave: { select: { id: true, codigo: true, nombre: true } },
+              transportFromNave: { select: { id: true, codigo: true, nombre: true } },
+              transportToNave: { select: { id: true, codigo: true, nombre: true } },
               workOrder: { select: { number: true, status: true } },
               lampElement: {
                 select: {
@@ -68,6 +70,7 @@ export default async function ProjectDetailPage({
                   elementType: { select: { id: true, name: true } },
                 },
               },
+              _count: { select: { assignments: true } },
             },
           },
         },

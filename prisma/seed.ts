@@ -22,6 +22,7 @@ const PROCESSES = [
   { code: "PEGADO_ESPEJO",label: "Pegado espejo",     factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#EDE9FE", fgColor: "#5B21B6", borderColor: "#5B21B6" },
   { code: "CORTE_MANUAL", label: "Corte manual",      factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
   { code: "LIMPIEZA",     label: "Limpieza",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#E0F2FE", fgColor: "#0369A1", borderColor: "#0369A1" },
+  { code: "TRANSPORTE",   label: "Transporte",        factor: 1,    setupHours: 0.5, waitHours: 0, bgColor: "#FEF3C7", fgColor: "#92400E", borderColor: "#D97706" },
   { code: "ESTIMACION_MANUAL", label: "Estimación manual", factor: 1, setupHours: 0, waitHours: 0, bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
 ];
 
@@ -39,6 +40,7 @@ const PEOPLE = [
       { process: "ENSAMBLAJE" },
       { process: "PERFILES" },
       { process: "EMBALAJE" },
+      { process: "TRANSPORTE", isFallback: true },
     ],
     notes: "Responsable de nave. Único responsable de Pintura.",
   },
@@ -55,6 +57,7 @@ const PEOPLE = [
       { process: "PERFILES" },
       { process: "EMBALAJE" },
       { process: "LIMPIEZA" },
+      { process: "TRANSPORTE", isFallback: true },
     ],
     notes: "Único responsable de Imprimación. Selcos metacrilato. Hair perfiles.",
   },
@@ -93,6 +96,7 @@ const PEOPLE = [
     specialties: [
       { process: "CNC", isPrimary: true },
       { process: "ENSAMBLAJE", isFallback: true },
+      { process: "TRANSPORTE", isFallback: true },
     ],
     notes: "Operador CNC principal. John opera CNC solo si Daniil ausente.",
   },

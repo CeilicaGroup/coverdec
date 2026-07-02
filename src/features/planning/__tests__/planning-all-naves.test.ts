@@ -13,8 +13,22 @@ vi.mock("@/features/naves/active-naves", () => ({
   loadActiveNavesOrdered,
 }));
 
+const assertSchedulableTransportTasksHaveOperators = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+
+const getPriorPlanningAssignments = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+
 vi.mock("@/features/work-orders/require-for-planning", () => ({
   assertActiveNavesSchedulableTasksHaveOpenWorkOrder,
+}));
+
+vi.mock("@/features/projects/transport-operators", () => ({
+  assertSchedulableTransportTasksHaveOperators,
+}));
+
+vi.mock("@/features/planning/prior-week-planning", () => ({
+  getPriorPlanningAssignments,
 }));
 
 vi.mock("@/features/planning/service", () => ({
@@ -61,6 +75,7 @@ describe("generatePlanningAllNaves", () => {
     const result = await generatePlanningAllNaves({ weekStart });
 
     expect(assertActiveNavesSchedulableTasksHaveOpenWorkOrder).toHaveBeenCalledTimes(1);
+    expect(assertSchedulableTransportTasksHaveOperators).toHaveBeenCalledTimes(1);
     expect(generateGlobalPlanning).toHaveBeenCalledTimes(1);
     expect(generateGlobalPlanning).toHaveBeenCalledWith({
       weekStart,

@@ -6,6 +6,12 @@ import {
   type TaskBlueprint,
 } from "@/features/projects/lamp-tasks";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
+import {
+  blueprintToTaskCreateData,
+  isSystemTransportTask,
+  syncTransportTasksForLamp,
+} from "@/features/projects/transport-tasks";
+import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
 
 export interface LampElementConfig {
   typology: ElementTypology;
@@ -99,10 +105,14 @@ async function recalcElementTasks(
   const blueprintByProcess = new Map(blueprints.map((bp) => [bp.process, bp]));
 
   for (const task of element.tasks) {
+    if (isSystemTransportTask(task)) continue;
     const bp = blueprintByProcess.get(task.process);
     if (!bp) continue;
 
     const doneHours = doneByTaskId.get(task.id) ?? 0;
+    if (taskHasPlanningAssignments(task)) {
+      continue;
+    }
     if (taskHasWork(task) && doneHours > 0) {
       const nextEstimate = adjustPendingOnEstimateChange(
         bp.estimatedHours,
@@ -169,16 +179,17 @@ async function createElementWithTasks(
   if (blueprints.length === 0) return;
 
   await tx.task.createMany({
-    data: blueprints.map((bp) => ({
-      projectId,
-      lampId,
-      lampElementId: lampElement.id,
-      process: bp.process,
-      estimatedHours: bp.estimatedHours,
-      order: bp.order + physicalElementIndex * 1000,
-      naveId: bp.naveId,
-    })),
+    data: blueprints.map((bp) =>
+      blueprintToTaskCreateData(bp, {
+        projectId,
+        lampId,
+        lampElementId: lampElement.id,
+        order: bp.order + physicalElementIndex * 1000,
+      }),
+    ),
   });
+
+  await syncTransportTasksForLamp(tx, lampId);
 }
 
 async function removeElementIfAllowed(
@@ -393,4 +404,6 @@ export async function syncLampElements(
       units: totalUnits,
     },
   });
+
+  await syncTransportTasksForLamp(tx, lampId);
 }

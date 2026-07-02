@@ -226,6 +226,7 @@ export async function deleteElementType(
 const updateProcessSchema = z.object({
   code: z.string().min(1),
   waitHours: z.number().min(0).max(168),
+  setupHours: z.number().min(0).max(168).optional(),
   label: z.string().min(1).max(120),
   bgColor: z.string().min(1),
   fgColor: z.string().min(1),
@@ -245,6 +246,7 @@ export async function updateProcessDefinition(
     where: { code: data.code },
     data: {
       waitHours: data.waitHours,
+      ...(data.setupHours !== undefined ? { setupHours: data.setupHours } : {}),
       label: data.label.trim(),
       bgColor: data.bgColor,
       fgColor: data.fgColor,

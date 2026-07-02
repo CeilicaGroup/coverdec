@@ -99,6 +99,10 @@ enum WorkOrderStatus {
   CLOSED
 }
 
+enum TaskSystemKind {
+  TRANSPORT
+}
+
 // ---------- Naves (talleres físicos, global) ----------
 
 model Nave {
@@ -111,6 +115,8 @@ model Nave {
   elementTypeDefaults ElementType[] @relation("ElementTypeDefaultNave")
   typologyDefaults    ElementTypologyNave[] @relation("TypologyDefaultNave")
   elementTypeProcesses ElementTypeProcess[] @relation("ElementTypeProcessNave")
+  transportTasksFrom   Task[]                @relation("TransportFromNave")
+  transportTasksTo     Task[]                @relation("TransportToNave")
   activeUsers         User[]          @relation("ActiveNave")
   personNaves         PersonNave[]
   plannings           Planning[]      @relation("NavePlannings")
@@ -460,6 +466,10 @@ model Task {
   notes          String?
   workOrderId       String?
   workOrderSequence Int?
+  systemKind        TaskSystemKind?
+  transportFromNaveId String?
+  transportToNaveId   String?
+  transportAfterTaskId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -468,6 +478,8 @@ model Task {
   lampElement       LampElement?         @relation(fields: [lampElementId], references: [id], onDelete: SetNull)
   processDefinition ProcessDefinition    @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
   nave              Nave                 @relation(fields: [naveId], references: [id])
+  transportFromNave Nave?                @relation("TransportFromNave", fields: [transportFromNaveId], references: [id], onDelete: SetNull)
+  transportToNave   Nave?                @relation("TransportToNave", fields: [transportToNaveId], references: [id], onDelete: SetNull)
   workOrder         WorkOrder?           @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]

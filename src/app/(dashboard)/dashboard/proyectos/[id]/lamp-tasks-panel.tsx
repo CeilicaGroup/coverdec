@@ -53,6 +53,8 @@ import {
   type NaveAssignmentKind,
   type NaveSummary,
 } from "@/features/projects/task-nave";
+import { isSystemTransportTask } from "@/features/projects/transport-tasks";
+import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +68,10 @@ interface LampTaskRow {
   notes: string | null;
   naveId: string;
   nave: NaveSummary | null;
+  systemKind?: import("@/generated/prisma").TaskSystemKind | null;
+  transportFromNave?: NaveSummary | null;
+  transportToNave?: NaveSummary | null;
+  _count?: { assignments: number };
   lampElement:
     | {
         id: string;
@@ -97,6 +103,18 @@ function navePickerLabel(
   if (!naveId) return "Selecciona nave";
   const nave = navesById.get(naveId);
   return nave ? formatNaveLabel(nave, naveId) : "Nave";
+}
+
+function taskIsStructurallyLocked(task: LampTaskRow): boolean {
+  return taskHasPlanningAssignments(task) || isSystemTransportTask(task);
+}
+
+function transportRouteLabel(task: LampTaskRow): string | null {
+  if (!isSystemTransportTask(task)) return null;
+  const from = task.transportFromNave?.codigo ?? task.nave?.codigo;
+  const to = task.transportToNave?.codigo;
+  if (!from || !to) return null;
+  return `${from} → ${to}`;
 }
 
 function defaultNaveLabelForGroup(
@@ -460,7 +478,9 @@ function AggregatedTaskTable({
             naveIds: matching.map((task) => task.naveId),
             catalogNaveId,
           });
-          const canDelete = matching.every((task) => task.doneHours <= 0);
+          const canDelete =
+            !matching.some((task) => taskIsStructurallyLocked(task)) &&
+            matching.every((task) => task.doneHours <= 0);
 
           return (
             <tr key={row.process} className="border-t border-border/50">
@@ -471,6 +491,21 @@ function AggregatedTaskTable({
                     code={row.process}
                     definition={processStylesByCode[row.process]}
                   />
+                  {matching.some((task) => taskHasPlanningAssignments(task)) ? (
+                    <span className="text-[10px] font-medium text-sky-700 dark:text-sky-400">
+                      Planificada
+                    </span>
+                  ) : null}
+                  {matching.some((task) => isSystemTransportTask(task)) ? (
+                    <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                      Auto
+                    </span>
+                  ) : null}
+                  {matching.map((task) => transportRouteLabel(task)).find(Boolean) ? (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {matching.map((task) => transportRouteLabel(task)).find(Boolean)}
+                    </span>
+                  ) : null}
                   {showUnits && row.units > 1 ? (
                     <span className="text-[10px] text-muted-foreground">
                       ×{row.units}
@@ -479,7 +514,7 @@ function AggregatedTaskTable({
                 </div>
               </td>
               <td className="py-1.5 px-2 min-w-[9rem]">
-                {canManage && naves.length > 0 ? (
+                {canManage && naves.length > 0 && !matching.some((task) => taskIsStructurallyLocked(task)) ? (
                   <NaveCell
                     naveId={displayNaveId}
                     defaultNaveId={catalogNaveId}
@@ -511,7 +546,12 @@ function AggregatedTaskTable({
                     <span className="text-muted-foreground whitespace-nowrap">
                       {naveSummary.label}
                     </span>
-                    {catalogNaveId ? (
+                    {matching.some((task) => transportRouteLabel(task)) ? (
+                      <span className="text-[10px] text-muted-foreground font-mono block">
+                        {matching.map((task) => transportRouteLabel(task)).find(Boolean)}
+                      </span>
+                    ) : null}
+                    {catalogNaveId && !matching.some((task) => isSystemTransportTask(task)) ? (
                       <NaveAssignmentHint kind={assignmentKind} />
                     ) : null}
                   </div>
@@ -815,6 +855,21 @@ export function LampTasksPanel({
                                   code={t.process}
                                   definition={processStylesByCode[t.process]}
                                 />
+                                {taskHasPlanningAssignments(t) ? (
+                                  <span className="text-[10px] font-medium text-sky-700 dark:text-sky-400">
+                                    Planificada
+                                  </span>
+                                ) : null}
+                                {isSystemTransportTask(t) ? (
+                                  <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                                    Auto
+                                  </span>
+                                ) : null}
+                                {transportRouteLabel(t) ? (
+                                  <span className="text-[10px] text-muted-foreground font-mono">
+                                    {transportRouteLabel(t)}
+                                  </span>
+                                ) : null}
                                 <WorkOrderBadge
                                   number={t.workOrder?.number}
                                   status={t.workOrder?.status}
@@ -829,7 +884,7 @@ export function LampTasksPanel({
                               </td>
                             ) : null}
                             <td className="py-1.5 px-2 min-w-[9rem]">
-                              {canManage && naves.length > 0 ? (
+                              {canManage && naves.length > 0 && !taskIsStructurallyLocked(t) ? (
                                 <NaveCell
                                   naveId={t.naveId}
                                   defaultNaveId={catalogNaveId}
@@ -892,7 +947,7 @@ export function LampTasksPanel({
                                     variant="ghost"
                                     size="icon"
                                     className="size-7"
-                                    disabled={idx === 0}
+                                    disabled={idx === 0 || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
                                         try {
@@ -919,7 +974,7 @@ export function LampTasksPanel({
                                     variant="ghost"
                                     size="icon"
                                     className="size-7"
-                                    disabled={idx === groupSorted.length - 1}
+                                    disabled={idx === groupSorted.length - 1 || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
                                         try {
@@ -960,7 +1015,7 @@ export function LampTasksPanel({
                                     variant="ghost"
                                     size="icon"
                                     className={cn("size-7 text-destructive")}
-                                    disabled={t.doneHours > 0}
+                                    disabled={t.doneHours > 0 || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       if (
                                         !confirm(
@@ -1045,17 +1100,20 @@ export function LampTasksPanel({
               className="space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
+                const planned = taskHasPlanningAssignments(editTask);
                 const h = Number(editHours);
-                if (!h || h <= 0) {
+                if (!planned && (!h || h <= 0)) {
                   toast.error("Horas inválidas");
                   return;
                 }
                 startTransition(async () => {
                   try {
-                    await updateTaskHours({
-                      taskId: editTask.id,
-                      estimatedHours: h,
-                    });
+                    if (!planned) {
+                      await updateTaskHours({
+                        taskId: editTask.id,
+                        estimatedHours: h,
+                      });
+                    }
                     await updateTaskNotes({
                       taskId: editTask.id,
                       notes: editNotes.trim() || null,
@@ -1090,10 +1148,16 @@ export function LampTasksPanel({
                   type="number"
                   step={0.25}
                   min={0.25}
-                  required
+                  required={!taskHasPlanningAssignments(editTask)}
+                  disabled={taskHasPlanningAssignments(editTask)}
                   value={editHours}
                   onChange={(e) => setEditHours(e.target.value)}
                 />
+                {taskHasPlanningAssignments(editTask) ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    No se pueden cambiar las horas: la tarea tiene planning asignado.
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>Notas</Label>

@@ -1,4 +1,4 @@
-import type { Prisma } from "@/generated/prisma";
+import type { Prisma, TaskSystemKind } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { prisma } from "@/lib/db";
 import { taskChainKey } from "@/features/planning/task-chain-key";
@@ -7,11 +7,19 @@ import {
   resolveNaveForElementProcess,
 } from "@/features/projects/task-nave";
 
+import {
+  injectTransportBlueprints,
+  loadTransportDefaultHours,
+} from "@/features/projects/transport-tasks";
+
 export interface TaskBlueprint {
   process: ProcessCode;
   estimatedHours: number;
   order: number;
   naveId: string;
+  systemKind?: TaskSystemKind | null;
+  transportFromNaveId?: string | null;
+  transportToNaveId?: string | null;
 }
 
 export interface ElementProcessInput {
@@ -226,16 +234,17 @@ export async function buildTasksFromElement(
   elementTypeId: string,
   surfaceM2: number,
 ): Promise<TaskBlueprint[]> {
-  const [elementProcesses, { fallbackNaveId, elementTypeDefaultNaves }] =
+  const [elementProcesses, { fallbackNaveId, elementTypeDefaultNaves }, defaultTransportHours] =
     await Promise.all([
       prisma.elementTypeProcess.findMany({
         where: { elementTypeId },
         orderBy: { sequence: "asc" },
       }),
       loadTaskNaveContext(prisma),
+      loadTransportDefaultHours(prisma),
     ]);
 
-  return computeTaskBlueprintsFromProcesses(
+  const blueprints = computeTaskBlueprintsFromProcesses(
     elementProcesses.map((fp) => ({
       process: fp.process as ProcessCode,
       hoursPerUnit: fp.hoursPerUnit,
@@ -250,6 +259,8 @@ export async function buildTasksFromElement(
     })),
     surfaceM2,
   );
+
+  return injectTransportBlueprints(blueprints, defaultTransportHours);
 }
 
 /** @deprecated Use buildTasksFromElement */

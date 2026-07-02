@@ -1,5 +1,7 @@
 import { loadActiveNavesOrdered } from "@/features/naves/active-naves";
 import { assertActiveNavesSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
+import { assertSchedulableTransportTasksHaveOperators } from "@/features/projects/transport-operators";
+import { getPriorPlanningAssignments } from "@/features/planning/prior-week-planning";
 import { getMondayOf } from "@/lib/week";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import {
@@ -23,6 +25,26 @@ export async function generatePlanningAllNaves(args: {
     naveIds: naves.map((nave) => nave.id),
     weekStart,
     planFromAt: args.planFromAt,
+  });
+
+  const priorWeekAssignmentsByNave = new Map(
+    await Promise.all(
+      naves.map(async (nave) => [
+        nave.id,
+        await getPriorPlanningAssignments({
+          naveId: nave.id,
+          beforeWeekStart: weekStart,
+          includeDraftPriorWeeks: true,
+        }),
+      ] as const),
+    ),
+  );
+
+  await assertSchedulableTransportTasksHaveOperators({
+    naveIds: naves.map((nave) => nave.id),
+    weekStart,
+    planFromAt: args.planFromAt,
+    priorWeekAssignmentsByNave,
   });
 
   return generateGlobalPlanning({
