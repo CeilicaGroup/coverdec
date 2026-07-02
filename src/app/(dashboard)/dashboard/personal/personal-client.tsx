@@ -34,6 +34,7 @@ import { PersonScheduleDialog } from "./person-schedule-dialog";
 import type { PersonSpecialty } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { getErrorMessage } from "@/lib/error-message";
+import { cn } from "@/lib/utils";
 import { MANUAL_ESTIMATION_PROCESS } from "@/lib/manual-lamp";
 
 interface ProcessDefOption {
@@ -281,14 +282,17 @@ export function PersonalTeamClient({
         </div>
       )}
 
-      <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17.5rem),1fr))]">
         {displayedPeople.map((p) => {
           const primary = p.specialties.filter((s) => s.isPrimary);
           const fallback = p.specialties.filter((s) => !s.isPrimary);
           return (
             <Card
               key={p.id}
-              className={!p.isActive ? "opacity-70 border-dashed" : undefined}
+              className={cn(
+                "@container/person-card min-w-0",
+                !p.isActive && "opacity-70 border-dashed",
+              )}
             >
               <CardHeader
                 className="py-3 border-b"
@@ -297,7 +301,7 @@ export function PersonalTeamClient({
                   borderColor: `${p.color}40`,
                 }}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col gap-3 @[22rem]/person-card:flex-row @[22rem]/person-card:items-center @[22rem]/person-card:justify-between">
                   <div className="flex items-center gap-3 min-w-0">
                     <PersonAvatar iniciales={p.iniciales} color={p.color} size={42} />
                     <div className="min-w-0">
@@ -315,7 +319,7 @@ export function PersonalTeamClient({
                     </div>
                   </div>
                   {canManage ? (
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                    <div className="flex flex-wrap items-center gap-1 @[22rem]/person-card:justify-end @[22rem]/person-card:shrink-0">
                       <PersonScheduleDialog
                         personId={p.id}
                         personName={p.displayName}
@@ -349,7 +353,10 @@ export function PersonalTeamClient({
                   {(() => {
                     const linkedUser = users.find((u) => u.personId === p.id);
                     return linkedUser ? (
-                      <Badge variant="outline" className="text-[10px] gap-1">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] gap-1 max-w-full truncate"
+                      >
                         <Link2 className="size-2.5" />
                         {linkedUser.email}
                       </Badge>
@@ -392,12 +399,12 @@ export function PersonalTeamClient({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="@container/person-dialog w-full sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar persona" : "Nueva persona"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-1">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 @sm/person-dialog:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Iniciales</Label>
                 <Input
@@ -419,7 +426,7 @@ export function PersonalTeamClient({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 @sm/person-dialog:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Sueldo €/h</Label>
                 <Input
@@ -456,7 +463,7 @@ export function PersonalTeamClient({
                 <p className="text-xs text-muted-foreground">
                   Cada operario pertenece a una sola nave.
                 </p>
-                <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
+                <div className="grid grid-cols-1 @sm/person-dialog:grid-cols-2 gap-2 border rounded-md p-3">
                   {naves.map((n) => (
                     <label key={n.id} className="flex items-center gap-2 text-sm">
                       <input
@@ -520,7 +527,7 @@ export function PersonalTeamClient({
                 debe asignarlas el planning. Las horas de cada tarea vienen del catálogo;
                 aquí solo defines quién puede ejecutarlas.
               </p>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 @md/person-dialog:grid-cols-2 gap-3">
                 {SPECIALTY_SECTIONS.map((section) => {
                   const current = editableProcessDefs.filter(
                     (d) => specMap[d.code] === section.key,

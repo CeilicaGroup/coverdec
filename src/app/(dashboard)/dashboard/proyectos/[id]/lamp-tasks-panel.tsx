@@ -148,7 +148,7 @@ function NaveAssignmentHint({ kind }: { kind: NaveAssignmentKind }) {
   return (
     <span
       className={cn(
-        "text-[10px] leading-none",
+        "block text-[10px] leading-snug mt-1",
         kind === "default"
           ? "text-muted-foreground"
           : "font-medium text-amber-700 dark:text-amber-400",
@@ -177,7 +177,7 @@ function NaveCell({
   onChange: (naveId: string) => void;
 }) {
   return (
-    <div className="space-y-0.5 min-w-[8.5rem]">
+    <div className="flex min-w-[8.5rem] flex-col gap-1">
       <NavePicker
         value={naveId}
         naves={naves}
@@ -542,8 +542,8 @@ function AggregatedTaskTable({
                     }}
                   />
                 ) : (
-                  <div className="space-y-0.5">
-                    <span className="text-muted-foreground whitespace-nowrap">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground leading-snug">
                       {naveSummary.label}
                     </span>
                     {matching.some((task) => transportRouteLabel(task)) ? (
@@ -912,8 +912,8 @@ export function LampTasksPanel({
                                   }}
                                 />
                               ) : (
-                                <div className="space-y-0.5">
-                                  <span className="text-muted-foreground whitespace-nowrap">
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-xs text-muted-foreground leading-snug">
                                     {formatNaveLabel(
                                       t.nave ?? navesById.get(t.naveId),
                                       t.naveId,

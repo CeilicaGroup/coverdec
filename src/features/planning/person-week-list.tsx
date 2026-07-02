@@ -63,7 +63,7 @@ export function PersonWeekList({
 
     return (
       <>
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden @3xl/person-week-card:block [&_[data-slot=table-container]]:overflow-x-visible">
           <Table>
             <TableHeader>
               <TableRow>
@@ -178,7 +178,7 @@ export function PersonWeekList({
           </Table>
         </div>
 
-        <div className="md:hidden space-y-3 p-3">
+        <div className="@3xl/person-week-card:hidden space-y-3 p-3">
           {entries.map((e) => (
             <div
               key={e.id}
@@ -283,7 +283,7 @@ export function PersonWeekList({
 
   return (
     <>
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden @3xl/person-week-card:block [&_[data-slot=table-container]]:overflow-x-visible">
         <Table>
         <TableHeader>
           <TableRow>
@@ -419,7 +419,7 @@ export function PersonWeekList({
       </Table>
     </div>
 
-    <div className="md:hidden space-y-3 p-3">
+    <div className="@3xl/person-week-card:hidden space-y-3 p-3">
       {items.map((item) => {
         const planStartedAt = toIsoUtcFromDateAndHour(
           item.assignment.date,

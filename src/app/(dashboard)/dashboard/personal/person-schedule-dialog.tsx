@@ -148,7 +148,7 @@ export function PersonScheduleDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="@container/person-schedule w-full sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Horario — {personName}</DialogTitle>
         </DialogHeader>
@@ -156,7 +156,7 @@ export function PersonScheduleDialog({
           {rows.map((r) => (
             <div key={r.dayOfWeek} className="rounded-md border p-3 space-y-2">
               <div className="text-xs font-semibold">{DAY_LABELS[r.dayOfWeek]}</div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="grid grid-cols-1 @sm/person-schedule:grid-cols-2 gap-2 text-xs">
                 <div>
                   <Label className="text-[10px]">Mañana inicio</Label>
                   <Input
@@ -191,7 +191,7 @@ export function PersonScheduleDialog({
                 </Label>
               </div>
               {r.hasAfternoon && (
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-1 @sm/person-schedule:grid-cols-2 gap-2 text-xs">
                   <div>
                     <Label className="text-[10px]">Tarde inicio</Label>
                     <Input

@@ -222,7 +222,9 @@ export default async function PersonaPage({
 
       <div
         className={
-          operarioSelfView ? "space-y-4" : "grid gap-4 lg:grid-cols-2 print:grid-cols-1"
+          operarioSelfView
+            ? "space-y-4"
+            : "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))] print:grid-cols-1"
         }
       >
         {people.map((person) => {
@@ -282,7 +284,7 @@ export default async function PersonaPage({
                     {personAbsences.map((a) => formatAbsenceDateLabel(a)).join(", ")}
                   </div>
                 )}
-                <div className="rounded-lg border bg-card overflow-hidden">
+                <div className="rounded-lg border bg-card overflow-hidden @container/person-week-card min-w-0">
                   <div className="flex items-center justify-between gap-3 border-b px-3 py-2 text-sm">
                     <span className="text-muted-foreground">Total semana</span>
                     <span className="font-mono font-semibold">{formatHours(total)}</span>
@@ -324,7 +326,7 @@ function PersonCard({
   paddedContent?: boolean;
 }) {
   return (
-    <Card className="break-inside-avoid print:border print:shadow-none">
+    <Card className="@container/person-week-card min-w-0 break-inside-avoid print:border print:shadow-none">
       <CardHeader
         className="flex flex-row items-center gap-3 py-3"
         style={{
@@ -356,7 +358,11 @@ function PersonCard({
             {absences.map((a) => formatAbsenceDateLabel(a)).join(", ")}
           </div>
         )}
-        {paddedContent ? <div className="md:p-3">{children}</div> : children}
+        {paddedContent ? (
+          <div className="@3xl/person-week-card:p-3">{children}</div>
+        ) : (
+          children
+        )}
       </CardContent>
     </Card>
   );

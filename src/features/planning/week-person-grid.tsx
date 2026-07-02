@@ -310,9 +310,9 @@ export function PersonWeekCalendar({
 }: PersonWeekCalendarProps) {
   return (
     <>
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden @3xl/person-week-card:block">
         <div
-          className="grid min-w-[520px] border rounded-md overflow-hidden"
+          className="grid w-full border rounded-md overflow-hidden"
           style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
         >
           {days.map((d, idx) => {
@@ -374,7 +374,7 @@ export function PersonWeekCalendar({
         </div>
       </div>
 
-      <div className="md:hidden space-y-3 p-3">
+      <div className="@3xl/person-week-card:hidden space-y-3 p-3">
         {days.map((d, idx) => {
           const key = d.toISOString().slice(0, 10);
           const tasks = cells.get(key) ?? [];
