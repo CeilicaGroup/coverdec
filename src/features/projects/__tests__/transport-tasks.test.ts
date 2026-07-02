@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TaskSystemKind } from "@/generated/prisma";
 import {
+  buildInterleavedTaskOrder,
   injectTransportBlueprints,
   isSystemTransportTask,
   TRANSPORT_PROCESS_CODE,
@@ -65,5 +66,63 @@ describe("isSystemTransportTask", () => {
     expect(isSystemTransportTask({ systemKind: TaskSystemKind.TRANSPORT })).toBe(true);
     expect(isSystemTransportTask({ process: TRANSPORT_PROCESS_CODE })).toBe(true);
     expect(isSystemTransportTask({ process: "CNC" })).toBe(false);
+  });
+});
+
+describe("buildInterleavedTaskOrder", () => {
+  it("places transport immediately after its linked production task", () => {
+    const order = buildInterleavedTaskOrder(
+      [
+        { id: "cnc", order: 0 },
+        { id: "ens", order: 1 },
+        { id: "lij", order: 2 },
+      ],
+      [{ id: "t1", transportAfterTaskId: "ens" }],
+    );
+
+    expect(order).toEqual(["cnc", "ens", "t1", "lij"]);
+  });
+
+  it("places multiple transports after their respective production tasks", () => {
+    const order = buildInterleavedTaskOrder(
+      [
+        { id: "cnc", order: 0 },
+        { id: "ens", order: 1 },
+        { id: "lij", order: 2 },
+      ],
+      [
+        { id: "t1", transportAfterTaskId: "cnc" },
+        { id: "t2", transportAfterTaskId: "ens" },
+      ],
+    );
+
+    expect(order).toEqual(["cnc", "t1", "ens", "t2", "lij"]);
+  });
+
+  it("does not place transports before earlier production tasks in the chain", () => {
+    const order = buildInterleavedTaskOrder(
+      [
+        { id: "cnc", order: 0 },
+        { id: "ens", order: 1 },
+      ],
+      [{ id: "t1", transportAfterTaskId: "ens" }],
+    );
+
+    const cncIndex = order.indexOf("cnc");
+    const ensIndex = order.indexOf("ens");
+    const transportIndex = order.indexOf("t1");
+
+    expect(cncIndex).toBeLessThan(ensIndex);
+    expect(transportIndex).toBeGreaterThan(ensIndex);
+    expect(transportIndex).not.toBeLessThan(ensIndex);
+  });
+
+  it("appends orphan transports at the end", () => {
+    const order = buildInterleavedTaskOrder(
+      [{ id: "cnc", order: 0 }],
+      [{ id: "orphan", transportAfterTaskId: null }],
+    );
+
+    expect(order).toEqual(["cnc", "orphan"]);
   });
 });

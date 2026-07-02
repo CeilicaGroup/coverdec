@@ -98,6 +98,51 @@ function computeTransportGaps(productionTasks: ChainTaskRow[]): TransportGap[] {
   return gaps;
 }
 
+interface ProductionTaskOrderRow {
+  id: string;
+  order: number;
+}
+
+interface TransportTaskOrderRow {
+  id: string;
+  transportAfterTaskId: string | null;
+}
+
+/** Coloca cada transporte justo después de la tarea de producción que enlaza. */
+export function buildInterleavedTaskOrder(
+  productionTasks: ProductionTaskOrderRow[],
+  transportTasks: TransportTaskOrderRow[],
+): string[] {
+  const sortedProduction = [...productionTasks].sort(
+    (a, b) => a.order - b.order,
+  );
+  const transportByAfter = new Map(
+    transportTasks
+      .filter((task) => task.transportAfterTaskId)
+      .map((task) => [task.transportAfterTaskId!, task]),
+  );
+
+  const ordered: string[] = [];
+  const usedTransportIds = new Set<string>();
+
+  for (const prod of sortedProduction) {
+    ordered.push(prod.id);
+    const transport = transportByAfter.get(prod.id);
+    if (transport) {
+      ordered.push(transport.id);
+      usedTransportIds.add(transport.id);
+    }
+  }
+
+  for (const transport of transportTasks) {
+    if (!usedTransportIds.has(transport.id)) {
+      ordered.push(transport.id);
+    }
+  }
+
+  return ordered;
+}
+
 async function syncTransportTasksForChain(
   tx: Prisma.TransactionClient,
   params: {
@@ -153,6 +198,8 @@ async function syncTransportTasksForChain(
             transportFromNaveId: gap.fromNaveId,
             transportToNaveId: gap.toNaveId,
             transportAfterTaskId: gap.afterTaskId,
+            workOrderId: null,
+            workOrderSequence: null,
           },
         });
         continue;
@@ -166,6 +213,8 @@ async function syncTransportTasksForChain(
           transportToNaveId: gap.toNaveId,
           transportAfterTaskId: gap.afterTaskId,
           systemKind: TaskSystemKind.TRANSPORT,
+          workOrderId: null,
+          workOrderSequence: null,
         },
       });
       continue;
@@ -184,6 +233,8 @@ async function syncTransportTasksForChain(
         transportFromNaveId: gap.fromNaveId,
         transportToNaveId: gap.toNaveId,
         transportAfterTaskId: gap.afterTaskId,
+        workOrderId: null,
+        workOrderSequence: null,
       },
     });
   }
@@ -193,19 +244,36 @@ async function syncTransportTasksForChain(
       lampId: params.lampId,
       lampElementId: params.lampElementId,
     },
-    orderBy: [{ order: "asc" }, { process: "asc" }],
-    select: { id: true, order: true },
+    select: {
+      id: true,
+      order: true,
+      process: true,
+      systemKind: true,
+      transportAfterTaskId: true,
+    },
   });
 
-  let order = 0;
-  for (const task of refreshed) {
-    if (task.order !== order) {
+  const productionRows = refreshed
+    .filter((task) => !isSystemTransportTask(task))
+    .map((task) => ({ id: task.id, order: task.order }));
+  const transportRows = refreshed
+    .filter((task) => isSystemTransportTask(task))
+    .map((task) => ({
+      id: task.id,
+      transportAfterTaskId: task.transportAfterTaskId,
+    }));
+
+  const sequence = buildInterleavedTaskOrder(productionRows, transportRows);
+  const orderById = new Map(refreshed.map((task) => [task.id, task.order]));
+
+  for (let order = 0; order < sequence.length; order++) {
+    const taskId = sequence[order]!;
+    if (orderById.get(taskId) !== order) {
       await tx.task.update({
-        where: { id: task.id },
+        where: { id: taskId },
         data: { order },
       });
     }
-    order += 1;
   }
 }
 

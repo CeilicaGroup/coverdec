@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { WorkOrderStatus } from "@/generated/prisma";
 import { workOrderGroupKey } from "./group-key";
+import { excludeWorkOrderExemptTasksWhere } from "./task-ot-exemptions";
 
 const eligibleTaskInclude = {
   project: { select: { id: true, name: true, code: true, kind: true } },
@@ -56,6 +57,7 @@ export async function listEligibleTasksForWorkOrder() {
       isCompleted: false,
       workOrderId: null,
       project: { isActive: true },
+      ...excludeWorkOrderExemptTasksWhere(),
     },
     orderBy: [
       { project: { name: "asc" } },
@@ -76,6 +78,7 @@ export async function loadPendingTasksForAutoGroup() {
       isCompleted: false,
       workOrderId: null,
       project: { isActive: true },
+      ...excludeWorkOrderExemptTasksWhere(),
     },
     select: {
       id: true,

@@ -11,6 +11,7 @@ import {
   loadDoneHoursByTaskIds,
 } from "@/features/time-tracking/task-hours-derived";
 import { getMondayOf } from "@/lib/week";
+import { isWorkOrderExemptTask } from "./task-ot-exemptions";
 
 export interface TaskWorkOrderCheckRow {
   id: string;
@@ -75,6 +76,8 @@ export async function assertSchedulableTasksHaveOpenWorkOrder(
 
 const schedulableTaskSelect = {
   id: true,
+  process: true,
+  systemKind: true,
   estimatedHours: true,
   isCompleted: true,
   workOrderId: true,
@@ -113,6 +116,7 @@ export async function assertNaveSchedulableTasksHaveOpenWorkOrder(args: {
 
   const schedulable: TaskWorkOrderCheckRow[] = [];
   for (const task of tasksRaw) {
+    if (isWorkOrderExemptTask(task)) continue;
     const totals = computeTaskPlanningTotals({
       estimatedHours: task.estimatedHours,
       doneHours: doneHoursByTask.get(task.id) ?? 0,

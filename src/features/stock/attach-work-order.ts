@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { WorkOrderStatus } from "@/generated/prisma";
 import { assignTasksToWorkOrder } from "@/features/work-orders/validate-tasks";
+import { excludeWorkOrderExemptTasksWhere } from "@/features/work-orders/task-ot-exemptions";
 
 /** Intenta agrupar tareas pendientes de la lámpara en una OT abierta del proyecto destino. */
 export async function tryAttachLampTasksToOpenWorkOrder(
@@ -13,6 +14,7 @@ export async function tryAttachLampTasksToOpenWorkOrder(
       projectId: args.projectId,
       isCompleted: false,
       workOrderId: null,
+      ...excludeWorkOrderExemptTasksWhere(),
     },
     select: { id: true },
     orderBy: { order: "asc" },

@@ -7,8 +7,6 @@ import {
   IMPREVISTA_UNKNOWN_ESTIMATED_HOURS,
 } from "./constants";
 import { getOrCreateImprevistasLamp } from "./imprevistas-lamp";
-import { findOrCreateOpenImprevistaWorkOrder } from "./imprevista-work-order";
-import { assignTasksToWorkOrder } from "@/features/work-orders/validate-tasks";
 
 export interface CreateAdHocTaskInput {
   personId: string;
@@ -80,17 +78,6 @@ export async function createAdHocTaskAndAssign(
       createdByUserId: input.createdByUserId,
     },
   });
-
-  const workOrder = await findOrCreateOpenImprevistaWorkOrder(tx);
-  const existingTaskIds = await tx.task.findMany({
-    where: { workOrderId: workOrder.id },
-    select: { id: true },
-    orderBy: { workOrderSequence: "asc" },
-  });
-  await assignTasksToWorkOrder(tx, workOrder.id, [
-    ...existingTaskIds.map((row) => row.id),
-    task.id,
-  ]);
 
   const assignment = await tx.planningAssignment.create({
     data: {

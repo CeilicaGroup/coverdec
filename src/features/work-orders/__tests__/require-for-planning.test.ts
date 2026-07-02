@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { WorkOrderStatus } from "@/generated/prisma";
+import { TaskSystemKind, WorkOrderStatus } from "@/generated/prisma";
 
 const { prismaTaskFindMany, loadDoneHoursByTaskIds } = vi.hoisted(() => ({
   prismaTaskFindMany: vi.fn(),
@@ -45,6 +45,8 @@ describe("assertNaveSchedulableTasksHaveOpenWorkOrder", () => {
     prismaTaskFindMany.mockResolvedValue([
       {
         id: "t1",
+        process: "EMBALAJE",
+        systemKind: null,
         estimatedHours: 4,
         isCompleted: false,
         workOrderId: null,
@@ -67,6 +69,8 @@ describe("assertNaveSchedulableTasksHaveOpenWorkOrder", () => {
     prismaTaskFindMany.mockResolvedValue([
       {
         id: "t1",
+        process: "EMBALAJE",
+        systemKind: null,
         estimatedHours: 4,
         isCompleted: false,
         workOrderId: null,
@@ -90,6 +94,8 @@ describe("assertNaveSchedulableTasksHaveOpenWorkOrder", () => {
     prismaTaskFindMany.mockResolvedValue([
       {
         id: "t1",
+        process: "EMBALAJE",
+        systemKind: null,
         estimatedHours: 4,
         isCompleted: false,
         workOrderId: "wo-1",
@@ -97,6 +103,54 @@ describe("assertNaveSchedulableTasksHaveOpenWorkOrder", () => {
         project: { name: "Proyecto" },
         lamp: { name: "L1" },
         processDefinition: { label: "Embalaje" },
+      },
+    ]);
+
+    await expect(
+      assertNaveSchedulableTasksHaveOpenWorkOrder({
+        naveId: "nave-1",
+        weekStart: new Date("2026-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores transport tasks without work order", async () => {
+    prismaTaskFindMany.mockResolvedValue([
+      {
+        id: "t-transport",
+        process: "TRANSPORTE",
+        systemKind: TaskSystemKind.TRANSPORT,
+        estimatedHours: 0.5,
+        isCompleted: false,
+        workOrderId: null,
+        workOrder: null,
+        project: { name: "Proyecto" },
+        lamp: { name: "L1" },
+        processDefinition: { label: "Transporte" },
+      },
+    ]);
+
+    await expect(
+      assertNaveSchedulableTasksHaveOpenWorkOrder({
+        naveId: "nave-1",
+        weekStart: new Date("2026-06-01T00:00:00.000Z"),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores imprevista tasks without work order", async () => {
+    prismaTaskFindMany.mockResolvedValue([
+      {
+        id: "t-imprevista",
+        process: "IMPREVISTA",
+        systemKind: TaskSystemKind.AD_HOC,
+        estimatedHours: 1,
+        isCompleted: false,
+        workOrderId: null,
+        workOrder: null,
+        project: { name: "Imprevistas" },
+        lamp: { name: "Pool" },
+        processDefinition: { label: "Imprevista" },
       },
     ]);
 

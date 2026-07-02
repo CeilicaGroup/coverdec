@@ -59,7 +59,6 @@ export async function createAdHocTask(
       );
 
       revalidatePath("/dashboard/semana");
-      revalidatePath("/dashboard/admin/ordenes-trabajo");
       return result;
     },
     (result) => ({

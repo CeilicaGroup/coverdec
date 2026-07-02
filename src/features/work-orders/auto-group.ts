@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma";
 import { allocateWorkOrderNumber } from "./number";
 import { groupTasksForAutoWorkOrders } from "./queries";
 import { assignTasksToWorkOrder } from "./validate-tasks";
+import { excludeWorkOrderExemptTasksWhere } from "./task-ot-exemptions";
 
 export interface AutoGroupResult {
   ordersCreated: number;
@@ -16,6 +17,7 @@ export async function autoGroupIdenticalTasksInTx(
       isCompleted: false,
       workOrderId: null,
       project: { isActive: true },
+      ...excludeWorkOrderExemptTasksWhere(),
     },
     select: {
       id: true,
