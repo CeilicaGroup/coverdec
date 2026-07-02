@@ -46,6 +46,7 @@ class EngineProcessDef(BaseModel):
 class EnginePerson(BaseModel):
     id: str
     iniciales: str
+    naveId: str = "default-nave"
     primary: list[str]
     fallback: list[str]
     capacityHours: float
@@ -65,6 +66,7 @@ class EngineTask(BaseModel):
     order: int
     process: str
     pendingHours: float
+    naveId: str = "default-nave"
     canFragment: bool = True
     minWeekQuarter: int = 0
     ownerPersonId: str | None = None

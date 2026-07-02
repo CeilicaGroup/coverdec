@@ -13,6 +13,8 @@ export interface EngineProcessDef {
 export interface EnginePerson {
   id: string;
   iniciales: string;
+  /** Nave única del operario; solo puede ejecutar tareas de esta nave. */
+  naveId: string;
   primary: string[];
   fallback: string[];
   /** Average weekday capacity derived from configured work windows. */
@@ -33,6 +35,8 @@ export interface EngineTask {
   order: number;
   process: string;
   pendingHours: number;
+  /** Nave donde se ejecuta la tarea; solo operarios de esta nave pueden asignarse. */
+  naveId: string;
   /** Earliest week-quarter index (from prior-week planning on the same element chain). */
   minWeekQuarter?: number;
   /** When false, task must be scheduled in a single calendar day. */

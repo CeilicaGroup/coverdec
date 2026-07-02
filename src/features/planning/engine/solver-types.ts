@@ -54,6 +54,7 @@ export type SolveRequestPayload = {
     order: number;
     process: string;
     pendingHours: number;
+    naveId: string;
     minWeekQuarter?: number;
     canFragment?: boolean;
     ownerPersonId?: string | null;
@@ -172,6 +173,7 @@ export function summarizeSolverRequest(payload: SolveRequestPayload) {
       process: t.process,
       order: t.order,
       pendingHours: t.pendingHours,
+      naveId: t.naveId,
       minWeekQuarter: t.minWeekQuarter ?? 0,
     })),
     fixedAssignments: payload.fixedAssignments,
@@ -243,6 +245,7 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       order: t.order,
       process: t.process,
       pendingHours: t.pendingHours,
+      naveId: t.naveId,
       minWeekQuarter: t.minWeekQuarter ?? 0,
       canFragment: t.canFragment ?? true,
       ownerPersonId: t.ownerPersonId ?? null,

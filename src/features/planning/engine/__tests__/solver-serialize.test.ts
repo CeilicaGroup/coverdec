@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultWeeklyTemplate } from "../slots/person-schedule";
-import { minimalSolverInput } from "./solver-fixtures";
+import { minimalSolverInput, testPerson, testTask } from "./solver-fixtures";
 import {
   parseSolverResponse,
   serializeSolverInput,
@@ -11,17 +11,7 @@ describe("serializeSolverInput", () => {
   it("converts Maps to JSON-friendly schedules and previousHours", () => {
     const weekly = defaultWeeklyTemplate();
     const input: SolverInput = minimalSolverInput({
-      people: [
-        {
-          id: "p1",
-          iniciales: "AB",
-          primary: ["CNC"],
-          fallback: [],
-          capacityHours: 8,
-          hourlyRate: 10,
-          overtimeHourlyRate: 15,
-        },
-      ],
+      people: [testPerson({ id: "p1", primary: ["CNC"] })],
       weeklyByPerson: new Map([["p1", weekly]]),
       previousHours: new Map([["t1|p1|0", 2]]),
     });
@@ -41,29 +31,19 @@ describe("serializeSolverInput", () => {
         { code: "EMBALAJE", waitHours: 0 },
       ],
       people: [
-        {
+        testPerson({
           id: "p1",
-          iniciales: "AB",
           primary: ["PERFILES", "EMBALAJE"],
           fallback: ["LIMPIEZA"],
-          capacityHours: 8,
-          hourlyRate: 10,
-          overtimeHourlyRate: 15,
-        },
+        }),
       ],
       tasks: [
-        {
+        testTask({
           id: "t1",
-          projectId: "pr1",
           projectPriority: 60,
-          deadlineCurveExponent: 2,
-          overduePenaltyMultiplier: 2.5,
-          projectDeliveryDate: null,
-          lampId: "l1",
-          order: 0,
           process: "PERFILES",
           pendingHours: 4,
-        },
+        }),
       ],
     });
 
@@ -71,6 +51,8 @@ describe("serializeSolverInput", () => {
     expect(payload.processes.map((p) => p.code)).toEqual(["PERFILES", "EMBALAJE"]);
     expect(payload.tasks[0]?.process).toBe("PERFILES");
     expect(payload.people[0]?.primary).toEqual(["PERFILES", "EMBALAJE"]);
+    expect(payload.tasks[0]?.naveId).toBeTruthy();
+    expect(payload.people[0]?.naveId).toBeTruthy();
   });
 
   it("serializes waitHours on processes", () => {
@@ -84,20 +66,13 @@ describe("serializeSolverInput", () => {
   it("serializes canFragment and ownerPersonId on tasks", () => {
     const input: SolverInput = minimalSolverInput({
       tasks: [
-        {
+        testTask({
           id: "t1",
-          projectId: "pr1",
-          projectPriority: 50,
-          deadlineCurveExponent: 2,
-          overduePenaltyMultiplier: 2.5,
-          projectDeliveryDate: null,
-          lampId: "l1",
-          order: 0,
           process: "ENSAMBLAJE",
           pendingHours: 6,
           canFragment: false,
           ownerPersonId: "p1",
-        },
+        }),
       ],
     });
 
@@ -109,19 +84,11 @@ describe("serializeSolverInput", () => {
   it("serializes lampElementId on tasks", () => {
     const input: SolverInput = minimalSolverInput({
       tasks: [
-        {
+        testTask({
           id: "t1",
-          projectId: "pr1",
-          projectPriority: 50,
-          deadlineCurveExponent: 2,
-          overduePenaltyMultiplier: 2.5,
-          projectDeliveryDate: null,
-          lampId: "l1",
           lampElementId: "elem-1",
-          order: 0,
-          process: "CNC",
           pendingHours: 4,
-        },
+        }),
       ],
     });
 
@@ -131,20 +98,7 @@ describe("serializeSolverInput", () => {
 
   it("defaults canFragment to true and ownerPersonId to null", () => {
     const input: SolverInput = minimalSolverInput({
-      tasks: [
-        {
-          id: "t1",
-          projectId: "pr1",
-          projectPriority: 50,
-          deadlineCurveExponent: 2,
-          overduePenaltyMultiplier: 2.5,
-          projectDeliveryDate: null,
-          lampId: "l1",
-          order: 0,
-          process: "CNC",
-          pendingHours: 4,
-        },
-      ],
+      tasks: [testTask({ id: "t1", pendingHours: 4 })],
     });
 
     const payload = serializeSolverInput(input);
@@ -157,20 +111,12 @@ describe("serializeSolverInput", () => {
   it("serializes workOrderId and workOrderSequence on tasks", () => {
     const input: SolverInput = minimalSolverInput({
       tasks: [
-        {
+        testTask({
           id: "t1",
-          projectId: "pr1",
-          projectPriority: 50,
-          deadlineCurveExponent: 2,
-          overduePenaltyMultiplier: 2.5,
-          projectDeliveryDate: null,
-          lampId: "l1",
-          order: 0,
-          process: "CNC",
           pendingHours: 4,
           workOrderId: "wo-1",
           workOrderSequence: 2,
-        },
+        }),
       ],
     });
 
@@ -180,18 +126,12 @@ describe("serializeSolverInput", () => {
   });
 
   it("includes all people in schedules even without workWindows", () => {
-    const person = (id: string) => ({
-      id,
-      iniciales: id.toUpperCase(),
-      primary: ["CNC"],
-      fallback: [],
-      capacityHours: 8,
-      hourlyRate: 10,
-      overtimeHourlyRate: 15,
-    });
     const input: SolverInput = minimalSolverInput({
-      people: [person("p1"), person("p2"), person("p3")],
-      // p1 has a custom schedule, p2 and p3 have nothing
+      people: [
+        testPerson({ id: "p1" }),
+        testPerson({ id: "p2" }),
+        testPerson({ id: "p3" }),
+      ],
       weeklyByPerson: new Map([["p1", defaultWeeklyTemplate()]]),
     });
 

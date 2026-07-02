@@ -1,31 +1,21 @@
 import { loadActiveNavesOrdered } from "@/features/naves/active-naves";
 import { assertActiveNavesSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
-import { childLogger } from "@/lib/logger";
 import { getMondayOf } from "@/lib/week";
 import type { PlanFrom } from "@/features/planning/plan-from";
-import { generatePlanning, type GeneratedPlanning } from "./service";
+import {
+  generateGlobalPlanning,
+  type GenerateGlobalPlanningResult,
+  type NavePlanningResult,
+} from "./service";
 
-const log = childLogger({ module: "planning.all-naves" });
-
-export interface NavePlanningResult extends GeneratedPlanning {
-  naveId: string;
-  naveCodigo: string;
-}
-
-export interface GeneratePlanningAllNavesResult {
-  perNave: NavePlanningResult[];
-  warnings: string[];
-  unscheduledHours: number;
-  assignmentsCount: number;
-  planningIds: string[];
-}
+export type { NavePlanningResult, GenerateGlobalPlanningResult as GeneratePlanningAllNavesResult };
 
 export async function generatePlanningAllNaves(args: {
   weekStart: Date;
   replaceDraft?: boolean;
   planFrom?: PlanFrom;
   planFromAt?: Date;
-}): Promise<GeneratePlanningAllNavesResult> {
+}): Promise<GenerateGlobalPlanningResult> {
   const naves = await loadActiveNavesOrdered();
   const weekStart = getMondayOf(args.weekStart);
 
@@ -35,42 +25,11 @@ export async function generatePlanningAllNaves(args: {
     planFromAt: args.planFromAt,
   });
 
-  const perNave: NavePlanningResult[] = [];
-  const warnings: string[] = [];
-  let unscheduledHours = 0;
-  let assignmentsCount = 0;
-
-  for (const nave of naves) {
-    const result = await generatePlanning({
-      naveId: nave.id,
-      weekStart: args.weekStart,
-      replaceDraft: args.replaceDraft,
-      planFrom: args.planFrom,
-      planFromAt: args.planFromAt,
-    });
-    perNave.push({
-      ...result,
-      naveId: nave.id,
-      naveCodigo: nave.codigo,
-    });
-    warnings.push(...result.warnings);
-    unscheduledHours += result.unscheduledHours;
-    assignmentsCount += result.assignmentsCount;
-    log.info(
-      {
-        naveId: nave.id,
-        naveCodigo: nave.codigo,
-        assignmentsCount: result.assignmentsCount,
-      },
-      "nave planning generated",
-    );
-  }
-
-  return {
-    perNave,
-    warnings,
-    unscheduledHours,
-    assignmentsCount,
-    planningIds: perNave.map((p) => p.planningId),
-  };
+  return generateGlobalPlanning({
+    weekStart: args.weekStart,
+    replaceDraft: args.replaceDraft,
+    planFrom: args.planFrom,
+    planFromAt: args.planFromAt,
+    naves: naves.map((nave) => ({ id: nave.id, codigo: nave.codigo })),
+  });
 }

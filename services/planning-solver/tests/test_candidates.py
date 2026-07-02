@@ -2,10 +2,17 @@ from app.model.candidates import MANUAL_ESTIMATION_PROCESS, pick_candidates
 from app.schemas import EnginePerson
 
 
-def _person(pid: str, primary: list[str], fallback: list[str] | None = None) -> EnginePerson:
+def _person(
+    pid: str,
+    primary: list[str],
+    fallback: list[str] | None = None,
+    *,
+    nave_id: str = "default-nave",
+) -> EnginePerson:
     return EnginePerson(
         id=pid,
         iniciales=pid.upper(),
+        naveId=nave_id,
         primary=primary,
         fallback=fallback or [],
         capacityHours=8,
@@ -63,3 +70,17 @@ def test_pick_candidates_returns_all_people_for_manual_estimation():
     result = pick_candidates(people, MANUAL_ESTIMATION_PROCESS)
 
     assert [p.id for p in result] == ["cnc-op", "lij-op", "paint-op"]
+
+
+def test_pick_candidates_filters_by_nave_when_task_has_nave():
+    people = [
+        _person("cnc-a", primary=["CNC"], nave_id="nave-a"),
+        _person("cnc-b", primary=["CNC"], nave_id="nave-b"),
+    ]
+
+    assert [p.id for p in pick_candidates(people, "CNC", task_nave_id="nave-a")] == [
+        "cnc-a",
+    ]
+    assert [p.id for p in pick_candidates(people, "CNC", task_nave_id="nave-b")] == [
+        "cnc-b",
+    ]

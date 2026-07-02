@@ -1,36 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { callPlanningSolver } from "../client";
 import { defaultWeeklyTemplate } from "../slots/person-schedule";
-import { minimalSolverInput } from "./solver-fixtures";
+import { minimalSolverInput, testPerson, testTask } from "./solver-fixtures";
 
 function minimalInput() {
   return minimalSolverInput({
     processes: [{ code: "CNC", waitHours: 0 }],
-    people: [
-      {
-        id: "p1",
-        iniciales: "AB",
-        primary: ["CNC"],
-        fallback: [],
-        capacityHours: 8,
-        hourlyRate: 10,
-        overtimeHourlyRate: 15,
-      },
-    ],
-    tasks: [
-      {
-        id: "t1",
-        projectId: "pr1",
-        projectPriority: 50,
-        deadlineCurveExponent: 2,
-        overduePenaltyMultiplier: 2.5,
-        projectDeliveryDate: null,
-        lampId: "l1",
-        order: 0,
-        process: "CNC",
-        pendingHours: 2,
-      },
-    ],
+    people: [testPerson({ id: "p1" })],
+    tasks: [testTask({ id: "t1", pendingHours: 2 })],
     weeklyByPerson: new Map([["p1", defaultWeeklyTemplate()]]),
   });
 }

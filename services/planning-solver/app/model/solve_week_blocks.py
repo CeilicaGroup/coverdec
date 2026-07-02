@@ -267,7 +267,7 @@ def _max_demand_by_person(
         if task.process not in process_by_code:
             continue
         demand_q = round(task.pendingHours * QUARTERS_PER_HOUR)
-        for person in pick_candidates(people, task.process):
+        for person in pick_candidates(people, task.process, task_nave_id=task.naveId):
             if task.ownerPersonId and person.id != task.ownerPersonId:
                 continue
             result[person.id] = max(result[person.id], demand_q)
@@ -576,15 +576,19 @@ def _task_candidates(data: ProblemData, task: EngineTask) -> list[EnginePerson]:
     override_ids = data.candidate_ids_by_task.get(task.id)
     if override_ids is not None:
         allowed = set(override_ids)
-        return [person for person in data.people if person.id in allowed]
-    return pick_candidates(data.people, task.process)
+        return [
+            person
+            for person in data.people
+            if person.id in allowed and person.naveId == task.naveId
+        ]
+    return pick_candidates(data.people, task.process, task_nave_id=task.naveId)
 
 
 def _block_debug_rows(data: ProblemData, mv: ModelVars) -> list[dict]:
     rows: list[dict] = []
     for task in data.tasks:
         blocks = mv.by_task.get(task.id, [])
-        cand = pick_candidates(data.people, task.process)
+        cand = pick_candidates(data.people, task.process, task_nave_id=task.naveId)
         rows.append(
             {
                 "taskId": task.id,
@@ -602,8 +606,14 @@ def _diagnose_no_candidate(data: ProblemData, task: EngineTask) -> str:
         return (
             f"{NO_CANDIDATE_PREFIX} El proceso «{task.process}» no está en el catálogo."
         )
-    candidates = pick_candidates(data.people, task.process)
+    candidates = pick_candidates(data.people, task.process, task_nave_id=task.naveId)
     if not candidates:
+        any_specialty = pick_candidates(data.people, task.process, task_nave_id=None)
+        if any_specialty:
+            return (
+                f"{NO_CANDIDATE_PREFIX} Ningún operario de la nave tiene el proceso "
+                f"«{task.process}» configurado (primary/fallback)."
+            )
         return (
             f"{NO_CANDIDATE_PREFIX} Ningún operario tiene el proceso "
             f"«{task.process}» configurado (primary/fallback)."

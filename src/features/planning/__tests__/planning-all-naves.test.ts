@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loadActiveNavesOrdered, generatePlanning } = vi.hoisted(() => ({
+const { loadActiveNavesOrdered, generateGlobalPlanning } = vi.hoisted(() => ({
   loadActiveNavesOrdered: vi.fn(),
-  generatePlanning: vi.fn(),
+  generateGlobalPlanning: vi.fn(),
 }));
 
 const assertActiveNavesSchedulableTasksHaveOpenWorkOrder = vi.hoisted(() =>
@@ -18,7 +18,7 @@ vi.mock("@/features/work-orders/require-for-planning", () => ({
 }));
 
 vi.mock("@/features/planning/service", () => ({
-  generatePlanning,
+  generateGlobalPlanning,
 }));
 
 import { generatePlanningAllNaves } from "@/features/planning/planning-all-naves";
@@ -30,29 +30,48 @@ describe("generatePlanningAllNaves", () => {
       { id: "nave-b", codigo: "B", nombre: "Nave B" },
       { id: "nave-a", codigo: "A", nombre: "Nave A" },
     ]);
-    generatePlanning
-      .mockResolvedValueOnce({
-        planningId: "plan-b",
-        warnings: ["warn-b"],
-        unscheduledHours: 1,
-        assignmentsCount: 10,
-      })
-      .mockResolvedValueOnce({
-        planningId: "plan-a",
-        warnings: ["warn-a"],
-        unscheduledHours: 2,
-        assignmentsCount: 5,
-      });
+    generateGlobalPlanning.mockResolvedValue({
+      perNave: [
+        {
+          planningId: "plan-b",
+          naveId: "nave-b",
+          naveCodigo: "B",
+          warnings: [],
+          unscheduledHours: 1,
+          assignmentsCount: 10,
+        },
+        {
+          planningId: "plan-a",
+          naveId: "nave-a",
+          naveCodigo: "A",
+          warnings: [],
+          unscheduledHours: 2,
+          assignmentsCount: 5,
+        },
+      ],
+      warnings: ["warn-b", "warn-a"],
+      unscheduledHours: 3,
+      assignmentsCount: 15,
+      planningIds: ["plan-b", "plan-a"],
+    });
   });
 
-  it("generates plannings in nave codigo order", async () => {
+  it("runs one unified solver for all active naves", async () => {
     const weekStart = new Date("2026-06-01T00:00:00.000Z");
     const result = await generatePlanningAllNaves({ weekStart });
 
     expect(assertActiveNavesSchedulableTasksHaveOpenWorkOrder).toHaveBeenCalledTimes(1);
-    expect(generatePlanning).toHaveBeenCalledTimes(2);
-    expect(generatePlanning.mock.calls[0]?.[0]).toMatchObject({ naveId: "nave-b" });
-    expect(generatePlanning.mock.calls[1]?.[0]).toMatchObject({ naveId: "nave-a" });
+    expect(generateGlobalPlanning).toHaveBeenCalledTimes(1);
+    expect(generateGlobalPlanning).toHaveBeenCalledWith({
+      weekStart,
+      replaceDraft: undefined,
+      planFrom: undefined,
+      planFromAt: undefined,
+      naves: [
+        { id: "nave-b", codigo: "B" },
+        { id: "nave-a", codigo: "A" },
+      ],
+    });
 
     expect(result.perNave.map((row) => row.naveCodigo)).toEqual(["B", "A"]);
     expect(result.planningIds).toEqual(["plan-b", "plan-a"]);

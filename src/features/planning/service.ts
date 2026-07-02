@@ -6,6 +6,7 @@ import { loadSolverInput } from "./load-engine-input";
 import { isTaskClosedForPlanning } from "./task-planning-status";
 import {
   getPriorPlanningAssignments,
+  getPriorPlanningAssignmentsForNaves,
   sumPriorPlannedHoursByTaskId,
 } from "./prior-week-planning";
 import {
@@ -26,6 +27,7 @@ import {
   findTasksWithMultipleWorkers,
 } from "@/features/planning/validate-assignments";
 import { buildWorkOrderIdByTaskId } from "@/features/work-orders/planning";
+import type { EngineAssignment } from "./engine/types";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
@@ -53,6 +55,32 @@ export interface GeneratedPlanning {
   warnings: string[];
   unscheduledHours: number;
   assignmentsCount: number;
+}
+
+export interface NavePlanningResult extends GeneratedPlanning {
+  naveId: string;
+  naveCodigo: string;
+}
+
+export interface GenerateGlobalPlanningResult {
+  perNave: NavePlanningResult[];
+  warnings: string[];
+  unscheduledHours: number;
+  assignmentsCount: number;
+  planningIds: string[];
+}
+
+function buildNoSchedulableTasksMessage(args: {
+  deferredHours: number;
+  priorHours: number;
+}): string {
+  if (args.deferredHours > 0) {
+    return `Hay ${args.deferredHours.toFixed(1)}h pendientes que no pueden empezar en esta semana (tiempos de secado o cadena de procesos). Planifica una semana posterior o revisa el orden de las tareas.`;
+  }
+  if (args.priorHours > UNSCHEDULED_FAIL_THRESHOLD_HOURS) {
+    return "No quedan horas por planificar en esta semana: el trabajo ya está cubierto en borradores de semanas anteriores. Revisa esas semanas en el calendario o deshaz/regenera desde la semana donde empezó el planning.";
+  }
+  return "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas tengan tareas y horas estimadas.";
 }
 
 export async function generatePlanning(
@@ -84,10 +112,6 @@ export async function generatePlanning(
 
   const planFromAt = args.planFromAt ?? new Date();
 
-  if (existing) {
-    await prisma.planningAssignment.deleteMany({ where: { planningId: existing.id } });
-  }
-
   const priorWeekAssignments = await getPriorPlanningAssignments({
     naveId: args.naveId,
     beforeWeekStart: weekStart,
@@ -102,7 +126,7 @@ export async function generatePlanning(
   });
 
   const engineInput = await loadSolverInput({
-    naveId: args.naveId,
+    naveIds: [args.naveId],
     weekStart,
     weekEnd,
     planFrom: args.planFrom,
@@ -123,20 +147,14 @@ export async function generatePlanning(
   );
 
   if (engineInput.tasks.length === 0) {
-    if (deferredHours > 0) {
-      throw new Error(
-        `Hay ${deferredHours.toFixed(1)}h pendientes que no pueden empezar en esta semana (tiempos de secado o cadena de procesos). Planifica una semana posterior o revisa el orden de las tareas.`,
-      );
-    }
     const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
-    if (priorHours > UNSCHEDULED_FAIL_THRESHOLD_HOURS) {
-      throw new Error(
-        "No quedan horas por planificar en esta semana: el trabajo ya está cubierto en borradores de semanas anteriores. Revisa esas semanas en el calendario o deshaz/regenera desde la semana donde empezó el planning.",
-      );
-    }
     throw new Error(
-      "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas tengan tareas y horas estimadas.",
+      buildNoSchedulableTasksMessage({ deferredHours, priorHours }),
     );
+  }
+
+  if (existing) {
+    await prisma.planningAssignment.deleteMany({ where: { planningId: existing.id } });
   }
 
   const solveStarted = Date.now();
@@ -268,6 +286,232 @@ export async function generatePlanning(
     warnings,
     unscheduledHours: result.unscheduledHours + deferredHours,
     assignmentsCount: result.assignments.length,
+  };
+}
+
+export async function generateGlobalPlanning(args: {
+  weekStart: Date;
+  replaceDraft?: boolean;
+  planFrom?: PlanFrom;
+  planFromAt?: Date;
+  naves: Array<{ id: string; codigo: string }>;
+}): Promise<GenerateGlobalPlanningResult> {
+  const replaceDraft = args.replaceDraft ?? true;
+  const weekStart = getMondayOf(args.weekStart);
+  const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
+  const { year, week } = isoWeek(weekStart);
+  const naveIds = args.naves.map((nave) => nave.id);
+  const planFromAt = args.planFromAt ?? new Date();
+
+  log.info({ naveIds, year, week }, "generate global planning start");
+
+  const existingPlannings = await prisma.planning.findMany({
+    where: { naveId: { in: naveIds }, year, week },
+  });
+  const existingByNaveId = new Map(existingPlannings.map((row) => [row.naveId, row]));
+
+  for (const existing of existingPlannings) {
+    if (existing.status === PlanningStatus.PUBLISHED && !replaceDraft) {
+      throw new Error(
+        "El planning de esta semana está publicado. Usa «Deshacer» para eliminarlo o regenera desde el panel.",
+      );
+    }
+  }
+
+  const previousAssignments = existingPlannings.length
+    ? await prisma.planningAssignment.findMany({
+      where: { planningId: { in: existingPlannings.map((row) => row.id) } },
+    })
+    : [];
+
+  const priorWeekAssignments = await getPriorPlanningAssignmentsForNaves({
+    naveIds,
+    beforeWeekStart: weekStart,
+    includeDraftPriorWeeks: true,
+  });
+
+  const engineInput = await loadSolverInput({
+    naveIds,
+    weekStart,
+    weekEnd,
+    planFrom: args.planFrom,
+    planFromAt,
+    previousAssignments,
+    priorWeekAssignments,
+  });
+
+  if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
+    throw new Error(
+      "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige una fecha anterior o navega a otra semana.",
+    );
+  }
+
+  const deferredHours = (engineInput.deferredTasks ?? []).reduce(
+    (a, task) => a + task.hours,
+    0,
+  );
+
+  if (engineInput.tasks.length === 0) {
+    const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
+    throw new Error(
+      buildNoSchedulableTasksMessage({ deferredHours, priorHours }),
+    );
+  }
+
+  if (existingPlannings.length > 0) {
+    await prisma.planningAssignment.deleteMany({
+      where: { planningId: { in: existingPlannings.map((row) => row.id) } },
+    });
+  }
+
+  const solveStarted = Date.now();
+  let result;
+  try {
+    result = await runPlanningEngine(engineInput);
+  } catch (err) {
+    if (err instanceof SolverInfeasibleError) {
+      throw new Error(err.message);
+    }
+    throw err;
+  }
+
+  log.info(
+    {
+      naveIds,
+      year,
+      week,
+      taskCount: engineInput.tasks.length,
+      solveMs: Date.now() - solveStarted,
+      assignments: result.assignments.length,
+    },
+    "global planning solver done",
+  );
+
+  const workerConflicts = findTasksWithMultipleWorkers(result.assignments);
+  if (workerConflicts.length > 0) {
+    log.error(
+      { naveIds, year, week, conflicts: workerConflicts },
+      "global planning rejected: task assigned to multiple workers",
+    );
+  }
+  assertSingleWorkerPerTask(result.assignments);
+
+  const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
+    engineInput.tasks.map((task) => ({ id: task.id, workOrderId: task.workOrderId })),
+  );
+  assertSingleWorkerPerWorkOrder(
+    result.assignments,
+    workOrderIdByTaskId,
+    engineInput.workOrderNumberById,
+  );
+
+  const totalUnplaced = result.unscheduledHours + deferredHours;
+  if (
+    result.assignments.length === 0 &&
+    totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
+  ) {
+    const hint =
+      result.warnings[0]?.reason ??
+      (deferredHours > 0
+        ? `${deferredHours.toFixed(1)}h aplazadas por secado o cadena.`
+        : "Revisa capacidad, especialidades y festivos.");
+    throw new Error(
+      `El solver no pudo colocar trabajo (${totalUnplaced.toFixed(1)}h sin asignar). ${hint}`,
+    );
+  }
+
+  const assignmentsByNaveId = new Map<string, EngineAssignment[]>();
+  for (const naveId of naveIds) {
+    assignmentsByNaveId.set(naveId, []);
+  }
+  for (const assignment of result.assignments) {
+    const naveId = engineInput.naveIdByTaskId.get(assignment.taskId);
+    if (!naveId) continue;
+    assignmentsByNaveId.get(naveId)?.push(assignment);
+  }
+
+  const perNave: NavePlanningResult[] = [];
+  await prisma.$transaction(
+    async (tx) => {
+      for (const nave of args.naves) {
+        const existing = existingByNaveId.get(nave.id);
+        const naveAssignments = assignmentsByNaveId.get(nave.id) ?? [];
+        const upserted = existing
+          ? await tx.planning.update({
+            where: { id: existing.id },
+            data: {
+              status: PlanningStatus.DRAFT,
+              weekStart,
+              weekEnd,
+              publishedAt: null,
+            },
+          })
+          : await tx.planning.create({
+            data: {
+              naveId: nave.id,
+              year,
+              week,
+              weekStart,
+              weekEnd,
+            },
+          });
+
+        if (naveAssignments.length > 0) {
+          await tx.planningAssignment.createMany({
+            data: naveAssignments.map((assignment) => ({
+              planningId: upserted.id,
+              taskId: assignment.taskId,
+              personId: assignment.personId,
+              date: assignment.date,
+              startSlot: assignment.startSlot,
+              endSlot: assignment.endSlot,
+              hours: assignment.hours,
+              process: assignment.process,
+              isAfternoon: assignment.isAfternoon,
+            })),
+          });
+        }
+
+        perNave.push({
+          planningId: upserted.id,
+          naveId: nave.id,
+          naveCodigo: nave.codigo,
+          warnings: [],
+          unscheduledHours: 0,
+          assignmentsCount: naveAssignments.length,
+        });
+      }
+    },
+    { timeout: PLANNING_WRITE_TX_MS * Math.max(args.naves.length, 1) },
+  );
+
+  const rawWarnings = [
+    ...(engineInput.deferredTasks ?? []).map((task) => ({
+      taskId: task.taskId,
+      reason: `${task.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado o cadena de procesos)`,
+    })),
+    ...result.warnings.map((warning) => ({
+      taskId: warning.taskId,
+      reason: warning.reason,
+    })),
+  ];
+  const warnings = await formatPlanningWarningMessages(rawWarnings);
+
+  log.info(
+    {
+      planningIds: perNave.map((row) => row.planningId),
+      assignments: result.assignments.length,
+      warnings: warnings.length,
+    },
+    "generate global planning done",
+  );
+
+  return {
+    perNave,
+    warnings,
+    unscheduledHours: result.unscheduledHours + deferredHours,
+    assignmentsCount: result.assignments.length,
+    planningIds: perNave.map((row) => row.planningId),
   };
 }
 

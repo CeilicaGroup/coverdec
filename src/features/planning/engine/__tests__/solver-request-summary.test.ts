@@ -13,6 +13,7 @@ describe("summarizeSolverRequest", () => {
         {
           id: "p1",
           iniciales: "IA",
+          naveId: "nave-a",
           primary: ["Ensamblaje"],
           fallback: [],
           capacityHours: 8,
@@ -32,6 +33,7 @@ describe("summarizeSolverRequest", () => {
           order: 0,
           process: "Ensamblaje",
           pendingHours: 4,
+          naveId: "nave-a",
           minWeekQuarter: 0,
         },
       ],

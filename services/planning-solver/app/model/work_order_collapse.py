@@ -32,12 +32,20 @@ def synthetic_task_id(work_order_id: str) -> str:
 def _intersect_candidate_ids(
     people: list[EnginePerson],
     processes: list[str],
+    task_nave_id: str,
 ) -> set[str]:
     if not processes:
         return set()
     common: set[str] | None = None
     for process in processes:
-        ids = {person.id for person in pick_candidates(people, process)}
+        ids = {
+            person.id
+            for person in pick_candidates(
+                people,
+                process,
+                task_nave_id=task_nave_id,
+            )
+        }
         common = ids if common is None else common & ids
     return common or set()
 
@@ -98,7 +106,11 @@ def collapse_work_order_tasks(
         if len(owners) > 1:
             continue
 
-        eligible = _intersect_candidate_ids(people, [member.process for member in members])
+        eligible = _intersect_candidate_ids(
+            people,
+            [member.process for member in members],
+            members[0].naveId,
+        )
         if owners:
             eligible &= owners
         if not eligible:

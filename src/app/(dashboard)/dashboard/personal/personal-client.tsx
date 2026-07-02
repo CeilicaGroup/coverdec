@@ -403,7 +403,7 @@ export function PersonalTeamClient({
                 <Input
                   value={iniciales}
                   onChange={(e) => setIniciales(e.target.value.toUpperCase())}
-                  disabled={pending || Boolean(editingId)}
+                  disabled={pending}
                   className="font-mono"
                   maxLength={12}
                 />
