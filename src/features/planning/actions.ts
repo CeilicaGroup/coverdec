@@ -3,7 +3,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import {
@@ -39,8 +40,15 @@ export async function generatePlanningAction(input: {
   weekStart: string;
   horizonMode: z.input<typeof planningHorizonModeSchema>;
   planFromDate?: string;
-}) {
-  return runAuditedMutation(
+}): Promise<
+  ActionResult<{
+    planningId: string;
+    warnings: string[];
+    unscheduledHours: number;
+    assignmentsCount: number;
+  }>
+> {
+  return runServerAction(
     "planning.generatePlanning",
     async () => {
       const ctx = await requireDashboardContext();
@@ -95,8 +103,8 @@ export async function generatePlanningAction(input: {
 export async function prepareHorizonGenerationAction(input: {
   weekStart: string;
   horizonMode: z.input<typeof planningHorizonModeSchema>;
-}) {
-  return runAuditedMutation(
+}): Promise<ActionResult<void>> {
+  return runServerAction(
     "planning.prepareHorizonGeneration",
     async () => {
       const ctx = await requireDashboardContext();
@@ -121,7 +129,6 @@ export async function prepareHorizonGenerationAction(input: {
       }
 
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const };
     },
     {
       summary: `Preparar horizonte de planning global desde ${input.weekStart}`,
@@ -186,8 +193,10 @@ export async function getPlanningHorizonProgressAction(input: {
 
 const publishSchema = z.object({ weekStart: z.string().min(8) });
 
-export async function publishPlanningAction(input: { weekStart: string }) {
-  return runAuditedMutation(
+export async function publishPlanningAction(input: {
+  weekStart: string;
+}): Promise<ActionResult<{ publishedCount: number }>> {
+  return runServerAction(
     "planning.publishPlanning",
     async () => {
       const ctx = await requireDashboardContext();
@@ -198,7 +207,7 @@ export async function publishPlanningAction(input: { weekStart: string }) {
         throw new Error("No hay plannings en borrador para publicar esta semana.");
       }
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const, publishedCount: result.publishedCount };
+      return { publishedCount: result.publishedCount };
     },
     (result) => ({
       summary: `Publicar planning global semana ${input.weekStart}`,
@@ -219,8 +228,8 @@ const undoSchema = z.object({
 export async function undoPlanningAction(input: {
   weekStart: string;
   includeFutureWeeks?: boolean;
-}) {
-  return runAuditedMutation(
+}): Promise<ActionResult<{ deletedCount: number }>> {
+  return runServerAction(
     "planning.undoPlanning",
     async () => {
       const ctx = await requireDashboardContext();

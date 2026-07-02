@@ -1,6 +1,6 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
+import { handleActionResult, reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2, Sparkles, CheckCircle2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -160,7 +160,14 @@ export function GenerateButton({
 
     startTransition(async () => {
       try {
-        await prepareHorizonGenerationAction({ weekStart, horizonMode });
+        const prepareOutcome = handleActionResult(
+          "planning.prepareHorizonGeneration",
+          await prepareHorizonGenerationAction({ weekStart, horizonMode }),
+        );
+        if (!prepareOutcome.success) {
+          toast.error(prepareOutcome.message);
+          return;
+        }
 
         const maxWeeks = maxWeeksForMode(horizonMode);
         let weeksGenerated = 0;
@@ -188,11 +195,19 @@ export function GenerateButton({
             maxWeeks > 1 ? `Generando S${weekNum}${maxWeeks <= 4 ? `/${maxWeeks}` : ""}…` : null,
           );
 
-          const result = await generatePlanningAction({
-            weekStart: weekIso,
-            horizonMode,
-            planFromDate: weeksGenerated === 0 ? planFromDate : undefined,
-          });
+          const generateOutcome = handleActionResult(
+            "planning.generatePlanning",
+            await generatePlanningAction({
+              weekStart: weekIso,
+              horizonMode,
+              planFromDate: weeksGenerated === 0 ? planFromDate : undefined,
+            }),
+          );
+          if (!generateOutcome.success) {
+            toast.error(generateOutcome.message);
+            return;
+          }
+          const result = generateOutcome.data;
 
           weeksGenerated += 1;
           totalAssignments += result.assignmentsCount;
@@ -263,10 +278,18 @@ export function GenerateButton({
   const onConfirmUndo = () => {
     startUndoTransition(async () => {
       try {
-        const result = await undoPlanningAction({
-          weekStart,
-          includeFutureWeeks: hasFuturePlannings ? includeFutureWeeks : false,
-        });
+        const outcome = handleActionResult(
+          "planning.undoPlanning",
+          await undoPlanningAction({
+            weekStart,
+            includeFutureWeeks: hasFuturePlannings ? includeFutureWeeks : false,
+          }),
+        );
+        if (!outcome.success) {
+          toast.error(outcome.message);
+          return;
+        }
+        const result = outcome.data;
         setUndoDialogOpen(false);
         toast.success(
           result.deletedCount === 1
@@ -282,7 +305,15 @@ export function GenerateButton({
   const onPublish = async () => {
     setPublishing(true);
     try {
-      const result = await publishPlanningAction({ weekStart });
+      const outcome = handleActionResult(
+        "planning.publishPlanning",
+        await publishPlanningAction({ weekStart }),
+      );
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
+      }
+      const result = outcome.data;
       toast.success(
         result.publishedCount === 1
           ? "Planning publicado"
