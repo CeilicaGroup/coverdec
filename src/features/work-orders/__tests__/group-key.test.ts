@@ -40,14 +40,24 @@ describe("groupTasksForAutoWorkOrders", () => {
       { id: "t2", process: "CNC", ...base },
       { id: "t3", process: "PINT", ...base },
     ]);
-    expect(groups.size).toBe(1);
+    expect(groups.size).toBe(2);
     expect(groups.get("et-1:CNC")?.map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(groups.get("et-1:PINT")?.map((t) => t.id)).toEqual(["t3"]);
   });
 
-  it("ignores single-task groups", () => {
+  it("includes single-task groups", () => {
     const groups = groupTasksForAutoWorkOrders([
       { id: "t1", process: "CNC", ...base },
     ]);
-    expect(groups.size).toBe(0);
+    expect(groups.size).toBe(1);
+    expect(groups.get("et-1:CNC")?.map((t) => t.id)).toEqual(["t1"]);
+  });
+
+  it("uses task id when element type is missing", () => {
+    const groups = groupTasksForAutoWorkOrders([
+      { id: "t1", process: "CNC", lampElement: null, lamp: {} },
+    ]);
+    expect(groups.size).toBe(1);
+    expect(groups.get("task:t1")?.map((t) => t.id)).toEqual(["t1"]);
   });
 });

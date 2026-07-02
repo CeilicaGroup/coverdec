@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ElementTypology } from "@/generated/prisma";
 import {
+  buildProjectNavesByProjectId,
   describeNaveAssignment,
   elementTaskScopeWhere,
   elementTypeIdFromGroupKey,
   formatNaveLabel,
+  formatProjectNavesColumn,
   isCustomNaveAssignment,
   MANUAL_ELEMENT_KEY,
   resolveEffectiveElementTypeNaveId,
@@ -118,6 +120,37 @@ describe("summarizeNaveIds", () => {
       homogeneous: false,
       naveId: null,
     });
+  });
+});
+
+describe("buildProjectNavesByProjectId", () => {
+  const n1 = { id: "n1", codigo: "N1", nombre: "Nave 1" };
+  const n2 = { id: "n2", codigo: "N2", nombre: "Nave 2" };
+
+  it("deduplicates naves across tasks and sorts by codigo", () => {
+    const map = buildProjectNavesByProjectId([
+      { projectId: "p1", nave: n2 },
+      { projectId: "p1", nave: n1 },
+      { projectId: "p1", nave: n2 },
+    ]);
+    expect(map.get("p1")).toEqual([n1, n2]);
+  });
+});
+
+describe("formatProjectNavesColumn", () => {
+  it("formats single and multiple naves", () => {
+    expect(
+      formatProjectNavesColumn([
+        { id: "n1", codigo: "N1", nombre: "Nave 1" },
+      ]),
+    ).toBe("N1 · Nave 1");
+    expect(
+      formatProjectNavesColumn([
+        { id: "n1", codigo: "N1", nombre: "Nave 1" },
+        { id: "n2", codigo: "N2", nombre: "Nave 2" },
+      ]),
+    ).toBe("N1 · N2");
+    expect(formatProjectNavesColumn([])).toBe("—");
   });
 });
 

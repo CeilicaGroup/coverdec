@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { Role } from "@/generated/prisma";
+import { pickCanonicalPersonNave } from "@/features/people/person-naves";
 import { PersonalTeamClient } from "./personal-client";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -24,7 +25,9 @@ export default async function PersonalPage() {
       include: {
         user: { select: { id: true, name: true, email: true } },
         specialties: true,
-        personNaves: true,
+        personNaves: {
+          include: { nave: { select: { id: true, codigo: true, nombre: true } } },
+        },
         workWindows: true,
         absences: {
           where: {
@@ -59,23 +62,27 @@ export default async function PersonalPage() {
     usersLinked.map((u) => u.personId).filter((id): id is string => id != null),
   );
 
-  const people = peopleRaw.map(({ workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => ({
-    ...p,
-    displayName: user?.name ?? p.iniciales,
-    naveIds: personNaves.map((pn) => pn.naveId),
-    hourlyRate: Number(hourlyRate),
-    overtimeHourlyRate: Number(overtimeHourlyRate),
-    workWindows,
-    absences: absences.map((a) => ({
-      id: a.id,
-      date: a.date.toISOString().slice(0, 10),
-      endDate: a.endDate.toISOString().slice(0, 10),
-      hours: a.hours,
-      reason: a.reason,
-      blockStartMinutes: a.blockStartMinutes,
-      blockEndMinutes: a.blockEndMinutes,
-    })),
-  }));
+  const people = peopleRaw.map(({ workWindows, absences, personNaves, hourlyRate, overtimeHourlyRate, user, ...p }) => {
+    const canonicalNave = pickCanonicalPersonNave(personNaves);
+    return {
+      ...p,
+      displayName: user?.name ?? p.iniciales,
+      naveId: canonicalNave?.naveId ?? null,
+      nave: canonicalNave?.nave ?? null,
+      hourlyRate: Number(hourlyRate),
+      overtimeHourlyRate: Number(overtimeHourlyRate),
+      workWindows,
+      absences: absences.map((a) => ({
+        id: a.id,
+        date: a.date.toISOString().slice(0, 10),
+        endDate: a.endDate.toISOString().slice(0, 10),
+        hours: a.hours,
+        reason: a.reason,
+        blockStartMinutes: a.blockStartMinutes,
+        blockEndMinutes: a.blockEndMinutes,
+      })),
+    };
+  });
 
   return (
     <div className="p-6 lg:p-8 space-y-6">

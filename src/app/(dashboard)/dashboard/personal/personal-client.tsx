@@ -68,7 +68,8 @@ interface PersonWithSpecs {
   hourlyRate: number;
   overtimeHourlyRate: number;
   isActive: boolean;
-  naveIds: string[];
+  naveId: string | null;
+  nave: NaveSummary | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -146,7 +147,10 @@ export function PersonalTeamClient({
 
   const activeCount = useMemo(() => people.filter((p) => p.isActive).length, [people]);
   const displayedPeople = useMemo(
-    () => filterNave === "all" ? people : people.filter((p) => p.naveIds.includes(filterNave)),
+    () =>
+      filterNave === "all"
+        ? people
+        : people.filter((p) => p.naveId === filterNave),
     [people, filterNave],
   );
 
@@ -172,7 +176,7 @@ export function PersonalTeamClient({
     setOvertimeHourlyRate(String(p.overtimeHourlyRate));
     setNotes(p.notes ?? "");
     setIsActive(p.isActive);
-    setNaveId(p.naveIds[0] ?? "");
+    setNaveId(p.naveId ?? "");
     const linked = users.find((u) => u.personId === p.id);
     setUserId(linked?.id ?? "none");
     const next = emptySpecMap(editableProcessDefs);
@@ -333,15 +337,15 @@ export function PersonalTeamClient({
               </CardHeader>
               <CardContent className="space-y-3 py-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                  {(() => {
-                    const personNaveId = p.naveIds[0];
-                    const n = personNaveId ? naves.find((x) => x.id === personNaveId) : null;
-                    return n ? (
-                      <Badge variant="secondary" className="text-[10px]">
-                        {n.codigo} · {n.nombre}
-                      </Badge>
-                    ) : null;
-                  })()}
+                  {p.nave ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {p.nave.codigo} · {p.nave.nombre}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      Sin nave
+                    </Badge>
+                  )}
                   {(() => {
                     const linkedUser = users.find((u) => u.personId === p.id);
                     return linkedUser ? (
@@ -446,7 +450,12 @@ export function PersonalTeamClient({
             </div>
             {naves.length > 0 && (
               <div className="space-y-2">
-                <Label>Nave</Label>
+                <Label>
+                  Nave <span className="text-destructive">*</span>
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Cada operario pertenece a una sola nave.
+                </p>
                 <div className="grid grid-cols-2 gap-2 border rounded-md p-3">
                   {naves.map((n) => (
                     <label key={n.id} className="flex items-center gap-2 text-sm">

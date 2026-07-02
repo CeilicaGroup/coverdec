@@ -14,7 +14,7 @@ import {
 } from "@/generated/prisma";
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
 import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
-import { assertSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
+import { assertNaveSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
 import { assertPlanningAssignmentsWorkOrderWorkers } from "@/features/work-orders/validate-planning-assignments";
 import { getMondayOf, isoWeek } from "@/lib/week";
 import { detectPlanningPublishNotifications } from "@/features/notifications/detectors";
@@ -94,6 +94,13 @@ export async function generatePlanning(
     includeDraftPriorWeeks: true,
   });
 
+  await assertNaveSchedulableTasksHaveOpenWorkOrder({
+    naveId: args.naveId,
+    weekStart,
+    planFromAt,
+    priorWeekAssignments,
+  });
+
   const engineInput = await loadSolverInput({
     naveId: args.naveId,
     weekStart,
@@ -103,10 +110,6 @@ export async function generatePlanning(
     previousAssignments,
     priorWeekAssignments,
   });
-
-  await assertSchedulableTasksHaveOpenWorkOrder(
-    engineInput.tasks.map((task) => task.id),
-  );
 
   if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
     throw new Error(

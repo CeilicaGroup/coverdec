@@ -95,13 +95,12 @@ export function groupTasksForAutoWorkOrders<
 >(tasks: T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const task of tasks) {
-    const key = workOrderGroupKey(task);
-    if (!key) continue;
+    const key = workOrderGroupKey(task) ?? `task:${task.id}`;
     const list = groups.get(key) ?? [];
     list.push(task);
     groups.set(key, list);
   }
-  return new Map([...groups.entries()].filter(([, list]) => list.length >= 2));
+  return groups;
 }
 
 export async function workOrdersHaveTimeEntries(

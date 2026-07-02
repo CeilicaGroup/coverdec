@@ -5,8 +5,16 @@ const { loadActiveNavesOrdered, generatePlanning } = vi.hoisted(() => ({
   generatePlanning: vi.fn(),
 }));
 
+const assertActiveNavesSchedulableTasksHaveOpenWorkOrder = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+
 vi.mock("@/features/naves/active-naves", () => ({
   loadActiveNavesOrdered,
+}));
+
+vi.mock("@/features/work-orders/require-for-planning", () => ({
+  assertActiveNavesSchedulableTasksHaveOpenWorkOrder,
 }));
 
 vi.mock("@/features/planning/service", () => ({
@@ -41,6 +49,7 @@ describe("generatePlanningAllNaves", () => {
     const weekStart = new Date("2026-06-01T00:00:00.000Z");
     const result = await generatePlanningAllNaves({ weekStart });
 
+    expect(assertActiveNavesSchedulableTasksHaveOpenWorkOrder).toHaveBeenCalledTimes(1);
     expect(generatePlanning).toHaveBeenCalledTimes(2);
     expect(generatePlanning.mock.calls[0]?.[0]).toMatchObject({ naveId: "nave-b" });
     expect(generatePlanning.mock.calls[1]?.[0]).toMatchObject({ naveId: "nave-a" });

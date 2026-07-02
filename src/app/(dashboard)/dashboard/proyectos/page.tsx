@@ -30,6 +30,10 @@ import {
   PROJECT_KIND_BADGE_CLASS,
   PROJECT_KIND_LABELS,
 } from "@/lib/project-kind";
+import {
+  buildProjectNavesByProjectId,
+  formatProjectNavesColumn,
+} from "@/features/projects/task-nave";
 
 export default async function ProyectosPage({
   searchParams,
@@ -61,8 +65,9 @@ export default async function ProyectosPage({
   const projectIds = projects.map((p) => p.id);
   const blocksProject = new Set<string>();
   const doneByProjectId = new Map<string, number>();
+  const navesByProjectId = new Map<string, { id: string; codigo: string; nombre: string }[]>();
   if (projectIds.length > 0) {
-    const [teRows, poRows, entryRows] = await Promise.all([
+    const [teRows, poRows, entryRows, taskNaveRows] = await Promise.all([
       prisma.timeEntry.groupBy({
         by: ["projectId"],
         where: { projectId: { in: projectIds } },
@@ -77,6 +82,14 @@ export default async function ProyectosPage({
         where: { projectId: { in: projectIds } },
         select: { projectId: true, startedAt: true, endedAt: true, hours: true },
       }),
+      prisma.task.findMany({
+        where: { projectId: { in: projectIds } },
+        select: {
+          projectId: true,
+          nave: { select: { id: true, codigo: true, nombre: true } },
+        },
+        distinct: ["projectId", "naveId"],
+      }),
     ]);
     for (const r of teRows) {
       if (r.projectId) blocksProject.add(r.projectId);
@@ -90,6 +103,9 @@ export default async function ProyectosPage({
         entry.projectId,
         (doneByProjectId.get(entry.projectId) ?? 0) + resolveTimeEntryHours(entry),
       );
+    }
+    for (const [projectId, naves] of buildProjectNavesByProjectId(taskNaveRows)) {
+      navesByProjectId.set(projectId, naves);
     }
   }
 
@@ -121,6 +137,7 @@ export default async function ProyectosPage({
                 <TableHead>Riesgo</TableHead>
                 <TableHead>Entrega</TableHead>
                 <TableHead>Lámparas</TableHead>
+                <TableHead>Naves</TableHead>
                 <TableHead>Responsable</TableHead>
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
@@ -135,6 +152,8 @@ export default async function ProyectosPage({
                 const pending = Math.max(0, estimated - done);
                 const pct = estimated > 0 ? Math.round((done / estimated) * 100) : 0;
                 const canHardDelete = !blocksProject.has(p.id);
+                const projectNaves = navesByProjectId.get(p.id);
+                const navesLabel = formatProjectNavesColumn(projectNaves);
                 return (
                   <TableRow key={p.id} className={p.isActive ? "" : "opacity-50"}>
                     <TableCell>
@@ -170,6 +189,28 @@ export default async function ProyectosPage({
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {p._count.lamps} L / {p._count.tasks} T
+                    </TableCell>
+                    <TableCell
+                      className="text-xs"
+                      title={
+                        projectNaves?.length
+                          ? projectNaves
+                              .map((nave) => `${nave.codigo} · ${nave.nombre}`)
+                              .join(" · ")
+                          : undefined
+                      }
+                    >
+                      {projectNaves && projectNaves.length > 1 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {projectNaves.map((nave) => (
+                            <Badge key={nave.id} variant="secondary" className="font-mono text-[10px]">
+                              {nave.codigo}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">{navesLabel}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs">
                       {p.responsibleUser?.name ?? "—"}

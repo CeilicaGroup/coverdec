@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  AlertTriangle,
   Layers,
   Pencil,
   Plus,
@@ -318,9 +319,46 @@ export function OrdenesTrabajoClient({
     ? eligibleTasks.filter((t) => !editTaskIds.includes(t.id))
     : [];
 
+  const unassignedTaskCount = eligibleTasks.length;
+  const unassignedTaskHours = useMemo(
+    () => pendingHours(eligibleTasks),
+    [eligibleTasks],
+  );
+
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        {unassignedTaskCount > 0 && (
+          <Card className="border-amber-500/40 bg-amber-500/5">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div className="flex items-center gap-2 text-sm">
+                <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+                <span>
+                  {unassignedTaskCount} tarea
+                  {unassignedTaskCount !== 1 ? "s" : ""} sin OT
+                  {unassignedTaskHours > 0
+                    ? ` · ${formatHours(unassignedTaskHours)} pendientes`
+                    : ""}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onAutoGroup}
+                  disabled={pending}
+                >
+                  Agrupar procesos iguales
+                </Button>
+                <Button type="button" size="sm" onClick={openCreate} disabled={pending}>
+                  Nueva OT
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <Select value={statusFilter} onValueChange={onStatusFilter}>
             <SelectTrigger className="w-[180px]">

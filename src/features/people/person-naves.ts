@@ -44,3 +44,13 @@ export function personNaveId(
   const ids = personNaveIds(person);
   return ids[0] ?? null;
 }
+
+/** Si hay varias filas legacy, conserva la de codigo menor (misma regla que el backfill). */
+export function pickCanonicalPersonNave<
+  T extends { naveId: string; nave: { codigo: string } },
+>(personNaves: T[]): T | null {
+  if (personNaves.length === 0) return null;
+  return [...personNaves].sort((a, b) =>
+    a.nave.codigo.localeCompare(b.nave.codigo),
+  )[0]!;
+}

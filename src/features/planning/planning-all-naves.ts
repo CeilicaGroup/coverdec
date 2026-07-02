@@ -1,5 +1,7 @@
 import { loadActiveNavesOrdered } from "@/features/naves/active-naves";
+import { assertActiveNavesSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
 import { childLogger } from "@/lib/logger";
+import { getMondayOf } from "@/lib/week";
 import type { PlanFrom } from "@/features/planning/plan-from";
 import { generatePlanning, type GeneratedPlanning } from "./service";
 
@@ -25,6 +27,14 @@ export async function generatePlanningAllNaves(args: {
   planFromAt?: Date;
 }): Promise<GeneratePlanningAllNavesResult> {
   const naves = await loadActiveNavesOrdered();
+  const weekStart = getMondayOf(args.weekStart);
+
+  await assertActiveNavesSchedulableTasksHaveOpenWorkOrder({
+    naveIds: naves.map((nave) => nave.id),
+    weekStart,
+    planFromAt: args.planFromAt,
+  });
+
   const perNave: NavePlanningResult[] = [];
   const warnings: string[] = [];
   let unscheduledHours = 0;

@@ -1,5 +1,16 @@
 import { prisma } from "@/lib/db";
 import { WorkOrderStatus } from "@/generated/prisma";
+import {
+  buildPriorPlannedHoursByTaskId,
+  getPriorPlanningAssignments,
+  type PriorPlanningAssignment,
+} from "@/features/planning/prior-week-planning";
+import { effectivePendingHours } from "@/features/planning/task-planning-status";
+import {
+  computeTaskPlanningTotals,
+  loadDoneHoursByTaskIds,
+} from "@/features/time-tracking/task-hours-derived";
+import { getMondayOf } from "@/lib/week";
 
 export interface TaskWorkOrderCheckRow {
   id: string;
@@ -60,4 +71,92 @@ export async function assertSchedulableTasksHaveOpenWorkOrder(
   if (missing.length > 0) {
     throw new Error(formatMissingWorkOrderError(missing));
   }
+}
+
+const schedulableTaskSelect = {
+  id: true,
+  estimatedHours: true,
+  isCompleted: true,
+  workOrderId: true,
+  workOrder: { select: { status: true, number: true } },
+  project: { select: { name: true } },
+  lamp: { select: { name: true } },
+  processDefinition: { select: { label: true } },
+} as const;
+
+/** Falla antes de cargar el solver si hay tareas con horas pendientes sin OT abierta. */
+export async function assertNaveSchedulableTasksHaveOpenWorkOrder(args: {
+  naveId: string;
+  weekStart: Date;
+  planFromAt?: Date;
+  priorWeekAssignments?: PriorPlanningAssignment[];
+}): Promise<void> {
+  const planFromAt = args.planFromAt ?? new Date();
+  const tasksRaw = await prisma.task.findMany({
+    where: {
+      naveId: args.naveId,
+      project: { isActive: true },
+    },
+    select: schedulableTaskSelect,
+  });
+
+  if (tasksRaw.length === 0) return;
+
+  const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(
+    args.priorWeekAssignments ?? [],
+  );
+  const doneHoursByTask = await loadDoneHoursByTaskIds(
+    prisma,
+    tasksRaw.map((task) => task.id),
+    planFromAt,
+  );
+
+  const schedulable: TaskWorkOrderCheckRow[] = [];
+  for (const task of tasksRaw) {
+    const totals = computeTaskPlanningTotals({
+      estimatedHours: task.estimatedHours,
+      doneHours: doneHoursByTask.get(task.id) ?? 0,
+      priorPlannedHours: priorPlannedHoursByTask.get(task.id) ?? 0,
+    });
+    const pending = effectivePendingHours(
+      {
+        estimatedHours: task.estimatedHours,
+        isCompleted: task.isCompleted,
+        pendingToPlanHours: totals.pendingToPlanHours,
+        remainingWorkHours: totals.remainingWorkHours,
+      },
+      { priorPlannedHours: priorPlannedHoursByTask.get(task.id) ?? 0 },
+    );
+    if (pending <= 0) continue;
+    schedulable.push(task);
+  }
+
+  const missing = findTasksMissingOpenWorkOrder(schedulable);
+  if (missing.length > 0) {
+    throw new Error(formatMissingWorkOrderError(missing));
+  }
+}
+
+/** Valida todas las naves antes de generar planning global (evita OT parcial). */
+export async function assertActiveNavesSchedulableTasksHaveOpenWorkOrder(args: {
+  naveIds: string[];
+  weekStart: Date;
+  planFromAt?: Date;
+}): Promise<void> {
+  const weekStart = getMondayOf(args.weekStart);
+  await Promise.all(
+    args.naveIds.map(async (naveId) => {
+      const priorWeekAssignments = await getPriorPlanningAssignments({
+        naveId,
+        beforeWeekStart: weekStart,
+        includeDraftPriorWeeks: true,
+      });
+      await assertNaveSchedulableTasksHaveOpenWorkOrder({
+        naveId,
+        weekStart,
+        planFromAt: args.planFromAt,
+        priorWeekAssignments,
+      });
+    }),
+  );
 }

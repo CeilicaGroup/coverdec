@@ -164,6 +164,35 @@ export function summarizeNaveIds(
   return { label: "Mixto", homogeneous: false, naveId: null };
 }
 
+/** Naves distintas por proyecto (todas las tareas / procesos). */
+export function buildProjectNavesByProjectId(
+  rows: { projectId: string; nave: NaveSummary }[],
+): Map<string, NaveSummary[]> {
+  const byProject = new Map<string, Map<string, NaveSummary>>();
+  for (const row of rows) {
+    const naves = byProject.get(row.projectId) ?? new Map<string, NaveSummary>();
+    naves.set(row.nave.id, row.nave);
+    byProject.set(row.projectId, naves);
+  }
+
+  const result = new Map<string, NaveSummary[]>();
+  for (const [projectId, naves] of byProject) {
+    result.set(
+      projectId,
+      [...naves.values()].sort((a, b) => a.codigo.localeCompare(b.codigo)),
+    );
+  }
+  return result;
+}
+
+export function formatProjectNavesColumn(naves: NaveSummary[] | undefined): string {
+  if (!naves?.length) return "—";
+  if (naves.length === 1) {
+    return formatNaveLabel(naves[0]!, naves[0]!.id);
+  }
+  return naves.map((n) => n.codigo).join(" · ");
+}
+
 export const MANUAL_ELEMENT_KEY = "__sin_elemento__";
 
 export function elementTypeIdFromGroupKey(groupKey: string): string | null {
