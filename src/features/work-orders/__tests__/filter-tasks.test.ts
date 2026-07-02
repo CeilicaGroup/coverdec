@@ -54,4 +54,37 @@ describe("buildWorkOrderTaskFilterOptions", () => {
     expect(options.processes.map((p) => p.code)).toEqual(["CNC", "PINT"]);
     expect(options.elements.map((e) => e.id)).toEqual(["et1", "et2"]);
   });
+
+  it("labels internal pools with friendly names", () => {
+    const options = buildWorkOrderTaskFilterOptions([
+      {
+        ...tasks[0]!,
+        id: "stock-task",
+        project: {
+          id: "stock-pool",
+          name: "Pool de stock",
+          code: "STOCK-POOL",
+          kind: "STOCK",
+        },
+      },
+      {
+        ...tasks[1]!,
+        id: "adhoc-task",
+        project: {
+          id: "imprevistas-pool",
+          name: "Pool de imprevistas",
+          code: "IMPREVISTAS-POOL",
+          kind: "IMPREVISTAS",
+        },
+        process: "IMPREVISTA",
+        processDefinition: { label: "Imprevista" },
+        notes: "Arreglar montaje",
+      },
+    ]);
+
+    expect(options.projects).toEqual([
+      { id: "imprevistas-pool", label: "Imprevistas" },
+      { id: "stock-pool", label: "Stock" },
+    ]);
+  });
 });

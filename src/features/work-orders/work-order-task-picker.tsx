@@ -22,10 +22,20 @@ import {
   type WorkOrderTaskFilters,
 } from "@/features/work-orders/filter-tasks";
 import { formatHours } from "@/lib/format";
+import { IMPREVISTA_PROCESS_CODE } from "@/features/ad-hoc/constants";
+import { internalProjectDisplayLabel } from "@/lib/project-kind";
 
 function taskLabel(task: WorkOrderTaskFilterable) {
+  const projectLabel = internalProjectDisplayLabel(
+    task.project.kind,
+    task.project.name,
+  );
+  if (task.process === IMPREVISTA_PROCESS_CODE) {
+    const description = task.notes?.trim() || "Imprevista";
+    return `${projectLabel} · ${description}`;
+  }
   const element = getTaskLampElementLabel(task);
-  return `${task.project.name} · ${task.lamp.name}${element ? ` · ${element}` : ""} · ${task.processDefinition.label}`;
+  return `${projectLabel} · ${task.lamp.name}${element ? ` · ${element}` : ""} · ${task.processDefinition.label}`;
 }
 
 export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({

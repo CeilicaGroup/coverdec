@@ -47,7 +47,10 @@ export default async function ProyectosPage({
 
   const [projects, responsibleUsers] = await Promise.all([
     prisma.project.findMany({
-      where: showArchived ? undefined : { isActive: true },
+      where: {
+        ...(showArchived ? {} : { isActive: true }),
+        kind: { notIn: ["STOCK", "IMPREVISTAS"] },
+      },
       include: {
         responsibleUser: { select: { name: true } },
         _count: { select: { lamps: true, tasks: true } },

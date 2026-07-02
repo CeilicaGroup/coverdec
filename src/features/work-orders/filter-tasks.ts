@@ -1,8 +1,9 @@
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { internalProjectDisplayLabel } from "@/lib/project-kind";
 
 export interface WorkOrderTaskFilterable {
   id: string;
-  project: { id: string; name: string; code: string };
+  project: { id: string; name: string; code: string; kind?: string };
   lamp: {
     name: string;
     elementType?: { id: string; name: string } | null;
@@ -15,6 +16,7 @@ export interface WorkOrderTaskFilterable {
   process: string;
   processDefinition: { label: string };
   estimatedHours: number;
+  notes?: string | null;
 }
 
 export interface WorkOrderTaskFilters {
@@ -94,7 +96,11 @@ export function buildWorkOrderTaskFilterOptions<T extends WorkOrderTaskFilterabl
   const elements = new Map<string, string>();
 
   for (const task of tasks) {
-    projects.set(task.project.id, task.project.name);
+    const projectLabel = internalProjectDisplayLabel(
+      task.project.kind,
+      task.project.name,
+    );
+    projects.set(task.project.id, projectLabel);
     processes.set(task.process, task.processDefinition.label);
     naves.set(task.nave.id, task.nave.codigo);
     const etId = elementTypeId(task);

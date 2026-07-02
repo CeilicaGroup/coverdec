@@ -26,12 +26,16 @@ import {
 } from "@/features/projects/sync-lamp-elements";
 import { ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
 import { isManualEstimateLamp } from "@/lib/manual-lamp";
-import { isManualEstimateProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
+import { isManualEstimateProjectKind, isStockProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
+import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
+import { ReturnToStockButton } from "./return-to-stock-button";
+import { AssignFromStockDialog } from "./assign-from-stock-dialog";
 import { ProjectDangerZone } from "./project-danger-zone";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
+import { listStockLamps } from "@/features/stock/actions";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
 export default async function ProjectDetailPage({
@@ -101,7 +105,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers] =
+  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps] =
     await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
@@ -137,6 +141,7 @@ export default async function ProjectDetailPage({
       select: { id: true, name: true, role: true },
       orderBy: [{ role: "asc" }, { name: "asc" }],
     }),
+    canManage ? listStockLamps() : Promise.resolve([]),
   ]);
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
@@ -212,6 +217,17 @@ export default async function ProjectDetailPage({
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
   const totalPending = allTasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
+  const availableStockLamps = stockLamps
+    .filter((lamp) => isStockLampAssignable(lamp.stockStatus))
+    .map((lamp) => ({
+      id: lamp.id,
+      name: lamp.name,
+      elementTypeName: lamp.elementTypeName,
+      batchCodes: lamp.batchCodes,
+      pendingHours: lamp.pendingHours,
+      previousProject: lamp.previousProject,
+    }));
+  const showStockActions = canManage && !isStockProjectKind(project.kind);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -222,6 +238,12 @@ export default async function ProjectDetailPage({
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {canManage ? (
               <>
+                {showStockActions ? (
+                  <AssignFromStockDialog
+                    projectId={project.id}
+                    stockLamps={availableStockLamps}
+                  />
+                ) : null}
                 <EditProjectDialog
                   variant="button"
                   project={{
@@ -351,6 +373,15 @@ export default async function ProjectDetailPage({
                       </div>
                       {canManage ? (
                         <DeleteLampButton lampId={l.id} lampName={l.name} />
+                      ) : null}
+                      {showStockActions ? (
+                        <ReturnToStockButton
+                          lampId={l.id}
+                          lampName={l.name}
+                          hasPlanning={l.tasks.some(
+                            (task) => task._count.assignments > 0,
+                          )}
+                        />
                       ) : null}
                     </div>
                     <LampTasksPanel

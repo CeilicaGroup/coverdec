@@ -28,6 +28,10 @@ import {
 } from "@/features/planning/validate-assignments";
 import { buildWorkOrderIdByTaskId } from "@/features/work-orders/planning";
 import type { EngineAssignment } from "./engine/types";
+import {
+  filterOverrideAssignments,
+  mergeOverrideAssignmentsAfterSolver,
+} from "./planning-override-preserve";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
@@ -110,6 +114,8 @@ export async function generatePlanning(
     })
     : [];
 
+  const overrideAssignments = filterOverrideAssignments(previousAssignments);
+
   const planFromAt = args.planFromAt ?? new Date();
 
   const priorWeekAssignments = await getPriorPlanningAssignments({
@@ -188,18 +194,32 @@ export async function generatePlanning(
   }
   assertSingleWorkerPerTask(result.assignments);
 
+  const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
+    overrideAssignments.map((assignment) => ({
+      taskId: assignment.taskId,
+      personId: assignment.personId,
+      date: assignment.date,
+      startSlot: assignment.startSlot,
+      endSlot: assignment.endSlot,
+      hours: assignment.hours,
+      process: assignment.process,
+      isAfternoon: assignment.isAfternoon,
+    })),
+    result.assignments,
+  );
+
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((t) => ({ id: t.id, workOrderId: t.workOrderId })),
   );
   assertSingleWorkerPerWorkOrder(
-    result.assignments,
+    mergedAssignments,
     workOrderIdByTaskId,
     engineInput.workOrderNumberById,
   );
 
   const totalUnplaced = result.unscheduledHours + deferredHours;
   if (
-    result.assignments.length === 0 &&
+    mergedAssignments.length === 0 &&
     totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
   ) {
     const hint =
@@ -238,9 +258,9 @@ export async function generatePlanning(
           },
         });
 
-      if (result.assignments.length > 0) {
+      if (mergedAssignments.length > 0) {
         await tx.planningAssignment.createMany({
-          data: result.assignments.map((a) => ({
+          data: mergedAssignments.map((a) => ({
             planningId: upserted.id,
             taskId: a.taskId,
             personId: a.personId,
@@ -250,6 +270,9 @@ export async function generatePlanning(
             hours: a.hours,
             process: a.process,
             isAfternoon: a.isAfternoon,
+            isOverride: overrideAssignments.some(
+              (override) => override.taskId === a.taskId,
+            ),
           })),
         });
       }
@@ -262,7 +285,7 @@ export async function generatePlanning(
   log.info(
     {
       planningId: planning.id,
-      assignments: result.assignments.length,
+      assignments: mergedAssignments.length,
       warnings: result.warnings.length,
     },
     "generate planning done",
@@ -285,7 +308,7 @@ export async function generatePlanning(
     planningId: planning.id,
     warnings,
     unscheduledHours: result.unscheduledHours + deferredHours,
-    assignmentsCount: result.assignments.length,
+    assignmentsCount: mergedAssignments.length,
   };
 }
 
@@ -323,6 +346,8 @@ export async function generateGlobalPlanning(args: {
       where: { planningId: { in: existingPlannings.map((row) => row.id) } },
     })
     : [];
+
+  const overrideAssignments = filterOverrideAssignments(previousAssignments);
 
   const priorWeekAssignments = await getPriorPlanningAssignmentsForNaves({
     naveIds,
@@ -396,18 +421,32 @@ export async function generateGlobalPlanning(args: {
   }
   assertSingleWorkerPerTask(result.assignments);
 
+  const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
+    overrideAssignments.map((assignment) => ({
+      taskId: assignment.taskId,
+      personId: assignment.personId,
+      date: assignment.date,
+      startSlot: assignment.startSlot,
+      endSlot: assignment.endSlot,
+      hours: assignment.hours,
+      process: assignment.process,
+      isAfternoon: assignment.isAfternoon,
+    })),
+    result.assignments,
+  );
+
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((task) => ({ id: task.id, workOrderId: task.workOrderId })),
   );
   assertSingleWorkerPerWorkOrder(
-    result.assignments,
+    mergedAssignments,
     workOrderIdByTaskId,
     engineInput.workOrderNumberById,
   );
 
   const totalUnplaced = result.unscheduledHours + deferredHours;
   if (
-    result.assignments.length === 0 &&
+    mergedAssignments.length === 0 &&
     totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
   ) {
     const hint =
@@ -424,11 +463,15 @@ export async function generateGlobalPlanning(args: {
   for (const naveId of naveIds) {
     assignmentsByNaveId.set(naveId, []);
   }
-  for (const assignment of result.assignments) {
+  for (const assignment of mergedAssignments) {
     const naveId = engineInput.naveIdByTaskId.get(assignment.taskId);
     if (!naveId) continue;
     assignmentsByNaveId.get(naveId)?.push(assignment);
   }
+
+  const overrideTaskIds = new Set(
+    overrideAssignments.map((assignment) => assignment.taskId),
+  );
 
   const perNave: NavePlanningResult[] = [];
   await prisma.$transaction(
@@ -468,6 +511,7 @@ export async function generateGlobalPlanning(args: {
               hours: assignment.hours,
               process: assignment.process,
               isAfternoon: assignment.isAfternoon,
+              isOverride: overrideTaskIds.has(assignment.taskId),
             })),
           });
         }
@@ -500,7 +544,7 @@ export async function generateGlobalPlanning(args: {
   log.info(
     {
       planningIds: perNave.map((row) => row.planningId),
-      assignments: result.assignments.length,
+      assignments: mergedAssignments.length,
       warnings: warnings.length,
     },
     "generate global planning done",
@@ -510,7 +554,7 @@ export async function generateGlobalPlanning(args: {
     perNave,
     warnings,
     unscheduledHours: result.unscheduledHours + deferredHours,
-    assignmentsCount: result.assignments.length,
+    assignmentsCount: mergedAssignments.length,
     planningIds: perNave.map((row) => row.planningId),
   };
 }

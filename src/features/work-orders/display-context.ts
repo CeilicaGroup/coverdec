@@ -3,6 +3,7 @@ import { PlanningStatus } from "@/generated/prisma";
 import { loadPrimaryWorkerByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { propagateWorkOrderOwnerByTaskId } from "./planning";
 import { workOrderGroupKey } from "./group-key";
+import { IMPREVISTA_PROCESS_CODE } from "@/features/ad-hoc/constants";
 import type { WorkOrderTaskFilterable } from "./filter-tasks";
 
 export interface TaskAssigneeSummary {
@@ -33,6 +34,15 @@ export function summarizeWorkOrderElementProcess(
   tasks: WorkOrderTaskFilterable[],
 ): WorkOrderElementProcessSummary {
   if (tasks.length === 0) return { kind: "unknown" };
+
+  if (tasks.every((task) => task.process === IMPREVISTA_PROCESS_CODE)) {
+    const first = tasks[0]!;
+    return {
+      kind: "single",
+      elementName: first.notes?.trim() || "Imprevista",
+      processCode: IMPREVISTA_PROCESS_CODE,
+    };
+  }
 
   const keys = new Set<string>();
   for (const task of tasks) {

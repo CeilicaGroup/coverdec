@@ -3,7 +3,7 @@ import type { WorkOrderStatus } from "@/generated/prisma";
 import { workOrderGroupKey } from "./group-key";
 
 const eligibleTaskInclude = {
-  project: { select: { id: true, name: true, code: true } },
+  project: { select: { id: true, name: true, code: true, kind: true } },
   lamp: {
     select: {
       id: true,

@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
+import { deleteEmptyOpenWorkOrders } from "./cleanup-empty";
 
 const taskSelectForValidation = {
   id: true,
@@ -63,4 +64,6 @@ export async function assignTasksToWorkOrder(
       data: { workOrderId, workOrderSequence: i },
     });
   }
+
+  await deleteEmptyOpenWorkOrders(tx, [workOrderId]);
 }

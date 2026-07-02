@@ -2,6 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import {
+  revalidateLampSurfaces,
+  revalidateProjectSurfaces,
+} from "@/features/projects/revalidate-surfaces";
+import { deleteEmptyOpenWorkOrders } from "@/features/work-orders/cleanup-empty";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
@@ -125,10 +130,8 @@ async function persistTasksNave(taskIds: string[], naveId: string) {
     }
   });
 
-  const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
-  revalidatePath("/dashboard/proyectos");
-  for (const projectId of projectIds) {
-    revalidatePath(`/dashboard/proyectos/${projectId}`);
+  for (const lampId of lampIds) {
+    await revalidateLampSurfaces(lampId);
   }
 }
 
@@ -437,8 +440,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
     );
   
     log.info({ lampId: catalogLampId }, "lamp created with tasks");
-    revalidatePath("/dashboard/proyectos");
-    revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+    await revalidateProjectSurfaces(data.projectId, catalogLampId);
     return { id: catalogLampId };
     },
     (result) => ({ summary: "Crear lámpara", entityType: "Lamp", entityId: result.id }),
@@ -486,8 +488,7 @@ export async function updateLampElements(
     });
   
     log.info({ lampId: lamp.id }, "lamp elements updated");
-    revalidatePath("/dashboard/proyectos");
-    revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
+    await revalidateProjectSurfaces(lamp.projectId, lamp.id);
     return { id: lamp.id };
     },
     (result) => ({ summary: "Actualizar elementos de lámpara", entityType: "Lamp", entityId: input.lampId }),
@@ -557,8 +558,7 @@ export async function renameLamp(input: z.infer<typeof renameLampSchema>) {
       },
     );
   
-    revalidatePath("/dashboard/proyectos");
-    revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
+    await revalidateProjectSurfaces(lamp.projectId, lamp.id);
     },
     (result) => ({ summary: "Renombrar lámpara", entityType: "Lamp", entityId: input.lampId }),
   );
@@ -577,7 +577,10 @@ export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchem
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = updateTaskHoursSchema.parse(input);
   
-    const task = await prisma.task.findFirst({ where: { id: data.taskId } });
+    const task = await prisma.task.findFirst({
+      where: { id: data.taskId },
+      select: { id: true, lampId: true, projectId: true },
+    });
     if (!task) throw new Error("Tarea no encontrada");
 
     await assertTasksNotPlanned([task.id]);
@@ -587,7 +590,7 @@ export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchem
       data: { estimatedHours: data.estimatedHours },
     });
   
-    revalidatePath("/dashboard/proyectos");
+    await revalidateProjectSurfaces(task.projectId, task.lampId);
     },
     (result) => ({ summary: "Actualizar horas de tarea", entityType: "Task", entityId: input.taskId }),
   );
@@ -711,7 +714,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         await syncTransportTasksForLamp(tx, lamp.id);
       });
   
-      revalidatePath("/dashboard/proyectos");
+      await revalidateProjectSurfaces(lamp.projectId, lamp.id);
       return;
     }
   
@@ -758,7 +761,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       await syncTransportTasksForLamp(tx, lamp.id);
     });
   
-    revalidatePath("/dashboard/proyectos");
+    await revalidateProjectSurfaces(lamp.projectId, lamp.id);
     },
     { summary: "Añadir tarea extra", entityType: "Task" },
   );
@@ -934,11 +937,7 @@ export async function applyDefaultNavesToElement(
       await syncTransportTasksForLamp(tx, data.lampId);
     });
 
-    const projectIds = new Set(tasks.map((task) => task.lamp.projectId));
-    revalidatePath("/dashboard/proyectos");
-    for (const projectId of projectIds) {
-      revalidatePath(`/dashboard/proyectos/${projectId}`);
-    }
+    await revalidateLampSurfaces(data.lampId);
     },
     (result) => ({ summary: "Aplicar naves por defecto", entityType: "Lamp", entityId: input.lampId }),
   );
@@ -981,10 +980,21 @@ export async function deleteProcessTasks(
     }
     assertTasksNotPlannedFromRows(tasks);
   
-    await prisma.task.deleteMany({
-      where: { id: { in: tasks.map((task) => task.id) } },
+    const workOrderIds = [
+      ...new Set(
+        tasks
+          .map((task) => task.workOrderId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.task.deleteMany({
+        where: { id: { in: tasks.map((task) => task.id) } },
+      });
+      await deleteEmptyOpenWorkOrders(tx, workOrderIds);
     });
-    revalidatePath("/dashboard/proyectos");
+    await revalidateLampSurfaces(data.lampId);
     },
     { summary: "Eliminar tareas de proceso", entityType: "Task" },
   );
@@ -1015,8 +1025,15 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
     }
     assertTasksNotPlannedFromRows([task]);
   
-    await prisma.task.delete({ where: { id: task.id } });
-    revalidatePath("/dashboard/proyectos");
+    const workOrderId = task.workOrderId;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.task.delete({ where: { id: task.id } });
+      if (workOrderId) {
+        await deleteEmptyOpenWorkOrders(tx, [workOrderId]);
+      }
+    });
+    await revalidateProjectSurfaces(task.projectId, task.lampId);
     },
     (result) => ({ summary: "Eliminar tarea", entityType: "Task", entityId: input.taskId }),
   );
@@ -1035,7 +1052,10 @@ export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchem
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = updateTaskNotesSchema.parse(input);
   
-    const task = await prisma.task.findFirst({ where: { id: data.taskId } });
+    const task = await prisma.task.findFirst({
+      where: { id: data.taskId },
+      select: { id: true, lampId: true, projectId: true },
+    });
     if (!task) throw new Error("Tarea no encontrada");
   
     await prisma.task.update({
@@ -1043,7 +1063,7 @@ export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchem
       data: { notes: data.notes?.trim() ? data.notes.trim() : null },
     });
   
-    revalidatePath("/dashboard/proyectos");
+    await revalidateProjectSurfaces(task.projectId, task.lampId);
     },
     (result) => ({ summary: "Actualizar notas de tarea", entityType: "Task", entityId: input.taskId }),
   );
@@ -1061,16 +1081,17 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = reorderTaskSchema.parse(input);
+
+    const task = await prisma.task.findUnique({
+      where: { id: data.taskId },
+      select: { id: true, lampId: true, order: true, systemKind: true, process: true },
+    });
+    if (!task) throw new Error("Tarea no encontrada");
+    if (isSystemTransportTask(task)) {
+      throw new Error("Las tareas de transporte automático no se pueden reordenar manualmente.");
+    }
   
     await prisma.$transaction(async (tx) => {
-      const task = await tx.task.findUnique({
-        where: { id: data.taskId },
-        select: { id: true, lampId: true, order: true, systemKind: true, process: true },
-      });
-      if (!task) throw new Error("Tarea no encontrada");
-      if (isSystemTransportTask(task)) {
-        throw new Error("Las tareas de transporte automático no se pueden reordenar manualmente.");
-      }
       await assertTasksNotPlanned([task.id]);
 
       const sibling = await tx.task.findFirst({
@@ -1098,7 +1119,7 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
       });
     });
   
-    revalidatePath("/dashboard/proyectos");
+    await revalidateLampSurfaces(task.lampId);
     },
     (result) => ({ summary: "Reordenar tarea", entityType: "Task", entityId: input.taskId }),
   );

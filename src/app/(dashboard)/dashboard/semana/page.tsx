@@ -30,6 +30,8 @@ import {
 import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { Role } from "@/generated/prisma";
+import { listAdHocFormOptions } from "@/features/ad-hoc/actions";
+import { AdHocTaskDialog } from "../_components/ad-hoc-task-dialog";
 import {
   buildActualGrid,
   buildEntriesByPersonDayTask,
@@ -53,6 +55,10 @@ export default async function SemanaPage({
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
   const todayIso = new Date().toISOString().slice(0, 10);
+
+  const canManageAdHoc =
+    ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const adHocOptions = canManageAdHoc ? await listAdHocFormOptions() : null;
 
   const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta] = await Promise.all([
     getNavePersonnel(naveScope),
@@ -111,6 +117,9 @@ export default async function SemanaPage({
               monthHidden={ctx.role === Role.OPERARIO}
             />
             <ViewToggle basePath="/dashboard/semana" view={view} week={weekIso} />
+            {adHocOptions ? (
+              <AdHocTaskDialog options={adHocOptions} />
+            ) : null}
             <div className="col-span-2 sm:col-span-1">
               <WeekNav
                 weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}

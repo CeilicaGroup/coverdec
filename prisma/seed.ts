@@ -1,4 +1,4 @@
-import { ElementTypology, PrismaClient, Role } from "../src/generated/prisma";
+import { ElementTypology, PrismaClient, ProjectKind, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 import {
@@ -23,6 +23,7 @@ const PROCESSES = [
   { code: "CORTE_MANUAL", label: "Corte manual",      factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
   { code: "LIMPIEZA",     label: "Limpieza",          factor: 1,    setupHours: 0, waitHours: 0,  bgColor: "#E0F2FE", fgColor: "#0369A1", borderColor: "#0369A1" },
   { code: "TRANSPORTE",   label: "Transporte",        factor: 1,    setupHours: 0.5, waitHours: 0, bgColor: "#FEF3C7", fgColor: "#92400E", borderColor: "#D97706" },
+  { code: "IMPREVISTA",   label: "Imprevista",        factor: 1,    setupHours: 0,   waitHours: 0, bgColor: "#FCE7F3", fgColor: "#9D174D", borderColor: "#BE185D" },
   { code: "ESTIMACION_MANUAL", label: "Estimación manual", factor: 1, setupHours: 0, waitHours: 0, bgColor: "#F3F4F6", fgColor: "#374151", borderColor: "#374151" },
 ];
 
@@ -551,6 +552,56 @@ async function main() {
   await prisma.user.update({
     where: { email: "admin@coverdec.local" },
     data: { role: Role.ADMIN, emailVerified: true },
+  });
+
+  await prisma.project.upsert({
+    where: { code: "STOCK-POOL" },
+    update: {
+      name: "Pool de stock",
+      isBillable: false,
+      isActive: true,
+      kind: ProjectKind.STOCK,
+    },
+    create: {
+      code: "STOCK-POOL",
+      name: "Pool de stock",
+      isBillable: false,
+      isActive: true,
+      kind: ProjectKind.STOCK,
+    },
+  });
+
+  const imprevistasPool = await prisma.project.upsert({
+    where: { code: "IMPREVISTAS-POOL" },
+    update: {
+      name: "Pool de imprevistas",
+      isBillable: false,
+      isActive: true,
+      kind: ProjectKind.IMPREVISTAS,
+    },
+    create: {
+      code: "IMPREVISTAS-POOL",
+      name: "Pool de imprevistas",
+      isBillable: false,
+      isActive: true,
+      kind: ProjectKind.IMPREVISTAS,
+    },
+  });
+
+  await prisma.lamp.upsert({
+    where: {
+      projectId_nameKey: {
+        projectId: imprevistasPool.id,
+        nameKey: "imprevistas",
+      },
+    },
+    update: { name: "Imprevistas" },
+    create: {
+      projectId: imprevistasPool.id,
+      name: "Imprevistas",
+      nameKey: "imprevistas",
+      units: 1,
+    },
   });
 
   await prisma.timeDeviationPolicy.upsert({
