@@ -488,32 +488,34 @@ export function OrdenesTrabajoClient({
         </Card>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Nueva orden de trabajo</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="wo-notes">Notas</Label>
-                <Textarea
-                  id="wo-notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Tareas ({selectedTaskIds.length} seleccionadas)</Label>
-                <WorkOrderTaskPicker
-                  tasks={eligibleTasks}
-                  selectedIds={selectedTaskIds}
-                  onToggle={toggleTask}
-                  processStylesByCode={processStylesByCode}
-                  emptyMessage="No hay tareas pendientes sin OT"
-                />
+          <DialogContent className="flex max-w-2xl max-h-[85vh] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nueva orden de trabajo</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="wo-notes">Notas</Label>
+                  <Textarea
+                    id="wo-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tareas ({selectedTaskIds.length} seleccionadas)</Label>
+                  <WorkOrderTaskPicker
+                    tasks={eligibleTasks}
+                    selectedIds={selectedTaskIds}
+                    onToggle={toggleTask}
+                    processStylesByCode={processStylesByCode}
+                    emptyMessage="No hay tareas pendientes sin OT"
+                  />
+                </div>
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="shrink-0">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancelar
               </Button>
@@ -529,96 +531,98 @@ export function OrdenesTrabajoClient({
         </Dialog>
 
         <Dialog open={editOrder != null} onOpenChange={(open) => !open && setEditOrder(null)}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Editar {editOrder?.number}</DialogTitle>
-            </DialogHeader>
-            {editOrder ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-wo-notes">Notas</Label>
-                  <Textarea
-                    id="edit-wo-notes"
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Orden de tareas ({editTaskIds.length})</Label>
-                  <div className="border rounded-md divide-y">
-                    {editTaskIds.length === 0 ? (
-                      <p className="p-3 text-sm text-muted-foreground">Sin tareas</p>
-                    ) : (
-                      editTaskIds.map((taskId, index) => {
-                        const task = editTasksById.get(taskId) ?? eligibleById.get(taskId);
-                        const assignee = assigneeByTaskId.get(taskId);
-                        return (
-                          <div
-                            key={taskId}
-                            {...withWorkOrderHighlight(editOrder.number, "flex items-center gap-2 p-2")}
-                          >
-                            <span className="font-mono text-xs w-5 text-muted-foreground">
-                              {index + 1}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm truncate">
-                                {task ? workOrderTaskLabel(task) : taskId}
-                              </div>
-                              {assignee ? (
-                                <div className="text-[10px] text-muted-foreground truncate">
-                                  Operario: {assignee.label}
+          <DialogContent className="flex max-w-2xl max-h-[85vh] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Editar {editOrder?.number}</DialogTitle>
+              </DialogHeader>
+              {editOrder ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-wo-notes">Notas</Label>
+                    <Textarea
+                      id="edit-wo-notes"
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Orden de tareas ({editTaskIds.length})</Label>
+                    <div className="border rounded-md divide-y">
+                      {editTaskIds.length === 0 ? (
+                        <p className="p-3 text-sm text-muted-foreground">Sin tareas</p>
+                      ) : (
+                        editTaskIds.map((taskId, index) => {
+                          const task = editTasksById.get(taskId) ?? eligibleById.get(taskId);
+                          const assignee = assigneeByTaskId.get(taskId);
+                          return (
+                            <div
+                              key={taskId}
+                              {...withWorkOrderHighlight(editOrder.number, "flex items-center gap-2 p-2")}
+                            >
+                              <span className="font-mono text-xs w-5 text-muted-foreground">
+                                {index + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm truncate">
+                                  {task ? workOrderTaskLabel(task) : taskId}
                                 </div>
-                              ) : null}
+                                {assignee ? (
+                                  <div className="text-[10px] text-muted-foreground truncate">
+                                    Operario: {assignee.label}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => moveTask(index, -1)}
+                                disabled={index === 0}
+                              >
+                                <ArrowUp className="size-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => moveTask(index, 1)}
+                                disabled={index === editTaskIds.length - 1}
+                              >
+                                <ArrowDown className="size-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => removeEditTask(taskId)}
+                              >
+                                <Trash2 className="size-3.5 text-destructive" />
+                              </Button>
                             </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => moveTask(index, -1)}
-                              disabled={index === 0}
-                            >
-                              <ArrowUp className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => moveTask(index, 1)}
-                              disabled={index === editTaskIds.length - 1}
-                            >
-                              <ArrowDown className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => removeEditTask(taskId)}
-                            >
-                              <Trash2 className="size-3.5 text-destructive" />
-                            </Button>
-                          </div>
-                        );
-                      })
-                    )}
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Añadir tareas</Label>
+                    <WorkOrderTaskPicker
+                      tasks={addableTasks}
+                      selectedIds={[]}
+                      onToggle={toggleEditAddTask}
+                      processStylesByCode={processStylesByCode}
+                      emptyMessage="No hay más tareas pendientes disponibles"
+                    />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Añadir tareas</Label>
-                  <WorkOrderTaskPicker
-                    tasks={addableTasks}
-                    selectedIds={[]}
-                    onToggle={toggleEditAddTask}
-                    processStylesByCode={processStylesByCode}
-                    emptyMessage="No hay más tareas pendientes disponibles"
-                  />
-                </div>
-              </div>
-            ) : null}
-            <DialogFooter>
+              ) : null}
+            </div>
+            <DialogFooter className="shrink-0">
               <Button type="button" variant="outline" onClick={() => setEditOrder(null)}>
                 Cancelar
               </Button>
