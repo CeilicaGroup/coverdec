@@ -21,7 +21,8 @@ import {
   fallbackLampConfig,
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
-import { ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { LampElementsSummary } from "@/components/typology-symbol";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { AssignToProjectDialog } from "./assign-to-project-dialog";
@@ -104,7 +105,8 @@ export default async function StockBatchDetailPage({
     };
   });
 
-  const [elementTypes, processDefs, naves, typologyNaves, projects] = await Promise.all([
+  const [elementTypes, processDefs, naves, typologyNaves, projects, typologyImages] =
+    await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
       include: {
@@ -139,6 +141,7 @@ export default async function StockBatchDetailPage({
       select: { id: true, name: true, code: true },
       orderBy: { name: "asc" },
     }),
+    loadTypologyImageAvailability(),
   ]);
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
@@ -206,23 +209,23 @@ export default async function StockBatchDetailPage({
           })
         : [];
 
+  const elementSummaryItems = editableElements.map((cfg) => ({
+    typology: cfg.typology,
+    name:
+      lamp.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
+        ?.elementType.name ?? lamp.elementType?.name ?? "Elemento",
+    surfaceM2: cfg.surfaceM2,
+    units: cfg.units,
+  }));
   const elementSummary =
-    editableElements.length > 0
-      ? editableElements
-          .map((cfg) => {
-            const name =
-              lamp.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
-                ?.elementType.name ?? lamp.elementType?.name ?? "Elemento";
-            const parts = [
-              ELEMENT_TYPOLOGY_LABELS[cfg.typology],
-              name,
-              `${cfg.surfaceM2} m²`,
-            ];
-            if (cfg.units > 1) parts.push(`${cfg.units} uds`);
-            return parts.join(" · ");
-          })
-          .join(" / ")
-      : (lamp.elementType?.name ?? "—");
+    elementSummaryItems.length > 0 ? (
+      <LampElementsSummary
+        elements={elementSummaryItems}
+        availability={typologyImages}
+      />
+    ) : (
+      (lamp.elementType?.name ?? "—")
+    );
 
   const totalEstimated = tasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = tasks.reduce((a, t) => a + t.doneHours, 0);
@@ -294,6 +297,7 @@ export default async function StockBatchDetailPage({
               lampId={lamp.id}
               lampName={lamp.name}
               initialElements={editableElements}
+              typologyImages={typologyImages}
               elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,

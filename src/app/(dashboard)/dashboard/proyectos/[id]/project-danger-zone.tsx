@@ -42,6 +42,11 @@ export function ProjectDangerZone({
   }
 
   function onDelete() {
+    const allowHardDelete = process.env.NEXT_PUBLIC_ALLOW_PROJECT_HARD_DELETE !== "false";
+    if (!allowHardDelete) {
+      toast.error("La eliminación definitiva está deshabilitada. Usa archivar.");
+      return;
+    }
     if (!canHardDelete) {
       toast.error(
         "Hay partes de trabajo u órdenes vinculadas. Solo puedes archivar el proyecto.",
@@ -85,9 +90,11 @@ export function ProjectDangerZone({
         variant="destructive"
         size="sm"
         className="gap-1"
-        disabled={pending || !canHardDelete}
+        disabled={pending || !canHardDelete || process.env.NEXT_PUBLIC_ALLOW_PROJECT_HARD_DELETE === "false"}
         title={
-          canHardDelete
+          process.env.NEXT_PUBLIC_ALLOW_PROJECT_HARD_DELETE === "false"
+            ? "Eliminación deshabilitada en esta fase"
+            : canHardDelete
             ? "Eliminar del todo"
             : "Solo archivar: hay partes u órdenes de producción"
         }

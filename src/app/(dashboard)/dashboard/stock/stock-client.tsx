@@ -49,6 +49,7 @@ import {
   type ElementTypeOption,
 } from "../proyectos/[id]/lamp-element-draft-fields";
 import { LampElementStockStatus, type ElementTypology } from "@/generated/prisma";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 
 interface StockLampRow {
   id: string;
@@ -72,11 +73,13 @@ export function StockClient({
   elementTypes,
   stockLamps,
   projects,
+  typologyImages,
 }: {
   elementTypes: ElementTypeOption[];
   stockLamps: StockLampRow[];
   projects: Array<{ id: string; name: string; code: string }>;
   stockPoolProjectId: string;
+  typologyImages?: TypologyImageAvailability;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -160,6 +163,7 @@ export function StockClient({
                 <LampElementDraftList
                   draftRows={draftRows}
                   elementTypes={elementTypes}
+                  typologyImages={typologyImages}
                   onUpdate={updateDraft}
                   onRemove={removeDraft}
                 />

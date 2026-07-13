@@ -24,17 +24,21 @@ import {
   fallbackLampConfig,
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
-import { ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { LampElementsSummary } from "@/components/typology-symbol";
 import { isManualEstimateLamp } from "@/lib/manual-lamp";
 import { isManualEstimateProjectKind, isStockProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
+import { PROJECT_APPROVAL_STATUS_LABELS } from "@/lib/project-approval";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
 import { ReturnToStockButton } from "./return-to-stock-button";
 import { AssignFromStockDialog } from "./assign-from-stock-dialog";
 import { ProjectDangerZone } from "./project-danger-zone";
+import { ProjectLampSection, ProjectLampsList } from "./project-lamps-list";
+import { LampApprovalToggle } from "./lamp-approval-toggle";
 import { EditProjectDialog } from "../edit-project-dialog";
-import { Role } from "@/generated/prisma";
+import { Role, ProjectApprovalStatus } from "@/generated/prisma";
 import { listStockLamps } from "@/features/stock/actions";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
@@ -54,6 +58,8 @@ export default async function ProjectDetailPage({
           elements: {
             orderBy: { createdAt: "asc" },
             select: {
+              id: true,
+              label: true,
               elementTypeId: true,
               surfaceM2: true,
               elementType: { select: { name: true, typology: true } },
@@ -105,7 +111,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps] =
+  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps, typologyImages] =
     await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
@@ -142,6 +148,7 @@ export default async function ProjectDetailPage({
       orderBy: [{ role: "asc" }, { name: "asc" }],
     }),
     canManage ? listStockLamps() : Promise.resolve([]),
+    loadTypologyImageAvailability(),
   ]);
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
@@ -216,7 +223,16 @@ export default async function ProjectDetailPage({
   const allTasks = lamps.flatMap((l) => l.tasks);
   const totalEstimated = allTasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = allTasks.reduce((a, t) => a + t.doneHours, 0);
-  const totalPending = allTasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
+  const assignedHoursRows = await prisma.planningAssignment.aggregate({
+    where: { task: { projectId: id } },
+    _sum: { hours: true },
+  });
+  const totalAssigned = assignedHoursRows._sum.hours ?? 0;
+  const totalPending = allTasks.reduce(
+    (a, t) => a + Math.max(0, t.estimatedHours - t.doneHours),
+    0,
+  );
+  const totalPendingToPlan = Math.max(0, totalEstimated - totalDone - totalAssigned);
   const availableStockLamps = stockLamps
     .filter((lamp) => isStockLampAssignable(lamp.stockStatus))
     .map((lamp) => ({
@@ -233,7 +249,7 @@ export default async function ProjectDetailPage({
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={project.name}
-        description={`${project.code} · ${PROJECT_KIND_LABELS[project.kind]} · ${project.client ?? project.obra ?? "Sin cliente"}`}
+        description={`${project.code} · ${PROJECT_KIND_LABELS[project.kind]} · ${PROJECT_APPROVAL_STATUS_LABELS[project.approvalStatus]} · ${project.client ?? project.obra ?? "Sin cliente"}`}
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {canManage ? (
@@ -254,6 +270,7 @@ export default async function ProjectDetailPage({
                     deliveryDate: project.deliveryDate,
                     isBillable: project.isBillable,
                     kind: project.kind,
+                    approvalStatus: project.approvalStatus,
                     notes: project.notes,
                     responsibleUserId: project.responsibleUserId,
                   }}
@@ -279,11 +296,12 @@ export default async function ProjectDetailPage({
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Kpi label="Entrega" value={formatShortDate(project.deliveryDate)} sub={`${daysUntil(project.deliveryDate) ?? "—"} días`} />
         <Kpi label="Estimado" value={formatHours(totalEstimated)} sub={`${allTasks.length} tareas`} />
+        <Kpi label="Asignado" value={formatHours(totalAssigned)} sub="En planning" />
         <Kpi label="Hecho" value={formatHours(totalDone)} sub={`${totalEstimated > 0 ? Math.round((totalDone / totalEstimated) * 100) : 0}% avance`} />
-        <Kpi label="Pendiente" value={formatHours(totalPending)} sub={<RiskBadge level={riskFromDelivery(project.deliveryDate)} />} />
+        <Kpi label="Pend. planificar" value={formatHours(totalPendingToPlan)} sub={<RiskBadge level={riskFromDelivery(project.deliveryDate)} />} />
       </div>
 
       <Card>
@@ -293,6 +311,7 @@ export default async function ProjectDetailPage({
             <AddLampForm
               projectId={project.id}
               projectKind={project.kind}
+              typologyImages={typologyImages}
               elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,
@@ -310,7 +329,7 @@ export default async function ProjectDetailPage({
                 : "Aún sin lámparas. Añade una con elemento y medida para generar las tareas."}
             </p>
           ) : (
-            <div className="divide-y">
+            <ProjectLampsList lampCount={lamps.length}>
               {lamps.map((l) => {
                 const manualLamp = isManualEstimateLamp(l);
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
@@ -326,30 +345,46 @@ export default async function ProjectDetailPage({
                           elementType: { typology: l.elementType.typology },
                         })
                       : [];
+                const elementSummaryItems = editableElements.map((cfg) => ({
+                  typology: cfg.typology,
+                  name:
+                    l.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
+                      ?.elementType.name ?? l.elementType?.name ?? "Elemento",
+                  surfaceM2: cfg.surfaceM2,
+                  units: cfg.units,
+                }));
                 const elementSummary = manualLamp
                   ? lampEstimated > 0
                     ? `${formatHours(lampEstimated)} estimadas`
                     : "Sin horas asignadas"
-                  : editableElements.length > 0
-                    ? editableElements
-                        .map((cfg) => {
-                          const name =
-                            l.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
-                              ?.elementType.name ?? l.elementType?.name ?? "Elemento";
-                          const parts = [
-                            ELEMENT_TYPOLOGY_LABELS[cfg.typology],
-                            name,
-                            `${cfg.surfaceM2} m²`,
-                          ];
-                          if (cfg.units > 1) parts.push(`${cfg.units} uds`);
-                          return parts.join(" · ");
-                        })
-                        .join(" / ")
+                  : elementSummaryItems.length > 0
+                    ? (
+                        <LampElementsSummary
+                          elements={elementSummaryItems}
+                          availability={typologyImages}
+                        />
+                      )
                     : (l.elementType?.name ?? "—");
                 return (
-                  <div key={l.id}>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-card">
-                      <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
+                  <ProjectLampSection
+                    key={l.id}
+                    summary={elementSummary}
+                    pendingHours={lampPending}
+                    defaultExpanded={lamps.length <= 2}
+                    header={
+                      <>
+                        <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
+                        {project.approvalStatus === ProjectApprovalStatus.PARTIAL_APPROVAL ? (
+                          <LampApprovalToggle
+                            lampId={l.id}
+                            isApproved={l.isApprovedForPlanning}
+                            canManage={canManage}
+                          />
+                        ) : null}
+                      </>
+                    }
+                  >
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 bg-muted/10 border-t">
                       <div className="text-xs text-muted-foreground min-w-0">
                         {manualLamp ? "Horas" : "Elementos"}:{" "}
                         <span className="text-foreground">{elementSummary}</span>
@@ -360,6 +395,7 @@ export default async function ProjectDetailPage({
                           lampId={l.id}
                           lampName={l.name}
                           initialElements={editableElements}
+                          typologyImages={typologyImages}
                           elementTypes={elementTypes.map((f) => ({
                             id: f.id,
                             name: f.name,
@@ -368,9 +404,6 @@ export default async function ProjectDetailPage({
                           }))}
                         />
                       ) : null}
-                      <div className="text-xs font-mono ml-auto">
-                        Pendiente: <span className="font-semibold">{formatHours(lampPending)}</span>
-                      </div>
                       {canManage ? (
                         <DeleteLampButton lampId={l.id} lampName={l.name} />
                       ) : null}
@@ -378,6 +411,18 @@ export default async function ProjectDetailPage({
                         <ReturnToStockButton
                           lampId={l.id}
                           lampName={l.name}
+                          selectableUnits={l.elements.map((element) => ({
+                            id: element.id,
+                            label:
+                              element.label ??
+                              element.elementType.name ??
+                              l.name,
+                            hasPlanning: l.tasks.some(
+                              (task) =>
+                                task.lampElementId === element.id &&
+                                task._count.assignments > 0,
+                            ),
+                          }))}
                           hasPlanning={l.tasks.some(
                             (task) => task._count.assignments > 0,
                           )}
@@ -395,10 +440,10 @@ export default async function ProjectDetailPage({
                       elementTypeDefaultNaves={elementTypeDefaultNaves}
                       catalogNaveByElementProcess={catalogNaveByElementProcess}
                     />
-                  </div>
+                  </ProjectLampSection>
                 );
               })}
-            </div>
+            </ProjectLampsList>
           )}
         </CardContent>
       </Card>

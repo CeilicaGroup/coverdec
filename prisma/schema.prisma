@@ -331,9 +331,12 @@ enum ElementTypology {
 }
 
 model ElementTypologyNave {
-  typology      ElementTypology @id
-  defaultNaveId String?
-  defaultNave   Nave?           @relation("TypologyDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
+  typology       ElementTypology @id
+  defaultNaveId  String?
+  imageData      Bytes?
+  imageMimeType  String?
+  imageUpdatedAt DateTime?
+  defaultNave    Nave?           @relation("TypologyDefaultNave", fields: [defaultNaveId], references: [id], onDelete: SetNull)
 }
 
 model ElementType {
@@ -376,6 +379,12 @@ model ElementTypeProcess {
 
 // ---------- Proyectos y producción ----------
 
+enum ProjectApprovalStatus {
+  PENDING_APPROVAL
+  PARTIAL_APPROVAL
+  IN_PRODUCTION
+}
+
 model Project {
   id           String    @id @default(cuid())
   code         String    @unique
@@ -386,6 +395,7 @@ model Project {
   isBillable   Boolean   @default(true)
   isActive     Boolean   @default(true)
   kind         ProjectKind @default(PRODUCCION)
+  approvalStatus ProjectApprovalStatus @default(IN_PRODUCTION)
   planningPreset ProjectPlanningPreset @default(EQUILIBRADO)
   planningCostPriority Int @default(50)
   planningStability Int @default(50)
@@ -415,6 +425,7 @@ model Lamp {
   height        Float?
   depth         Float?
   units         Int      @default(1)
+  isApprovedForPlanning Boolean @default(true)
   surfaceM2     Float?
   notes                 String?
   returnedToStockAt     DateTime?

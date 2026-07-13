@@ -33,15 +33,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, Archive, ChevronUp, ChevronDown, MapPin, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { deleteElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
+import { deleteElementType, duplicateElementType, setElementTypeActive, upsertElementType } from "@/features/catalog/actions";
 import { TRANSPORT_PROCESS_CODE } from "@/features/projects/transport-tasks";
 import type { ProcessCode } from "@/types/process";
 import { handleActionResult } from "@/lib/mutation-error";
 import { ElementTypology } from "@/generated/prisma";
-import { ELEMENT_TYPOLOGIES, ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
+import { ELEMENT_TYPOLOGIES } from "@/lib/element-typology";
+import { TypologyLabel } from "@/components/typology-symbol";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -161,7 +164,7 @@ function CatalogNaveDisplay({
   );
 }
 
-type DialogMode = "create" | "edit";
+type DialogMode = "create" | "edit" | "duplicate";
 
 interface ProcessFormRow {
   key: string;
@@ -191,18 +194,23 @@ export function CatalogoCatalogClient({
   processDefs,
   naves,
   typologyNaves,
+  typologyImages,
   canManage,
+  showArchived = false,
 }: {
   frames: FrameRow[];
   processDefs: ProcessDefOption[];
   naves: NaveOption[];
   typologyNaves: TypologyNaveRow[];
+  typologyImages: TypologyImageAvailability;
   canManage: boolean;
+  showArchived?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mode, setMode] = useState<DialogMode>("create");
+  const [duplicateSourceId, setDuplicateSourceId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [codeLocked, setCodeLocked] = useState(false);
   const [name, setName] = useState("");
@@ -211,7 +219,6 @@ export function CatalogoCatalogClient({
   const [typology, setTypology] = useState<ElementTypology>(ElementTypology.BASTIDOR);
   const [defaultNaveId, setDefaultNaveId] = useState("");
 
-  const activeCount = useMemo(() => frames.filter((f) => f.isActive).length, [frames]);
   const elementProcessDefs = useMemo(
     () => processDefs.filter((d) => d.code !== TRANSPORT_PROCESS_CODE),
     [processDefs],
@@ -219,6 +226,7 @@ export function CatalogoCatalogClient({
 
   function openCreate() {
     setMode("create");
+    setDuplicateSourceId(null);
     setCode("");
     setCodeLocked(false);
     setName("");
@@ -231,8 +239,18 @@ export function CatalogoCatalogClient({
     setDialogOpen(true);
   }
 
+  function openDuplicate(frame: FrameRow) {
+    setMode("duplicate");
+    setDuplicateSourceId(frame.id);
+    setCode(`${frame.code}-COPIA`);
+    setCodeLocked(false);
+    setName(`${frame.name} (copia)`);
+    setDialogOpen(true);
+  }
+
   function openEdit(frame: FrameRow) {
     setMode("edit");
+    setDuplicateSourceId(null);
     setCode(frame.code);
     setCodeLocked(true);
     setName(frame.name);
@@ -287,6 +305,30 @@ export function CatalogoCatalogClient({
 
   function submitDialog() {
     startTransition(async () => {
+      if (!code.trim() || !name.trim()) {
+        toast.error("Código y nombre son obligatorios");
+        return;
+      }
+
+      if (mode === "duplicate") {
+        if (!duplicateSourceId) return;
+        const result = await duplicateElementType({
+          elementTypeId: duplicateSourceId,
+          code: code.trim().toUpperCase(),
+          name: name.trim(),
+        });
+        const outcome = handleActionResult("catalog.element.duplicate", result);
+        if (!outcome.success) {
+          toast.error(outcome.message);
+          return;
+        }
+        toast.success(`Elemento duplicado como ${outcome.data.code}`);
+        setDialogOpen(false);
+        setDuplicateSourceId(null);
+        router.refresh();
+        return;
+      }
+
       const processes = rows.map((r) => ({
           process: r.process,
           hoursPerUnit: Number(r.hoursPerUnit),
@@ -360,10 +402,6 @@ export function CatalogoCatalogClient({
   }
 
   function hardDelete(frame: FrameRow) {
-    if (frame.lampCount > 0) {
-      toast.error("Hay lámparas vinculadas. Solo puedes archivar el elemento.");
-      return;
-    }
     if (
       !globalThis.confirm(
         `¿Eliminar definitivamente el elemento «${frame.name}» (${frame.code})?`,
@@ -375,7 +413,28 @@ export function CatalogoCatalogClient({
       const result = await deleteElementType({ elementTypeId: frame.id });
       const outcome = handleActionResult("catalog.element.delete", result);
       if (!outcome.success) {
-        toast.error(formatArchiveOnlyMessage(outcome.message));
+        const message = formatArchiveOnlyMessage(outcome.message);
+        if (message.includes("desactivar") || message.includes("archivar")) {
+          if (
+            globalThis.confirm(
+              `No se ha podido eliminar este elemento.\n\n${message}\n\n¿Desactivarlo en su lugar? No aparecerá en listas de alta de lámparas.`,
+            )
+          ) {
+            const archiveResult = await setElementTypeActive({
+              elementTypeId: frame.id,
+              isActive: false,
+            });
+            const archiveOutcome = handleActionResult("catalog.element.archive", archiveResult);
+            if (archiveOutcome.success) {
+              toast.success("Elemento archivado");
+              router.refresh();
+            } else {
+              toast.error(archiveOutcome.message);
+            }
+          }
+        } else {
+          toast.error(message);
+        }
         return;
       }
       toast.success("Elemento eliminado");
@@ -387,13 +446,27 @@ export function CatalogoCatalogClient({
     <>
       <PageHeader
         title="Catálogo de elementos"
-        description={`${activeCount} activos · ${frames.length} en total · hr/m² por proceso`}
+        description={
+          showArchived
+            ? `${frames.length} archivados`
+            : `${frames.length} activos · hr/m² por proceso`
+        }
         actions={
           canManage ? (
-            <Button size="sm" className="gap-1" onClick={openCreate}>
-              <Plus className="size-3.5" />
-              Nuevo elemento
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={showArchived ? "/dashboard/catalogo" : "/dashboard/catalogo?archived=1"}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                {showArchived ? "Ver activos" : "Ver archivados"}
+              </Link>
+              {!showArchived ? (
+                <Button size="sm" className="gap-1" onClick={openCreate}>
+                  <Plus className="size-3.5" />
+                  Nuevo elemento
+                </Button>
+              ) : null}
+            </div>
           ) : undefined
         }
       />
@@ -431,8 +504,17 @@ export function CatalogoCatalogClient({
                     <TableCell className="font-mono text-xs">{f.code}</TableCell>
                     <TableCell className="font-semibold">{f.name}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-[10px] font-medium">
-                        {ELEMENT_TYPOLOGY_LABELS[f.typology]}
+                      <Badge
+                        variant="secondary"
+                        className="h-auto gap-1.5 px-2.5 py-1 text-xs font-medium"
+                      >
+                        <TypologyLabel
+                          typology={f.typology}
+                          availability={typologyImages}
+                          size="sm"
+                          showSymbolOnlyWhenImage
+                          labelClassName="text-xs font-medium"
+                        />
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -499,6 +581,17 @@ export function CatalogoCatalogClient({
                           variant="ghost"
                           size="icon"
                           className="size-8"
+                          onClick={() => openDuplicate(f)}
+                          aria-label="Duplicar elemento"
+                          title="Duplicar"
+                        >
+                          <Copy className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
                           onClick={() => openEdit(f)}
                           aria-label="Editar elemento"
                         >
@@ -530,15 +623,10 @@ export function CatalogoCatalogClient({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="size-8 text-destructive disabled:opacity-40"
-                          disabled={f.lampCount > 0}
+                          className="size-8 text-destructive"
                           onClick={() => hardDelete(f)}
-                          title={
-                            f.lampCount > 0
-                              ? "Solo archivar: hay lámparas que usan este elemento"
-                              : "Eliminar del todo"
-                          }
-                            aria-label="Eliminar elemento"
+                          title="Eliminar del todo"
+                          aria-label="Eliminar elemento"
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
@@ -556,16 +644,26 @@ export function CatalogoCatalogClient({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {mode === "create" ? "Nuevo elemento" : "Editar elemento"}
+              {mode === "create"
+                ? "Nuevo elemento"
+                : mode === "duplicate"
+                  ? "Duplicar elemento"
+                  : "Editar elemento"}
             </DialogTitle>
           </DialogHeader>
+          {mode === "duplicate" ? (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Indica el código y el nombre del nuevo elemento. El código no podrá
+              modificarse después.
+            </p>
+          ) : null}
           <div className="space-y-3 py-1">
             <div className="space-y-2">
               <Label>Código</Label>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                disabled={codeLocked || pending}
+                disabled={(codeLocked && mode !== "duplicate") || pending}
                 placeholder="p.ej. YPLUS"
                 className="font-mono uppercase"
                 required
@@ -580,6 +678,8 @@ export function CatalogoCatalogClient({
                 required
               />
             </div>
+            {mode !== "duplicate" ? (
+              <>
             <div className="space-y-2">
               <Label>Tipología</Label>
               <Select
@@ -597,16 +697,24 @@ export function CatalogoCatalogClient({
                 disabled={pending}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue
-                    placeholder="Tipología"
-                  >
-                    {ELEMENT_TYPOLOGY_LABELS[typology]}
+                  <SelectValue placeholder="Tipología">
+                    <TypologyLabel
+                      typology={typology}
+                      availability={typologyImages}
+                      size="sm"
+                      showSymbolOnlyWhenImage
+                    />
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ELEMENT_TYPOLOGIES.map((t) => (
                     <SelectItem key={t} value={t}>
-                      {ELEMENT_TYPOLOGY_LABELS[t]}
+                      <TypologyLabel
+                        typology={t}
+                        availability={typologyImages}
+                        size="sm"
+                        showSymbolOnlyWhenImage
+                      />
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -800,6 +908,8 @@ export function CatalogoCatalogClient({
                 </div>
               )}
             </div>
+              </>
+            ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={pending}>
@@ -810,7 +920,11 @@ export function CatalogoCatalogClient({
               onClick={submitDialog}
               disabled={pending || !code.trim() || !name.trim()}
             >
-              {pending ? "Guardando…" : "Guardar"}
+              {pending
+                ? "Guardando…"
+                : mode === "duplicate"
+                  ? "Duplicar"
+                  : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>

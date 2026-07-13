@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { updateTypologyDefaultNave } from "@/features/catalog/actions";
+import { updateTypologyDefaultNave, upsertTypologyImage, deleteTypologyImage } from "@/features/catalog/actions";
 import { ElementTypology } from "@/generated/prisma";
 import {
   ELEMENT_TYPOLOGIES,
@@ -36,6 +36,9 @@ import {
 } from "@/lib/element-typology";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
+import { TypologyLabel, TypologySymbol } from "@/components/typology-symbol";
+import { handleActionResult } from "@/lib/mutation-error";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 
 interface NaveOption {
   id: string;
@@ -62,10 +65,12 @@ function naveSelectLabel(naveId: string, naves: NaveOption[]): string {
 export function TypologyNavesPanel({
   rows,
   naves,
+  typologyImages,
   canManage,
 }: {
   rows: TypologyNaveRow[];
   naves: NaveOption[];
+  typologyImages: TypologyImageAvailability;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -102,6 +107,42 @@ export function TypologyNavesPanel({
     });
   }
 
+  function onImageSelected(typology: ElementTypology, file: File) {
+    startTransition(async () => {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+      const base64 = btoa(binary);
+      const result = await upsertTypologyImage({
+        typology,
+        imageBase64: base64,
+        mimeType: file.type,
+      });
+      const outcome = handleActionResult("catalog.typology.image", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
+      }
+      toast.success("Imagen guardada");
+      router.refresh();
+    });
+  }
+
+  function onImageDelete(typology: ElementTypology) {
+    if (!globalThis.confirm("¿Eliminar la imagen de esta tipología?")) return;
+    startTransition(async () => {
+      const result = await deleteTypologyImage({ typology });
+      const outcome = handleActionResult("catalog.typology.image.delete", result);
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
+      }
+      toast.success("Imagen eliminada");
+      router.refresh();
+    });
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -117,6 +158,7 @@ export function TypologyNavesPanel({
           <TableHeader>
             <TableRow>
               <TableHead>Tipología</TableHead>
+              <TableHead>Imagen</TableHead>
               <TableHead>Nave por defecto</TableHead>
               {canManage ? <TableHead className="w-20 text-right">Acciones</TableHead> : null}
             </TableRow>
@@ -127,7 +169,52 @@ export function TypologyNavesPanel({
               return (
                 <TableRow key={typology}>
                   <TableCell className="font-medium">
-                    {ELEMENT_TYPOLOGY_LABELS[typology]}
+                    <TypologyLabel
+                      typology={typology}
+                      availability={typologyImages}
+                      size="md"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {typologyImages[typology] != null ? (
+                        <TypologySymbol
+                          typology={typology}
+                          availability={typologyImages}
+                          size="lg"
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sin imagen</span>
+                      )}
+                      {canManage ? (
+                        <>
+                          <label className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md hover:bg-muted">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="sr-only"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) onImageSelected(typology, file);
+                                e.target.value = "";
+                              }}
+                            />
+                            <Upload className="size-3.5" />
+                          </label>
+                          {typologyImages[typology] != null ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive"
+                              onClick={() => onImageDelete(typology)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {naveLabel(row?.defaultNave ?? null)}

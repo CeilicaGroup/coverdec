@@ -29,6 +29,7 @@ import {
   type ElementTypeOption,
 } from "./lamp-element-draft-fields";
 import type { ElementTypology, ProjectKind } from "@/generated/prisma";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 import { isManualEstimateProjectKind } from "@/lib/project-kind";
 
 type FlexibleLampMode = "elements" | "hours";
@@ -37,10 +38,12 @@ export function AddLampForm({
   projectId,
   projectKind,
   elementTypes,
+  typologyImages,
 }: {
   projectId: string;
   projectKind: ProjectKind;
   elementTypes: ElementTypeOption[];
+  typologyImages?: TypologyImageAvailability;
 }) {
   const router = useRouter();
   const flexibleMode = isManualEstimateProjectKind(projectKind);
@@ -227,6 +230,7 @@ export function AddLampForm({
                   <LampElementDraftList
                     draftRows={draftRows}
                     elementTypes={elementTypes}
+                    typologyImages={typologyImages}
                     onUpdate={updateDraft}
                     onRemove={removeDraft}
                   />
@@ -253,6 +257,7 @@ export function AddLampForm({
               <LampElementDraftList
                 draftRows={draftRows}
                 elementTypes={elementTypes}
+                typologyImages={typologyImages}
                 onUpdate={updateDraft}
                 onRemove={removeDraft}
               />

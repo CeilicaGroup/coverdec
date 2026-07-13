@@ -13,6 +13,8 @@ export interface CreateAdHocTaskInput {
   naveId: string;
   notes?: string;
   createdByUserId: string;
+  projectId?: string;
+  process?: string;
 }
 
 function todayUtcDate(): Date {
@@ -57,7 +59,30 @@ export async function createAdHocTaskAndAssign(
     estimatedHours,
   );
 
-  const { id: lampId, projectId } = await getOrCreateImprevistasLamp(tx);
+  const process = input.process?.trim() || IMPREVISTA_PROCESS_CODE;
+
+  let lampId: string;
+  let projectId: string;
+
+  if (input.projectId) {
+    const project = await tx.project.findFirst({
+      where: { id: input.projectId, isActive: true },
+      include: { lamps: { take: 1, orderBy: { createdAt: "asc" }, select: { id: true } } },
+    });
+    if (!project) throw new Error("Proyecto no encontrado.");
+    if (project.lamps[0]) {
+      lampId = project.lamps[0].id;
+      projectId = project.id;
+    } else {
+      const pool = await getOrCreateImprevistasLamp(tx);
+      lampId = pool.id;
+      projectId = pool.projectId;
+    }
+  } else {
+    const pool = await getOrCreateImprevistasLamp(tx);
+    lampId = pool.id;
+    projectId = pool.projectId;
+  }
 
   const maxOrder = await tx.task.aggregate({
     where: { lampId },
@@ -69,7 +94,7 @@ export async function createAdHocTaskAndAssign(
       projectId,
       lampId,
       lampElementId: null,
-      process: IMPREVISTA_PROCESS_CODE,
+      process,
       estimatedHours,
       order: (maxOrder._max.order ?? 0) + 1,
       naveId: input.naveId,
@@ -88,7 +113,7 @@ export async function createAdHocTaskAndAssign(
       startSlot: slot.startSlot,
       endSlot: slot.endSlot,
       hours: estimatedHours,
-      process: IMPREVISTA_PROCESS_CODE,
+      process,
       isOverride: true,
       isAfternoon: slot.isAfternoon,
       notes: input.notes?.trim() || null,

@@ -2,7 +2,6 @@
 
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,10 +41,9 @@ export function DashboardUserMenu({
         render={
           <Button
             variant="ghost"
-            className={cn(
-              "gap-2.5 h-auto",
-              compact ? "px-2 py-1" : "w-full justify-start py-2",
-            )}
+            size="icon"
+            className="shrink-0 rounded-full size-9"
+            aria-label="Menú de usuario"
           />
         }
       >
@@ -56,12 +54,12 @@ export function DashboardUserMenu({
             {person?.iniciales ?? user.name.slice(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        {!compact && (
+        {!compact ? (
           <div className="flex-1 text-left overflow-hidden">
             <div className="text-sm font-semibold truncate">{user.name}</div>
             <div className="text-[10px] text-muted-foreground truncate">{user.email}</div>
           </div>
-        )}
+        ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={compact ? "end" : "start"}

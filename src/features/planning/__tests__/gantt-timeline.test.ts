@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ProjectApprovalStatus } from "@/generated/prisma";
 import { buildGanttTimeAxisContext } from "@/features/planning/gantt-time-axis";
 import {
   addWallClockWait,
@@ -45,8 +46,17 @@ function assignment(
       projectId: "proj",
       process: "PINT",
       isCompleted: false,
-      project: { id: "proj", name: "Proyecto" },
-      lamp: { id: "l1", name: "L1", elementType: { name: "Bastidor 1" } },
+      project: {
+        id: "proj",
+        name: "Proyecto",
+        approvalStatus: ProjectApprovalStatus.IN_PRODUCTION,
+      },
+      lamp: {
+        id: "l1",
+        name: "L1",
+        isApprovedForPlanning: true,
+        elementType: { name: "Bastidor 1" },
+      },
       lampElement: null,
       workOrder: null,
     },

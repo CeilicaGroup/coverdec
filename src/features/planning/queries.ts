@@ -1,6 +1,7 @@
 import { PlanningStatus } from "@/generated/prisma";
 import { absenceOverlapPrismaFilter } from "@/features/people/absence-model";
 import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
+import { ProjectApprovalStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
 import { isoWeek } from "@/lib/week";
@@ -27,6 +28,7 @@ import {
   computeWeekTaskMetrics,
 } from "@/features/planning/week-progress";
 import { isTaskClosedForPlanning } from "@/features/planning/task-planning-status";
+import { isLampEligibleForPlanning } from "@/lib/project-approval";
 import type {
   LampTaskChainItem,
   PlanningAssignmentSlice,
@@ -38,6 +40,16 @@ import {
 } from "@/features/time-tracking/task-hours-derived";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isGanttTaskEligibleForPlanning(task: {
+  project: { approvalStatus: ProjectApprovalStatus };
+  lamp: { isApprovedForPlanning: boolean };
+}): boolean {
+  return isLampEligibleForPlanning({
+    projectApprovalStatus: task.project.approvalStatus,
+    lampApproved: task.lamp.isApprovedForPlanning,
+  });
+}
 
 function mapPlanningAssignments<
   T extends {
@@ -550,8 +562,15 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
   const projects = await prisma.project.findMany({
     where:
       naveScope !== null
-        ? { isActive: true, tasks: { some: taskNaveFilter! } }
-        : { isActive: true },
+        ? {
+            isActive: true,
+            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+            tasks: { some: taskNaveFilter! },
+          }
+        : {
+            isActive: true,
+            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+          },
     include: {
       tasks: {
         where: taskNaveFilter,
@@ -632,7 +651,10 @@ export async function getGanttPlanningAssignments(
   const rows = await prisma.planningAssignment.findMany({
     where: {
       task: {
-        project: { isActive: true },
+        project: {
+          isActive: true,
+          approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+        },
         ...(naveIn ? { naveId: naveIn } : {}),
       },
       ...(naveIn
@@ -662,11 +684,12 @@ export async function getGanttPlanningAssignments(
           process: true,
           isCompleted: true,
           projectId: true,
-          project: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true, approvalStatus: true } },
           lamp: {
             select: {
               id: true,
               name: true,
+              isApprovedForPlanning: true,
               elementType: { select: { name: true } },
             },
           },
@@ -683,7 +706,9 @@ export async function getGanttPlanningAssignments(
     },
     orderBy: [{ date: "asc" }, { startSlot: "asc" }],
   });
-  return rows.map((a) => ({
+  return rows
+    .filter((a) => isGanttTaskEligibleForPlanning(a.task))
+    .map((a) => ({
     ...a,
     person: {
       id: a.person.id,
@@ -704,7 +729,10 @@ export async function getGanttActualAssignments(
     where: {
       taskId: { not: null },
       task: {
-        project: { isActive: true },
+        project: {
+          isActive: true,
+          approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+        },
         ...(naveIn ? { naveId: naveIn } : {}),
       },
       OR: [
@@ -742,11 +770,12 @@ export async function getGanttActualAssignments(
           process: true,
           isCompleted: true,
           projectId: true,
-          project: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true, approvalStatus: true } },
           lamp: {
             select: {
               id: true,
               name: true,
+              isApprovedForPlanning: true,
               elementType: { select: { name: true } },
             },
           },
@@ -766,6 +795,7 @@ export async function getGanttActualAssignments(
 
   return rows
     .filter((e) => e.taskId && e.user.person && e.task)
+    .filter((e) => isGanttTaskEligibleForPlanning(e.task!))
     .map((e) => {
       const start = e.startedAt;
       const end = e.endedAt ?? new Date();
@@ -808,8 +838,15 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
   return prisma.project.findMany({
     where:
       naveScope !== null
-        ? { isActive: true, tasks: { some: taskNaveFilter! } }
-        : { isActive: true },
+        ? {
+            isActive: true,
+            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+            tasks: { some: taskNaveFilter! },
+          }
+        : {
+            isActive: true,
+            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+          },
     include: {
       tasks: {
         where: taskNaveFilter,
@@ -824,6 +861,7 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
             select: {
               id: true,
               name: true,
+              isApprovedForPlanning: true,
               elementType: { select: { name: true } },
             },
           },
@@ -847,7 +885,18 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
   }).then(async (projects) => {
     const taskIds = projects.flatMap((project) => project.tasks.map((task) => task.id));
     const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
-    return projects.map((project) => ({
+    return projects
+      .map((project) => ({
+        ...project,
+        tasks: project.tasks.filter((task) =>
+          isGanttTaskEligibleForPlanning({
+            project: { approvalStatus: project.approvalStatus },
+            lamp: task.lamp,
+          }),
+        ),
+      }))
+      .filter((project) => project.tasks.length > 0)
+      .map((project) => ({
       ...project,
       tasks: project.tasks.map((task) => {
         const totals = computeTaskHourTotals(

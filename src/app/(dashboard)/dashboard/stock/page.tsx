@@ -3,8 +3,9 @@ import { requireDashboardContext } from "@/lib/context";
 import { Role, LampElementStockStatus } from "@/generated/prisma";
 import { PageHeader } from "../../_components/page-header";
 import { StockClient } from "./stock-client";
-import { getStockPoolProjectId } from "@/features/stock/stock-pool";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
 import { listStockLamps } from "@/features/stock/actions";
+import { getStockPoolProjectId } from "@/features/stock/stock-pool";
 
 export default async function StockPage() {
   const ctx = await requireDashboardContext();
@@ -19,7 +20,7 @@ export default async function StockPage() {
     );
   }
 
-  const [elementTypes, stockLamps, projects, stockPoolProjectId] =
+  const [elementTypes, stockLamps, projects, stockPoolProjectId, typologyImages] =
     await Promise.all([
       prisma.elementType.findMany({
         where: { isActive: true },
@@ -38,6 +39,7 @@ export default async function StockPage() {
         orderBy: { name: "asc" },
       }),
       getStockPoolProjectId(),
+      loadTypologyImageAvailability(),
     ]);
 
   const assignableLamps = stockLamps.filter(
@@ -51,6 +53,7 @@ export default async function StockPage() {
         description={`${stockLamps.length} lámparas en pool · ${assignableLamps.length} disponibles`}
       />
       <StockClient
+        typologyImages={typologyImages}
         elementTypes={elementTypes.map((elementType) => ({
           id: elementType.id,
           name: elementType.name,

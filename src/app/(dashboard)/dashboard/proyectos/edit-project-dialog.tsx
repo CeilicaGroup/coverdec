@@ -25,8 +25,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateProject } from "@/features/projects/actions";
-import { ProjectKind } from "@/generated/prisma";
+import { ProjectKind, ProjectApprovalStatus } from "@/generated/prisma";
 import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
+import { PROJECT_APPROVAL_STATUS_LABELS } from "@/lib/project-approval";
 import { toast } from "sonner";
 
 export interface EditableProject {
@@ -37,6 +38,7 @@ export interface EditableProject {
   deliveryDate: Date | null;
   isBillable: boolean;
   kind: ProjectKind;
+  approvalStatus?: ProjectApprovalStatus;
   notes: string | null;
   responsibleUserId?: string | null;
 }
@@ -64,6 +66,9 @@ export function EditProjectDialog({
   const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
   const [isBillable, setIsBillable] = useState(project.isBillable);
   const [kind, setKind] = useState<ProjectKind>(project.kind);
+  const [approvalStatus, setApprovalStatus] = useState<ProjectApprovalStatus>(
+    project.approvalStatus ?? ProjectApprovalStatus.IN_PRODUCTION,
+  );
   const [notes, setNotes] = useState(project.notes ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     project.responsibleUserId ?? null,
@@ -77,6 +82,7 @@ export function EditProjectDialog({
     setDeliveryDate(toDateInputValue(project.deliveryDate));
     setIsBillable(project.isBillable);
     setKind(project.kind);
+    setApprovalStatus(project.approvalStatus ?? ProjectApprovalStatus.IN_PRODUCTION);
     setNotes(project.notes ?? "");
     setResponsibleUserId(project.responsibleUserId ?? null);
   }, [open, project]);
@@ -122,6 +128,7 @@ export function EditProjectDialog({
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
                   kind,
+                  approvalStatus,
                   responsibleUserId: responsibleUserId ?? undefined,
                   notes: notes || undefined,
                 });
@@ -164,6 +171,28 @@ export function EditProjectDialog({
               rows={2}
               className="resize-none"
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Estado de aprobación</Label>
+            <Select
+              value={approvalStatus}
+              onValueChange={(value) =>
+                setApprovalStatus(
+                  (value ?? ProjectApprovalStatus.IN_PRODUCTION) as ProjectApprovalStatus,
+                )
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>{PROJECT_APPROVAL_STATUS_LABELS[approvalStatus]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {Object.values(ProjectApprovalStatus).map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {PROJECT_APPROVAL_STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Tipo de proyecto</Label>

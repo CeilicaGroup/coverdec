@@ -1,17 +1,24 @@
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { Role } from "@/generated/prisma";
+import { buildTypologyImageAvailability } from "@/lib/typology-image";
 import { CatalogoCatalogClient } from "./catalog-client";
 import { ProcessDefinitionsPanel } from "./process-definitions-panel";
 import { TypologyNavesPanel } from "./typology-naves-panel";
 
-export default async function CatalogoPage() {
+export default async function CatalogoPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ archived?: string }>;
+}) {
   const ctx = await requireDashboardContext();
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const params = (await searchParams) ?? {};
+  const showArchived = params.archived === "1";
 
   const [framesRaw, processDefs, naves, typologyNaves] = await Promise.all([
     prisma.elementType.findMany({
-      where: {},
+      where: showArchived ? { isActive: false } : { isActive: true },
       include: {
         processes: { orderBy: { sequence: "asc" }, include: { nave: { select: { id: true, codigo: true, nombre: true } } } },
         defaultNave: { select: { id: true, codigo: true, nombre: true } },
@@ -38,8 +45,11 @@ export default async function CatalogoPage() {
       select: { id: true, codigo: true, nombre: true },
     }),
     prisma.elementTypologyNave.findMany({
-      include: {
+      select: {
+        typology: true,
+        defaultNaveId: true,
         defaultNave: { select: { id: true, codigo: true, nombre: true } },
+        imageUpdatedAt: true,
       },
     }),
   ]);
@@ -77,9 +87,11 @@ export default async function CatalogoPage() {
           defaultNave: row.defaultNave,
         }))}
         naves={naves}
+        typologyImages={buildTypologyImageAvailability(typologyNaves)}
         canManage={canManage}
       />
       <CatalogoCatalogClient
+        showArchived={showArchived}
         frames={frames}
         processDefs={processDefs.map((p) => ({
           code: p.code,
@@ -94,6 +106,7 @@ export default async function CatalogoPage() {
           defaultNaveId: row.defaultNaveId,
           defaultNave: row.defaultNave,
         }))}
+        typologyImages={buildTypologyImageAvailability(typologyNaves)}
         canManage={canManage}
       />
     </div>

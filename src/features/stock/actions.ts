@@ -10,6 +10,7 @@ import {
   LampElementStockStatus,
   ProjectKind,
   Role,
+  type Prisma,
 } from "@/generated/prisma";
 import {
   createLampInputSchema,
@@ -273,7 +274,62 @@ const returnLampToStockSchema = z.object({
   lampId: z.string().min(1),
   reason: z.string().max(500).optional(),
   confirmClearPlanning: z.boolean().optional(),
+  lampElementIds: z.array(z.string().min(1)).min(1).optional(),
 });
+
+function taskHasPlanningAssignments(
+  task: { _count: { assignments: number } },
+): boolean {
+  return task._count.assignments > 0;
+}
+
+async function returnWholeLampToStock(
+  tx: Prisma.TransactionClient,
+  args: {
+    lamp: {
+      id: string;
+      projectId: string;
+    };
+    stockPoolProjectId: string;
+    reason?: string;
+    previousProjectId: string;
+    confirmClearPlanning?: boolean;
+    tasks: Array<{ _count: { assignments: number } }>;
+  },
+): Promise<void> {
+  const hasPlanning = args.tasks.some(taskHasPlanningAssignments);
+  if (hasPlanning && !args.confirmClearPlanning) {
+    throw new Error(
+      "La lámpara tiene asignaciones de planning. Confirma para eliminarlas al devolver a stock.",
+    );
+  }
+
+  if (hasPlanning) {
+    await deletePlanningAssignmentsForLamp(tx, args.lamp.id);
+  }
+  await clearPendingTaskWorkOrders(tx, args.lamp.id);
+
+  await tx.lampElement.updateMany({
+    where: { lampId: args.lamp.id },
+    data: {
+      stockStatus: stockElementStatusForReturn(),
+      stockBatchCode: null,
+    },
+  });
+
+  await tx.lamp.update({
+    where: { id: args.lamp.id },
+    data: lampReturnToStockFields({
+      previousProjectId: args.previousProjectId,
+      reason: args.reason,
+    }),
+  });
+
+  await moveLampToProject(tx, {
+    lampId: args.lamp.id,
+    targetProjectId: args.stockPoolProjectId,
+  });
+}
 
 export async function returnLampToStock(
   input: z.infer<typeof returnLampToStockSchema>,
@@ -290,10 +346,17 @@ export async function returnLampToStock(
         where: { id: data.lampId },
         include: {
           project: { select: { id: true, kind: true, name: true } },
-          elements: { select: { id: true } },
+          elements: { orderBy: { createdAt: "asc" } },
           tasks: {
             select: {
               id: true,
+              process: true,
+              estimatedHours: true,
+              order: true,
+              naveId: true,
+              lampElementId: true,
+              notes: true,
+              systemKind: true,
               _count: { select: { assignments: true } },
             },
           },
@@ -304,47 +367,127 @@ export async function returnLampToStock(
         throw new Error("La lámpara ya está en el pool de stock.");
       }
 
-      const hasPlanning = lamp.tasks.some(
-        (task) => task._count.assignments > 0,
-      );
-      if (hasPlanning && !data.confirmClearPlanning) {
-        throw new Error(
-          "La lámpara tiene asignaciones de planning. Confirma para eliminarlas al devolver a stock.",
+      const allElementIds = lamp.elements.map((element) => element.id);
+      const selectedElementIds =
+        data.lampElementIds ??
+        (allElementIds.length > 0 ? allElementIds : undefined);
+
+      if (allElementIds.length > 1) {
+        if (!data.lampElementIds || data.lampElementIds.length === 0) {
+          throw new Error("Selecciona al menos una lámpara para enviar a stock.");
+        }
+        const unknown = data.lampElementIds.filter(
+          (id) => !allElementIds.includes(id),
         );
+        if (unknown.length > 0) {
+          throw new Error("Alguna de las lámparas seleccionadas no pertenece al grupo.");
+        }
       }
 
+      const selectedSet = new Set(selectedElementIds ?? []);
+      const elementsToStock =
+        allElementIds.length > 0
+          ? lamp.elements.filter((element) => selectedSet.has(element.id))
+          : [];
+      const elementsToKeep =
+        allElementIds.length > 0
+          ? lamp.elements.filter((element) => !selectedSet.has(element.id))
+          : [];
+
+      const isPartialReturn =
+        allElementIds.length > 1 && elementsToKeep.length > 0;
+
       await prisma.$transaction(async (tx) => {
-        if (hasPlanning) {
-          await deletePlanningAssignmentsForLamp(tx, lamp.id);
+        if (!isPartialReturn) {
+          await returnWholeLampToStock(tx, {
+            lamp,
+            stockPoolProjectId,
+            reason: data.reason,
+            previousProjectId: lamp.projectId,
+            confirmClearPlanning: data.confirmClearPlanning,
+            tasks: lamp.tasks,
+          });
+          return;
         }
-        await clearPendingTaskWorkOrders(tx, lamp.id);
+
+        const stockTasks = lamp.tasks.filter(
+          (task) =>
+            task.lampElementId != null && selectedSet.has(task.lampElementId),
+        );
+        const selectedHasPlanning = stockTasks.some(taskHasPlanningAssignments);
+        if (selectedHasPlanning && !data.confirmClearPlanning) {
+          throw new Error(
+            "Alguna lámpara seleccionada tiene asignaciones de planning. Confirma para eliminarlas al devolver a stock.",
+          );
+        }
+
+        const stockName = `${lamp.name} (stock ×${elementsToStock.length})`;
+        const stockFields = lampNameFields(stockName);
+        const stockLamp = await tx.lamp.create({
+          data: {
+            projectId: lamp.projectId,
+            elementTypeId: elementsToStock[0]!.elementTypeId,
+            code: lamp.code,
+            name: stockName,
+            nameKey: stockFields.nameKey,
+            width: lamp.width,
+            height: lamp.height,
+            depth: lamp.depth,
+            units: elementsToStock.length,
+            surfaceM2: elementsToStock[0]!.surfaceM2,
+            notes: lamp.notes,
+          },
+        });
 
         await tx.lampElement.updateMany({
-          where: { lampId: lamp.id },
+          where: { id: { in: elementsToStock.map((element) => element.id) } },
           data: {
+            lampId: stockLamp.id,
             stockStatus: stockElementStatusForReturn(),
             stockBatchCode: null,
           },
         });
 
+        await tx.task.updateMany({
+          where: {
+            lampElementId: { in: elementsToStock.map((element) => element.id) },
+          },
+          data: { lampId: stockLamp.id },
+        });
+
+        const firstKept = elementsToKeep[0]!;
         await tx.lamp.update({
           where: { id: lamp.id },
           data: {
-            ...lampReturnToStockFields({
-              previousProjectId: lamp.projectId,
-              reason: data.reason,
-            }),
+            units: elementsToKeep.length,
+            elementTypeId: firstKept.elementTypeId,
+            surfaceM2: firstKept.surfaceM2,
           },
         });
 
+        if (selectedHasPlanning) {
+          await deletePlanningAssignmentsForLamp(tx, stockLamp.id);
+        }
+        await clearPendingTaskWorkOrders(tx, stockLamp.id);
+
+        await tx.lamp.update({
+          where: { id: stockLamp.id },
+          data: lampReturnToStockFields({
+            previousProjectId: lamp.projectId,
+            reason: data.reason,
+          }),
+        });
+
         await moveLampToProject(tx, {
-          lampId: lamp.id,
+          lampId: stockLamp.id,
           targetProjectId: stockPoolProjectId,
         });
+
+        await syncTransportTasksForLamp(tx, lamp.id);
       });
 
       log.info(
-        { lampId: lamp.id, fromProjectId: lamp.projectId },
+        { lampId: lamp.id, fromProjectId: lamp.projectId, partial: isPartialReturn },
         "lamp returned to stock",
       );
       revalidatePath("/dashboard/stock");

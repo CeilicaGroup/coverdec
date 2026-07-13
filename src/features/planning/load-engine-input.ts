@@ -4,6 +4,8 @@ import {
 } from "@/features/people/absence-model";
 import { personNaveId } from "@/features/people/person-naves";
 import { prisma } from "@/lib/db";
+import { ProjectApprovalStatus } from "@/generated/prisma";
+import { isLampEligibleForPlanning } from "@/lib/project-approval";
 import { utcDayStart } from "@/lib/holidays";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
 import { getPlanningWeights } from "@/features/planning/queries";
@@ -307,7 +309,7 @@ export async function loadSolverInput(args: {
     absencesRaw,
     holidaysRaw,
     weights,
-    tasksRaw,
+    tasksRawAll,
     timeEntriesRaw,
     crossNaveAssignments,
     planningPoliciesRaw,
@@ -344,9 +346,13 @@ export async function loadSolverInput(args: {
     prisma.task.findMany({
       where: {
         naveId: { in: naveIds },
-        project: { isActive: true },
+        project: {
+          isActive: true,
+          approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+        },
       },
       include: {
+        lamp: { select: { isApprovedForPlanning: true } },
         project: {
           select: {
             id: true,
@@ -355,6 +361,7 @@ export async function loadSolverInput(args: {
             planningCostPriority: true,
             planningStability: true,
             planningDeadlineBoost: true,
+            approvalStatus: true,
           },
         },
         workOrder: { select: { id: true, status: true, number: true } },
@@ -399,6 +406,13 @@ export async function loadSolverInput(args: {
       },
     }),
   ]);
+
+  const tasksRaw = tasksRawAll.filter((task) =>
+    isLampEligibleForPlanning({
+      projectApprovalStatus: task.project.approvalStatus,
+      lampApproved: task.lamp.isApprovedForPlanning,
+    }),
+  );
 
   const policyByNave = new Map(
     planningPoliciesRaw.map((row) => [

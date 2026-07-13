@@ -18,7 +18,9 @@ import {
   scaleBlueprintHoursForUnits,
   type ElementProcessInput,
 } from "@/features/projects/lamp-tasks";
-import { ELEMENT_TYPOLOGIES, ELEMENT_TYPOLOGY_LABELS } from "@/lib/element-typology";
+import { ELEMENT_TYPOLOGIES } from "@/lib/element-typology";
+import { TypologyLabel, TypologySymbol } from "@/components/typology-symbol";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 import { formatHours } from "@/lib/format";
 import type { ElementTypology } from "@/generated/prisma";
 
@@ -103,12 +105,14 @@ export function useParsedElementDrafts(
 export function LampElementDraftList({
   draftRows,
   elementTypes,
+  typologyImages,
   onUpdate,
   onRemove,
   removeLabel = "elemento",
 }: {
   draftRows: DraftElementRow[];
   elementTypes: ElementTypeOption[];
+  typologyImages?: TypologyImageAvailability;
   onUpdate: (clientId: string, patch: Partial<DraftElementRow>) => void;
   onRemove: (clientId: string) => void;
   removeLabel?: string;
@@ -148,12 +152,18 @@ export function LampElementDraftList({
                   <div className="flex flex-wrap items-end gap-2 p-3">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-full sm:basis-auto">
                       <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-                      <span className="text-sm font-medium truncate">
+                      <span className="text-sm font-medium truncate inline-flex items-center gap-1.5 min-w-0">
                         {row.typology ? (
-                          <span className="text-muted-foreground font-normal">
-                            {ELEMENT_TYPOLOGY_LABELS[row.typology]}
-                            {" · "}
-                          </span>
+                          <>
+                            <TypologySymbol
+                              typology={row.typology}
+                              availability={typologyImages}
+                              size="sm"
+                            />
+                            <span className="text-muted-foreground font-normal shrink-0">
+                              ·
+                            </span>
+                          </>
                         ) : null}
                         {elementName}
                         <span className="text-muted-foreground font-normal">
@@ -186,15 +196,23 @@ export function LampElementDraftList({
                         >
                           <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Tipo">
-                              {row.typology
-                                ? ELEMENT_TYPOLOGY_LABELS[row.typology]
-                                : null}
+                              {row.typology ? (
+                                <TypologyLabel
+                                  typology={row.typology}
+                                  availability={typologyImages}
+                                  size="sm"
+                                />
+                              ) : null}
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {ELEMENT_TYPOLOGIES.map((t) => (
                               <SelectItem key={t} value={t}>
-                                {ELEMENT_TYPOLOGY_LABELS[t]}
+                                <TypologyLabel
+                                  typology={t}
+                                  availability={typologyImages}
+                                  size="sm"
+                                />
                               </SelectItem>
                             ))}
                           </SelectContent>

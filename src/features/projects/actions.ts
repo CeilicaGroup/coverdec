@@ -13,6 +13,7 @@ import { childLogger } from "@/lib/logger";
 import { runAuditedMutation } from "@/lib/server-action";
 import {
   ElementTypology,
+  ProjectApprovalStatus,
   ProjectKind,
   ProjectPlanningPreset,
   Role,
@@ -60,6 +61,7 @@ import {
   syncTransportTasksForLamp,
   TRANSPORT_PROCESS_CODE,
 } from "@/features/projects/transport-tasks";
+import { lampApprovalForProjectStatus } from "@/lib/project-approval";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -148,6 +150,7 @@ const projectSchema = z.object({
   planningCostPriority: z.number().min(0).max(100).optional(),
   planningStability: z.number().min(0).max(100).optional(),
   planningDeadlineBoost: z.number().min(0).max(100).optional(),
+  approvalStatus: z.nativeEnum(ProjectApprovalStatus).optional(),
 });
 
 export async function createProject(input: z.infer<typeof projectSchema>) {
@@ -182,6 +185,7 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
         planningStability: data.planningStability ?? presetDefaults.stability,
         planningDeadlineBoost:
           data.planningDeadlineBoost ?? presetDefaults.deadlineBoost,
+        approvalStatus: data.approvalStatus ?? ProjectApprovalStatus.PENDING_APPROVAL,
       },
     });
     log.info({ id: project.id }, "project created");
@@ -203,23 +207,47 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = updateProjectSchema.parse(input);
-  
-    await prisma.project.update({
+
+    const current = await prisma.project.findUnique({
       where: { id: data.projectId },
-      data: {
-        name: data.name,
-        client: data.client || null,
-        obra: data.obra || null,
-        deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
-        isBillable: data.isBillable,
-        kind: data.kind,
-        responsibleUserId: data.responsibleUserId || null,
-        notes: data.notes?.trim() ? data.notes.trim() : null,
-        planningPreset: data.planningPreset ?? undefined,
-        planningCostPriority: data.planningCostPriority ?? undefined,
-        planningStability: data.planningStability ?? undefined,
-        planningDeadlineBoost: data.planningDeadlineBoost ?? undefined,
-      },
+      select: { approvalStatus: true },
+    });
+    if (!current) throw new Error("Proyecto no encontrado.");
+
+    const approvalStatusChanging =
+      data.approvalStatus !== undefined &&
+      data.approvalStatus !== current.approvalStatus;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: data.projectId },
+        data: {
+          name: data.name,
+          client: data.client || null,
+          obra: data.obra || null,
+          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+          isBillable: data.isBillable,
+          kind: data.kind,
+          responsibleUserId: data.responsibleUserId || null,
+          notes: data.notes?.trim() ? data.notes.trim() : null,
+          planningPreset: data.planningPreset ?? undefined,
+          planningCostPriority: data.planningCostPriority ?? undefined,
+          planningStability: data.planningStability ?? undefined,
+          planningDeadlineBoost: data.planningDeadlineBoost ?? undefined,
+          ...(data.approvalStatus !== undefined
+            ? { approvalStatus: data.approvalStatus }
+            : {}),
+        },
+      });
+
+      if (approvalStatusChanging && data.approvalStatus !== undefined) {
+        await tx.lamp.updateMany({
+          where: { projectId: data.projectId },
+          data: {
+            isApprovedForPlanning: lampApprovalForProjectStatus(data.approvalStatus),
+          },
+        });
+      }
     });
   
     log.info({ id: data.projectId }, "project updated");
@@ -1319,5 +1347,31 @@ export async function applyGlobalPlanningPresetToActiveProjects(
     return { updatedCount: result.count };
     },
     { summary: "Aplicar preset global", entityType: "Project" },
+  );
+}
+
+const setLampApprovedSchema = z.object({
+  lampId: z.string().min(1),
+  isApprovedForPlanning: z.boolean(),
+});
+
+export async function setLampApprovedForPlanning(
+  input: z.infer<typeof setLampApprovedSchema>,
+) {
+  return runAuditedMutation(
+    "projects.setLampApprovedForPlanning",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = setLampApprovedSchema.parse(input);
+
+      await prisma.lamp.update({
+        where: { id: data.lampId },
+        data: { isApprovedForPlanning: data.isApprovedForPlanning },
+      });
+
+      revalidatePath("/dashboard/proyectos");
+    },
+    () => ({ summary: "Actualizar aprobación de lámpara" }),
   );
 }
