@@ -18,6 +18,12 @@ export interface DeferredPlanningTask {
   hours: number;
 }
 
+export interface WorkOrderPipelineEdge {
+  predecessorWorkOrderId: string;
+  successorWorkOrderId: string;
+  minCompletedHours: number;
+}
+
 export interface SolverInput extends EngineInput {
   weights: PlanningWeights;
   weeklyByPerson: Map<string, PersonScheduleDayInput[]>;
@@ -31,6 +37,8 @@ export interface SolverInput extends EngineInput {
   planFrom?: PlanFrom;
   /** Tareas que no pueden empezar en esta semana (secado / cadena). */
   deferredTasks?: DeferredPlanningTask[];
+  /** Horas mínimas de OT predecesora antes de que pueda empezar la sucesora. */
+  workOrderPipelines?: WorkOrderPipelineEdge[];
 }
 
 const processCodeSchema = z.string();
@@ -94,6 +102,11 @@ export type SolveRequestPayload = {
     startSlot: number;
     endSlot: number;
     hours: number;
+  }[];
+  workOrderPipelines?: {
+    predecessorWorkOrderId: string;
+    successorWorkOrderId: string;
+    minCompletedHours: number;
   }[];
 };
 
@@ -285,6 +298,11 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       startSlot: b.startSlot,
       endSlot: b.endSlot,
       hours: b.hours,
+    })),
+    workOrderPipelines: input.workOrderPipelines?.map((edge) => ({
+      predecessorWorkOrderId: edge.predecessorWorkOrderId,
+      successorWorkOrderId: edge.successorWorkOrderId,
+      minCompletedHours: edge.minCompletedHours,
     })),
   };
 }

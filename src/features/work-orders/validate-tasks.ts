@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma";
 import { deleteEmptyOpenWorkOrders } from "./cleanup-empty";
+import { sortTaskIdsForWorkOrderSequence } from "./order-ot-tasks";
 
 const taskSelectForValidation = {
   id: true,
@@ -43,12 +44,24 @@ export async function assignTasksToWorkOrder(
 ) {
   await assertTasksEligibleForWorkOrder(tx, taskIds, { workOrderId });
 
+  const tasksForOrder = await tx.task.findMany({
+    where: { id: { in: taskIds } },
+    select: {
+      id: true,
+      projectId: true,
+      lampId: true,
+      lampElementId: true,
+      order: true,
+    },
+  });
+  const orderedTaskIds = sortTaskIdsForWorkOrderSequence(tasksForOrder);
+
   const current = await tx.task.findMany({
     where: { workOrderId },
     select: { id: true },
   });
   const currentIds = new Set(current.map((t) => t.id));
-  const nextIds = new Set(taskIds);
+  const nextIds = new Set(orderedTaskIds);
 
   const toRemove = [...currentIds].filter((id) => !nextIds.has(id));
   if (toRemove.length > 0) {
@@ -58,9 +71,9 @@ export async function assignTasksToWorkOrder(
     });
   }
 
-  for (let i = 0; i < taskIds.length; i++) {
+  for (let i = 0; i < orderedTaskIds.length; i++) {
     await tx.task.update({
-      where: { id: taskIds[i] },
+      where: { id: orderedTaskIds[i] },
       data: { workOrderId, workOrderSequence: i },
     });
   }

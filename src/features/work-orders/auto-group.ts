@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma";
 import { allocateWorkOrderNumber } from "./number";
+import { sortTaskIdsForWorkOrderSequence } from "./order-ot-tasks";
 import { groupTasksForAutoWorkOrders } from "./queries";
 import { assignTasksToWorkOrder } from "./validate-tasks";
 import { excludeWorkOrderExemptTasksWhere } from "./task-ot-exemptions";
@@ -22,6 +23,10 @@ export async function autoGroupIdenticalTasksInTx(
     select: {
       id: true,
       process: true,
+      projectId: true,
+      lampId: true,
+      lampElementId: true,
+      order: true,
       lampElement: {
         select: { elementType: { select: { id: true } } },
       },
@@ -36,7 +41,7 @@ export async function autoGroupIdenticalTasksInTx(
   let tasksGrouped = 0;
 
   for (const groupTasks of groups.values()) {
-    const taskIds = groupTasks.map((t) => t.id);
+    const taskIds = sortTaskIdsForWorkOrderSequence(groupTasks);
     const { year, serial, number } = await allocateWorkOrderNumber(tx);
     const workOrder = await tx.workOrder.create({
       data: { number, year, serial },

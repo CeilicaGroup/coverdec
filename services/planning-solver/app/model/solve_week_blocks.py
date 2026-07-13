@@ -26,6 +26,7 @@ from app.model.work_order_collapse import (
     expand_collapsed_assignments,
     expand_unscheduled_warning,
     remap_previous_hours,
+    synthetic_task_id,
 )
 from app.model.timeline import (
     QUARTERS_PER_HOUR,
@@ -45,6 +46,7 @@ from app.schemas import (
     FixedAssignment,
     SolveRequest,
     SolveResponse,
+    WorkOrderPipelineEdge,
 )
 
 logger = logging.getLogger("planning-solver")
@@ -142,6 +144,7 @@ class ProblemData:
     placement_catalogs: dict[str, WorkerPlacementCatalog]
     wo_collapse: dict[str, WoCollapseGroup] = field(default_factory=dict)
     candidate_ids_by_task: dict[str, list[str]] = field(default_factory=dict)
+    work_order_pipelines: list[WorkOrderPipelineEdge] = field(default_factory=list)
 
 
 def _add_days(d: date, n: int) -> date:
@@ -225,6 +228,36 @@ def _rewire_lamp_edges(
     return [LampEdge(pred, succ, dry_q) for (pred, succ), dry_q in merged.items()]
 
 
+def _filter_lamp_edges_for_pipeline(
+    edges: list[LampEdge],
+    pipelines: list[WorkOrderPipelineEdge],
+    wo_collapse: dict[str, WoCollapseGroup],
+) -> list[LampEdge]:
+    if not pipelines or not wo_collapse:
+        return edges
+
+    pipeline_pairs = {
+        (edge.predecessorWorkOrderId, edge.successorWorkOrderId)
+        for edge in pipelines
+    }
+    wo_by_synthetic = {
+        group.synthetic_id: group.work_order_id for group in wo_collapse.values()
+    }
+
+    filtered: list[LampEdge] = []
+    for edge in edges:
+        pred_wo = wo_by_synthetic.get(edge.predecessor_id)
+        succ_wo = wo_by_synthetic.get(edge.successor_id)
+        if (
+            pred_wo is not None
+            and succ_wo is not None
+            and (pred_wo, succ_wo) in pipeline_pairs
+        ):
+            continue
+        filtered.append(edge)
+    return filtered
+
+
 def _empty_timeline(person_id: str, day: date, day_index: int) -> WorkerDayTimeline:
     return WorkerDayTimeline(person_id, day, day_index, 0, (), (), 0, (), ())
 
@@ -297,15 +330,26 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
     process_by_code = {p.code: p for p in request.processes}
     fixed_task_ids = {fixed.taskId for fixed in request.fixedAssignments}
     lamp_edges = _build_lamp_edges(tasks, process_by_code)
+    pipelines = list(request.workOrderPipelines)
+    pipeline_wo_ids: set[str] = set()
+    for edge in pipelines:
+        pipeline_wo_ids.add(edge.predecessorWorkOrderId)
+        pipeline_wo_ids.add(edge.successorWorkOrderId)
     tasks, wo_collapse, candidate_ids_by_task, member_to_synthetic = (
         collapse_work_order_tasks(
             tasks,
             request.people,
             fixed_task_ids=fixed_task_ids,
+            skip_work_order_ids=pipeline_wo_ids,
         )
     )
     if member_to_synthetic:
         lamp_edges = _rewire_lamp_edges(lamp_edges, member_to_synthetic)
+        lamp_edges = _filter_lamp_edges_for_pipeline(
+            lamp_edges,
+            pipelines,
+            wo_collapse,
+        )
         logger.info(
             "work-order collapse: groups=%d tasksBefore=%d tasksAfter=%d",
             len(wo_collapse),
@@ -394,6 +438,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         placement_catalogs=placement_catalogs,
         wo_collapse=wo_collapse,
         candidate_ids_by_task=candidate_ids_by_task,
+        work_order_pipelines=pipelines,
     )
 
 
@@ -692,6 +737,7 @@ def _add_constraints(
     by_wo = _tasks_by_work_order(data.tasks)
     _add_lamp_ordering(model, data, mv)
     _add_work_order_constraints(model, data, mv, by_wo)
+    _add_work_order_pipeline_constraints(model, data, mv)
     _add_work_order_no_interleave(model, mv, by_wo)
     _add_max_one_worker_per_task(model, data, mv)
 
@@ -776,6 +822,63 @@ def _add_work_order_constraints(
             for bv in succ_blocks:
                 model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
                 model.Add(bv.presence == 0).OnlyEnforceIf(pred_done.Not())
+
+
+def _add_work_order_pipeline_constraints(
+    model: cp_model.CpModel,
+    data: ProblemData,
+    mv: ModelVars,
+) -> None:
+    """OT sucesora puede empezar tras horas mínimas de la predecesora (OT colapsadas)."""
+    if not data.work_order_pipelines:
+        return
+
+    for edge in data.work_order_pipelines:
+        threshold_q = round(edge.minCompletedHours * QUARTERS_PER_HOUR)
+        if threshold_q <= 0:
+            continue
+
+        pred_id = synthetic_task_id(edge.predecessorWorkOrderId)
+        succ_id = synthetic_task_id(edge.successorWorkOrderId)
+        pred_blocks = mv.by_task.get(pred_id, [])
+        succ_blocks = mv.by_task.get(succ_id, [])
+        if not pred_blocks or not succ_blocks:
+            continue
+
+        pred_demand = data.demand_q.get(pred_id, 0)
+        if pred_demand <= 0:
+            continue
+
+        tag = f"{edge.predecessorWorkOrderId}_{edge.successorWorkOrderId}"
+        partial_done = model.NewBoolVar(f"wo_pipe_done_{tag}")
+        total_pred = model.NewIntVar(0, pred_demand, f"wo_pipe_tp_{tag}")
+        model.Add(total_pred == sum(bv.assigned_q for bv in pred_blocks))
+        model.Add(total_pred >= threshold_q).OnlyEnforceIf(partial_done)
+        model.Add(total_pred < threshold_q).OnlyEnforceIf(partial_done.Not())
+
+        partial_end_terms: list = []
+        for bv in pred_blocks:
+            ended = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_pe_{tag}_{_block_tag(bv)}")
+            model.Add(ended == bv.start_wq + threshold_q).OnlyEnforceIf(
+                [bv.presence, partial_done],
+            )
+            model.Add(ended == HORIZON_Q + 1).OnlyEnforceIf(bv.presence.Not())
+            model.Add(ended == HORIZON_Q + 1).OnlyEnforceIf(partial_done.Not())
+            partial_end_terms.append(ended)
+
+        partial_end = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_pend_{tag}")
+        if partial_end_terms:
+            model.AddMinEquality(partial_end, partial_end_terms)
+        else:
+            model.Add(partial_end == HORIZON_Q + 1)
+
+        earliest = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_early_{tag}")
+        model.Add(earliest == partial_end).OnlyEnforceIf(partial_done)
+        model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(partial_done.Not())
+
+        for bv in succ_blocks:
+            model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
+            model.Add(bv.presence == 0).OnlyEnforceIf(partial_done.Not())
 
 
 def _add_work_order_no_interleave(

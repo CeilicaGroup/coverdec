@@ -72,6 +72,7 @@ def collapse_work_order_tasks(
     people: list[EnginePerson],
     *,
     fixed_task_ids: set[str],
+    skip_work_order_ids: set[str] | None = None,
 ) -> tuple[
     list[EngineTask],
     dict[str, WoCollapseGroup],
@@ -94,8 +95,12 @@ def collapse_work_order_tasks(
     member_to_synthetic: dict[str, str] = {}
     synthetics: dict[str, EngineTask] = {}
 
+    skip = skip_work_order_ids or set()
+
     for wo_id, members in by_wo.items():
         if len(members) < 2:
+            continue
+        if wo_id in skip:
             continue
         members.sort(key=lambda task: task.workOrderSequence or 0)
 

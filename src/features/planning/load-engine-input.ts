@@ -34,6 +34,7 @@ import type {
   PersonScheduleOverrideInput,
 } from "./engine/slots/person-schedule";
 import type { SolverInput } from "./engine/solver-types";
+import { computeWorkOrderPipelines } from "./work-order-pipeline";
 import type {
   EngineAbsence,
   EngineBookedHours,
@@ -760,6 +761,41 @@ export async function loadSolverInput(args: {
     .filter((t) => deferredPastHorizon.has(t.id))
     .map((t) => ({ taskId: t.id, hours: t.pendingHours }));
 
+  const waitHoursByProcess = new Map(
+    processes.map((process) => [process.code, process.waitHours]),
+  );
+  const workOrderPipelines = computeWorkOrderPipelines(
+    tasksRaw.map((task) => ({
+      id: task.id,
+      lampId: task.lampId,
+      lampElementId: task.lampElementId,
+      order: task.order,
+      process: task.process,
+      pendingHours: roundUpToPlanningQuarterHours(
+        effectivePendingHours(
+          {
+            estimatedHours: task.estimatedHours,
+            isCompleted: task.isCompleted,
+            pendingToPlanHours:
+              planningTotalsByTaskId.get(task.id)?.pendingToPlanHours ?? 0,
+            remainingWorkHours:
+              planningTotalsByTaskId.get(task.id)?.remainingWorkHours ?? 0,
+          },
+          {
+            priorPlannedHours: priorPlannedHoursByTask.get(task.id) ?? 0,
+          },
+        ),
+      ),
+      isCompleted: task.isCompleted,
+      workOrderId: task.workOrderId,
+      workOrderSequence: task.workOrderSequence,
+    })),
+    waitHoursByProcess,
+  ).map((edge) => ({
+    ...edge,
+    minCompletedHours: roundUpToPlanningQuarterHours(edge.minCompletedHours),
+  }));
+
   const input: SolverInput = {
     weekStart,
     processes: processDefs,
@@ -777,6 +813,7 @@ export async function loadSolverInput(args: {
     busySlots,
     deferredTasks,
     planFrom,
+    workOrderPipelines,
   };
 
   if (assignmentsForStability.length > 0) {

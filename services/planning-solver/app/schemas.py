@@ -110,6 +110,12 @@ class BusySlotEntry(BaseModel):
     hours: float
 
 
+class WorkOrderPipelineEdge(BaseModel):
+    predecessorWorkOrderId: str
+    successorWorkOrderId: str
+    minCompletedHours: float
+
+
 class SolveRequest(BaseModel):
     weekStart: date
     processes: list[EngineProcessDef]
@@ -125,6 +131,7 @@ class SolveRequest(BaseModel):
     fixedAssignments: list[FixedAssignment] = Field(default_factory=list)
     bookedHours: list[BookedHoursEntry] = Field(default_factory=list)
     busySlots: list[BusySlotEntry] = Field(default_factory=list)
+    workOrderPipelines: list[WorkOrderPipelineEdge] = Field(default_factory=list)
 
 
 class EngineAssignment(BaseModel):
