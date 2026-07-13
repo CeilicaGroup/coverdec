@@ -26,6 +26,7 @@ import { LampElementsSummary } from "@/components/typology-symbol";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { AssignToProjectDialog } from "./assign-to-project-dialog";
+import { DeleteStockLampButton } from "../delete-stock-lamp-button";
 
 const STOCK_STATUS_LABELS: Record<LampElementStockStatus, string> = {
   [LampElementStockStatus.IN_PRODUCTION]: "En producción",
@@ -75,7 +76,7 @@ export default async function StockBatchDetailPage({
               elementType: { select: { id: true, name: true } },
             },
           },
-          _count: { select: { assignments: true } },
+          _count: { select: { assignments: true, timeEntries: true } },
         },
       },
     },
@@ -230,6 +231,7 @@ export default async function StockBatchDetailPage({
   const totalEstimated = tasks.reduce((a, t) => a + t.estimatedHours, 0);
   const totalDone = tasks.reduce((a, t) => a + t.doneHours, 0);
   const totalPending = tasks.reduce((a, t) => a + t.pendingHours, 0);
+  const canHardDelete = !lamp.tasks.some((task) => task._count.timeEntries > 0);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -251,6 +253,12 @@ export default async function StockBatchDetailPage({
                 projects={projects}
               />
             ) : null}
+            <DeleteStockLampButton
+              lampId={lamp.id}
+              lampName={lamp.name}
+              canHardDelete={canHardDelete}
+              redirectToList
+            />
             <Button
               variant="outline"
               nativeButton={false}

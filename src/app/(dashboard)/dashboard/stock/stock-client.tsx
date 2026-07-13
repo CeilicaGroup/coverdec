@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { createStockBatch, assignLampFromStockToProject } from "@/features/stock/actions";
+import { DeleteStockLampButton } from "./delete-stock-lamp-button";
 import {
   isOperationCancelled,
   withSimilarLampNameConfirmation,
@@ -61,6 +62,7 @@ interface StockLampRow {
   returnedToStockAt: Date | string | null;
   returnedToStockReason: string | null;
   previousProject: { name: string; code: string } | null;
+  canHardDelete: boolean;
 }
 
 const STOCK_STATUS_LABELS: Record<LampElementStockStatus, string> = {
@@ -186,13 +188,14 @@ export function StockClient({
                 <TableHead>Origen</TableHead>
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="w-[100px]">Editar</TableHead>
+                <TableHead className="w-[48px]" />
                 <TableHead className="w-[220px]">Asignar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {stockLamps.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No hay lámparas en el pool de stock.
                   </TableCell>
                 </TableRow>
@@ -257,6 +260,14 @@ export function StockClient({
                         <Pencil className="size-3" />
                         Editar
                       </Button>
+                    </TableCell>
+                    <TableCell>
+                      <DeleteStockLampButton
+                        lampId={lamp.id}
+                        lampName={lamp.name}
+                        canHardDelete={lamp.canHardDelete}
+                        size="icon"
+                      />
                     </TableCell>
                     <TableCell>
                       {isStockLampAssignable(lamp.stockStatus) ? (

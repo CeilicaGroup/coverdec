@@ -48,6 +48,12 @@ import { tryAttachLampTasksToOpenWorkOrder } from "./attach-work-order";
 
 const log = childLogger({ module: "stock.actions" });
 
+function stockLampCanHardDelete(
+  tasks: Array<{ _count: { timeEntries: number } }>,
+): boolean {
+  return !tasks.some((task) => task._count.timeEntries > 0);
+}
+
 function assertUniqueElementTypes(elements: { elementTypeId: string }[]) {
   const ids = elements.map((element) => element.elementTypeId);
   if (new Set(ids).size !== ids.length) {
@@ -235,6 +241,7 @@ export async function listStockLamps() {
           id: true,
           estimatedHours: true,
           isCompleted: true,
+          _count: { select: { timeEntries: true } },
         },
       },
       previousProject: { select: { id: true, name: true, code: true } },
@@ -266,6 +273,7 @@ export async function listStockLamps() {
       returnedToStockReason: lamp.returnedToStockReason,
       previousProject: lamp.previousProject,
       elements: lamp.elements,
+      canHardDelete: stockLampCanHardDelete(lamp.tasks),
     };
   });
 }
@@ -621,4 +629,65 @@ export async function assignLampFromStockToProject(
 export async function listAssignableStockLamps() {
   const lamps = await listStockLamps();
   return lamps.filter((lamp) => isStockLampAssignable(lamp.stockStatus));
+}
+
+const deleteStockLampSchema = z.object({ lampId: z.string().min(1) });
+
+export async function deleteStockLamp(
+  input: z.infer<typeof deleteStockLampSchema>,
+) {
+  return runAuditedMutation(
+    "stock.deleteStockLamp",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const { lampId } = deleteStockLampSchema.parse(input);
+      const stockPoolProjectId = await getStockPoolProjectId();
+
+      const lamp = await prisma.lamp.findFirst({
+        where: { id: lampId, projectId: stockPoolProjectId },
+        include: {
+          elements: { select: { stockStatus: true } },
+          tasks: {
+            include: {
+              _count: { select: { timeEntries: true } },
+            },
+          },
+        },
+      });
+      if (!lamp) {
+        throw new Error("La lámpara no pertenece al pool de stock.");
+      }
+
+      const stockStatus =
+        lamp.elements.find((element) => element.stockStatus)?.stockStatus ?? null;
+      if (stockStatus === LampElementStockStatus.ASSIGNED) {
+        throw new Error("La lámpara ya fue asignada a un proyecto.");
+      }
+
+      if (!stockLampCanHardDelete(lamp.tasks)) {
+        throw new Error(
+          "No se puede eliminar: hay horas registradas en las tareas de esta lámpara.",
+        );
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await deletePlanningAssignmentsForLamp(tx, lamp.id);
+        await clearPendingTaskWorkOrders(tx, lamp.id);
+        await tx.lamp.delete({ where: { id: lamp.id } });
+      });
+
+      log.info({ lampId }, "stock lamp deleted");
+      revalidatePath("/dashboard/stock");
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/semana");
+      revalidatePath("/dashboard/persona");
+      revalidatePath("/dashboard/proyecto");
+    },
+    ( ) => ({
+      summary: "Eliminar lámpara de stock",
+      entityType: "Lamp",
+      entityId: input.lampId,
+    }),
+  );
 }
