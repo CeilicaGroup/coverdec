@@ -76,6 +76,8 @@ export default async function PersonaPage({
   const naveScope = naveScopeFromContext(ctx);
   const todayIso = new Date().toISOString().slice(0, 10);
   const operarioSelfView = isOperarioSelfPersonaView(ctx);
+  const canManageAdHoc =
+    ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
 
   const [
     allPeople,
@@ -255,6 +257,7 @@ export default async function PersonaPage({
               completedByTask={actualTask.completedByPersonTask.get(person.id) ?? new Map()}
               processStyles={processStyles}
               canEditEntries={ctx.role === Role.ADMIN}
+              canManageAdHoc={canManageAdHoc}
               canSeeRecords={canSeeRecords}
               entriesByPersonDayTask={entriesByPersonDayTask}
             />
@@ -270,6 +273,7 @@ export default async function PersonaPage({
               maps={listMaps}
               canSeeRecords={canSeeRecords}
               canManageCompletion={ctx.role === Role.ADMIN}
+              canManageAdHoc={canManageAdHoc}
             />
           );
 

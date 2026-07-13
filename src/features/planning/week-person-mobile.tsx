@@ -26,6 +26,7 @@ interface WeekPersonMobileProps {
   absences: { personId: string; date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  canManageAdHoc?: boolean;
   recordsPersonId: string | null;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }
@@ -41,6 +42,7 @@ export function WeekPersonMobile({
   absences,
   processStyles,
   canEditEntries,
+  canManageAdHoc = false,
   recordsPersonId,
   entriesByPersonDayTask,
 }: WeekPersonMobileProps) {
@@ -109,6 +111,7 @@ export function WeekPersonMobile({
                         completedByTask={completedByTask}
                         processStyles={processStyles}
                         canEditEntries={canEditEntries}
+                        canManageAdHoc={canManageAdHoc}
                         canSeeRecords={canSeeRecords}
                         entriesByPersonDayTask={entriesByPersonDayTask}
                         emptyClassName="text-xs"

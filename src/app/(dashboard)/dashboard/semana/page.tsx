@@ -165,6 +165,7 @@ export default async function SemanaPage({
             absences={absences}
             processStyles={processStyles}
             canEditEntries={ctx.role === Role.ADMIN}
+            canManageAdHoc={canManageAdHoc}
             recordsPersonId={ctx.role === Role.OPERARIO ? ctx.personId : null}
             entriesByPersonDayTask={entriesByPersonDayTask}
           />

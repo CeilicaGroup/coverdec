@@ -7,6 +7,8 @@ import {
   filterTimelineForPerson,
   type PlanningTimelineItem,
 } from "@/features/planning/planning-timeline";
+import { AdHocTaskNotesIcon, AdHocTaskNotesTooltip } from "@/features/planning/ad-hoc-task-notes";
+import { DeleteAdHocTaskButton } from "@/features/ad-hoc/delete-ad-hoc-task-button";
 import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { ActualHourEntry } from "@/features/planning/queries";
@@ -15,6 +17,7 @@ import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 import { formatHours, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import { TaskSystemKind } from "@/generated/prisma";
 import {
   Table,
   TableBody,
@@ -41,6 +44,7 @@ interface PersonWeekListProps {
   maps: PersonWeekListMaps;
   canSeeRecords: boolean;
   canManageCompletion: boolean;
+  canManageAdHoc?: boolean;
 }
 
 export function PersonWeekList({
@@ -52,6 +56,7 @@ export function PersonWeekList({
   maps,
   canSeeRecords,
   canManageCompletion,
+  canManageAdHoc = false,
 }: PersonWeekListProps) {
   if (view === "actual") {
     const entries = actualEntries.filter((e) => e.personId === personId);
@@ -333,10 +338,15 @@ export function PersonWeekList({
                   process: entry.process ?? entry.task?.process ?? null,
                 }));
 
+              const task = item.assignment.task;
+              const isAdHoc = task.systemKind === TaskSystemKind.AD_HOC;
+              const taskNotes = task.notes;
+              const hasTimeEntries = (maps.actualByTask.get(task.id) ?? 0) > 0;
+
               return (
                 <TableRow
                   key={item.assignment.id}
-                  {...withWorkOrderHighlight(item.assignment.task.workOrder?.number)}
+                  {...withWorkOrderHighlight(task.workOrder?.number)}
                 >
                   <TableCell className="font-mono text-xs">
                     {formatShortDate(item.assignment.date)}
@@ -345,15 +355,19 @@ export function PersonWeekList({
                     {rangeLabel(item.assignment.startSlot, item.assignment.endSlot)}
                   </TableCell>
                   <TableCell>
-                    <div className="font-semibold text-xs">
-                      {item.assignment.task.project.name}
-                    </div>
-                    {item.assignment.task.lamp?.name ? (
-                      <div className="text-[10px] text-muted-foreground">
-                        {item.assignment.task.lamp.name}
+                    <AdHocTaskNotesTooltip notes={taskNotes}>
+                      <div>
+                        <div className="font-semibold text-xs">
+                          {task.project.name}
+                        </div>
+                        {task.lamp?.name ? (
+                          <div className="text-[10px] text-muted-foreground">
+                            {task.lamp.name}
+                          </div>
+                        ) : null}
+                        <TaskLampBastidor label={getTaskLampElementLabel(task)} />
                       </div>
-                    ) : null}
-                    <TaskLampBastidor label={getTaskLampElementLabel(item.assignment.task)} />
+                    </AdHocTaskNotesTooltip>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 flex-wrap">
@@ -361,10 +375,18 @@ export function PersonWeekList({
                         code={item.assignment.process}
                         definition={processByCode.get(item.assignment.process)?.badge}
                       />
+                      <AdHocTaskNotesIcon notes={taskNotes} />
                       <WorkOrderBadge
-                        number={item.assignment.task.workOrder?.number}
-                        status={item.assignment.task.workOrder?.status}
+                        number={task.workOrder?.number}
+                        status={task.workOrder?.status}
                       />
+                      {canManageAdHoc && isAdHoc ? (
+                        <DeleteAdHocTaskButton
+                          taskId={task.id}
+                          notes={taskNotes}
+                          hasTimeEntries={hasTimeEntries}
+                        />
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs font-semibold">
@@ -457,11 +479,16 @@ export function PersonWeekList({
             process: entry.process ?? entry.task?.process ?? null,
           }));
 
+        const task = item.assignment.task;
+        const isAdHoc = task.systemKind === TaskSystemKind.AD_HOC;
+        const taskNotes = task.notes;
+        const hasTimeEntries = (maps.actualByTask.get(task.id) ?? 0) > 0;
+
         return (
           <div
             key={item.assignment.id}
             {...withWorkOrderHighlight(
-              item.assignment.task.workOrder?.number,
+              task.workOrder?.number,
               "rounded-lg border bg-card p-3 space-y-2",
             )}
           >
@@ -472,29 +499,37 @@ export function PersonWeekList({
                   {rangeLabel(item.assignment.startSlot, item.assignment.endSlot)}
                 </div>
               </div>
-              <div className="font-mono text-xs font-semibold">
-                {formatHours(item.assignment.hours)}
-              </div>
-            </div>
-            <div>
-              <div className="font-semibold text-sm">
-                {item.assignment.task.project.name}
-              </div>
-              {item.assignment.task.lamp?.name ? (
-                <div className="text-xs text-muted-foreground">
-                  {item.assignment.task.lamp.name}
+              <div className="flex items-center gap-1">
+                {canManageAdHoc && isAdHoc ? (
+                  <DeleteAdHocTaskButton
+                    taskId={task.id}
+                    notes={taskNotes}
+                    hasTimeEntries={hasTimeEntries}
+                  />
+                ) : null}
+                <div className="font-mono text-xs font-semibold">
+                  {formatHours(item.assignment.hours)}
                 </div>
-              ) : null}
-              <TaskLampBastidor label={getTaskLampElementLabel(item.assignment.task)} />
+              </div>
             </div>
+            <AdHocTaskNotesTooltip notes={taskNotes}>
+              <div>
+                <div className="font-semibold text-sm">{task.project.name}</div>
+                {task.lamp?.name ? (
+                  <div className="text-xs text-muted-foreground">{task.lamp.name}</div>
+                ) : null}
+                <TaskLampBastidor label={getTaskLampElementLabel(task)} />
+              </div>
+            </AdHocTaskNotesTooltip>
             <div className="flex items-center gap-1 flex-wrap">
               <ProcessBadge
                 code={item.assignment.process}
                 definition={processByCode.get(item.assignment.process)?.badge}
               />
+              <AdHocTaskNotesIcon notes={taskNotes} />
               <WorkOrderBadge
-                number={item.assignment.task.workOrder?.number}
-                status={item.assignment.task.workOrder?.status}
+                number={task.workOrder?.number}
+                status={task.workOrder?.status}
               />
             </div>
             {canSeeRecords ? (

@@ -12,6 +12,8 @@ import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
 import { formatHours } from "@/lib/format";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
+import { AdHocTaskNotesIcon, AdHocTaskNotesTooltip } from "@/features/planning/ad-hoc-task-notes";
+import { DeleteAdHocTaskButton } from "@/features/ad-hoc/delete-ad-hoc-task-button";
 import type { WeekGridCell } from "./week-person-grid";
 import type { buildEntriesByPersonDayTask } from "./week-person-grid";
 
@@ -30,6 +32,7 @@ interface WeekDayTasksProps {
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
   canSeeRecords: boolean;
+  canManageAdHoc?: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
   emptyClassName?: string;
 }
@@ -49,6 +52,7 @@ export function WeekDayTasks({
   processStyles,
   canEditEntries,
   canSeeRecords,
+  canManageAdHoc = false,
   entriesByPersonDayTask,
   emptyClassName = "text-[10px]",
 }: WeekDayTasksProps) {
@@ -118,14 +122,24 @@ export function WeekDayTasks({
         );
 
         return (
-          <div
-            key={t.id}
-            {...woHighlight}
-            style={{
-              background: colors.bgColor,
-              borderColor: colors.borderColor,
-            }}
-          >
+          <div key={t.id} className="relative">
+            {canManageAdHoc && t.isAdHoc && view === "plan" && t.taskId ? (
+              <div className="absolute top-0 right-0 z-10">
+                <DeleteAdHocTaskButton
+                  taskId={t.taskId}
+                  notes={t.notes}
+                  hasTimeEntries={(actualHoursByTask.get(t.taskId) ?? 0) > 0}
+                />
+              </div>
+            ) : null}
+            <AdHocTaskNotesTooltip notes={t.notes}>
+              <div
+                {...woHighlight}
+                style={{
+                  background: colors.bgColor,
+                  borderColor: colors.borderColor,
+                }}
+              >
             {(t.timeLabel ??
               (t.startSlot !== null && t.endSlot !== null
                 ? rangeLabel(t.startSlot, t.endSlot)
@@ -145,6 +159,7 @@ export function WeekDayTasks({
             <TaskLampBastidor label={t.bastidor} className="text-[10px] opacity-80" />
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <ProcessBadge code={t.process} definition={processStyles.get(t.process)} />
+              <AdHocTaskNotesIcon notes={t.notes} />
               <WorkOrderBadge number={t.workOrderNumber} status={t.workOrderStatus ?? undefined} />
               <span
                 className="font-mono text-[10px] font-bold ml-auto"
@@ -192,6 +207,8 @@ export function WeekDayTasks({
                 }
               />
             ) : null}
+              </div>
+            </AdHocTaskNotesTooltip>
           </div>
         );
       })}

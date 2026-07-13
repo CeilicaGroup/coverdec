@@ -255,6 +255,8 @@ export interface PlanningWeekAssignmentInput {
     isCompleted: boolean;
     projectId: string;
     lampId: string;
+    notes: string | null;
+    systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lamp: PlanningAssignmentSlice["task"]["lamp"];
     lampElement?: PlanningAssignmentSlice["task"]["lampElement"];
     project: { name: string };
@@ -287,6 +289,8 @@ export function toPlanningAssignmentSlices(
       isCompleted: a.task.isCompleted,
       projectId: a.task.projectId,
       lampId: a.task.lampId,
+      notes: a.task.notes,
+      systemKind: a.task.systemKind,
       lamp: a.task.lamp,
       lampElement: a.task.lampElement,
       project: { name: a.task.project.name },
@@ -408,6 +412,8 @@ export interface ActualHourEntry {
     projectId: string;
     lampId: string;
     isCompleted: boolean;
+    notes: string | null;
+    systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
     lamp?: { elementType?: { name: string } | null } | null;
     workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
@@ -456,6 +462,8 @@ export async function getActualHoursForWeek({
           projectId: true,
           lampId: true,
           isCompleted: true,
+          notes: true,
+          systemKind: true,
           lampElement: {
             select: { label: true, elementType: { select: { name: true } } },
           },
@@ -498,6 +506,8 @@ export async function getActualHoursForWeek({
           projectId: e.task.projectId,
           lampId: e.task.lampId,
           isCompleted: e.task.isCompleted,
+          notes: e.task.notes,
+          systemKind: e.task.systemKind,
           lampElement: e.task.lampElement,
           lamp: e.task.lamp,
           workOrder: e.task.workOrder,
@@ -1834,6 +1844,8 @@ export async function getActualHoursForDateRange({
           projectId: true,
           lampId: true,
           isCompleted: true,
+          notes: true,
+          systemKind: true,
           lampElement: {
             select: { label: true, elementType: { select: { name: true } } },
           },
@@ -1883,6 +1895,8 @@ export async function getActualHoursForDateRange({
             projectId: e.task.projectId,
             lampId: e.task.lampId,
             isCompleted: e.task.isCompleted,
+            notes: e.task.notes,
+            systemKind: e.task.systemKind,
             lampElement: e.task.lampElement,
             lamp: e.task.lamp,
             workOrder: e.task.workOrder,

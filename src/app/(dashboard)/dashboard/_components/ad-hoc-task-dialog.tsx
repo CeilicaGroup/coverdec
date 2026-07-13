@@ -53,6 +53,9 @@ export function AdHocTaskDialog({
   const [description, setDescription] = useState("");
 
   const selectedPerson = options.people.find((person) => person.id === personId);
+  const selectedProject = options.projects.find((project) => project.id === projectId);
+  const selectedNave = options.naves.find((nave) => nave.id === naveId);
+  const selectedProcess = options.processes.find((item) => item.code === process);
 
   function resetForm() {
     setDescription("");
@@ -127,7 +130,9 @@ export function AdHocTaskDialog({
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Operario" />
+                <SelectValue placeholder="Operario">
+                  {selectedPerson?.label}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {options.people.map((person) => (
@@ -142,7 +147,9 @@ export function AdHocTaskDialog({
             <Label>Proyecto (opcional)</Label>
             <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sin proyecto concreto" />
+                <SelectValue placeholder="Sin proyecto concreto">
+                  {projectId ? selectedProject?.label : "Sin proyecto"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Sin proyecto</SelectItem>
@@ -159,7 +166,9 @@ export function AdHocTaskDialog({
               <Label>Nave</Label>
               <Select value={naveId} onValueChange={(v) => setNaveId(v ?? "")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Nave" />
+                  <SelectValue placeholder="Nave">
+                    {selectedNave?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {options.naves.map((nave) => (
@@ -174,7 +183,9 @@ export function AdHocTaskDialog({
               <Label>Proceso</Label>
               <Select value={process} onValueChange={(v) => setProcess(v ?? IMPREVISTA_PROCESS_CODE)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Proceso" />
+                  <SelectValue placeholder="Proceso">
+                    {selectedProcess?.label ?? process}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {options.processes.map((item) => (

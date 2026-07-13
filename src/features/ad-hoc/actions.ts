@@ -8,6 +8,10 @@ import { childLogger } from "@/lib/logger";
 import { runAuditedMutation } from "@/lib/server-action";
 import { Role } from "@/generated/prisma";
 import { createAdHocTaskAndAssign } from "./create-ad-hoc-task";
+import {
+  assertCanDeleteAdHocTask,
+  deleteAdHocTaskRecord,
+} from "./delete-ad-hoc-task";
 import { IMPREVISTA_PROCESS_CODE } from "./constants";
 
 const log = childLogger({ module: "ad-hoc.actions" });
@@ -82,6 +86,7 @@ export async function createAdHocTask(
       );
 
       revalidatePath("/dashboard/semana");
+      revalidatePath("/dashboard/persona");
       revalidatePath("/dashboard/desviaciones-tiempos");
       return result;
     },
@@ -89,6 +94,44 @@ export async function createAdHocTask(
       summary: "Crear tarea imprevista",
       entityType: "Task",
       entityId: result.taskId,
+    }),
+  );
+}
+
+const deleteAdHocTaskSchema = z.object({
+  taskId: z.string().min(1),
+});
+
+export async function deleteAdHocTask(
+  input: z.infer<typeof deleteAdHocTaskSchema>,
+) {
+  return runAuditedMutation(
+    "ad-hoc.deleteAdHocTask",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = deleteAdHocTaskSchema.parse(input);
+
+      const task = await prisma.task.findFirst({
+        where: { id: data.taskId },
+        include: { _count: { select: { timeEntries: true } } },
+      });
+      if (!task) throw new Error("Tarea no encontrada.");
+
+      assertCanDeleteAdHocTask(task);
+
+      await prisma.$transaction((tx) => deleteAdHocTaskRecord(tx, task.id));
+
+      log.info({ taskId: task.id }, "ad-hoc task deleted");
+
+      revalidatePath("/dashboard/semana");
+      revalidatePath("/dashboard/persona");
+      revalidatePath("/dashboard/desviaciones-tiempos");
+    },
+    () => ({
+      summary: "Eliminar tarea imprevista",
+      entityType: "Task",
+      entityId: input.taskId,
     }),
   );
 }

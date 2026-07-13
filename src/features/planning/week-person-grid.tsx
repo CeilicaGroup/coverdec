@@ -38,7 +38,7 @@ export function toWeekPersonListItem(
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
-import type { WorkOrderStatus } from "@/generated/prisma";
+import { TaskSystemKind, type WorkOrderStatus } from "@/generated/prisma";
 
 export interface WeekGridCell {
   id: string;
@@ -62,6 +62,7 @@ export interface WeekGridCell {
   startedAt: string | null;
   endedAt: string | null;
   notes: string | null;
+  isAdHoc: boolean;
 }
 
 export interface WeekPersonTaskSummary {
@@ -150,7 +151,8 @@ export function buildPlanGrid(
       workOrderStatus: wo?.status ?? null,
       startedAt: null,
       endedAt: null,
-      notes: null,
+      notes: a.task.notes?.trim() || a.notes?.trim() || null,
+      isAdHoc: a.task.systemKind === TaskSystemKind.AD_HOC,
     });
     personMap.set(key, cell);
   }
@@ -194,7 +196,8 @@ export function buildActualGrid(
       workOrderStatus: e.task?.workOrder?.status ?? null,
       startedAt: e.startedAt.toISOString(),
       endedAt: e.endedAt?.toISOString() ?? null,
-      notes: e.notes,
+      notes: e.notes ?? e.task?.notes ?? null,
+      isAdHoc: e.task?.systemKind === TaskSystemKind.AD_HOC,
     });
     personMap.set(e.date, cell);
   }
@@ -266,6 +269,7 @@ interface WeekPersonGridProps {
   absences: { personId: string; date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  canManageAdHoc?: boolean;
   recordsPersonId: string | null;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }
@@ -285,6 +289,7 @@ export interface PersonWeekCalendarProps {
   completedByTask: Map<string, boolean>;
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  canManageAdHoc?: boolean;
   canSeeRecords: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }
@@ -305,6 +310,7 @@ export function PersonWeekCalendar({
   completedByTask,
   processStyles,
   canEditEntries,
+  canManageAdHoc = false,
   canSeeRecords,
   entriesByPersonDayTask,
 }: PersonWeekCalendarProps) {
@@ -359,6 +365,7 @@ export function PersonWeekCalendar({
                     completedByTask={completedByTask}
                     processStyles={processStyles}
                     canEditEntries={canEditEntries}
+                    canManageAdHoc={canManageAdHoc}
                     canSeeRecords={canSeeRecords}
                     entriesByPersonDayTask={entriesByPersonDayTask}
                   />
@@ -416,6 +423,7 @@ export function PersonWeekCalendar({
                   completedByTask={completedByTask}
                   processStyles={processStyles}
                   canEditEntries={canEditEntries}
+                  canManageAdHoc={canManageAdHoc}
                   canSeeRecords={canSeeRecords}
                   entriesByPersonDayTask={entriesByPersonDayTask}
                   emptyClassName="text-xs"
@@ -444,6 +452,7 @@ export function WeekPersonGrid({
   canEditEntries,
   recordsPersonId,
   entriesByPersonDayTask,
+  canManageAdHoc = false,
 }: WeekPersonGridProps) {
   const gridContent = (
     <>
@@ -487,6 +496,7 @@ export function WeekPersonGrid({
               absences={absences.filter((a) => a.personId === person.id)}
               processStyles={processStyles}
               canEditEntries={canEditEntries}
+              canManageAdHoc={canManageAdHoc}
               canSeeRecords={recordsPersonId == null || recordsPersonId === person.id}
               entriesByPersonDayTask={entriesByPersonDayTask}
             />
@@ -510,6 +520,7 @@ export function WeekPersonGrid({
           }))}
           processStyles={processStyles}
           canEditEntries={canEditEntries}
+          canManageAdHoc={canManageAdHoc}
           recordsPersonId={recordsPersonId}
           entriesByPersonDayTask={entriesByPersonDayTask}
         />
@@ -546,6 +557,7 @@ function WeekPersonRow({
   absences,
   processStyles,
   canEditEntries,
+  canManageAdHoc = false,
   canSeeRecords,
   entriesByPersonDayTask,
 }: {
@@ -563,6 +575,7 @@ function WeekPersonRow({
   absences: { date: Date; endDate: Date; reason: string | null }[];
   processStyles: Map<string, ProcessBadgeStyle>;
   canEditEntries: boolean;
+  canManageAdHoc?: boolean;
   canSeeRecords: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
 }) {
@@ -597,6 +610,7 @@ function WeekPersonRow({
               completedByTask={completedByTask}
               processStyles={processStyles}
               canEditEntries={canEditEntries}
+              canManageAdHoc={canManageAdHoc}
               canSeeRecords={canSeeRecords}
               entriesByPersonDayTask={entriesByPersonDayTask}
             />

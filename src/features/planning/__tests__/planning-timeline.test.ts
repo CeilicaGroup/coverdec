@@ -43,6 +43,8 @@ function slice(
       isCompleted: false,
       projectId: "pr1",
       lampId: overrides.lampId ?? "l1",
+      notes: null,
+      systemKind: null,
       lamp: { name: "L1" },
       project: { name: "Proyecto" },
     },
