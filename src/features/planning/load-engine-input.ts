@@ -4,7 +4,7 @@ import {
 } from "@/features/people/absence-model";
 import { personNaveId } from "@/features/people/person-naves";
 import { prisma } from "@/lib/db";
-import { ProjectApprovalStatus } from "@/generated/prisma";
+import { ProjectApprovalStatus, TaskSystemKind } from "@/generated/prisma";
 import { isLampEligibleForPlanning } from "@/lib/project-approval";
 import { utcDayStart } from "@/lib/holidays";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
@@ -352,6 +352,10 @@ export async function loadSolverInput(args: {
           approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
         },
         lamp: { isApprovedForPlanning: true },
+        OR: [
+          { systemKind: null },
+          { systemKind: { not: TaskSystemKind.AD_HOC } },
+        ],
       },
       include: {
         lamp: { select: { isApprovedForPlanning: true } },

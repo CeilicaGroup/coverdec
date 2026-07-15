@@ -6,7 +6,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { deleteAdHocTask } from "@/features/ad-hoc/actions";
-import { reportMutationError } from "@/lib/mutation-error";
+import { handleActionResult } from "@/lib/mutation-error";
 import { cn } from "@/lib/utils";
 
 function confirmLabel(notes: string | null | undefined): string {
@@ -41,13 +41,14 @@ export function DeleteAdHocTaskButton({
       onClick={() => {
         if (!confirm(`¿Eliminar ${confirmLabel(notes)}?`)) return;
         startTransition(async () => {
-          try {
-            await deleteAdHocTask({ taskId });
-            toast.success("Imprevista eliminada");
-            router.refresh();
-          } catch (err) {
-            toast.error(reportMutationError("No se pudo eliminar", err));
+          const result = await deleteAdHocTask({ taskId });
+          const outcome = handleActionResult("ad-hoc.delete", result);
+          if (!outcome.success) {
+            toast.error(outcome.message);
+            return;
           }
+          toast.success("Imprevista eliminada");
+          router.refresh();
         });
       }}
     >

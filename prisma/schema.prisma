@@ -244,6 +244,7 @@ model Person {
   workWindows       PersonWorkWindow[]
   scheduleOverrides PersonScheduleOverride[]
   attendanceSessions AttendanceSession[]
+  taskParticipants  TaskParticipant[]
 }
 
 model PersonNave {
@@ -516,9 +517,21 @@ model Task {
   workOrder         WorkOrder?           @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
+  participants      TaskParticipant[]
 
   @@index([lampElementId])
   @@index([workOrderId, workOrderSequence])
+}
+
+model TaskParticipant {
+  taskId   String
+  personId String
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, personId])
+  @@index([personId])
 }
 
 // ---------- Planning ----------

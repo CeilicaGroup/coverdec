@@ -5,55 +5,71 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { runAuditedMutation } from "@/lib/server-action";
-import { Role } from "@/generated/prisma";
-import { createAdHocTaskAndAssign } from "./create-ad-hoc-task";
+import { runServerAction } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { Role, TaskSystemKind } from "@/generated/prisma";
+import { createAdHocTaskRecord } from "./create-ad-hoc-task";
+import { injectPendingAdHocIntoDraftPlanning } from "./schedule-ad-hoc-tasks";
 import {
   assertCanDeleteAdHocTask,
   deleteAdHocTaskRecord,
 } from "./delete-ad-hoc-task";
 import { IMPREVISTA_PROCESS_CODE } from "./constants";
+import {
+  AD_HOC_PERSON_NOT_FOUND_ERROR,
+  formatAdHocPersonLabel,
+  resolveAdHocNaveId,
+} from "./resolve-ad-hoc-nave";
+import { pickCanonicalPersonNave } from "@/features/people/person-naves";
 
 const log = childLogger({ module: "ad-hoc.actions" });
 
 const createAdHocTaskSchema = z.object({
-  personId: z.string().min(1),
+  personIds: z.array(z.string().min(1)).min(1),
+  estimatedHours: z.number().positive().max(24),
   notes: z.string().min(1).max(500),
   projectId: z.string().min(1).optional(),
   naveId: z.string().min(1).optional(),
   process: z.string().min(1).optional(),
 });
 
+function revalidateAdHocPaths() {
+  revalidatePath("/dashboard/semana");
+  revalidatePath("/dashboard/persona");
+  revalidatePath("/dashboard/desviaciones-tiempos");
+  revalidatePath("/dashboard/horas");
+  revalidatePath("/dashboard/gantt");
+}
+
 export async function createAdHocTask(
   input: z.infer<typeof createAdHocTaskSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<{ taskId: string; scheduledInPlanning: boolean }>> {
+  return runServerAction(
     "ad-hoc.createAdHocTask",
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = createAdHocTaskSchema.parse(input);
 
-      const person = await prisma.person.findFirst({
-        where: { id: data.personId, isActive: true },
+      const uniquePersonIds = [...new Set(data.personIds)];
+      const people = await prisma.person.findMany({
+        where: { id: { in: uniquePersonIds }, isActive: true },
         include: {
           personNaves: { select: { naveId: true } },
         },
       });
 
-      if (!person) throw new Error("Persona no encontrada.");
-
-      let naveId = data.naveId;
-      if (!naveId) {
-        const personNaves = person.personNaves.map((row) => row.naveId);
-        if (personNaves.length === 1) {
-          naveId = personNaves[0];
-        } else if (personNaves.length === 0) {
-          throw new Error("El operario no tiene nave asignada.");
-        } else {
-          throw new Error("Selecciona la nave de la imprevista.");
-        }
+      if (people.length !== uniquePersonIds.length) {
+        throw new Error(AD_HOC_PERSON_NOT_FOUND_ERROR);
       }
+
+      const naveId = resolveAdHocNaveId(
+        people.map((person) => ({
+          personId: person.id,
+          naveIds: person.personNaves.map((row) => row.naveId),
+        })),
+        data.naveId,
+      );
 
       if (data.process) {
         const processDef = await prisma.processDefinition.findUnique({
@@ -64,9 +80,10 @@ export async function createAdHocTask(
       }
 
       const result = await prisma.$transaction((tx) =>
-        createAdHocTaskAndAssign(tx, {
-          personId: data.personId,
+        createAdHocTaskRecord(tx, {
+          personIds: uniquePersonIds,
           naveId,
+          estimatedHours: data.estimatedHours,
           notes: data.notes,
           projectId: data.projectId,
           process: data.process ?? IMPREVISTA_PROCESS_CODE,
@@ -77,18 +94,31 @@ export async function createAdHocTask(
       log.info(
         {
           taskId: result.taskId,
-          personId: data.personId,
+          personIds: uniquePersonIds,
           naveId,
+          estimatedHours: data.estimatedHours,
           projectId: data.projectId,
           process: data.process,
         },
         "ad-hoc task created",
       );
 
-      revalidatePath("/dashboard/semana");
-      revalidatePath("/dashboard/persona");
-      revalidatePath("/dashboard/desviaciones-tiempos");
-      return result;
+      const injected = await injectPendingAdHocIntoDraftPlanning({
+        naveId,
+        taskIds: [result.taskId],
+      });
+      if (injected.scheduledCount > 0) {
+        log.info(
+          { taskId: result.taskId, naveId },
+          "ad-hoc task injected into draft planning",
+        );
+      }
+
+      revalidateAdHocPaths();
+      return {
+        taskId: result.taskId,
+        scheduledInPlanning: injected.scheduledCount > 0,
+      };
     },
     (result) => ({
       summary: "Crear tarea imprevista",
@@ -104,8 +134,8 @@ const deleteAdHocTaskSchema = z.object({
 
 export async function deleteAdHocTask(
   input: z.infer<typeof deleteAdHocTaskSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "ad-hoc.deleteAdHocTask",
     async () => {
       const ctx = await requireDashboardContext();
@@ -124,9 +154,7 @@ export async function deleteAdHocTask(
 
       log.info({ taskId: task.id }, "ad-hoc task deleted");
 
-      revalidatePath("/dashboard/semana");
-      revalidatePath("/dashboard/persona");
-      revalidatePath("/dashboard/desviaciones-tiempos");
+      revalidateAdHocPaths();
     },
     () => ({
       summary: "Eliminar tarea imprevista",
@@ -134,6 +162,75 @@ export async function deleteAdHocTask(
       entityId: input.taskId,
     }),
   );
+}
+
+export interface PendingAdHocTaskRow {
+  id: string;
+  notes: string | null;
+  process: string;
+  estimatedHours: number;
+  naveId: string;
+  naveLabel: string;
+  createdAt: string;
+  participants: Array<{ id: string; label: string }>;
+}
+
+export async function listPendingAdHocTasks(
+  naveScope: string[] | null,
+): Promise<PendingAdHocTaskRow[]> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+
+  if (naveScope !== null && naveScope.length === 0) return [];
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      systemKind: TaskSystemKind.AD_HOC,
+      isCompleted: false,
+      assignments: { none: {} },
+      ...(naveScope !== null ? { naveId: { in: naveScope } } : {}),
+    },
+    select: {
+      id: true,
+      notes: true,
+      process: true,
+      estimatedHours: true,
+      naveId: true,
+      createdAt: true,
+      nave: { select: { codigo: true, nombre: true } },
+      participants: {
+        select: {
+          person: {
+            select: {
+              id: true,
+              iniciales: true,
+              alias: true,
+              user: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  return tasks.map((task) => ({
+    id: task.id,
+    notes: task.notes,
+    process: task.process,
+    estimatedHours: task.estimatedHours,
+    naveId: task.naveId,
+    naveLabel: `${task.nave.codigo} · ${task.nave.nombre}`,
+    createdAt: task.createdAt.toISOString(),
+    participants: task.participants.map(({ person }) => {
+      const name = person.user?.name ?? person.alias ?? person.iniciales;
+      return {
+        id: person.id,
+        label: formatAdHocPersonLabel({ name, iniciales: person.iniciales }),
+      };
+    }),
+  }));
 }
 
 export async function listAdHocFormOptions() {
@@ -147,6 +244,7 @@ export async function listAdHocFormOptions() {
         id: true,
         iniciales: true,
         alias: true,
+        user: { select: { name: true } },
         personNaves: {
           select: {
             naveId: true,
@@ -175,12 +273,20 @@ export async function listAdHocFormOptions() {
 
   return {
     people: people.map((person) => {
-      const naveCodigo = person.personNaves[0]?.nave.codigo;
-      const name = person.alias ?? person.iniciales;
+      const canonicalNave = pickCanonicalPersonNave(person.personNaves);
+      const name = person.user?.name ?? person.alias ?? person.iniciales;
+      const naveIds = person.personNaves.map((row) => row.naveId);
       return {
         id: person.id,
-        label: naveCodigo ? `${name} · ${naveCodigo}` : name,
-        defaultNaveId: person.personNaves[0]?.naveId ?? null,
+        label: formatAdHocPersonLabel({
+          name,
+          iniciales: person.iniciales,
+          naveCodigo: canonicalNave?.nave.codigo,
+        }),
+        name,
+        iniciales: person.iniciales,
+        naveIds,
+        defaultNaveId: canonicalNave?.naveId ?? null,
       };
     }),
     projects: projects.map((p) => ({

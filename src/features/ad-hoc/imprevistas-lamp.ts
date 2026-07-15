@@ -7,27 +7,22 @@ export async function getOrCreateImprevistasLamp(
 ): Promise<{ id: string; projectId: string }> {
   const projectId = await getImprevistasPoolProjectId(tx);
 
-  const existing = await tx.lamp.findUnique({
+  return tx.lamp.upsert({
     where: {
       projectId_nameKey: {
         projectId,
         nameKey: IMPREVISTAS_LAMP_NAME_KEY,
       },
     },
-    select: { id: true, projectId: true },
-  });
-  if (existing) return existing;
-
-  const created = await tx.lamp.create({
-    data: {
+    create: {
       projectId,
       name: IMPREVISTAS_LAMP_NAME,
       nameKey: IMPREVISTAS_LAMP_NAME_KEY,
       units: 1,
     },
+    update: {},
     select: { id: true, projectId: true },
   });
-  return created;
 }
 
 export function isImprevistasLamp(lamp: { nameKey: string }): boolean {

@@ -1,4 +1,5 @@
-import type { Prisma, TaskSystemKind } from "@/generated/prisma";
+import type { Prisma } from "@/generated/prisma";
+import { TaskSystemKind } from "@/generated/prisma";
 import type { ProcessCode } from "@/types/process";
 import { prisma } from "@/lib/db";
 import { taskChainKey } from "@/features/planning/task-chain-key";
@@ -326,10 +327,17 @@ export async function isTaskUnlocked(
 ): Promise<boolean> {
   const task = await tx.task.findUnique({
     where: { id: taskId },
-    select: { lampId: true, lampElementId: true, order: true, isCompleted: true },
+    select: {
+      lampId: true,
+      lampElementId: true,
+      order: true,
+      isCompleted: true,
+      systemKind: true,
+    },
   });
   if (!task) return false;
   if (task.isCompleted) return false;
+  if (task.systemKind === TaskSystemKind.AD_HOC) return true;
 
   const blockers = await tx.task.count({
     where: {

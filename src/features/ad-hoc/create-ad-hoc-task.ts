@@ -1,63 +1,28 @@
 import type { Prisma } from "@/generated/prisma";
 import { TaskSystemKind } from "@/generated/prisma";
-import { computeNextSlotForPersonDay } from "@/features/stock/move-lamp";
-import { getMondayOf, isoWeek } from "@/lib/week";
 import {
   IMPREVISTA_PROCESS_CODE,
-  IMPREVISTA_UNKNOWN_ESTIMATED_HOURS,
 } from "./constants";
 import { getOrCreateImprevistasLamp } from "./imprevistas-lamp";
 
 export interface CreateAdHocTaskInput {
-  personId: string;
+  personIds: string[];
   naveId: string;
+  estimatedHours: number;
   notes?: string;
   createdByUserId: string;
   projectId?: string;
   process?: string;
 }
 
-function todayUtcDate(): Date {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-}
-
-export async function createAdHocTaskAndAssign(
+export async function createAdHocTaskRecord(
   tx: Prisma.TransactionClient,
   input: CreateAdHocTaskInput,
-): Promise<{ taskId: string; planningAssignmentId: string }> {
-  const workDate = todayUtcDate();
-  const monday = getMondayOf(workDate);
-  const { year, week } = isoWeek(monday);
-  const estimatedHours = IMPREVISTA_UNKNOWN_ESTIMATED_HOURS;
-
-  const planning = await tx.planning.findUnique({
-    where: {
-      naveId_year_week: { naveId: input.naveId, year, week },
-    },
-    select: { id: true },
-  });
-  if (!planning) {
-    throw new Error(
-      "No hay planning de borrador para esta semana y nave. Genera el planning antes de asignar imprevistas.",
-    );
+): Promise<{ taskId: string }> {
+  const personIds = [...new Set(input.personIds)];
+  if (personIds.length === 0) {
+    throw new Error("Selecciona al menos un operario.");
   }
-
-  const personAssignments = await tx.planningAssignment.findMany({
-    where: {
-      planningId: planning.id,
-      personId: input.personId,
-      date: workDate,
-    },
-    select: { endSlot: true },
-  });
-
-  const slot = computeNextSlotForPersonDay(
-    personAssignments.map((assignment) => assignment.endSlot),
-    estimatedHours,
-  );
 
   const process = input.process?.trim() || IMPREVISTA_PROCESS_CODE;
 
@@ -95,30 +60,19 @@ export async function createAdHocTaskAndAssign(
       lampId,
       lampElementId: null,
       process,
-      estimatedHours,
+      estimatedHours: input.estimatedHours,
       order: (maxOrder._max.order ?? 0) + 1,
       naveId: input.naveId,
       notes: input.notes?.trim() || null,
       systemKind: TaskSystemKind.AD_HOC,
       createdByUserId: input.createdByUserId,
+      participants: {
+        createMany: {
+          data: personIds.map((personId) => ({ personId })),
+        },
+      },
     },
   });
 
-  const assignment = await tx.planningAssignment.create({
-    data: {
-      planningId: planning.id,
-      taskId: task.id,
-      personId: input.personId,
-      date: workDate,
-      startSlot: slot.startSlot,
-      endSlot: slot.endSlot,
-      hours: estimatedHours,
-      process,
-      isOverride: true,
-      isAfternoon: slot.isAfternoon,
-      notes: input.notes?.trim() || null,
-    },
-  });
-
-  return { taskId: task.id, planningAssignmentId: assignment.id };
+  return { taskId: task.id };
 }

@@ -30,8 +30,9 @@ import {
 import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { Role } from "@/generated/prisma";
-import { listAdHocFormOptions } from "@/features/ad-hoc/actions";
+import { listAdHocFormOptions, listPendingAdHocTasks } from "@/features/ad-hoc/actions";
 import { AdHocTaskDialog } from "../_components/ad-hoc-task-dialog";
+import { PendingAdHocTasksPanel } from "../_components/pending-ad-hoc-tasks-panel";
 import {
   buildActualGrid,
   buildEntriesByPersonDayTask,
@@ -62,7 +63,7 @@ export default async function SemanaPage({
     ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const adHocOptions = canManageAdHoc ? await listAdHocFormOptions() : null;
 
-  const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta, typologyImages, elementTypeImages] = await Promise.all([
+  const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta, typologyImages, elementTypeImages, pendingAdHocTasks] = await Promise.all([
     getNavePersonnel(naveScope),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
@@ -80,7 +81,12 @@ export default async function SemanaPage({
     getPlanningWeekMeta({ naveScope, weekStart }),
     loadTypologyImageAvailability(),
     loadElementTypeImageAvailability(),
+    canManageAdHoc ? listPendingAdHocTasks(naveScope) : Promise.resolve([]),
   ]);
+
+  const processLabels = Object.fromEntries(
+    [...processStyles.entries()].map(([code, style]) => [code, style.label]),
+  );
 
   const holidayDates = expandHolidayRangesToIsoDays(
     holidays,
@@ -139,6 +145,12 @@ export default async function SemanaPage({
           noPublished={planningNotice.noPublished}
         />
       )}
+      {canManageAdHoc && pendingAdHocTasks.length > 0 ? (
+        <PendingAdHocTasksPanel
+          tasks={pendingAdHocTasks}
+          processLabels={processLabels}
+        />
+      ) : null}
       {view === "plan" && grid.size === 0 && !planningNotice.hiddenDraft && !planningNotice.noPublished && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
           No hay planning generado para esta semana. Vuelve al Resumen y pulsa "Generar planning".

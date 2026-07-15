@@ -11,7 +11,9 @@ import {
 } from "./prior-week-planning";
 import {
   PlanningStatus,
-    type Prisma,
+  ProjectApprovalStatus,
+  TaskSystemKind,
+  type Prisma,
 } from "@/generated/prisma";
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
 import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
@@ -31,7 +33,14 @@ import type { EngineAssignment } from "./engine/types";
 import {
   filterOverrideAssignments,
   mergeOverrideAssignmentsAfterSolver,
+  type OverrideAssignmentSlice,
 } from "./planning-override-preserve";
+import {
+  buildAdHocPlanningAssignmentsForNave,
+  buildAdHocPlanningAssignmentsForNaves,
+  countSchedulableAdHocTasksForNaves,
+  loadAdHocNaveIdByTaskId,
+} from "@/features/ad-hoc/schedule-ad-hoc-tasks";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 
@@ -45,6 +54,100 @@ const PLANNING_WRITE_TX_MS = 30_000;
 const ENGINE_HORIZON_DAYS = 5;
 /** Por debajo de 15 min de hueco sin colocar no bloqueamos el guardado del borrador. */
 const UNSCHEDULED_FAIL_THRESHOLD_HOURS = 0.25;
+
+function toOverrideSlice(
+  assignment: Pick<
+    OverrideAssignmentSlice,
+    "taskId" | "personId" | "date" | "startSlot" | "endSlot" | "hours" | "process" | "isAfternoon"
+  >,
+): OverrideAssignmentSlice {
+  return {
+    taskId: assignment.taskId,
+    personId: assignment.personId,
+    date: assignment.date,
+    startSlot: assignment.startSlot,
+    endSlot: assignment.endSlot,
+    hours: assignment.hours,
+    process: assignment.process,
+    isAfternoon: assignment.isAfternoon,
+  };
+}
+
+function toOccupiedSlice(
+  assignment: Pick<
+    EngineAssignment,
+    "taskId" | "personId" | "date" | "startSlot" | "endSlot"
+  >,
+) {
+  return {
+    taskId: assignment.taskId,
+    personId: assignment.personId,
+    date: assignment.date,
+    startSlot: assignment.startSlot,
+    endSlot: assignment.endSlot,
+  };
+}
+
+async function mergeSolverWithOverridesAndAdHoc(args: {
+  naveId?: string;
+  naveIds?: string[];
+  weekStart: Date;
+  firstSchedulableDayIndex: number;
+  overrideAssignments: Array<{
+    taskId: string;
+    personId: string;
+    date: Date;
+    startSlot: number;
+    endSlot: number;
+    hours: number;
+    process: string;
+    isAfternoon: boolean;
+  }>;
+  solverAssignments: EngineAssignment[];
+}): Promise<{
+  mergedAssignments: EngineAssignment[];
+  adHocTaskIds: Set<string>;
+  overrideSlices: OverrideAssignmentSlice[];
+  adHocSlices: OverrideAssignmentSlice[];
+}> {
+  const overrideSlices = args.overrideAssignments.map(toOverrideSlice);
+  const alreadyPlannedTaskIds = new Set(
+    overrideSlices.map((assignment) => assignment.taskId),
+  );
+  const occupied = [
+    ...args.solverAssignments.map(toOccupiedSlice),
+    ...overrideSlices,
+  ];
+
+  const adHocSlices = args.naveIds
+    ? await buildAdHocPlanningAssignmentsForNaves({
+        naveIds: args.naveIds,
+        weekStart: args.weekStart,
+        firstSchedulableDayIndex: args.firstSchedulableDayIndex,
+        occupied,
+        alreadyPlannedTaskIds,
+      })
+    : await buildAdHocPlanningAssignmentsForNave({
+        naveId: args.naveId!,
+        weekStart: args.weekStart,
+        firstSchedulableDayIndex: args.firstSchedulableDayIndex,
+        occupied,
+        alreadyPlannedTaskIds,
+      });
+
+  const adHocTaskIds = new Set(adHocSlices.map((assignment) => assignment.taskId));
+
+  assertSingleWorkerPerTask(args.solverAssignments, { exemptTaskIds: adHocTaskIds });
+
+  const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
+    [...overrideSlices, ...adHocSlices],
+    args.solverAssignments,
+  );
+
+  assertSingleWorkerPerTask(mergedAssignments, { exemptTaskIds: adHocTaskIds });
+
+  return { mergedAssignments, adHocTaskIds, overrideSlices, adHocSlices };
+}
 
 export interface GeneratePlanningArgs {
   naveId: string;
@@ -74,17 +177,47 @@ export interface GenerateGlobalPlanningResult {
   planningIds: string[];
 }
 
-function buildNoSchedulableTasksMessage(args: {
+const EMPTY_SOLVER_RESULT = {
+  assignments: [] as EngineAssignment[],
+  unscheduledHours: 0,
+  warnings: [] as { taskId: string; reason: string }[],
+};
+
+async function buildNoSchedulableTasksMessage(args: {
   deferredHours: number;
   priorHours: number;
-}): string {
+  naveIds: string[];
+}): Promise<string> {
   if (args.deferredHours > 0) {
     return `Hay ${args.deferredHours.toFixed(1)}h pendientes que no pueden empezar en esta semana (tiempos de secado o cadena de procesos). Planifica una semana posterior o revisa el orden de las tareas.`;
   }
   if (args.priorHours > UNSCHEDULED_FAIL_THRESHOLD_HOURS) {
     return "No quedan horas por planificar en esta semana: el trabajo ya está cubierto en borradores de semanas anteriores. Revisa esas semanas en el calendario o deshaz/regenera desde la semana donde empezó el planning.";
   }
-  return "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas tengan tareas y horas estimadas.";
+
+  const blockedByApproval = await prisma.task.count({
+    where: {
+      naveId: { in: args.naveIds },
+      isCompleted: false,
+      project: { isActive: true },
+      OR: [{ systemKind: null }, { systemKind: { not: TaskSystemKind.AD_HOC } }],
+      AND: [
+        {
+          OR: [
+            { project: { approvalStatus: ProjectApprovalStatus.PENDING_APPROVAL } },
+            { lamp: { isApprovedForPlanning: false } },
+          ],
+        },
+      ],
+    },
+  });
+
+  const base =
+    "No hay tareas con horas pendientes en proyectos activos. Revisa que las lámparas estén aprobadas para planning y tengan horas estimadas.";
+  if (blockedByApproval > 0) {
+    return `${base} Hay ${blockedByApproval} tarea(s) bloqueadas por proyecto o lámpara pendiente de aprobación.`;
+  }
+  return base;
 }
 
 export async function generatePlanning(
@@ -152,10 +285,18 @@ export async function generatePlanning(
     0,
   );
 
-  if (engineInput.tasks.length === 0) {
+  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves([
+    args.naveId,
+  ]);
+
+  if (engineInput.tasks.length === 0 && schedulableAdHocCount === 0) {
     const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
     throw new Error(
-      buildNoSchedulableTasksMessage({ deferredHours, priorHours }),
+      await buildNoSchedulableTasksMessage({
+        deferredHours,
+        priorHours,
+        naveIds: [args.naveId],
+      }),
     );
   }
 
@@ -166,7 +307,10 @@ export async function generatePlanning(
   const solveStarted = Date.now();
   let result;
   try {
-    result = await runPlanningEngine(engineInput);
+    result =
+      engineInput.tasks.length === 0
+        ? EMPTY_SOLVER_RESULT
+        : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
       throw new Error(err.message);
@@ -179,6 +323,7 @@ export async function generatePlanning(
       year,
       week,
       taskCount: engineInput.tasks.length,
+      schedulableAdHocCount,
       solveMs: Date.now() - solveStarted,
       assignments: result.assignments.length,
     },
@@ -192,21 +337,15 @@ export async function generatePlanning(
       "planning rejected: task assigned to multiple workers",
     );
   }
-  assertSingleWorkerPerTask(result.assignments);
 
-  const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
-    overrideAssignments.map((assignment) => ({
-      taskId: assignment.taskId,
-      personId: assignment.personId,
-      date: assignment.date,
-      startSlot: assignment.startSlot,
-      endSlot: assignment.endSlot,
-      hours: assignment.hours,
-      process: assignment.process,
-      isAfternoon: assignment.isAfternoon,
-    })),
-    result.assignments,
-  );
+  const { mergedAssignments, adHocTaskIds, overrideSlices } =
+    await mergeSolverWithOverridesAndAdHoc({
+      naveId: args.naveId,
+      weekStart,
+      firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
+      overrideAssignments,
+      solverAssignments: result.assignments,
+    });
 
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((t) => ({ id: t.id, workOrderId: t.workOrderId })),
@@ -270,9 +409,9 @@ export async function generatePlanning(
             hours: a.hours,
             process: a.process,
             isAfternoon: a.isAfternoon,
-            isOverride: overrideAssignments.some(
-              (override) => override.taskId === a.taskId,
-            ),
+            isOverride:
+              overrideSlices.some((override) => override.taskId === a.taskId) ||
+              adHocTaskIds.has(a.taskId),
           })),
         });
       }
@@ -376,10 +515,16 @@ export async function generateGlobalPlanning(args: {
     0,
   );
 
-  if (engineInput.tasks.length === 0) {
+  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves(naveIds);
+
+  if (engineInput.tasks.length === 0 && schedulableAdHocCount === 0) {
     const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
     throw new Error(
-      buildNoSchedulableTasksMessage({ deferredHours, priorHours }),
+      await buildNoSchedulableTasksMessage({
+        deferredHours,
+        priorHours,
+        naveIds,
+      }),
     );
   }
 
@@ -392,7 +537,10 @@ export async function generateGlobalPlanning(args: {
   const solveStarted = Date.now();
   let result;
   try {
-    result = await runPlanningEngine(engineInput);
+    result =
+      engineInput.tasks.length === 0
+        ? EMPTY_SOLVER_RESULT
+        : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
       throw new Error(err.message);
@@ -406,6 +554,7 @@ export async function generateGlobalPlanning(args: {
       year,
       week,
       taskCount: engineInput.tasks.length,
+      schedulableAdHocCount,
       solveMs: Date.now() - solveStarted,
       assignments: result.assignments.length,
     },
@@ -419,21 +568,15 @@ export async function generateGlobalPlanning(args: {
       "global planning rejected: task assigned to multiple workers",
     );
   }
-  assertSingleWorkerPerTask(result.assignments);
 
-  const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
-    overrideAssignments.map((assignment) => ({
-      taskId: assignment.taskId,
-      personId: assignment.personId,
-      date: assignment.date,
-      startSlot: assignment.startSlot,
-      endSlot: assignment.endSlot,
-      hours: assignment.hours,
-      process: assignment.process,
-      isAfternoon: assignment.isAfternoon,
-    })),
-    result.assignments,
-  );
+  const { mergedAssignments, adHocTaskIds, overrideSlices } =
+    await mergeSolverWithOverridesAndAdHoc({
+      naveIds,
+      weekStart,
+      firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
+      overrideAssignments,
+      solverAssignments: result.assignments,
+    });
 
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((task) => ({ id: task.id, workOrderId: task.workOrderId })),
@@ -463,15 +606,25 @@ export async function generateGlobalPlanning(args: {
   for (const naveId of naveIds) {
     assignmentsByNaveId.set(naveId, []);
   }
+  const adHocNaveIdByTaskId = await loadAdHocNaveIdByTaskId([...adHocTaskIds]);
   for (const assignment of mergedAssignments) {
-    const naveId = engineInput.naveIdByTaskId.get(assignment.taskId);
-    if (!naveId) continue;
+    const naveId =
+      engineInput.naveIdByTaskId.get(assignment.taskId) ??
+      adHocNaveIdByTaskId.get(assignment.taskId);
+    if (!naveId) {
+      log.warn(
+        { taskId: assignment.taskId },
+        "global planning assignment skipped: nave not resolved",
+      );
+      continue;
+    }
     assignmentsByNaveId.get(naveId)?.push(assignment);
   }
 
-  const overrideTaskIds = new Set(
-    overrideAssignments.map((assignment) => assignment.taskId),
-  );
+  const overrideTaskIds = new Set([
+    ...overrideAssignments.map((assignment) => assignment.taskId),
+    ...adHocTaskIds,
+  ]);
 
   const perNave: NavePlanningResult[] = [];
   await prisma.$transaction(

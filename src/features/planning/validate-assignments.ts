@@ -63,8 +63,13 @@ export function findWorkOrdersWithMultipleWorkers(
 
 export function assertSingleWorkerPerTask(
   assignments: Pick<EngineAssignment, "taskId" | "personId">[],
+  options?: { exemptTaskIds?: Set<string> },
 ): void {
-  const conflicts = findTasksWithMultipleWorkers(assignments);
+  const exempt = options?.exemptTaskIds ?? new Set<string>();
+  const filtered = assignments.filter(
+    (assignment) => !exempt.has(assignment.taskId),
+  );
+  const conflicts = findTasksWithMultipleWorkers(filtered);
   if (conflicts.length === 0) return;
   const detail = conflicts
     .map((c) => `${c.taskId} (${c.personIds.join(", ")})`)

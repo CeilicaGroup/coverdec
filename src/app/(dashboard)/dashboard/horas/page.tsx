@@ -1,4 +1,4 @@
-import { PlanningStatus, Role } from "@/generated/prisma";
+import { PlanningStatus, Role, TaskSystemKind } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntriesList } from "./entries-list";
 import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
 import { TaskQueuePanel } from "./task-queue-panel";
+import { AdHocTasksPanel } from "./ad-hoc-tasks-panel";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import { planningRangeToDatetimeLocal } from "@/lib/datetime-local";
@@ -44,7 +45,7 @@ export default async function HorasPage() {
       ? {}
       : { status: PlanningStatus.PUBLISHED };
 
-  const [openTimer, entries, processStyles, weekPlanning] = await Promise.all([
+  const [openTimer, entries, processStyles, weekPlanning, adHocParticipantTasks] = await Promise.all([
     prisma.timeEntry.findFirst({
       where: { userId: ctx.userId, endedAt: null },
       include: { project: true, lamp: true, task: true },
@@ -75,6 +76,32 @@ export default async function HorasPage() {
         },
       },
     }),
+    ctx.personId
+      ? prisma.task.findMany({
+          where: {
+            systemKind: TaskSystemKind.AD_HOC,
+            isCompleted: false,
+            participants: { some: { personId: ctx.personId } },
+            project: { isActive: true },
+            ...(taskNaveFilter ?? {}),
+          },
+          select: {
+            id: true,
+            projectId: true,
+            lampId: true,
+            process: true,
+            notes: true,
+            estimatedHours: true,
+            project: { select: { name: true } },
+            assignments: {
+              where: { personId: ctx.personId },
+              select: { date: true, startSlot: true, endSlot: true },
+              orderBy: [{ date: "asc" }, { startSlot: "asc" }],
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const processLabels = Object.fromEntries(
@@ -118,6 +145,7 @@ export default async function HorasPage() {
           where: {
             id: { in: assignedTaskIds },
             isCompleted: false,
+            systemKind: { not: TaskSystemKind.AD_HOC },
             project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },
@@ -127,6 +155,7 @@ export default async function HorasPage() {
             process: true,
             lampId: true,
             order: true,
+            systemKind: true,
             project: { select: { id: true, name: true } },
             lamp: { select: { id: true, name: true } },
             workOrder: { select: { number: true, status: true } },
@@ -238,6 +267,24 @@ export default async function HorasPage() {
 
   const nextTask = workerQueue.find((t) => !t.blockedReason) ?? workerQueue[0] ?? null;
 
+  const adHocTasks = adHocParticipantTasks.map((task) => ({
+    id: task.id,
+    projectId: task.projectId,
+    projectName: task.project.name,
+    lampId: task.lampId,
+    process: task.process,
+    notes: task.notes,
+    estimatedHours: task.estimatedHours,
+    isPlanned: task.assignments.length > 0,
+    plannedRanges: task.assignments.map(
+      (assignment) =>
+        `${weekdayLabel(assignment.date)} ${rangeLabel(
+          assignment.startSlot,
+          assignment.endSlot,
+        )}`,
+    ),
+  }));
+
   const totalWeek = entries.reduce((acc, e) => acc + (e.hours ?? 0), 0);
 
   return (
@@ -245,6 +292,20 @@ export default async function HorasPage() {
       <PageHeader
         title="Mis horas"
         description={`Total semana: ${totalWeek.toFixed(2)}h`}
+      />
+
+      <AdHocTasksPanel
+        tasks={adHocTasks}
+        processLabels={processLabels}
+        openTimer={
+          openTimer
+            ? {
+                id: openTimer.id,
+                startedAt: openTimer.startedAt.toISOString(),
+                taskId: openTimer.taskId ?? null,
+              }
+            : null
+        }
       />
 
       <TaskQueuePanel
