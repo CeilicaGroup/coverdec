@@ -23,7 +23,7 @@ export async function savePlanningWeightsAction(
     "planning.savePlanningWeights",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       const data = planningWeightsSchema.parse(input);
 
       if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
@@ -79,7 +79,7 @@ export async function saveNonlinearDeadlineSettingsAction(
     "planning.saveNonlinearDeadlineSettings",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       const data = nonlinearDeadlineSettingsSchema.parse(input);
 
       if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");

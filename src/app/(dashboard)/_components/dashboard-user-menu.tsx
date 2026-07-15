@@ -15,17 +15,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
+import { DevUserSwitcher } from "@/features/dev/dev-user-switcher";
 
 interface DashboardUserMenuProps {
-  user: { name: string; role: string; email: string };
+  user: { id: string; name: string; role: string; email: string };
   person: { iniciales: string; color: string } | null;
   compact?: boolean;
+  devUserSwitcherEnabled?: boolean;
+  devSwitcherUsers?: DevSwitcherUserRow[];
 }
 
 export function DashboardUserMenu({
   user,
   person,
   compact = false,
+  devUserSwitcherEnabled = false,
+  devSwitcherUsers = [],
 }: DashboardUserMenuProps) {
   const router = useRouter();
 
@@ -71,12 +77,29 @@ export function DashboardUserMenu({
           <DropdownMenuLabel>
             <div className="space-y-0.5">
               <div className="text-sm font-semibold">{user.name}</div>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                {user.role}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {user.role}
+                </Badge>
+                {devUserSwitcherEnabled ? (
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    DEV
+                  </Badge>
+                ) : null}
+              </div>
             </div>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
+        {devUserSwitcherEnabled ? (
+          <>
+            <DropdownMenuSeparator />
+            <DevUserSwitcher
+              users={devSwitcherUsers}
+              currentUserId={user.id}
+              variant="menu"
+            />
+          </>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut} className="text-destructive">
           <LogOut className="size-4 mr-2" />

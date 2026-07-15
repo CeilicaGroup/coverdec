@@ -52,7 +52,7 @@ export async function generatePlanningAction(input: {
     "planning.generatePlanning",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       if (ctx.naveId) {
         throw new Error(
           "El planning se genera para todas las naves. Quita el filtro de nave.",
@@ -108,7 +108,7 @@ export async function prepareHorizonGenerationAction(input: {
     "planning.prepareHorizonGeneration",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       if (ctx.naveId) {
         throw new Error(
           "El planning se genera para todas las naves. Quita el filtro de nave.",
@@ -200,7 +200,7 @@ export async function publishPlanningAction(input: {
     "planning.publishPlanning",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       const { weekStart } = publishSchema.parse(input);
       const result = await publishAllPlanningsForWeek(new Date(weekStart));
       if (result.publishedCount === 0) {
@@ -233,7 +233,7 @@ export async function undoPlanningAction(input: {
     "planning.undoPlanning",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
       const result = await undoPlanningAllNaves({
         weekStart: new Date(weekStart),

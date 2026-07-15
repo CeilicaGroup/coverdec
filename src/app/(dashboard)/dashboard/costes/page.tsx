@@ -27,7 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatEuros, formatHours } from "@/lib/format";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
 
@@ -63,6 +64,11 @@ export default async function CostesPage({
   >();
   let totalCost = 0;
   let billableCost = 0;
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning,
+    planningMeta,
+  });
   for (const a of planning?.assignments ?? []) {
     const rate = Number(a.person.hourlyRate);
     const lineCost = a.hours * rate;
@@ -136,12 +142,8 @@ export default async function CostesPage({
       />
 
       <PlanningEmptyNotice
-        hiddenDraft={
-          viewMode === "published_only" &&
-          planningMeta?.status === "DRAFT" &&
-          !planning
-        }
-        noPublished={viewMode === "published_only" && !planningMeta && !planning}
+        hiddenDraft={planningNotice.hiddenDraft}
+        noPublished={planningNotice.noPublished}
       />
 
       <div className="rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 px-4 py-3 text-sm flex items-center gap-2 text-yellow-900 dark:text-yellow-200">

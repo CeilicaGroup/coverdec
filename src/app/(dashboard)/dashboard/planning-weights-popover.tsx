@@ -16,6 +16,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import type { Role } from "@/generated/prisma";
+import { canManagePlanning } from "@/features/planning/planning-visibility";
 import type { PlanningWeights } from "@/features/planning/policy-schema";
 import {
   normalizePlanningWeights,
@@ -62,7 +63,7 @@ export function PlanningWeightsPopover({
     setOverduePenaltyMultiplier(initialDeadlineSettings.overduePenaltyMultiplier);
   }, [initialWeights, initialDeadlineSettings]);
 
-  if (role === "OPERARIO") return null;
+  if (!canManagePlanning(role)) return null;
 
   const onSave = () => {
     startTransition(async () => {

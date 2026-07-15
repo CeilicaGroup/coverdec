@@ -12,6 +12,8 @@ import {
 import { cookies } from "next/headers";
 import { DashboardShell } from "./_components/dashboard-shell";
 import { PushRegistration } from "./_components/push-registration";
+import { isDevUserSwitcherEnabled } from "@/lib/dev-user-switcher";
+import { listDevSwitcherUsers } from "@/features/dev/user-switcher-actions";
 
 export default async function DashboardLayout({
   children,
@@ -59,6 +61,11 @@ export default async function DashboardLayout({
         )
       : "published_only";
 
+  const devUserSwitcherEnabled = isDevUserSwitcherEnabled();
+  const devSwitcherUsers = devUserSwitcherEnabled
+    ? await listDevSwitcherUsers()
+    : [];
+
   return (
     <DashboardShell
       user={{ id: user.id, name: user.name, role: user.role, email: user.email }}
@@ -67,6 +74,8 @@ export default async function DashboardLayout({
       activeNave={activeNave}
       assignedNaves={canSwitchNave ? [] : personNaveList}
       planningViewMode={planningViewMode}
+      devUserSwitcherEnabled={devUserSwitcherEnabled}
+      devSwitcherUsers={devSwitcherUsers}
     >
       <PushRegistration />
       {children}

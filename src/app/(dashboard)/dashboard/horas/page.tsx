@@ -2,7 +2,9 @@ import { PlanningStatus, Role, TaskSystemKind } from "@/generated/prisma";
 import { naveScopeFromContext } from "@/lib/nave-filter";
 import { requireDashboardContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { productiveTaskSystemKindWhere } from "@/features/planning/productive-task-filter";
+import { getMondayOf } from "@/lib/week";
 import { PageHeader } from "../../_components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntriesList } from "./entries-list";
@@ -26,8 +28,7 @@ export default async function HorasPage() {
   const ctx = await requireDashboardContext();
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
+  const monday = getMondayOf(today);
 
   const naveScope = naveScopeFromContext(ctx);
   const taskNaveFilter =
@@ -37,8 +38,6 @@ export default async function HorasPage() {
         ? { naveId: { in: [] as string[] } }
         : undefined;
 
-  const friday = new Date(monday);
-  friday.setUTCDate(monday.getUTCDate() + 5);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const planningStatusWhere: { status?: PlanningStatus } =
     viewMode === "include_draft"
@@ -60,7 +59,7 @@ export default async function HorasPage() {
     prisma.planning.findMany({
       where: {
         ...planningStatusWhere,
-        weekStart: { gte: monday, lt: friday },
+        weekStart: { gte: monday },
         ...(naveScope !== null ? { naveId: { in: naveScope } } : {}),
       },
       select: {
@@ -145,7 +144,7 @@ export default async function HorasPage() {
           where: {
             id: { in: assignedTaskIds },
             isCompleted: false,
-            systemKind: { not: TaskSystemKind.AD_HOC },
+            ...productiveTaskSystemKindWhere(),
             project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },

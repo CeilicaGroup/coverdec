@@ -1247,7 +1247,7 @@ export async function updateProjectPlanningStrategy(
     "projects.updateProjectPlanningStrategy",
     async () => {
   const ctx = await requireDashboardContext();
-    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    requireRole(ctx, [Role.ADMIN]);
     const data = updateProjectStrategySchema.parse(input);
   
     await prisma.project.update({
@@ -1280,7 +1280,7 @@ export async function applyProjectPlanningPreset(
     "projects.applyProjectPlanningPreset",
     async () => {
   const ctx = await requireDashboardContext();
-    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    requireRole(ctx, [Role.ADMIN]);
     const data = applyProjectPresetSchema.parse(input);
     const strategy = PROJECT_PLANNING_PRESETS[data.preset];
   
@@ -1313,7 +1313,7 @@ export async function applyGlobalPlanningPresetToActiveProjects(
     "projects.applyGlobalPlanningPreset",
     async () => {
   const ctx = await requireDashboardContext();
-    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    requireRole(ctx, [Role.ADMIN]);
     const data = applyGlobalPresetSchema.parse(input);
     const strategy = PROJECT_PLANNING_PRESETS[data.preset];
   
@@ -1352,7 +1352,7 @@ export async function setLampApprovedForPlanning(
     "projects.setLampApprovedForPlanning",
     async () => {
       const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      requireRole(ctx, [Role.ADMIN]);
       const data = setLampApprovedSchema.parse(input);
 
       const lamp = await prisma.lamp.findFirst({

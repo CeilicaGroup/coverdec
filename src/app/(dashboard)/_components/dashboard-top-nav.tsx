@@ -15,9 +15,10 @@ import {
 } from "./dashboard-nav-config";
 import { DashboardBrand } from "./dashboard-nav";
 import { DashboardUserMenu } from "./dashboard-user-menu";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
 
 interface DashboardTopNavProps {
-  user: { name: string; role: string; email: string };
+  user: { id: string; name: string; role: string; email: string };
   person: { iniciales: string; color: string } | null;
   userRole: string;
   naves: NaveSummary[];
@@ -27,6 +28,8 @@ interface DashboardTopNavProps {
   onSwitchNave: (naveId: string) => void;
   onOpenMobileMenu?: () => void;
   showMobileMenuButton?: boolean;
+  devUserSwitcherEnabled?: boolean;
+  devSwitcherUsers?: DevSwitcherUserRow[];
 }
 
 export function DashboardTopNav({
@@ -40,6 +43,8 @@ export function DashboardTopNav({
   onSwitchNave,
   onOpenMobileMenu,
   showMobileMenuButton = false,
+  devUserSwitcherEnabled = false,
+  devSwitcherUsers = [],
 }: DashboardTopNavProps) {
   const pathname = usePathname();
   const isAdmin = userRole === "ADMIN";
@@ -122,12 +127,18 @@ export function DashboardTopNav({
         ) : null}
 
         <div className="shrink-0">
-          <DashboardUserMenu user={user} person={person} compact />
+          <DashboardUserMenu
+            user={user}
+            person={person}
+            compact
+            devUserSwitcherEnabled={devUserSwitcherEnabled}
+            devSwitcherUsers={devSwitcherUsers}
+          />
         </div>
       </div>
 
       {activeSection ? (
-        <div className="border-t px-3 lg:px-4 py-1.5 overflow-x-auto">
+        <div className="max-lg:hidden border-t px-3 lg:px-4 py-1.5 overflow-x-auto">
           <div className="flex items-center gap-1 min-w-max">
             {activeSection.items.map((item) => {
               const active = isNavItemActive(pathname, item);

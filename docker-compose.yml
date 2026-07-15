@@ -20,10 +20,13 @@
 
 name: coverdec
 
+x-restart: &default-restart
+  restart: unless-stopped
+
 services:
   db:
+    <<: *default-restart
     image: postgres:16-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-coverdec}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -42,10 +45,10 @@ services:
       start_period: 10s
 
   planning-solver:
+    <<: *default-restart
     build:
       context: ./services/planning-solver
       dockerfile: Dockerfile
-    restart: unless-stopped
     environment:
       SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-180}
       SOLVER_NUM_WORKERS: ${SOLVER_NUM_WORKERS:-4}
@@ -63,10 +66,10 @@ services:
       start_period: 15s
 
   web:
+    <<: *default-restart
     build:
       context: .
       dockerfile: Dockerfile
-    restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -91,11 +94,11 @@ services:
         condition: service_healthy
 
   worker:
+    <<: *default-restart
     build:
       context: .
       dockerfile: Dockerfile
     command: npm run worker:notifications
-    restart: unless-stopped
     environment:
       NODE_ENV: production
       DATABASE_URL: >-

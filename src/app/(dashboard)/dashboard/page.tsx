@@ -71,7 +71,12 @@ import {
   getPriorPlanningAssignments,
 } from "@/features/planning/prior-week-planning";
 import { WeekProgressBar } from "@/components/week-progress-bar";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import {
+  canManagePlanning,
+  resolvePlanningEmptyNotice,
+  resolvePlanningStatusKpi,
+} from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../_components/planning-empty-notice";
 import { listCatalogTimeDeviations } from "@/features/time-tracking/catalog-time-stats";
 
@@ -90,6 +95,8 @@ export default async function ResumenPage({
   const days = weekDays(weekStart);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
+
+  const canManagePlanningRole = canManagePlanning(ctx.role);
 
   const [planning, planningMeta, weekMetaAll, people, projects, holidays, absences, planningWeights, deadlineSettings, processStyles, priorAssignments, timeDeviations] =
     await Promise.all([
@@ -173,6 +180,18 @@ export default async function ResumenPage({
       ? `${occupation}% ocupación · ${formatHours(crossNaveHours.totalHours)} otras naves`
       : `${occupation}% ocupación`;
 
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning,
+    planningMeta,
+  });
+  const planningStatusKpi = resolvePlanningStatusKpi({
+    role: ctx.role,
+    viewMode,
+    planning,
+    planningMeta,
+  });
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
@@ -184,13 +203,14 @@ export default async function ResumenPage({
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
               weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
             />
-            {ctx.naveId ? (
+            {ctx.naveId && canManagePlanningRole ? (
               <PlanningWeightsPopover
                 initialWeights={planningWeights}
                 initialDeadlineSettings={deadlineSettings}
                 role={ctx.role}
               />
             ) : null}
+            {canManagePlanningRole ? (
             <GenerateButton
               weekStart={getMondayOf(weekStart).toISOString()}
               hasPlanning={weekMetaAll.hasPlanning}
@@ -214,6 +234,7 @@ export default async function ResumenPage({
                   : undefined
               }
             />
+            ) : null}
           </div>
         }
       />
@@ -239,16 +260,8 @@ export default async function ResumenPage({
       )}
 
       <PlanningEmptyNotice
-        hiddenDraft={
-          viewMode === "published_only" &&
-          planningMeta?.status === "DRAFT" &&
-          !planning
-        }
-        noPublished={
-          viewMode === "published_only" &&
-          !planningMeta &&
-          !planning
-        }
+        hiddenDraft={planningNotice.hiddenDraft}
+        noPublished={planningNotice.noPublished}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -274,25 +287,16 @@ export default async function ResumenPage({
         />
         <Kpi
           label="Estado planning"
-          value={
-            (planning?.status ?? planningMeta?.status) === "PUBLISHED"
-              ? "Publicado"
-              : planning ?? planningMeta
-                ? "Borrador"
-                : "Sin generar"
+          value={planningStatusKpi.value}
+          sub={planningStatusKpi.sub}
+          icon={
+            planningStatusKpi.showCheckIcon ? (
+              <CheckCircle2 className="size-4" />
+            ) : (
+              <Sparkles className="size-4" />
+            )
           }
-          sub={(() => {
-            const publishedAt = planning?.publishedAt ?? planningMeta?.publishedAt;
-            if (publishedAt) return formatShortDate(publishedAt);
-            if (planningMeta?.status === "DRAFT" && viewMode === "published_only") {
-              return "Borrador oculto en vista";
-            }
-            return "Genera para empezar";
-          })()}
-          icon={planning ?? planningMeta ? <CheckCircle2 className="size-4" /> : <Sparkles className="size-4" />}
-          highlight={
-            (planning?.status ?? planningMeta?.status) === "PUBLISHED" ? "ok" : "muted"
-          }
+          highlight={planningStatusKpi.highlight}
         />
       </div>
 
@@ -351,7 +355,7 @@ export default async function ResumenPage({
             <p className="text-xs text-muted-foreground">
               Progreso global, entregas y fin estimado (orientativo según capacidad del equipo).
             </p>
-            {(ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION") ? (
+            {canManagePlanningRole ? (
               <GlobalProjectPresetControl />
             ) : null}
           </div>
@@ -369,14 +373,14 @@ export default async function ResumenPage({
                 rows={allProjects}
                 showAssigned
                 showExpected
-                canManage={ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION"}
+                canManage={canManagePlanningRole}
                 processStyles={processStyles}
               />
             </TabsContent>
             <TabsContent value="sin-asignar" className="mt-0">
               <ProjectsTable
                 rows={unassignedProjects}
-                canManage={ctx.role === "ADMIN" || ctx.role === "JEFE_PRODUCCION"}
+                canManage={canManagePlanningRole}
                 processStyles={processStyles}
                 emptyMessage={
                   planning
@@ -389,7 +393,7 @@ export default async function ResumenPage({
         </CardContent>
       </Card>
 
-      {planning && planning.assignments.length === 0 && (
+      {canManagePlanningRole && planning && planning.assignments.length === 0 && (
         <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 text-sm text-yellow-900">
           Borrador generado sin asignaciones. Revisa los proyectos pendientes y vuelve a generar tras añadir tareas.
         </div>

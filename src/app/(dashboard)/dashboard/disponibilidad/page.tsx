@@ -35,7 +35,8 @@ import { formatHours, formatShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absence-model";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
@@ -75,6 +76,11 @@ export default async function DisponibilidadPage({
     days[0],
     days[days.length - 1] ?? days[0],
   );
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning,
+    planningMeta,
+  });
 
   const scheduleByPerson = new Map(
     people.map((person) => [person.id, personScheduleContextFromPerson(person)]),
@@ -94,12 +100,8 @@ export default async function DisponibilidadPage({
       />
 
       <PlanningEmptyNotice
-        hiddenDraft={
-          viewMode === "published_only" &&
-          planningMeta?.status === "DRAFT" &&
-          !planning
-        }
-        noPublished={viewMode === "published_only" && !planningMeta && !planning}
+        hiddenDraft={planningNotice.hiddenDraft}
+        noPublished={planningNotice.noPublished}
       />
 
       <Card>

@@ -32,10 +32,8 @@ import {
   PersonaLayoutToggle,
   parsePersonaLayout,
 } from "./persona-layout-toggle";
-import {
-  getPlanningViewModeForContext,
-  planningNoticeState,
-} from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import {
   actualRecordsUserIdForContext,
   canSeePersonRecords,
@@ -140,17 +138,11 @@ export default async function PersonaPage({
   const actualTask = buildPersonTaskSummary(actualGrid, todayIso);
   const entriesByPersonDayTask = buildEntriesByPersonDayTask(actualEntries);
 
-  const hiddenDraft =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    planningMeta?.status === "DRAFT" &&
-    !planning;
-  const noPublished =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    !planningMeta &&
-    !planning;
-  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning: view === "plan" ? planning : null,
+    planningMeta: view === "plan" ? planningMeta : null,
+  });
 
   const hasCalendarContent = [...grid.values()].some((dayMap) =>
     [...dayMap.values()].some((cells) => cells.length > 0),

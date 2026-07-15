@@ -7,6 +7,7 @@ import { DashboardBrand, DashboardNav } from "./dashboard-nav";
 import { DashboardTopNav } from "./dashboard-top-nav";
 import { DashboardUserMenu } from "./dashboard-user-menu";
 import type { PlanningViewMode } from "@/features/planning/planning-visibility";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
 
 interface NaveSummary {
   id: string;
@@ -21,6 +22,8 @@ interface DashboardShellProps {
   activeNave: NaveSummary | null;
   assignedNaves?: NaveSummary[];
   planningViewMode?: PlanningViewMode;
+  devUserSwitcherEnabled?: boolean;
+  devSwitcherUsers?: DevSwitcherUserRow[];
   children: React.ReactNode;
 }
 
@@ -31,6 +34,8 @@ export function DashboardShell({
   activeNave,
   assignedNaves = [],
   planningViewMode = "published_only",
+  devUserSwitcherEnabled = false,
+  devSwitcherUsers = [],
   children,
 }: DashboardShellProps) {
   const router = useRouter();
@@ -61,6 +66,8 @@ export function DashboardShell({
           onSwitchNave={onSwitchNave}
           onOpenMobileMenu={() => setMobileNavOpen(true)}
           showMobileMenuButton
+          devUserSwitcherEnabled={devUserSwitcherEnabled}
+          devSwitcherUsers={devSwitcherUsers}
         />
       </header>
 
@@ -84,7 +91,12 @@ export function DashboardShell({
             className="min-h-0 flex-1 overflow-y-auto"
           />
           <div className="shrink-0 border-t bg-card p-3">
-            <DashboardUserMenu user={user} person={person} />
+            <DashboardUserMenu
+              user={user}
+              person={person}
+              devUserSwitcherEnabled={devUserSwitcherEnabled}
+              devSwitcherUsers={devSwitcherUsers}
+            />
           </div>
         </SheetContent>
       </Sheet>

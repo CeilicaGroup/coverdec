@@ -41,6 +41,7 @@ import { LampApprovalToggle } from "./lamp-approval-toggle";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role, ProjectApprovalStatus } from "@/generated/prisma";
 import { listStockLamps } from "@/features/stock/actions";
+import { canManagePlanning } from "@/features/planning/planning-visibility";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 
 export default async function ProjectDetailPage({
@@ -92,6 +93,7 @@ export default async function ProjectDetailPage({
   if (!project) notFound();
 
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
+  const canManagePlanningRole = canManagePlanning(ctx.role);
   const taskIds = project.lamps.flatMap((lamp) => lamp.tasks.map((task) => task.id));
   const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
   const lamps = project.lamps.map((lamp) => ({
@@ -386,16 +388,19 @@ export default async function ProjectDetailPage({
                         <LampApprovalToggle
                           lampId={l.id}
                           isApproved={l.isApprovedForPlanning}
-                          canManage={canManage}
+                          canManage={canManagePlanningRole}
                         />
                       </>
                     }
                   >
+                    {manualLamp || canManage || showStockActions ? (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 bg-muted/10 border-t">
-                      <div className="text-xs text-muted-foreground min-w-0">
-                        {manualLamp ? "Horas" : "Elementos"}:{" "}
-                        <span className="text-foreground">{elementSummary}</span>
-                      </div>
+                      {manualLamp ? (
+                        <div className="text-xs text-muted-foreground min-w-0">
+                          Horas:{" "}
+                          <span className="text-foreground">{elementSummary}</span>
+                        </div>
+                      ) : null}
                       {canManage && !manualLamp ? (
                         <EditLampElementsDialog
                           key={`${l.id}-${l.updatedAt.toISOString()}`}
@@ -437,6 +442,7 @@ export default async function ProjectDetailPage({
                         />
                       ) : null}
                     </div>
+                    ) : null}
                     <LampTasksPanel
                       lampId={l.id}
                       tasks={l.tasks}

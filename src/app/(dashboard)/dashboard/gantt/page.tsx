@@ -33,7 +33,7 @@ import { PageHeader } from "../../_components/page-header";
 import { GanttChart } from "./gantt-chart";
 import { GanttFilters, type GanttAxisMode } from "./gantt-filters";
 import { GanttWorkerChart, type GanttWorkerRow } from "./gantt-worker-chart";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
 import { ViewToggle } from "../../_components/view-toggle";
 import { formatHours } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";

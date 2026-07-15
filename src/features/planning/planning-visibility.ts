@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { PlanningStatus, Role } from "@/generated/prisma";
-import type { DashboardContext } from "@/lib/context";
+import { formatShortDate } from "@/lib/format";
 
 export const PLANNING_VIEW_MODE_COOKIE = "planning-view-mode";
 
@@ -47,22 +46,95 @@ export function isPlanningVisible(
   return status === PlanningStatus.PUBLISHED;
 }
 
-export async function getPlanningViewModeForContext(
-  ctx: Pick<DashboardContext, "role">,
-): Promise<PlanningViewMode> {
-  const cookieStore = await cookies();
-  const pref = parsePlanningViewModeCookie(
-    cookieStore.get(PLANNING_VIEW_MODE_COOKIE)?.value,
-  );
-  return resolvePlanningViewMode(ctx.role, pref);
+/** Solo admin puede activar la vista «+ borrador». */
+export function roleCanIncludeDraftView(role: Role): boolean {
+  return role === Role.ADMIN;
 }
 
-/** Operarios no deben saber que existe un borrador oculto: solo ven ausencia de planning publicado. */
+/** Generar, publicar, deshacer, pesos y estrategia de planning. */
+export function canManagePlanning(role: Role): boolean {
+  return role === Role.ADMIN;
+}
+
+export function resolvePlanningEmptyNotice(
+  role: Role,
+  args: {
+    viewMode: PlanningViewMode;
+    planning: unknown | null | undefined;
+    planningMeta: { status: PlanningStatus } | null | undefined;
+  },
+): { hiddenDraft: boolean; noPublished: boolean } {
+  const hiddenDraft =
+    args.viewMode === "published_only" &&
+    args.planningMeta?.status === PlanningStatus.DRAFT &&
+    !args.planning;
+  const noPublished =
+    args.viewMode === "published_only" && !args.planningMeta && !args.planning;
+  return planningNoticeState(role, { hiddenDraft, noPublished });
+}
+
+export function resolvePlanningStatusKpi(args: {
+  role: Role;
+  viewMode: PlanningViewMode;
+  planning: { status: PlanningStatus; publishedAt: Date | null } | null | undefined;
+  planningMeta: { status: PlanningStatus; publishedAt: Date | null } | null | undefined;
+}): {
+  value: string;
+  sub: string;
+  highlight: "ok" | "muted";
+  showCheckIcon: boolean;
+} {
+  const planning = args.planning ?? null;
+  const meta = args.planningMeta ?? null;
+  const isPublished =
+    planning?.status === PlanningStatus.PUBLISHED ||
+    meta?.status === PlanningStatus.PUBLISHED;
+
+  if (isPublished) {
+    const publishedAt = planning?.publishedAt ?? meta?.publishedAt ?? null;
+    return {
+      value: "Publicado",
+      sub: publishedAt ? formatShortDate(publishedAt) : "",
+      highlight: "ok",
+      showCheckIcon: true,
+    };
+  }
+
+  const hasDraft =
+    planning?.status === PlanningStatus.DRAFT ||
+    meta?.status === PlanningStatus.DRAFT;
+
+  if (args.role === Role.ADMIN && hasDraft) {
+    return {
+      value: "Borrador",
+      sub:
+        !planning &&
+        meta?.status === PlanningStatus.DRAFT &&
+        args.viewMode === "published_only"
+          ? "Borrador oculto en vista"
+          : "Genera para empezar",
+      highlight: "muted",
+      showCheckIcon: true,
+    };
+  }
+
+  return {
+    value: "Sin generar",
+    sub: "Genera para empezar",
+    highlight: "muted",
+    showCheckIcon: false,
+  };
+}
+
+/** Operarios y jefes no deben saber que existe un borrador oculto. */
 export function planningNoticeState(
   role: Role,
   input: { hiddenDraft: boolean; noPublished: boolean },
 ): { hiddenDraft: boolean; noPublished: boolean } {
-  if (role === Role.OPERARIO && input.hiddenDraft) {
+  if (
+    (role === Role.OPERARIO || role === Role.JEFE_PRODUCCION) &&
+    input.hiddenDraft
+  ) {
     return { hiddenDraft: false, noPublished: true };
   }
   return input;

@@ -23,10 +23,8 @@ import { WeekNav } from "../../_components/week-nav";
 import { ViewToggle } from "../../_components/view-toggle";
 import { CalendarScaleToggle } from "../../_components/calendar-scale-toggle";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
-import {
-  getPlanningViewModeForContext,
-  planningNoticeState,
-} from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { Role } from "@/generated/prisma";
@@ -100,17 +98,11 @@ export default async function SemanaPage({
   const planTask = buildPersonTaskSummary(planGrid, todayIso);
   const actualTask = buildPersonTaskSummary(actualGrid, todayIso);
   const entriesByPersonDayTask = buildEntriesByPersonDayTask(actualEntries);
-  const hiddenDraft =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    planningMeta?.status === "DRAFT" &&
-    !planning;
-  const noPublished =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    !planningMeta &&
-    !planning;
-  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning: view === "plan" ? planning : null,
+    planningMeta: view === "plan" ? planningMeta : null,
+  });
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">

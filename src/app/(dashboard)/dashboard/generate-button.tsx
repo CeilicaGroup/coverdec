@@ -47,6 +47,7 @@ import {
 } from "@/features/planning/plan-from";
 import { formatWeekRange } from "@/lib/week";
 import type { Role } from "@/generated/prisma";
+import { canManagePlanning } from "@/features/planning/planning-visibility";
 
 export interface GenerateButtonProject {
   id: string;
@@ -141,7 +142,7 @@ export function GenerateButton({
     untilIso || weekStart,
   );
 
-  if (role === "OPERARIO") return null;
+  if (!canManagePlanning(role)) return null;
 
   const onHorizonKindChange = (value: string | null) => {
     if (!value) return;

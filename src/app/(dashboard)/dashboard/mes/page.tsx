@@ -22,7 +22,7 @@ import {
   summarizePlanningByDay,
   summarizeWeekRowsFromCalendar,
 } from "@/features/planning/queries";
-import { getPlanningViewModeForContext } from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
 import {
   actualRecordsUserIdForContext,
   enrichActualSummariesWithTeam,

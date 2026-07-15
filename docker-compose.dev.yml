@@ -11,8 +11,12 @@
 
 name: coverdec-dev
 
+x-restart: &default-restart
+  restart: unless-stopped
+
 services:
   db:
+    <<: *default-restart
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-coverdec}
@@ -32,6 +36,7 @@ services:
       start_period: 10s
 
   planning-solver:
+    <<: *default-restart
     build:
       context: ./services/planning-solver
       dockerfile: Dockerfile
@@ -64,6 +69,7 @@ services:
       start_period: 15s
 
   web:
+    <<: *default-restart
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -81,6 +87,8 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_BETTER_AUTH_URL: ${NEXT_PUBLIC_BETTER_AUTH_URL:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_DEV_USER_SWITCHER: ${ENABLE_DEV_USER_SWITCHER:-}
+      DEV_USER_SWITCH_PASSWORD: ${DEV_USER_SWITCH_PASSWORD:-coverdec123}
       NOTIFICATION_CRON_TZ: ${NOTIFICATION_CRON_TZ:-Europe/Madrid}
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -98,6 +106,7 @@ services:
         condition: service_healthy
 
   worker:
+    <<: *default-restart
     build:
       context: .
       dockerfile: Dockerfile.dev

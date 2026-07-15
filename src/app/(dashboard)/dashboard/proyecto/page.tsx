@@ -43,10 +43,8 @@ import {
   riskFromPlannedEnd,
 } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
-import {
-  getPlanningViewModeForContext,
-  planningNoticeState,
-} from "@/features/planning/planning-visibility";
+import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
+import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import {
   buildPlannedEndByProjectId,
@@ -119,17 +117,12 @@ export default async function ProyectoPage({
     view === "plan"
       ? await getPlanningWeekMeta({ naveScope, weekStart })
       : null;
-  const hiddenDraft =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    planningMeta?.status === "DRAFT" &&
-    assignments.length === 0;
-  const noPublished =
-    view === "plan" &&
-    viewMode === "published_only" &&
-    !planningMeta &&
-    assignments.length === 0;
-  const planningNotice = planningNoticeState(ctx.role, { hiddenDraft, noPublished });
+  const planningNotice = resolvePlanningEmptyNotice(ctx.role, {
+    viewMode,
+    planning:
+      view === "plan" && assignments.length > 0 ? planning : null,
+    planningMeta,
+  });
 
   // Build per-project data
   const byProject = new Map<string, PlanningAssignmentSlice[]>();

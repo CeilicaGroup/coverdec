@@ -266,9 +266,11 @@ function ElementSectionBar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-muted/30 border-b border-border/50">
       <div className="space-y-1 min-w-0">
-        {elementTypeId && elementTypeId !== "__sin_elemento__" ? (
+        {elementTypeId &&
+        elementTypeId !== "__sin_elemento__" &&
+        showLabel ? (
           <LampElementVisual
-            label={showLabel ? label : null}
+            label={label}
             typology={typology}
             typologyImages={typologyImages}
             elementTypeId={elementTypeId}
@@ -278,9 +280,7 @@ function ElementSectionBar({
           />
         ) : showLabel ? (
           <span className="text-xs font-medium">{label}</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">Tareas</span>
-        )}
+        ) : null}
         {typeDefaultNaveLabel ? (
           <p className="text-[10px] text-muted-foreground">
             Nave del tipo: {typeDefaultNaveLabel}
