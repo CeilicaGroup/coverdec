@@ -348,6 +348,9 @@ model ElementType {
   baseUnit      String          @default("m2")
   isActive      Boolean         @default(true)
   defaultNaveId String?
+  imageData      Bytes?
+  imageMimeType  String?
+  imageUpdatedAt DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -425,7 +428,7 @@ model Lamp {
   height        Float?
   depth         Float?
   units         Int      @default(1)
-  isApprovedForPlanning Boolean @default(true)
+  isApprovedForPlanning Boolean @default(false)
   surfaceM2     Float?
   notes                 String?
   returnedToStockAt     DateTime?

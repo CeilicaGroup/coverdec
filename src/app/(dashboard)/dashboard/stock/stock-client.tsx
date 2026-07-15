@@ -49,13 +49,17 @@ import {
   type DraftElementRow,
   type ElementTypeOption,
 } from "../proyectos/[id]/lamp-element-draft-fields";
-import { LampElementStockStatus, type ElementTypology } from "@/generated/prisma";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
+import { LampElementStockStatus, type ElementTypology } from "@/generated/prisma";
 
 interface StockLampRow {
   id: string;
   name: string;
   elementTypeName: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   stockStatus: LampElementStockStatus | null;
   batchCodes: string[];
   pendingHours: number;
@@ -76,12 +80,14 @@ export function StockClient({
   stockLamps,
   projects,
   typologyImages,
+  elementTypeImages,
 }: {
   elementTypes: ElementTypeOption[];
   stockLamps: StockLampRow[];
   projects: Array<{ id: string; name: string; code: string }>;
   stockPoolProjectId: string;
   typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -166,6 +172,7 @@ export function StockClient({
                   draftRows={draftRows}
                   elementTypes={elementTypes}
                   typologyImages={typologyImages}
+                  elementTypeImages={elementTypeImages}
                   onUpdate={updateDraft}
                   onRemove={removeDraft}
                 />
@@ -209,9 +216,22 @@ export function StockClient({
                       >
                         {lamp.name}
                       </Link>
-                      <div className="text-[10px] text-muted-foreground">
-                        {lamp.elementTypeName ?? "—"}
-                      </div>
+                      {lamp.elementTypeId && lamp.elementTypology ? (
+                        <LampElementVisual
+                          label={lamp.elementTypeName}
+                          typology={lamp.elementTypology}
+                          typologyImages={typologyImages}
+                          elementTypeId={lamp.elementTypeId}
+                          elementTypeImages={elementTypeImages}
+                          size="sm"
+                          compact
+                          className="mt-1"
+                        />
+                      ) : (
+                        <div className="text-[10px] text-muted-foreground">
+                          {lamp.elementTypeName ?? "—"}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {lamp.stockStatus ? (

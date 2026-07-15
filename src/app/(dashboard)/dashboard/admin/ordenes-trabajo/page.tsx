@@ -2,6 +2,8 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { PageHeader } from "@/app/(dashboard)/_components/page-header";
 import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 import { loadAssigneeByTaskIds } from "@/features/work-orders/display-context";
 import {
   listEligibleTasksForWorkOrder,
@@ -27,10 +29,13 @@ export default async function OrdenesTrabajoPage({
         ? "CLOSED"
         : "OPEN";
 
-  const [workOrders, eligibleTasks, processStyles] = await Promise.all([
+  const [workOrders, eligibleTasks, processStyles, typologyImages, elementTypeImages] =
+    await Promise.all([
     listWorkOrders(statusFilter),
     listEligibleTasksForWorkOrder(),
     getProcessBadgeStylesByCode(),
+    loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const taskIds = workOrders.flatMap((order) => order.tasks.map((t) => t.id));
@@ -58,6 +63,8 @@ export default async function OrdenesTrabajoPage({
         workOrderIdsWithPlanningAssignments={[
           ...workOrderIdsWithPlanningAssignments,
         ]}
+        typologyImages={typologyImages}
+        elementTypeImages={elementTypeImages}
       />
     </div>
   );

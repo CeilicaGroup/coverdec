@@ -4,7 +4,7 @@ import {
 } from "@/components/process-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
 import { taskWorkOrderSummary } from "@/features/work-orders/display";
 import {
   getNavePersonnel,
@@ -15,6 +15,8 @@ import {
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear, formatHours, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { WeekDayTasks } from "./week-day-tasks";
 import { WeekPersonMobile } from "./week-person-mobile";
 
@@ -38,7 +40,7 @@ export function toWeekPersonListItem(
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
-import { TaskSystemKind, type WorkOrderStatus } from "@/generated/prisma";
+import { TaskSystemKind, type ElementTypology, type WorkOrderStatus } from "@/generated/prisma";
 
 export interface WeekGridCell {
   id: string;
@@ -57,6 +59,8 @@ export interface WeekGridCell {
   project: string;
   lamp: string | null;
   bastidor: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   workOrderNumber: string | null;
   workOrderStatus: WorkOrderStatus | null;
   startedAt: string | null;
@@ -130,6 +134,7 @@ export function buildPlanGrid(
     const key = a.date.toISOString().slice(0, 10);
     const cell = personMap.get(key) ?? [];
     const wo = taskWorkOrderSummary(a.task);
+    const visual = getTaskLampElementVisualProps(a.task);
     cell.push({
       id: a.id,
       taskId: a.taskId,
@@ -146,7 +151,9 @@ export function buildPlanGrid(
       process: a.process,
       project: a.task.project.name,
       lamp: a.task.lamp?.name ?? null,
-      bastidor: getTaskLampElementLabel(a.task),
+      bastidor: visual.label,
+      elementTypeId: visual.elementTypeId,
+      elementTypology: visual.typology ?? null,
       workOrderNumber: wo?.number ?? null,
       workOrderStatus: wo?.status ?? null,
       startedAt: null,
@@ -175,6 +182,7 @@ export function buildActualGrid(
     const personMap = grid.get(e.personId);
     if (!personMap) continue;
     const cell = personMap.get(e.date) ?? [];
+    const visual = e.task ? getTaskLampElementVisualProps(e.task) : null;
     cell.push({
       id: e.id,
       taskId: e.taskId,
@@ -191,7 +199,9 @@ export function buildActualGrid(
       process: e.process ?? "—",
       project: e.project?.name ?? "—",
       lamp: e.lamp?.name ?? null,
-      bastidor: e.task ? getTaskLampElementLabel(e.task) : null,
+      bastidor: visual?.label ?? null,
+      elementTypeId: visual?.elementTypeId ?? null,
+      elementTypology: visual?.typology ?? null,
       workOrderNumber: e.task?.workOrder?.number ?? null,
       workOrderStatus: e.task?.workOrder?.status ?? null,
       startedAt: e.startedAt.toISOString(),
@@ -272,6 +282,8 @@ interface WeekPersonGridProps {
   canManageAdHoc?: boolean;
   recordsPersonId: string | null;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }
 
 export interface PersonWeekCalendarProps {
@@ -292,6 +304,8 @@ export interface PersonWeekCalendarProps {
   canManageAdHoc?: boolean;
   canSeeRecords: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }
 
 /** Calendario L–V de una sola persona (vista por persona / impresión). */
@@ -313,6 +327,8 @@ export function PersonWeekCalendar({
   canManageAdHoc = false,
   canSeeRecords,
   entriesByPersonDayTask,
+  typologyImages,
+  elementTypeImages,
 }: PersonWeekCalendarProps) {
   return (
     <>
@@ -368,6 +384,8 @@ export function PersonWeekCalendar({
                     canManageAdHoc={canManageAdHoc}
                     canSeeRecords={canSeeRecords}
                     entriesByPersonDayTask={entriesByPersonDayTask}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
                   />
                 </div>
                 {dayTotal > 0 ? (
@@ -426,6 +444,8 @@ export function PersonWeekCalendar({
                   canManageAdHoc={canManageAdHoc}
                   canSeeRecords={canSeeRecords}
                   entriesByPersonDayTask={entriesByPersonDayTask}
+                  typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
                   emptyClassName="text-xs"
                 />
               </div>
@@ -453,6 +473,8 @@ export function WeekPersonGrid({
   recordsPersonId,
   entriesByPersonDayTask,
   canManageAdHoc = false,
+  typologyImages,
+  elementTypeImages,
 }: WeekPersonGridProps) {
   const gridContent = (
     <>
@@ -499,6 +521,8 @@ export function WeekPersonGrid({
               canManageAdHoc={canManageAdHoc}
               canSeeRecords={recordsPersonId == null || recordsPersonId === person.id}
               entriesByPersonDayTask={entriesByPersonDayTask}
+              typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
             />
           ))}
         </div>
@@ -523,6 +547,7 @@ export function WeekPersonGrid({
           canManageAdHoc={canManageAdHoc}
           recordsPersonId={recordsPersonId}
           entriesByPersonDayTask={entriesByPersonDayTask}
+          typologyImages={typologyImages}
         />
       </div>
     </>
@@ -560,6 +585,8 @@ function WeekPersonRow({
   canManageAdHoc = false,
   canSeeRecords,
   entriesByPersonDayTask,
+  typologyImages,
+  elementTypeImages,
 }: {
   person: { id: string; nombre: string; iniciales: string; color: string };
   view: "plan" | "actual";
@@ -578,6 +605,8 @@ function WeekPersonRow({
   canManageAdHoc?: boolean;
   canSeeRecords: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   return (
     <>
@@ -613,6 +642,8 @@ function WeekPersonRow({
               canManageAdHoc={canManageAdHoc}
               canSeeRecords={canSeeRecords}
               entriesByPersonDayTask={entriesByPersonDayTask}
+              typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
             />
           </div>
         );

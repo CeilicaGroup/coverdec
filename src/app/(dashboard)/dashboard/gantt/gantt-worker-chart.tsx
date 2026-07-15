@@ -5,6 +5,10 @@ import { PersonAvatar } from "@/components/person-avatar";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { ProcessBadge } from "@/components/process-badge";
 import { WorkOrderBadge } from "@/components/work-order-badge";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
+import type { ElementTypology } from "@/generated/prisma";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { GanttTimelineBlock } from "@/features/planning/gantt-data";
@@ -37,6 +41,9 @@ export interface GanttWorkerTaskRow {
   personId: string;
   label: string;
   process: string;
+  lampFrameLabel: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   estimatedStart: string | null;
   estimatedEnd: string | null;
   isAssigned: boolean;
@@ -175,6 +182,8 @@ export function GanttWorkerChart({
   completedByTask,
   taskMetaById,
   isAdmin,
+  typologyImages,
+  elementTypeImages,
 }: {
   axisStartIso: string;
   axisEndIso: string;
@@ -190,6 +199,8 @@ export function GanttWorkerChart({
   completedByTask: Map<string, boolean>;
   taskMetaById: Map<string, { projectId: string; lampId: string | null; process: string }>;
   isAdmin: boolean;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -279,6 +290,15 @@ export function GanttWorkerChart({
                           />
                           <span className="text-[10px] text-muted-foreground truncate">{task.label}</span>
                         </div>
+                        <LampElementVisual
+                          label={task.lampFrameLabel}
+                          typology={task.elementTypology ?? undefined}
+                          typologyImages={typologyImages}
+                          elementTypeId={task.elementTypeId}
+                          elementTypeImages={elementTypeImages}
+                          size="sm"
+                          compact
+                        />
                         <Tooltip>
                           <TooltipTrigger render={<span className="text-[10px] text-muted-foreground cursor-default">Detalle</span>} />
                           <TooltipContent side="right" className="max-w-xs whitespace-pre-line">

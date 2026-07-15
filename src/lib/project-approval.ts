@@ -6,26 +6,29 @@ export const PROJECT_APPROVAL_STATUS_LABELS: Record<ProjectApprovalStatus, strin
   [ProjectApprovalStatus.IN_PRODUCTION]: "En producción",
 };
 
+export function deriveProjectApprovalStatus(
+  lampApprovals: boolean[],
+): ProjectApprovalStatus {
+  if (lampApprovals.length === 0) {
+    return ProjectApprovalStatus.PENDING_APPROVAL;
+  }
+
+  const approvedCount = lampApprovals.filter(Boolean).length;
+  if (approvedCount === 0) {
+    return ProjectApprovalStatus.PENDING_APPROVAL;
+  }
+  if (approvedCount === lampApprovals.length) {
+    return ProjectApprovalStatus.IN_PRODUCTION;
+  }
+  return ProjectApprovalStatus.PARTIAL_APPROVAL;
+}
+
 export function isProjectExcludedFromPlanning(
   approvalStatus: ProjectApprovalStatus,
 ): boolean {
   return approvalStatus === ProjectApprovalStatus.PENDING_APPROVAL;
 }
 
-export function isLampEligibleForPlanning(args: {
-  projectApprovalStatus: ProjectApprovalStatus;
-  lampApproved: boolean;
-}): boolean {
-  if (isProjectExcludedFromPlanning(args.projectApprovalStatus)) return false;
-  if (args.projectApprovalStatus === ProjectApprovalStatus.PARTIAL_APPROVAL) {
-    return args.lampApproved;
-  }
-  return true;
-}
-
-/** Lamp flags to apply when the project approval status changes. */
-export function lampApprovalForProjectStatus(
-  approvalStatus: ProjectApprovalStatus,
-): boolean {
-  return approvalStatus === ProjectApprovalStatus.IN_PRODUCTION;
+export function isLampEligibleForPlanning(lampApproved: boolean): boolean {
+  return lampApproved;
 }

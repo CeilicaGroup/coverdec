@@ -41,6 +41,9 @@ import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { TaskCompletionAction } from "@/features/time-tracking/task-progress-actions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -69,6 +72,8 @@ interface GanttChartProps {
   actualItemsByTask: Map<string, ProgressStripe[]>;
   plannedDueByTask: Map<string, number>;
   canManageTasks?: boolean;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }
 
 function formatDayBoundsLabel(minutes: number): string {
@@ -579,6 +584,8 @@ function ElementGanttRow({
   timeAxis,
   expanded,
   onToggle,
+  typologyImages,
+  elementTypeImages,
 }: {
   element: GanttElementRow;
   axis: string[];
@@ -587,6 +594,8 @@ function ElementGanttRow({
   timeAxis: GanttTimeAxisContext;
   expanded: boolean;
   onToggle: () => void;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const hasTasks = element.tasks.length > 0;
 
@@ -606,9 +615,16 @@ function ElementGanttRow({
           ) : (
             <span className="size-6 shrink-0" />
           )}
-          <div className="text-xs truncate min-w-0">
-            {element.name ?? "Elemento"}
-          </div>
+          <LampElementVisual
+            label={element.name}
+            typology={element.elementTypology ?? undefined}
+            typologyImages={typologyImages}
+            elementTypeId={element.elementTypeId}
+            elementTypeImages={elementTypeImages}
+            size="md"
+            compact
+            className="min-w-0 flex-1"
+          />
         </div>
         <div className="pl-7">
           <GanttPlanningStatus
@@ -653,6 +669,8 @@ function TaskGanttRow({
   actualItemsByTask,
   plannedDueByTask,
   canManageTasks = false,
+  typologyImages,
+  elementTypeImages,
 }: {
   task: GanttTaskRow;
   axis: string[];
@@ -665,6 +683,8 @@ function TaskGanttRow({
   actualItemsByTask: Map<string, ProgressStripe[]>;
   plannedDueByTask: Map<string, number>;
   canManageTasks?: boolean;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const processStyle = processStyles[task.process];
   const barColor = processStyle?.borderColor ?? "#6B7280";
@@ -693,6 +713,15 @@ function TaskGanttRow({
               : "Sin planificación"}
           </TooltipContent>
         </Tooltip>
+        <LampElementVisual
+          label={task.lampFrameLabel}
+          typology={task.elementTypology ?? undefined}
+          typologyImages={typologyImages}
+          elementTypeId={task.elementTypeId}
+          elementTypeImages={elementTypeImages}
+          size="sm"
+          compact
+        />
         <TaskProgressInline
           progress={computeTaskProgress({
             isCompleted: task.isPlanningComplete,
@@ -760,6 +789,8 @@ export function GanttChart({
   actualItemsByTask,
   plannedDueByTask,
   canManageTasks = false,
+  typologyImages,
+  elementTypeImages,
 }: GanttChartProps) {
   const timeAxis = useMemo(
     () => buildGanttTimeAxisContext(workWindows),
@@ -932,6 +963,8 @@ export function GanttChart({
                                             element.id,
                                           )
                                         }
+                                        typologyImages={typologyImages}
+                                        elementTypeImages={elementTypeImages}
                                       />
                                       {elementExpanded
                                         ? element.tasks.map((task) => (
@@ -954,6 +987,8 @@ export function GanttChart({
                                                 plannedDueByTask
                                               }
                                               canManageTasks={canManageTasks}
+                                              typologyImages={typologyImages}
+                                              elementTypeImages={elementTypeImages}
                                             />
                                           ))
                                         : null}

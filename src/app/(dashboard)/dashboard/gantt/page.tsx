@@ -38,7 +38,9 @@ import { ViewToggle } from "../../_components/view-toggle";
 import { formatHours } from "@/lib/format";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import type { ProgressStripe } from "@/components/task-progress";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementLabel, getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -118,6 +120,7 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
         );
         const first = taskSorted[0]!;
         const last = taskSorted[taskSorted.length - 1]!;
+        const visual = getTaskLampElementVisualProps(first.task);
         return {
           id: `${workerId}:${taskId}`,
           taskId,
@@ -128,6 +131,9 @@ function buildWorkerRows(assignments: GanttPlanningAssignment[]): GanttWorkerRow
             return `${first.task.project.name} · ${first.task.lamp.name ?? "Lámpara"}${bastidor}`;
           })(),
           process: first.process,
+          lampFrameLabel: visual.label,
+          elementTypeId: visual.elementTypeId,
+          elementTypology: visual.typology ?? null,
           workOrderNumber: first.task.workOrder?.number ?? null,
           workOrderStatus: first.task.workOrder?.status ?? null,
           estimatedStart: first.date.toISOString().slice(0, 10),
@@ -189,7 +195,7 @@ export default async function GanttPage({
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
-  const [projects, planningAssignments, actualAssignments, people, processStyles, processDefs] =
+  const [projects, planningAssignments, actualAssignments, people, processStyles, processDefs, typologyImages, elementTypeImages] =
     await Promise.all([
       getActiveProjectsForGantt(naveScope),
       getGanttPlanningAssignments(naveScope, viewMode),
@@ -197,6 +203,8 @@ export default async function GanttPage({
       getNavePersonnel(naveScope),
       getProcessBadgeStylesByCode(),
       getProcessDefinitionsByCode(),
+      loadTypologyImageAvailability(),
+      loadElementTypeImageAvailability(),
     ]);
   const assignments = view === "actual" ? actualAssignments : planningAssignments;
 
@@ -412,6 +420,8 @@ export default async function GanttPage({
           taskMetaById={taskMetaById}
           isAdmin={ctx.role === "ADMIN"}
           mode={view}
+          typologyImages={typologyImages}
+          elementTypeImages={elementTypeImages}
         />
       ) : (
         <GanttChart
@@ -427,6 +437,8 @@ export default async function GanttPage({
           actualItemsByTask={actualItemsByTask}
           plannedDueByTask={plannedDueByTask}
           canManageTasks={ctx.role === "ADMIN"}
+          typologyImages={typologyImages}
+          elementTypeImages={elementTypeImages}
         />
       )}
     </div>

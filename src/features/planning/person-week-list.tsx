@@ -1,6 +1,8 @@
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
 import { WorkOrderBadge } from "@/components/work-order-badge";
-import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import {
@@ -9,7 +11,7 @@ import {
 } from "@/features/planning/planning-timeline";
 import { AdHocTaskNotesIcon, AdHocTaskNotesTooltip } from "@/features/planning/ad-hoc-task-notes";
 import { DeleteAdHocTaskButton } from "@/features/ad-hoc/delete-ad-hoc-task-button";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { ActualHourEntry } from "@/features/planning/queries";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -45,6 +47,8 @@ interface PersonWeekListProps {
   canSeeRecords: boolean;
   canManageCompletion: boolean;
   canManageAdHoc?: boolean;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }
 
 export function PersonWeekList({
@@ -57,6 +61,8 @@ export function PersonWeekList({
   canSeeRecords,
   canManageCompletion,
   canManageAdHoc = false,
+  typologyImages,
+  elementTypeImages,
 }: PersonWeekListProps) {
   if (view === "actual") {
     const entries = actualEntries.filter((e) => e.personId === personId);
@@ -97,9 +103,14 @@ export function PersonWeekList({
                     {e.lamp?.name ? (
                       <div className="text-[10px] text-muted-foreground">{e.lamp.name}</div>
                     ) : null}
-                    <TaskLampBastidor
-                      label={e.task ? getTaskLampElementLabel(e.task) : null}
-                    />
+                    {e.task ? (
+                      <LampElementVisual
+                        {...getTaskLampElementVisualProps(e.task)}
+                        typologyImages={typologyImages}
+                        elementTypeImages={elementTypeImages}
+                        size="md"
+                      />
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     {e.process ? (
@@ -206,7 +217,14 @@ export function PersonWeekList({
                 {e.lamp?.name ? (
                   <div className="text-xs text-muted-foreground">{e.lamp.name}</div>
                 ) : null}
-                <TaskLampBastidor label={e.task ? getTaskLampElementLabel(e.task) : null} />
+                {e.task ? (
+                  <LampElementVisual
+                    {...getTaskLampElementVisualProps(e.task)}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
+                    size="sm"
+                  />
+                ) : null}
               </div>
               {e.process ? (
                 <div className="flex items-center gap-1 flex-wrap">
@@ -365,7 +383,12 @@ export function PersonWeekList({
                             {task.lamp.name}
                           </div>
                         ) : null}
-                        <TaskLampBastidor label={getTaskLampElementLabel(task)} />
+                        <LampElementVisual
+                          {...getTaskLampElementVisualProps(task)}
+                          typologyImages={typologyImages}
+                          elementTypeImages={elementTypeImages}
+                          size="md"
+                        />
                       </div>
                     </AdHocTaskNotesTooltip>
                   </TableCell>
@@ -518,7 +541,12 @@ export function PersonWeekList({
                 {task.lamp?.name ? (
                   <div className="text-xs text-muted-foreground">{task.lamp.name}</div>
                 ) : null}
-                <TaskLampBastidor label={getTaskLampElementLabel(task)} />
+                <LampElementVisual
+                  {...getTaskLampElementVisualProps(task)}
+                  typologyImages={typologyImages}
+                  elementTypeImages={elementTypeImages}
+                  size="sm"
+                />
               </div>
             </AdHocTaskNotesTooltip>
             <div className="flex items-center gap-1 flex-wrap">

@@ -61,7 +61,7 @@ import {
   syncTransportTasksForLamp,
   TRANSPORT_PROCESS_CODE,
 } from "@/features/projects/transport-tasks";
-import { lampApprovalForProjectStatus } from "@/lib/project-approval";
+import { syncProjectApprovalStatus } from "@/features/projects/sync-project-approval";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -150,7 +150,6 @@ const projectSchema = z.object({
   planningCostPriority: z.number().min(0).max(100).optional(),
   planningStability: z.number().min(0).max(100).optional(),
   planningDeadlineBoost: z.number().min(0).max(100).optional(),
-  approvalStatus: z.nativeEnum(ProjectApprovalStatus).optional(),
 });
 
 export async function createProject(input: z.infer<typeof projectSchema>) {
@@ -185,7 +184,7 @@ export async function createProject(input: z.infer<typeof projectSchema>) {
         planningStability: data.planningStability ?? presetDefaults.stability,
         planningDeadlineBoost:
           data.planningDeadlineBoost ?? presetDefaults.deadlineBoost,
-        approvalStatus: data.approvalStatus ?? ProjectApprovalStatus.PENDING_APPROVAL,
+        approvalStatus: ProjectApprovalStatus.PENDING_APPROVAL,
       },
     });
     log.info({ id: project.id }, "project created");
@@ -210,44 +209,26 @@ export async function updateProject(input: z.infer<typeof updateProjectSchema>) 
 
     const current = await prisma.project.findUnique({
       where: { id: data.projectId },
-      select: { approvalStatus: true },
+      select: { id: true },
     });
     if (!current) throw new Error("Proyecto no encontrado.");
 
-    const approvalStatusChanging =
-      data.approvalStatus !== undefined &&
-      data.approvalStatus !== current.approvalStatus;
-
-    await prisma.$transaction(async (tx) => {
-      await tx.project.update({
-        where: { id: data.projectId },
-        data: {
-          name: data.name,
-          client: data.client || null,
-          obra: data.obra || null,
-          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
-          isBillable: data.isBillable,
-          kind: data.kind,
-          responsibleUserId: data.responsibleUserId || null,
-          notes: data.notes?.trim() ? data.notes.trim() : null,
-          planningPreset: data.planningPreset ?? undefined,
-          planningCostPriority: data.planningCostPriority ?? undefined,
-          planningStability: data.planningStability ?? undefined,
-          planningDeadlineBoost: data.planningDeadlineBoost ?? undefined,
-          ...(data.approvalStatus !== undefined
-            ? { approvalStatus: data.approvalStatus }
-            : {}),
-        },
-      });
-
-      if (approvalStatusChanging && data.approvalStatus !== undefined) {
-        await tx.lamp.updateMany({
-          where: { projectId: data.projectId },
-          data: {
-            isApprovedForPlanning: lampApprovalForProjectStatus(data.approvalStatus),
-          },
-        });
-      }
+    await prisma.project.update({
+      where: { id: data.projectId },
+      data: {
+        name: data.name,
+        client: data.client || null,
+        obra: data.obra || null,
+        deliveryDate: data.deliveryDate ? new Date(data.deliveryDate) : null,
+        isBillable: data.isBillable,
+        kind: data.kind,
+        responsibleUserId: data.responsibleUserId || null,
+        notes: data.notes?.trim() ? data.notes.trim() : null,
+        planningPreset: data.planningPreset ?? undefined,
+        planningCostPriority: data.planningCostPriority ?? undefined,
+        planningStability: data.planningStability ?? undefined,
+        planningDeadlineBoost: data.planningDeadlineBoost ?? undefined,
+      },
     });
   
     log.info({ id: data.projectId }, "project updated");
@@ -328,6 +309,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                 projectId: data.projectId,
                 name: fields.name,
                 nameKey: fields.nameKey,
+                isApprovedForPlanning: false,
               },
             });
   
@@ -347,7 +329,9 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                 },
               });
             }
-  
+
+            await syncProjectApprovalStatus(data.projectId, tx);
+
             return created;
           });
           lampId = lamp.id;
@@ -412,6 +396,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
               elementTypeId: primary.elementTypeId,
               surfaceM2: primary.surfaceM2,
               units: totalUnits,
+              isApprovedForPlanning: false,
             },
           });
   
@@ -424,7 +409,7 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
   
             const elementName =
               elementNameById.get(element.elementTypeId) ?? "Elemento";
-  
+
             for (let unitIndex = 1; unitIndex <= element.units; unitIndex++) {
               const lampElement = await tx.lampElement.create({
                 data: {
@@ -438,8 +423,9 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
                   surfaceM2: element.surfaceM2,
                   units: 1,
                 },
+                select: { id: true },
               });
-  
+
               for (const bp of blueprints) {
                 tasksToCreate.push(
                   blueprintToTaskCreateData(bp, {
@@ -460,6 +446,8 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
           }
 
           await syncTransportTasksForLamp(tx, created.id);
+
+          await syncProjectApprovalStatus(data.projectId, tx);
 
           return created;
         });
@@ -1187,7 +1175,9 @@ export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
     }
   
     await prisma.lamp.delete({ where: { id: lamp.id } });
+    await syncProjectApprovalStatus(lamp.projectId);
     revalidatePath("/dashboard/proyectos");
+    revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
     },
     (result) => ({ summary: "Eliminar lámpara", entityType: "Lamp", entityId: input.lampId }),
   );
@@ -1365,12 +1355,25 @@ export async function setLampApprovedForPlanning(
       requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
       const data = setLampApprovedSchema.parse(input);
 
-      await prisma.lamp.update({
+      const lamp = await prisma.lamp.findFirst({
         where: { id: data.lampId },
-        data: { isApprovedForPlanning: data.isApprovedForPlanning },
+        select: { id: true, projectId: true },
+      });
+      if (!lamp) throw new Error("Lámpara no encontrada.");
+
+      await prisma.$transaction(async (tx) => {
+        await tx.lamp.update({
+          where: { id: data.lampId },
+          data: { isApprovedForPlanning: data.isApprovedForPlanning },
+        });
+        await syncProjectApprovalStatus(lamp.projectId, tx);
       });
 
       revalidatePath("/dashboard/proyectos");
+      revalidatePath(`/dashboard/proyectos/${lamp.projectId}`);
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/proyecto");
+      revalidatePath("/dashboard/semana");
     },
     () => ({ summary: "Actualizar aprobación de lámpara" }),
   );

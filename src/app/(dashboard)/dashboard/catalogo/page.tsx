@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { Role } from "@/generated/prisma";
 import { buildTypologyImageAvailability } from "@/lib/typology-image";
+import { buildElementTypeImageAvailability } from "@/lib/element-type-image";
 import { CatalogoCatalogClient } from "./catalog-client";
 import { ProcessDefinitionsPanel } from "./process-definitions-panel";
 import { TypologyNavesPanel } from "./typology-naves-panel";
@@ -72,6 +73,7 @@ export default async function CatalogoPage({
       nave: p.nave,
     })),
     lampCount: _count.lamps,
+    imageUpdatedAt: f.imageUpdatedAt,
   }));
 
   return (
@@ -107,6 +109,7 @@ export default async function CatalogoPage({
           defaultNave: row.defaultNave,
         }))}
         typologyImages={buildTypologyImageAvailability(typologyNaves)}
+        elementTypeImages={buildElementTypeImageAvailability(framesRaw)}
         canManage={canManage}
       />
     </div>

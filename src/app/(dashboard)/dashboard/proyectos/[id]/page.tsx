@@ -25,6 +25,7 @@ import {
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
 import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 import { LampElementsSummary } from "@/components/typology-symbol";
 import { isManualEstimateLamp } from "@/lib/manual-lamp";
 import { isManualEstimateProjectKind, isStockProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
@@ -77,7 +78,7 @@ export default async function ProjectDetailPage({
                   id: true,
                   label: true,
                   surfaceM2: true,
-                  elementType: { select: { id: true, name: true } },
+                  elementType: { select: { id: true, name: true, typology: true } },
                 },
               },
               _count: { select: { assignments: true } },
@@ -111,7 +112,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps, typologyImages] =
+  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps, typologyImages, elementTypeImages] =
     await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
@@ -149,6 +150,7 @@ export default async function ProjectDetailPage({
     }),
     canManage ? listStockLamps() : Promise.resolve([]),
     loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
@@ -239,6 +241,8 @@ export default async function ProjectDetailPage({
       id: lamp.id,
       name: lamp.name,
       elementTypeName: lamp.elementTypeName,
+      elementTypeId: lamp.elementTypeId,
+      elementTypology: lamp.elementTypology,
       batchCodes: lamp.batchCodes,
       pendingHours: lamp.pendingHours,
       previousProject: lamp.previousProject,
@@ -258,6 +262,8 @@ export default async function ProjectDetailPage({
                   <AssignFromStockDialog
                     projectId={project.id}
                     stockLamps={availableStockLamps}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
                   />
                 ) : null}
                 <EditProjectDialog
@@ -312,6 +318,7 @@ export default async function ProjectDetailPage({
               projectId={project.id}
               projectKind={project.kind}
               typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
               elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,
@@ -346,6 +353,7 @@ export default async function ProjectDetailPage({
                         })
                       : [];
                 const elementSummaryItems = editableElements.map((cfg) => ({
+                  elementTypeId: cfg.elementTypeId,
                   typology: cfg.typology,
                   name:
                     l.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
@@ -362,6 +370,7 @@ export default async function ProjectDetailPage({
                         <LampElementsSummary
                           elements={elementSummaryItems}
                           availability={typologyImages}
+                          elementTypeImages={elementTypeImages}
                         />
                       )
                     : (l.elementType?.name ?? "—");
@@ -374,13 +383,11 @@ export default async function ProjectDetailPage({
                     header={
                       <>
                         <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
-                        {project.approvalStatus === ProjectApprovalStatus.PARTIAL_APPROVAL ? (
-                          <LampApprovalToggle
-                            lampId={l.id}
-                            isApproved={l.isApprovedForPlanning}
-                            canManage={canManage}
-                          />
-                        ) : null}
+                        <LampApprovalToggle
+                          lampId={l.id}
+                          isApproved={l.isApprovedForPlanning}
+                          canManage={canManage}
+                        />
                       </>
                     }
                   >
@@ -396,6 +403,7 @@ export default async function ProjectDetailPage({
                           lampName={l.name}
                           initialElements={editableElements}
                           typologyImages={typologyImages}
+                          elementTypeImages={elementTypeImages}
                           elementTypes={elementTypes.map((f) => ({
                             id: f.id,
                             name: f.name,
@@ -439,6 +447,8 @@ export default async function ProjectDetailPage({
                       naves={naves}
                       elementTypeDefaultNaves={elementTypeDefaultNaves}
                       catalogNaveByElementProcess={catalogNaveByElementProcess}
+                      typologyImages={typologyImages}
+                      elementTypeImages={elementTypeImages}
                     />
                   </ProjectLampSection>
                 );

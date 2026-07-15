@@ -22,11 +22,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LampElementVisual } from "@/components/lamp-element-visual";
 import { assignLampFromStockToProject } from "@/features/stock/actions";
 import {
   isOperationCancelled,
   withSimilarLampNameConfirmation,
 } from "@/features/projects/lamp-name-client";
+import type { ElementTypology } from "@/generated/prisma";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
 import { formatHours } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -34,6 +38,8 @@ export interface StockLampOption {
   id: string;
   name: string;
   elementTypeName: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   batchCodes: string[];
   pendingHours: number;
   previousProject: { name: string; code: string } | null;
@@ -42,9 +48,13 @@ export interface StockLampOption {
 export function AssignFromStockDialog({
   projectId,
   stockLamps,
+  typologyImages,
+  elementTypeImages,
 }: {
   projectId: string;
   stockLamps: StockLampOption[];
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -127,11 +137,21 @@ export function AssignFromStockDialog({
             </Select>
           </div>
           {selected ? (
-            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs space-y-1">
-              <div>
-                {selected.elementTypeName ?? "Elemento"} ·{" "}
-                {formatHours(selected.pendingHours)} pendientes
-              </div>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs space-y-2">
+              {selected.elementTypeId && selected.elementTypology ? (
+                <LampElementVisual
+                  label={selected.elementTypeName}
+                  typology={selected.elementTypology}
+                  typologyImages={typologyImages}
+                  elementTypeId={selected.elementTypeId}
+                  elementTypeImages={elementTypeImages}
+                  size="md"
+                  compact
+                />
+              ) : (
+                <div>{selected.elementTypeName ?? "Elemento"}</div>
+              )}
+              <div>{formatHours(selected.pendingHours)} pendientes</div>
               {selected.previousProject ? (
                 <div className="text-muted-foreground">
                   Procede de {selected.previousProject.name} (

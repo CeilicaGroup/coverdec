@@ -44,7 +44,9 @@ import { handleActionResult } from "@/lib/mutation-error";
 import { ElementTypology } from "@/generated/prisma";
 import { ELEMENT_TYPOLOGIES } from "@/lib/element-typology";
 import { TypologyLabel } from "@/components/typology-symbol";
+import { ElementTypeImageUpload } from "@/components/element-type-image-upload";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 
 interface ProcessDefOption {
   code: ProcessCode;
@@ -86,6 +88,7 @@ interface FrameRow {
   defaultNave: NaveOption | null;
   processes: FrameProcessRow[];
   lampCount: number;
+  imageUpdatedAt: Date | null;
 }
 
 const INHERIT_TYPOLOGY_NAVALUE = "__inherit_typology__";
@@ -195,6 +198,7 @@ export function CatalogoCatalogClient({
   naves,
   typologyNaves,
   typologyImages,
+  elementTypeImages,
   canManage,
   showArchived = false,
 }: {
@@ -203,6 +207,7 @@ export function CatalogoCatalogClient({
   naves: NaveOption[];
   typologyNaves: TypologyNaveRow[];
   typologyImages: TypologyImageAvailability;
+  elementTypeImages: ElementTypeImageAvailability;
   canManage: boolean;
   showArchived?: boolean;
 }) {
@@ -478,6 +483,7 @@ export function CatalogoCatalogClient({
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Imagen</TableHead>
                 <TableHead>Tipología</TableHead>
                 <TableHead>Nave por defecto</TableHead>
                 <TableHead>Estado</TableHead>
@@ -489,7 +495,7 @@ export function CatalogoCatalogClient({
               {frames.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={canManage ? 7 : 6}
+                    colSpan={canManage ? 8 : 7}
                     className="text-center text-muted-foreground py-6"
                   >
                     Catálogo vacío. Importa PRODUCCION.xlsx o crea un elemento.
@@ -503,6 +509,15 @@ export function CatalogoCatalogClient({
                   >
                     <TableCell className="font-mono text-xs">{f.code}</TableCell>
                     <TableCell className="font-semibold">{f.name}</TableCell>
+                    <TableCell>
+                      <ElementTypeImageUpload
+                        elementTypeId={f.id}
+                        elementName={f.name}
+                        imageUpdatedAt={f.imageUpdatedAt}
+                        availability={elementTypeImages}
+                        canManage={canManage}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant="secondary"

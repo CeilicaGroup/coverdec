@@ -5,13 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProcessBadgeStyle } from "@/components/process-badge";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
 import { formatDayMonthYear } from "@/lib/format";
-import type { WeekPersonListItem } from "./week-person-grid";
+import type { WeekGridCell, WeekPersonListItem, WeekPersonTaskSummary } from "./week-person-grid";
+import { buildEntriesByPersonDayTask } from "./week-person-grid";
 import { WeekDayTasks } from "./week-day-tasks";
-import type {
-  WeekGridCell,
-  WeekPersonTaskSummary,
-  buildEntriesByPersonDayTask,
-} from "./week-person-grid";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 
 const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -29,6 +27,8 @@ interface WeekPersonMobileProps {
   canManageAdHoc?: boolean;
   recordsPersonId: string | null;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }
 
 export function WeekPersonMobile({
@@ -45,6 +45,8 @@ export function WeekPersonMobile({
   canManageAdHoc = false,
   recordsPersonId,
   entriesByPersonDayTask,
+  typologyImages,
+  elementTypeImages,
 }: WeekPersonMobileProps) {
   const visiblePeople = recordsPersonId
     ? people.filter((p) => p.id === recordsPersonId)
@@ -114,6 +116,8 @@ export function WeekPersonMobile({
                         canManageAdHoc={canManageAdHoc}
                         canSeeRecords={canSeeRecords}
                         entriesByPersonDayTask={entriesByPersonDayTask}
+                        typologyImages={typologyImages}
+                        elementTypeImages={elementTypeImages}
                         emptyClassName="text-xs"
                       />
                     </div>

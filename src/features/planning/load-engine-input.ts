@@ -351,6 +351,7 @@ export async function loadSolverInput(args: {
           isActive: true,
           approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
         },
+        lamp: { isApprovedForPlanning: true },
       },
       include: {
         lamp: { select: { isApprovedForPlanning: true } },
@@ -409,10 +410,7 @@ export async function loadSolverInput(args: {
   ]);
 
   const tasksRaw = tasksRawAll.filter((task) =>
-    isLampEligibleForPlanning({
-      projectApprovalStatus: task.project.approvalStatus,
-      lampApproved: task.lamp.isApprovedForPlanning,
-    }),
+    isLampEligibleForPlanning(task.lamp.isApprovedForPlanning),
   );
 
   const policyByNave = new Map(

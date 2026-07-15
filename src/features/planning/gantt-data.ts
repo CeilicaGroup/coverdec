@@ -9,7 +9,8 @@ import {
   type GanttTimelineBlock,
 } from "@/features/planning/gantt-timeline";
 import { taskChainKey } from "@/features/planning/task-chain-key";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
+import type { ElementTypology } from "@/generated/prisma";
 
 export type { GanttTimelineBlock } from "@/features/planning/gantt-timeline";
 
@@ -75,6 +76,8 @@ export interface GanttTaskRow {
   personIds: string[];
   /** Solo se rellena si el usuario debe verlo (p.ej. lámpara con >1 bastidor). */
   lampFrameLabel: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   operators: GanttOperator[];
   workOrderNumber: string | null;
   workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
@@ -84,6 +87,9 @@ export interface GanttElementRow {
   id: string;
   lampId: string;
   name: string | null;
+  lampElementId: string | null;
+  elementTypeId: string | null;
+  elementTypology: ElementTypology | null;
   remainingWorkHours: number;
   assignedHours: number;
   isAssigned: boolean;
@@ -394,6 +400,8 @@ function buildTasksWithEstimates(
         capBefore,
       );
 
+      const visual = getTaskLampElementVisualProps(t);
+
       chainRows.push({
         id: t.id,
         lampId: t.lampId,
@@ -414,7 +422,9 @@ function buildTasksWithEstimates(
         endSlot: range.endSlot,
         timelineBlocks,
         personIds: schedule.personIds,
-        lampFrameLabel: getTaskLampElementLabel(t),
+        lampFrameLabel: visual.label,
+        elementTypeId: visual.elementTypeId,
+        elementTypology: visual.typology ?? null,
         operators: schedule.operators,
         workOrderNumber: t.workOrder?.number ?? null,
         workOrderStatus: t.workOrder?.status ?? null,
@@ -509,11 +519,15 @@ function groupTasksIntoElements(
       0,
     );
     const label = ordered[0]?.lampFrameLabel ?? null;
+    const firstTask = ordered[0];
 
     elements.push({
       id: chainId,
       lampId: ordered[0]?.lampId ?? "",
       name: label,
+      lampElementId: firstTask?.lampElementId ?? null,
+      elementTypeId: firstTask?.elementTypeId ?? null,
+      elementTypology: firstTask?.elementTypology ?? null,
       remainingWorkHours,
       assignedHours,
       isAssigned: assigned.length > 0,

@@ -28,7 +28,7 @@ import {
   computeWeekTaskMetrics,
 } from "@/features/planning/week-progress";
 import { isTaskClosedForPlanning } from "@/features/planning/task-planning-status";
-import { isLampEligibleForPlanning } from "@/lib/project-approval";
+import { taskLampElementVisualSelect, lampElementTypeVisualSelect } from "@/features/planning/task-lamp-frame";
 import type {
   LampTaskChainItem,
   PlanningAssignmentSlice,
@@ -40,16 +40,6 @@ import {
 } from "@/features/time-tracking/task-hours-derived";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function isGanttTaskEligibleForPlanning(task: {
-  project: { approvalStatus: ProjectApprovalStatus };
-  lamp: { isApprovedForPlanning: boolean };
-}): boolean {
-  return isLampEligibleForPlanning({
-    projectApprovalStatus: task.project.approvalStatus,
-    lampApproved: task.lamp.isApprovedForPlanning,
-  });
-}
 
 function mapPlanningAssignments<
   T extends {
@@ -179,8 +169,8 @@ export async function getPlanningForWeek({
         task: {
           include: {
             project: true,
-            lamp: { include: { elementType: { select: { name: true } } } },
-            lampElement: { include: { elementType: { select: { name: true } } } },
+            lamp: { select: { name: true, elementType: { select: lampElementTypeVisualSelect } } },
+            lampElement: { select: taskLampElementVisualSelect },
             workOrder: { select: { number: true, status: true } },
           },
         },
@@ -259,7 +249,7 @@ export interface PlanningWeekAssignmentInput {
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lamp: PlanningAssignmentSlice["task"]["lamp"];
     lampElement?: PlanningAssignmentSlice["task"]["lampElement"];
-    project: { name: string };
+    project: { name: string } & Record<string, unknown>;
     workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   };
 }
@@ -414,8 +404,24 @@ export interface ActualHourEntry {
     isCompleted: boolean;
     notes: string | null;
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
-    lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
-    lamp?: { elementType?: { name: string } | null } | null;
+    lampElement?: {
+      id: string;
+      label: string | null;
+      elementTypeId?: string;
+      elementType?: {
+        id: string;
+        name: string;
+        typology: import("@/generated/prisma").ElementTypology;
+      } | null;
+    } | null;
+    lamp?: {
+      elementTypeId?: string | null;
+      elementType?: {
+        id: string;
+        name: string;
+        typology: import("@/generated/prisma").ElementTypology;
+      } | null;
+    } | null;
     workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   } | null;
   project: { id: string; name: string } | null;
@@ -464,10 +470,8 @@ export async function getActualHoursForWeek({
           isCompleted: true,
           notes: true,
           systemKind: true,
-          lampElement: {
-            select: { label: true, elementType: { select: { name: true } } },
-          },
-          lamp: { select: { elementType: { select: { name: true } } } },
+          lampElement: { select: taskLampElementVisualSelect },
+          lamp: { select: { elementType: { select: lampElementTypeVisualSelect } } },
           workOrder: { select: { number: true, status: true } },
         },
       },
@@ -661,10 +665,7 @@ export async function getGanttPlanningAssignments(
   const rows = await prisma.planningAssignment.findMany({
     where: {
       task: {
-        project: {
-          isActive: true,
-          approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
-        },
+        project: { isActive: true },
         ...(naveIn ? { naveId: naveIn } : {}),
       },
       ...(naveIn
@@ -700,25 +701,17 @@ export async function getGanttPlanningAssignments(
               id: true,
               name: true,
               isApprovedForPlanning: true,
-              elementType: { select: { name: true } },
+              elementType: { select: lampElementTypeVisualSelect },
             },
           },
-          lampElement: {
-            select: {
-              id: true,
-              label: true,
-              elementType: { select: { name: true } },
-            },
-          },
+          lampElement: { select: taskLampElementVisualSelect },
           workOrder: { select: { number: true, status: true } },
         },
       },
     },
     orderBy: [{ date: "asc" }, { startSlot: "asc" }],
   });
-  return rows
-    .filter((a) => isGanttTaskEligibleForPlanning(a.task))
-    .map((a) => ({
+  return rows.map((a) => ({
     ...a,
     person: {
       id: a.person.id,
@@ -739,10 +732,7 @@ export async function getGanttActualAssignments(
     where: {
       taskId: { not: null },
       task: {
-        project: {
-          isActive: true,
-          approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
-        },
+        project: { isActive: true },
         ...(naveIn ? { naveId: naveIn } : {}),
       },
       OR: [
@@ -786,16 +776,10 @@ export async function getGanttActualAssignments(
               id: true,
               name: true,
               isApprovedForPlanning: true,
-              elementType: { select: { name: true } },
+              elementType: { select: lampElementTypeVisualSelect },
             },
           },
-          lampElement: {
-            select: {
-              id: true,
-              label: true,
-              elementType: { select: { name: true } },
-            },
-          },
+          lampElement: { select: taskLampElementVisualSelect },
           workOrder: { select: { number: true, status: true } },
         },
       },
@@ -805,7 +789,6 @@ export async function getGanttActualAssignments(
 
   return rows
     .filter((e) => e.taskId && e.user.person && e.task)
-    .filter((e) => isGanttTaskEligibleForPlanning(e.task!))
     .map((e) => {
       const start = e.startedAt;
       const end = e.endedAt ?? new Date();
@@ -850,12 +833,10 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
       naveScope !== null
         ? {
             isActive: true,
-            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
             tasks: { some: taskNaveFilter! },
           }
         : {
             isActive: true,
-            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
           },
     include: {
       tasks: {
@@ -872,17 +853,11 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
               id: true,
               name: true,
               isApprovedForPlanning: true,
-              elementType: { select: { name: true } },
+              elementType: { select: lampElementTypeVisualSelect },
             },
           },
           lampElementId: true,
-          lampElement: {
-            select: {
-              id: true,
-              label: true,
-              elementType: { select: { name: true } },
-            },
-          },
+          lampElement: { select: taskLampElementVisualSelect },
           workOrder: { select: { number: true, status: true } },
         },
         orderBy: [{ order: "asc" }, { process: "asc" }],
@@ -896,15 +871,6 @@ export async function getActiveProjectsForGantt(naveScope: string[] | null) {
     const taskIds = projects.flatMap((project) => project.tasks.map((task) => task.id));
     const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
     return projects
-      .map((project) => ({
-        ...project,
-        tasks: project.tasks.filter((task) =>
-          isGanttTaskEligibleForPlanning({
-            project: { approvalStatus: project.approvalStatus },
-            lamp: task.lamp,
-          }),
-        ),
-      }))
       .filter((project) => project.tasks.length > 0)
       .map((project) => ({
       ...project,
@@ -1846,10 +1812,8 @@ export async function getActualHoursForDateRange({
           isCompleted: true,
           notes: true,
           systemKind: true,
-          lampElement: {
-            select: { label: true, elementType: { select: { name: true } } },
-          },
-          lamp: { select: { elementType: { select: { name: true } } } },
+          lampElement: { select: taskLampElementVisualSelect },
+          lamp: { select: { elementType: { select: lampElementTypeVisualSelect } } },
           workOrder: { select: { number: true, status: true } },
         },
       },

@@ -34,8 +34,20 @@ export interface PlanningAssignmentSlice {
     lampElementId?: string | null;
     notes: string | null;
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
-    lamp: { name: string | null; elementType?: { name: string } | null } | null;
-    lampElement?: { label: string | null; elementType?: { name: string } | null } | null;
+    lamp: {
+      name: string | null;
+      elementType?: { id?: string; name: string; typology?: import("@/generated/prisma").ElementTypology } | null;
+    } | null;
+    lampElement?: {
+      id?: string;
+      label: string | null;
+      elementTypeId?: string;
+      elementType?: {
+        id: string;
+        name: string;
+        typology?: import("@/generated/prisma").ElementTypology;
+      } | null;
+    } | null;
     project: { name: string };
     workOrder?: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
   };

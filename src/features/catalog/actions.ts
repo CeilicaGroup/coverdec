@@ -9,6 +9,7 @@ import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { getFallbackNaveId } from "@/features/projects/task-nave";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
+import { parseUploadedImageBuffer } from "@/lib/image-upload";
 
 const processRowSchema = z.object({
   process: z.string().min(1),
@@ -362,6 +363,77 @@ export async function deleteTypologyImage(
     });
 
     revalidatePath("/dashboard/catalogo");
+  });
+}
+
+const upsertElementTypeImageSchema = z.object({
+  elementTypeId: z.string().min(1),
+  imageBase64: z.string().min(1),
+  mimeType: z.string().min(1),
+});
+
+export async function upsertElementTypeImage(
+  input: z.infer<typeof upsertElementTypeImageSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.upsertElementTypeImage", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = upsertElementTypeImageSchema.parse(input);
+    const buffer = parseUploadedImageBuffer(data);
+
+    const elementType = await prisma.elementType.findUnique({
+      where: { id: data.elementTypeId },
+      select: { id: true },
+    });
+    if (!elementType) throw new Error("Elemento de catálogo no encontrado.");
+
+    await prisma.elementType.update({
+      where: { id: elementType.id },
+      data: {
+        imageData: new Uint8Array(buffer),
+        imageMimeType: data.mimeType,
+        imageUpdatedAt: new Date(),
+      },
+    });
+
+    revalidatePath("/dashboard/catalogo");
+    revalidatePath("/dashboard/persona");
+    revalidatePath("/dashboard/semana");
+    revalidatePath("/dashboard/proyecto");
+    revalidatePath("/dashboard/gantt");
+    revalidatePath("/dashboard/proyectos");
+    revalidatePath("/dashboard/stock");
+  });
+}
+
+const deleteElementTypeImageSchema = z.object({
+  elementTypeId: z.string().min(1),
+});
+
+export async function deleteElementTypeImage(
+  input: z.infer<typeof deleteElementTypeImageSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("catalog.deleteElementTypeImage", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = deleteElementTypeImageSchema.parse(input);
+
+    await prisma.elementType.update({
+      where: { id: data.elementTypeId },
+      data: {
+        imageData: null,
+        imageMimeType: null,
+        imageUpdatedAt: null,
+      },
+    });
+
+    revalidatePath("/dashboard/catalogo");
+    revalidatePath("/dashboard/persona");
+    revalidatePath("/dashboard/semana");
+    revalidatePath("/dashboard/proyecto");
+    revalidatePath("/dashboard/gantt");
+    revalidatePath("/dashboard/proyectos");
+    revalidatePath("/dashboard/stock");
   });
 }
 

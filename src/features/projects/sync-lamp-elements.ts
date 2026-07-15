@@ -151,7 +151,7 @@ async function createElementWithTasks(
     blueprints: TaskBlueprint[];
     physicalElementIndex: number;
   },
-): Promise<void> {
+): Promise<{ id: string }> {
   const {
     lampId,
     projectId,
@@ -176,7 +176,7 @@ async function createElementWithTasks(
     },
   });
 
-  if (blueprints.length === 0) return;
+  if (blueprints.length === 0) return { id: lampElement.id };
 
   await tx.task.createMany({
     data: blueprints.map((bp) =>
@@ -190,6 +190,7 @@ async function createElementWithTasks(
   });
 
   await syncTransportTasksForLamp(tx, lampId);
+  return { id: lampElement.id };
 }
 
 async function removeElementIfAllowed(

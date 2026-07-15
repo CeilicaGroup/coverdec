@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -66,9 +67,6 @@ export function EditProjectDialog({
   const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
   const [isBillable, setIsBillable] = useState(project.isBillable);
   const [kind, setKind] = useState<ProjectKind>(project.kind);
-  const [approvalStatus, setApprovalStatus] = useState<ProjectApprovalStatus>(
-    project.approvalStatus ?? ProjectApprovalStatus.IN_PRODUCTION,
-  );
   const [notes, setNotes] = useState(project.notes ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     project.responsibleUserId ?? null,
@@ -82,10 +80,12 @@ export function EditProjectDialog({
     setDeliveryDate(toDateInputValue(project.deliveryDate));
     setIsBillable(project.isBillable);
     setKind(project.kind);
-    setApprovalStatus(project.approvalStatus ?? ProjectApprovalStatus.IN_PRODUCTION);
     setNotes(project.notes ?? "");
     setResponsibleUserId(project.responsibleUserId ?? null);
   }, [open, project]);
+
+  const approvalStatus =
+    project.approvalStatus ?? ProjectApprovalStatus.PENDING_APPROVAL;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -128,7 +128,6 @@ export function EditProjectDialog({
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
                   kind,
-                  approvalStatus,
                   responsibleUserId: responsibleUserId ?? undefined,
                   notes: notes || undefined,
                 });
@@ -174,25 +173,14 @@ export function EditProjectDialog({
           </div>
           <div className="space-y-2">
             <Label>Estado de aprobación</Label>
-            <Select
-              value={approvalStatus}
-              onValueChange={(value) =>
-                setApprovalStatus(
-                  (value ?? ProjectApprovalStatus.IN_PRODUCTION) as ProjectApprovalStatus,
-                )
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue>{PROJECT_APPROVAL_STATUS_LABELS[approvalStatus]}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(ProjectApprovalStatus).map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {PROJECT_APPROVAL_STATUS_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <Badge variant="secondary" className="text-xs">
+                {PROJECT_APPROVAL_STATUS_LABELS[approvalStatus]}
+              </Badge>
+              <p className="text-xs text-muted-foreground mt-1">
+                Se calcula automáticamente según la aprobación de cada lámpara.
+              </p>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Tipo de proyecto</Label>

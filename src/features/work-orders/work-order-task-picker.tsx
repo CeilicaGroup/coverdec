@@ -13,7 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import {
   buildWorkOrderTaskFilterOptions,
   EMPTY_WORK_ORDER_TASK_FILTERS,
@@ -34,7 +37,7 @@ function taskLabel(task: WorkOrderTaskFilterable) {
     const description = task.notes?.trim() || "Imprevista";
     return `${projectLabel} · ${description}`;
   }
-  const element = getTaskLampElementLabel(task);
+  const element = getTaskLampElementVisualProps(task).label;
   return `${projectLabel} · ${task.lamp.name}${element ? ` · ${element}` : ""} · ${task.processDefinition.label}`;
 }
 
@@ -43,12 +46,16 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   selectedIds,
   onToggle,
   processStylesByCode,
+  typologyImages,
+  elementTypeImages,
   emptyMessage = "No hay tareas disponibles",
 }: {
   tasks: T[];
   selectedIds: string[];
   onToggle: (taskId: string) => void;
   processStylesByCode: Record<string, ProcessBadgeStyle>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
   emptyMessage?: string;
 }) {
   const [filters, setFilters] = useState<WorkOrderTaskFilters>(
@@ -193,6 +200,13 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
               />
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="text-sm font-medium truncate">{taskLabel(task)}</div>
+                <LampElementVisual
+                  {...getTaskLampElementVisualProps(task)}
+                  typologyImages={typologyImages}
+                  elementTypeImages={elementTypeImages}
+                  size="sm"
+                  compact
+                />
                 <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                   <span className="font-mono">{task.nave.codigo}</span>
                   <ProcessBadge

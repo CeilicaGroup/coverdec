@@ -58,6 +58,8 @@ import {
   personWeekListTotalHours,
 } from "@/features/planning/person-week-list";
 import { buildPersonWeekListMaps } from "@/features/planning/person-week-list-maps";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 
 export default async function PersonaPage({
   searchParams,
@@ -89,6 +91,8 @@ export default async function PersonaPage({
     actualEntries,
     lampTaskChains,
     planningMeta,
+    typologyImages,
+    elementTypeImages,
   ] = await Promise.all([
     getNavePersonnel(naveScope),
     getAbsencesForRange(days[0], days[4]),
@@ -107,6 +111,8 @@ export default async function PersonaPage({
     }),
     getLampTaskChains(naveScope),
     getPlanningWeekMeta({ naveScope, weekStart }),
+    loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const people = personnelForPersonaView(ctx, allPeople);
@@ -260,6 +266,8 @@ export default async function PersonaPage({
               canManageAdHoc={canManageAdHoc}
               canSeeRecords={canSeeRecords}
               entriesByPersonDayTask={entriesByPersonDayTask}
+              typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
             />
           );
 
@@ -274,6 +282,8 @@ export default async function PersonaPage({
               canSeeRecords={canSeeRecords}
               canManageCompletion={ctx.role === Role.ADMIN}
               canManageAdHoc={canManageAdHoc}
+              typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
             />
           );
 

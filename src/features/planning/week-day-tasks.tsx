@@ -4,7 +4,9 @@ import {
   type ProcessBadgeStyle,
 } from "@/components/process-badge";
 import { WorkOrderBadge } from "@/components/work-order-badge";
-import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
 import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -34,6 +36,8 @@ interface WeekDayTasksProps {
   canSeeRecords: boolean;
   canManageAdHoc?: boolean;
   entriesByPersonDayTask: ReturnType<typeof buildEntriesByPersonDayTask>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
   emptyClassName?: string;
 }
 
@@ -54,6 +58,8 @@ export function WeekDayTasks({
   canSeeRecords,
   canManageAdHoc = false,
   entriesByPersonDayTask,
+  typologyImages,
+  elementTypeImages,
   emptyClassName = "text-[10px]",
 }: WeekDayTasksProps) {
   if (isAbsent) {
@@ -156,7 +162,16 @@ export function WeekDayTasks({
                 {t.lamp}
               </div>
             ) : null}
-            <TaskLampBastidor label={t.bastidor} className="text-[10px] opacity-80" />
+            <LampElementVisual
+              label={t.bastidor}
+              typology={t.elementTypology ?? undefined}
+              typologyImages={typologyImages}
+              elementTypeId={t.elementTypeId}
+              elementTypeImages={elementTypeImages}
+              size="sm"
+              compact
+              className="text-[10px] opacity-80"
+            />
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <ProcessBadge code={t.process} definition={processStyles.get(t.process)} />
               <AdHocTaskNotesIcon notes={t.notes} />

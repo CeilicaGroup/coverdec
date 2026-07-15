@@ -9,14 +9,14 @@ const eligibleTaskInclude = {
     select: {
       id: true,
       name: true,
-      elementType: { select: { id: true, name: true } },
+      elementType: { select: { id: true, name: true, typology: true } },
     },
   },
   lampElement: {
     select: {
       id: true,
       label: true,
-      elementType: { select: { id: true, name: true } },
+      elementType: { select: { id: true, name: true, typology: true } },
     },
   },
   nave: { select: { id: true, codigo: true, nombre: true } },

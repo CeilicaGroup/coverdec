@@ -20,6 +20,8 @@ import {
 } from "@/features/projects/lamp-tasks";
 import { ELEMENT_TYPOLOGIES } from "@/lib/element-typology";
 import { TypologyLabel, TypologySymbol } from "@/components/typology-symbol";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
 import { formatHours } from "@/lib/format";
 import type { ElementTypology } from "@/generated/prisma";
@@ -106,6 +108,7 @@ export function LampElementDraftList({
   draftRows,
   elementTypes,
   typologyImages,
+  elementTypeImages,
   onUpdate,
   onRemove,
   removeLabel = "elemento",
@@ -113,6 +116,7 @@ export function LampElementDraftList({
   draftRows: DraftElementRow[];
   elementTypes: ElementTypeOption[];
   typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
   onUpdate: (clientId: string, patch: Partial<DraftElementRow>) => void;
   onRemove: (clientId: string) => void;
   removeLabel?: string;
@@ -152,8 +156,18 @@ export function LampElementDraftList({
                   <div className="flex flex-wrap items-end gap-2 p-3">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-full sm:basis-auto">
                       <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-                      <span className="text-sm font-medium truncate inline-flex items-center gap-1.5 min-w-0">
-                        {row.typology ? (
+                      <span className="text-sm font-medium truncate inline-flex items-center gap-2 min-w-0">
+                        {row.elementTypeId && row.typology ? (
+                          <LampElementVisual
+                            label={null}
+                            typology={row.typology}
+                            typologyImages={typologyImages}
+                            elementTypeId={row.elementTypeId}
+                            elementTypeImages={elementTypeImages}
+                            size="sm"
+                            compact
+                          />
+                        ) : row.typology ? (
                           <>
                             <TypologySymbol
                               typology={row.typology}
@@ -240,7 +254,18 @@ export function LampElementDraftList({
                           <SelectContent>
                             {filteredTypes.map((e) => (
                               <SelectItem key={e.id} value={e.id}>
-                                {e.name}
+                                <span className="inline-flex items-center gap-2 min-w-0">
+                                  <LampElementVisual
+                                    label={null}
+                                    typology={e.typology}
+                                    typologyImages={typologyImages}
+                                    elementTypeId={e.id}
+                                    elementTypeImages={elementTypeImages}
+                                    size="xs"
+                                    compact
+                                  />
+                                  <span className="truncate">{e.name}</span>
+                                </span>
                               </SelectItem>
                             ))}
                           </SelectContent>

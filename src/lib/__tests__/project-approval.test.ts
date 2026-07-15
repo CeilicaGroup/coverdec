@@ -1,12 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { ProjectApprovalStatus } from "@/generated/prisma";
 import {
+  deriveProjectApprovalStatus,
   isLampEligibleForPlanning,
   isProjectExcludedFromPlanning,
-  lampApprovalForProjectStatus,
 } from "@/lib/project-approval";
 
 describe("project-approval", () => {
+  describe("deriveProjectApprovalStatus", () => {
+    it("returns pending when there are no lamps", () => {
+      expect(deriveProjectApprovalStatus([])).toBe(
+        ProjectApprovalStatus.PENDING_APPROVAL,
+      );
+    });
+
+    it("returns pending when all lamps are pending", () => {
+      expect(deriveProjectApprovalStatus([false, false, false])).toBe(
+        ProjectApprovalStatus.PENDING_APPROVAL,
+      );
+    });
+
+    it("returns in production when all lamps are approved", () => {
+      expect(deriveProjectApprovalStatus([true, true])).toBe(
+        ProjectApprovalStatus.IN_PRODUCTION,
+      );
+    });
+
+    it("returns partial approval when lamps are mixed", () => {
+      expect(deriveProjectApprovalStatus([true, false])).toBe(
+        ProjectApprovalStatus.PARTIAL_APPROVAL,
+      );
+    });
+  });
+
   it("excludes pending approval projects from planning", () => {
     expect(
       isProjectExcludedFromPlanning(ProjectApprovalStatus.PENDING_APPROVAL),
@@ -19,48 +45,8 @@ describe("project-approval", () => {
     ).toBe(false);
   });
 
-  it("includes all lamps in production projects", () => {
-    expect(
-      isLampEligibleForPlanning({
-        projectApprovalStatus: ProjectApprovalStatus.IN_PRODUCTION,
-        lampApproved: false,
-      }),
-    ).toBe(true);
-  });
-
-  it("excludes pending approval projects regardless of lamp flag", () => {
-    expect(
-      isLampEligibleForPlanning({
-        projectApprovalStatus: ProjectApprovalStatus.PENDING_APPROVAL,
-        lampApproved: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("requires lamp approval in partial approval projects", () => {
-    expect(
-      isLampEligibleForPlanning({
-        projectApprovalStatus: ProjectApprovalStatus.PARTIAL_APPROVAL,
-        lampApproved: true,
-      }),
-    ).toBe(true);
-    expect(
-      isLampEligibleForPlanning({
-        projectApprovalStatus: ProjectApprovalStatus.PARTIAL_APPROVAL,
-        lampApproved: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("maps lamp flags when approval status changes", () => {
-    expect(
-      lampApprovalForProjectStatus(ProjectApprovalStatus.IN_PRODUCTION),
-    ).toBe(true);
-    expect(
-      lampApprovalForProjectStatus(ProjectApprovalStatus.PARTIAL_APPROVAL),
-    ).toBe(false);
-    expect(
-      lampApprovalForProjectStatus(ProjectApprovalStatus.PENDING_APPROVAL),
-    ).toBe(false);
+  it("includes only approved lamps in planning", () => {
+    expect(isLampEligibleForPlanning(true)).toBe(true);
+    expect(isLampEligibleForPlanning(false)).toBe(false);
   });
 });

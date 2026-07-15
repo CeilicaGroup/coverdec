@@ -225,14 +225,15 @@ export async function listStockLamps() {
       },
     },
     include: {
-      elementType: { select: { name: true } },
+      elementType: { select: { id: true, name: true, typology: true } },
       elements: {
         select: {
           id: true,
           label: true,
           stockStatus: true,
           stockBatchCode: true,
-          elementType: { select: { name: true } },
+          elementTypeId: true,
+          elementType: { select: { id: true, name: true, typology: true } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -262,10 +263,16 @@ export async function listStockLamps() {
     ];
     const stockStatus =
       lamp.elements.find((element) => element.stockStatus)?.stockStatus ?? null;
+    const primaryElementType =
+      lamp.elementType ??
+      lamp.elements.find((element) => element.elementType)?.elementType ??
+      null;
     return {
       id: lamp.id,
       name: lamp.name,
-      elementTypeName: lamp.elementType?.name ?? null,
+      elementTypeName: primaryElementType?.name ?? null,
+      elementTypeId: primaryElementType?.id ?? null,
+      elementTypology: primaryElementType?.typology ?? null,
       stockStatus,
       batchCodes,
       pendingHours,

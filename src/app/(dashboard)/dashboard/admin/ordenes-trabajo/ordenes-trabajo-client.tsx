@@ -46,6 +46,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
 import { WorkOrderHoverTrigger } from "@/components/work-order-badge";
 import {
   autoGroupIdenticalTasks,
@@ -65,6 +67,8 @@ import {
   workOrderTaskLabel,
 } from "@/features/work-orders/work-order-task-picker";
 import { formatHours, formatShortDate } from "@/lib/format";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 
 type WorkOrderStatusFilter = "OPEN" | "CLOSED" | "ALL";
 
@@ -97,9 +101,13 @@ function pendingHours(tasks: EligibleWorkOrderTask[]) {
 function ElementProcessCell({
   tasks,
   processStylesByCode,
+  typologyImages,
+  elementTypeImages,
 }: {
   tasks: EligibleWorkOrderTask[];
   processStylesByCode: Record<string, ProcessBadgeStyle>;
+  typologyImages: TypologyImageAvailability;
+  elementTypeImages: ElementTypeImageAvailability;
 }) {
   const summary = summarizeWorkOrderElementProcess(tasks);
   if (summary.kind === "unknown") return <span className="text-muted-foreground">—</span>;
@@ -110,9 +118,21 @@ function ElementProcessCell({
       </span>
     );
   }
+  const first = tasks.find((t) => t.process === summary.processCode) ?? tasks[0];
+  const visual = first ? getTaskLampElementVisualProps(first) : null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm">{summary.elementName}</span>
+      {visual ? (
+        <LampElementVisual
+          {...visual}
+          typologyImages={typologyImages}
+          elementTypeImages={elementTypeImages}
+          size="sm"
+          compact
+        />
+      ) : (
+        <span className="text-sm">{summary.elementName}</span>
+      )}
       <ProcessBadge
         code={summary.processCode}
         definition={processStylesByCode[summary.processCode]}
@@ -150,6 +170,8 @@ export function OrdenesTrabajoClient({
   processStylesByCode,
   workOrderIdsWithTimeEntries,
   workOrderIdsWithPlanningAssignments,
+  typologyImages,
+  elementTypeImages,
 }: {
   workOrders: WorkOrderRow[];
   eligibleTasks: EligibleWorkOrderTask[];
@@ -158,6 +180,8 @@ export function OrdenesTrabajoClient({
   processStylesByCode: Record<string, ProcessBadgeStyle>;
   workOrderIdsWithTimeEntries: string[];
   workOrderIdsWithPlanningAssignments: string[];
+  typologyImages: TypologyImageAvailability;
+  elementTypeImages: ElementTypeImageAvailability;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -441,6 +465,8 @@ export function OrdenesTrabajoClient({
                           <ElementProcessCell
                             tasks={order.tasks}
                             processStylesByCode={processStylesByCode}
+                            typologyImages={typologyImages}
+                            elementTypeImages={elementTypeImages}
                           />
                         </TableCell>
                         <TableCell>
@@ -510,6 +536,8 @@ export function OrdenesTrabajoClient({
                     selectedIds={selectedTaskIds}
                     onToggle={toggleTask}
                     processStylesByCode={processStylesByCode}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
                     emptyMessage="No hay tareas pendientes sin OT"
                   />
                 </div>
@@ -616,6 +644,8 @@ export function OrdenesTrabajoClient({
                       selectedIds={[]}
                       onToggle={toggleEditAddTask}
                       processStylesByCode={processStylesByCode}
+                      typologyImages={typologyImages}
+                      elementTypeImages={elementTypeImages}
                       emptyMessage="No hay más tareas pendientes disponibles"
                     />
                   </div>

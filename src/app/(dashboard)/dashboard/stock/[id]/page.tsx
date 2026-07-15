@@ -22,6 +22,7 @@ import {
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
 import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 import { LampElementsSummary } from "@/components/typology-symbol";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
@@ -73,7 +74,7 @@ export default async function StockBatchDetailPage({
               id: true,
               label: true,
               surfaceM2: true,
-              elementType: { select: { id: true, name: true } },
+              elementType: { select: { id: true, name: true, typology: true } },
             },
           },
           _count: { select: { assignments: true, timeEntries: true } },
@@ -106,7 +107,7 @@ export default async function StockBatchDetailPage({
     };
   });
 
-  const [elementTypes, processDefs, naves, typologyNaves, projects, typologyImages] =
+  const [elementTypes, processDefs, naves, typologyNaves, projects, typologyImages, elementTypeImages] =
     await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
@@ -143,6 +144,7 @@ export default async function StockBatchDetailPage({
       orderBy: { name: "asc" },
     }),
     loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
@@ -211,6 +213,7 @@ export default async function StockBatchDetailPage({
         : [];
 
   const elementSummaryItems = editableElements.map((cfg) => ({
+    elementTypeId: cfg.elementTypeId,
     typology: cfg.typology,
     name:
       lamp.elements.find((e) => e.elementTypeId === cfg.elementTypeId)
@@ -223,6 +226,7 @@ export default async function StockBatchDetailPage({
       <LampElementsSummary
         elements={elementSummaryItems}
         availability={typologyImages}
+        elementTypeImages={elementTypeImages}
       />
     ) : (
       (lamp.elementType?.name ?? "—")
@@ -306,6 +310,7 @@ export default async function StockBatchDetailPage({
               lampName={lamp.name}
               initialElements={editableElements}
               typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
               elementTypes={elementTypes.map((f) => ({
                 id: f.id,
                 name: f.name,
@@ -344,6 +349,8 @@ export default async function StockBatchDetailPage({
             naves={naves}
             elementTypeDefaultNaves={elementTypeDefaultNaves}
             catalogNaveByElementProcess={catalogNaveByElementProcess}
+            typologyImages={typologyImages}
+            elementTypeImages={elementTypeImages}
           />
         </CardContent>
       </Card>

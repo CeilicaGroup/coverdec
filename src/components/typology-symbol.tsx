@@ -10,6 +10,8 @@ import {
   typologyImageVersion,
   type TypologyImageAvailability,
 } from "@/lib/typology-image";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { cn } from "@/lib/utils";
 
 const SIZE_CLASSES = {
@@ -116,40 +118,46 @@ export function TypologyLabel({
 export function LampElementsSummary({
   elements,
   availability,
+  elementTypeImages,
 }: {
   elements: Array<{
+    elementTypeId: string;
     typology: ElementTypology;
     name: string;
     surfaceM2: number;
     units: number;
   }>;
   availability?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   if (elements.length === 0) return null;
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-      {elements.map((cfg, index) => (
-        <span
-          key={`${cfg.typology}-${cfg.name}-${index}`}
-          className="inline-flex items-center gap-1 min-w-0"
-        >
-          {index > 0 ? (
-            <span className="text-muted-foreground" aria-hidden>
-              /
-            </span>
-          ) : null}
-          <TypologySymbol
-            typology={cfg.typology}
-            availability={availability}
-            size="sm"
-          />
-          <span className="truncate">
-            {cfg.name} · {cfg.surfaceM2} m²
-            {cfg.units > 1 ? ` · ${cfg.units} uds` : ""}
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+      {elements.map((cfg, index) => {
+        const detail = `${cfg.name} · ${cfg.surfaceM2} m²${cfg.units > 1 ? ` · ${cfg.units} uds` : ""}`;
+        return (
+          <span
+            key={`${cfg.elementTypeId}-${cfg.name}-${index}`}
+            className="inline-flex items-center gap-1 min-w-0"
+          >
+            {index > 0 ? (
+              <span className="text-muted-foreground" aria-hidden>
+                /
+              </span>
+            ) : null}
+            <LampElementVisual
+              label={detail}
+              typology={cfg.typology}
+              typologyImages={availability}
+              elementTypeId={cfg.elementTypeId}
+              elementTypeImages={elementTypeImages}
+              size="md"
+              compact
+            />
           </span>
-        </span>
-      ))}
+        );
+      })}
     </span>
   );
 }

@@ -24,8 +24,12 @@ import {
 } from "@/components/ui/select";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
 import { WorkOrderBadge } from "@/components/work-order-badge";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { formatHours } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { ProcessCode } from "@/types/process";
 import {
   aggregateTasksByProcess,
@@ -56,7 +60,7 @@ import {
 import { isSystemTransportTask } from "@/features/projects/transport-tasks";
 import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import type { ElementTypology } from "@/generated/prisma";
 
 interface LampTaskRow {
   id: string;
@@ -77,7 +81,7 @@ interface LampTaskRow {
         id: string;
         label: string | null;
         surfaceM2: number | null;
-        elementType: { id: string; name: string };
+        elementType: { id: string; name: string; typology: ElementTypology };
       }
     | null;
   workOrder: { number: string; status: import("@/generated/prisma").WorkOrderStatus } | null;
@@ -233,6 +237,10 @@ function NavePicker({
 function ElementSectionBar({
   label,
   showLabel,
+  elementTypeId,
+  typology,
+  typologyImages,
+  elementTypeImages,
   typeDefaultNaveLabel,
   groupNaveKind,
   canManage,
@@ -243,6 +251,10 @@ function ElementSectionBar({
 }: {
   label: string;
   showLabel: boolean;
+  elementTypeId?: string | null;
+  typology?: ElementTypology;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
   typeDefaultNaveLabel: string | null;
   groupNaveKind: NaveAssignmentKind;
   canManage: boolean;
@@ -253,8 +265,18 @@ function ElementSectionBar({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-muted/30 border-b border-border/50">
-      <div className="space-y-0.5">
-        {showLabel ? (
+      <div className="space-y-1 min-w-0">
+        {elementTypeId && elementTypeId !== "__sin_elemento__" ? (
+          <LampElementVisual
+            label={showLabel ? label : null}
+            typology={typology}
+            typologyImages={typologyImages}
+            elementTypeId={elementTypeId}
+            elementTypeImages={elementTypeImages}
+            size="md"
+            compact
+          />
+        ) : showLabel ? (
           <span className="text-xs font-medium">{label}</span>
         ) : (
           <span className="text-xs text-muted-foreground">Tareas</span>
@@ -629,6 +651,8 @@ export function LampTasksPanel({
   naves = [],
   elementTypeDefaultNaves = {},
   catalogNaveByElementProcess = {},
+  typologyImages,
+  elementTypeImages,
 }: {
   lampId: string;
   tasks: LampTaskRow[];
@@ -639,6 +663,8 @@ export function LampTasksPanel({
   naves?: NaveSummary[];
   elementTypeDefaultNaves?: Record<string, string | null>;
   catalogNaveByElementProcess?: Record<string, Record<string, string>>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -775,11 +801,17 @@ export function LampTasksPanel({
             naveIds: groupTasks.map((task) => task.naveId),
             elementTypeDefaultNaveId: groupDefaultNaveId,
           });
+          const groupTypology =
+            groupTasks[0]?.lampElement?.elementType.typology ?? undefined;
           return (
             <section key={group.key}>
               <ElementSectionBar
                 label={sectionLabel}
                 showLabel={showSectionLabel}
+                elementTypeId={group.key}
+                typology={groupTypology}
+                typologyImages={typologyImages}
+                elementTypeImages={elementTypeImages}
                 typeDefaultNaveLabel={typeDefaultNaveLabel}
                 groupNaveKind={groupNaveKind}
                 canManage={canManage}

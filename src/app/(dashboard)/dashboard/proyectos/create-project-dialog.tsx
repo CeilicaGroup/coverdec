@@ -25,9 +25,7 @@ import {
 } from "@/components/ui/select";
 import { createProject } from "@/features/projects/actions";
 import { ProjectKind } from "@/generated/prisma";
-import { ProjectApprovalStatus } from "@/generated/prisma";
 import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
-import { PROJECT_APPROVAL_STATUS_LABELS } from "@/lib/project-approval";
 import { toast } from "sonner";
 
 export function CreateProjectDialog({
@@ -44,9 +42,6 @@ export function CreateProjectDialog({
   const [deliveryDate, setDeliveryDate] = useState("");
   const [isBillable, setIsBillable] = useState(true);
   const [kind, setKind] = useState<ProjectKind>(ProjectKind.PRODUCCION);
-  const [approvalStatus, setApprovalStatus] = useState<ProjectApprovalStatus>(
-    ProjectApprovalStatus.PENDING_APPROVAL,
-  );
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(null);
 
   return (
@@ -71,7 +66,6 @@ export function CreateProjectDialog({
                   deliveryDate: deliveryDate || undefined,
                   isBillable,
                   kind,
-                  approvalStatus,
                   responsibleUserId: responsibleUserId ?? undefined,
                 });
                 toast.success("Proyecto creado");
@@ -119,28 +113,6 @@ export function CreateProjectDialog({
                 {PROJECT_KINDS.map((option) => (
                   <SelectItem key={option} value={option}>
                     {PROJECT_KIND_LABELS[option]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Estado de aprobación</Label>
-            <Select
-              value={approvalStatus}
-              onValueChange={(value) =>
-                setApprovalStatus(
-                  (value ?? ProjectApprovalStatus.PENDING_APPROVAL) as ProjectApprovalStatus,
-                )
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue>{PROJECT_APPROVAL_STATUS_LABELS[approvalStatus]}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(ProjectApprovalStatus).map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {PROJECT_APPROVAL_STATUS_LABELS[status]}
                   </SelectItem>
                 ))}
               </SelectContent>

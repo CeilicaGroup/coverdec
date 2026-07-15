@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { LampElementStockStatus } from "@/generated/prisma";
 import { PRODUCTIVE_SLOTS_PER_DAY } from "@/features/planning/engine/slot-format";
+import { syncProjectApprovalStatus } from "@/features/projects/sync-project-approval";
 import { deleteEmptyOpenWorkOrders } from "@/features/work-orders/cleanup-empty";
 
 export function formatStockBatchCode(year: number, serial: number): string {
@@ -70,6 +71,12 @@ export async function moveLampToProject(
   tx: Prisma.TransactionClient,
   args: { lampId: string; targetProjectId: string },
 ): Promise<void> {
+  const lamp = await tx.lamp.findUnique({
+    where: { id: args.lampId },
+    select: { projectId: true },
+  });
+  const sourceProjectId = lamp?.projectId;
+
   await tx.lamp.update({
     where: { id: args.lampId },
     data: { projectId: args.targetProjectId },
@@ -79,6 +86,11 @@ export async function moveLampToProject(
     where: { lampId: args.lampId },
     data: { projectId: args.targetProjectId },
   });
+
+  if (sourceProjectId && sourceProjectId !== args.targetProjectId) {
+    await syncProjectApprovalStatus(sourceProjectId, tx);
+  }
+  await syncProjectApprovalStatus(args.targetProjectId, tx);
 }
 
 export async function clearPendingTaskWorkOrders(

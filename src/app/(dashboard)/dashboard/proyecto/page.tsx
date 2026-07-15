@@ -58,8 +58,12 @@ import { getPlanningWeekMeta } from "@/features/planning/queries";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressInline, type ProgressStripe } from "@/components/task-progress";
-import { TaskLampBastidor } from "@/components/task-lamp-bastidor";
-import { getTaskLampElementLabel } from "@/features/planning/task-lamp-frame";
+import { LampElementVisual } from "@/components/lamp-element-visual";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import type { TypologyImageAvailability } from "@/lib/typology-image";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
+import { getTaskLampElementVisualProps } from "@/features/planning/task-lamp-frame";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { Role } from "@/generated/prisma";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
@@ -82,9 +86,11 @@ export default async function ProyectoPage({
   const naveScope = naveScopeFromContext(ctx);
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [projects, processByCode] = await Promise.all([
+  const [projects, processByCode, typologyImages, elementTypeImages] = await Promise.all([
     getActiveProjectsWithLoad(naveScope),
     getProcessDefinitionsByCode(),
+    loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const [planning, actualEntries, priorAssignments] = await Promise.all([
@@ -272,6 +278,8 @@ export default async function ProyectoPage({
                     actualByTask={actualByTask}
                     plannedDueByTask={plannedDueByTask}
                     completedByTask={completedByTask}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
                   />
                 ) : (
                   <PlanProjectTable
@@ -294,6 +302,8 @@ export default async function ProyectoPage({
                     plannedByTask={plannedByTask}
                     plannedDueByTask={plannedDueByTask}
                     completedByTask={completedByTask}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
                   />
                 )}
               </CardContent>
@@ -315,6 +325,8 @@ function ActualProjectTable({
   plannedItemsByTask,
   plannedDueByTask,
   completedByTask,
+  typologyImages,
+  elementTypeImages,
 }: {
   isAdmin: boolean;
   recordsPersonId: string | null;
@@ -325,6 +337,8 @@ function ActualProjectTable({
   plannedItemsByTask: Map<string, ProgressStripe[]>;
   plannedDueByTask: Map<string, number>;
   completedByTask: Map<string, boolean>;
+  typologyImages: TypologyImageAvailability;
+  elementTypeImages: ElementTypeImageAvailability;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -372,7 +386,15 @@ function ActualProjectTable({
               </TableCell>
               <TableCell>
                 <div className="text-xs">{e.lamp?.name ?? "—"}</div>
-                <TaskLampBastidor label={e.task ? getTaskLampElementLabel(e.task) : null} />
+                {e.task ? (
+                  <LampElementVisual
+                    {...getTaskLampElementVisualProps(e.task)}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
+                    size="sm"
+                    compact
+                  />
+                ) : null}
               </TableCell>
               <TableCell>
                 {e.process ? (
@@ -468,6 +490,8 @@ function PlanProjectTable({
   actualByTask,
   actualItemsByTask,
   completedByTask,
+  typologyImages,
+  elementTypeImages,
 }: {
   isAdmin: boolean;
   recordsPersonId: string | null;
@@ -479,6 +503,8 @@ function PlanProjectTable({
   actualByTask: Map<string, number>;
   actualItemsByTask: Map<string, ProgressStripe[]>;
   completedByTask: Map<string, boolean>;
+  typologyImages: TypologyImageAvailability;
+  elementTypeImages: ElementTypeImageAvailability;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -577,7 +603,13 @@ function PlanProjectTable({
                 </TableCell>
                 <TableCell>
                   <div className="text-xs">{item.assignment.task.lamp?.name ?? "—"}</div>
-                  <TaskLampBastidor label={getTaskLampElementLabel(item.assignment.task)} />
+                  <LampElementVisual
+                    {...getTaskLampElementVisualProps(item.assignment.task)}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
+                    size="sm"
+                    compact
+                  />
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1 flex-wrap">

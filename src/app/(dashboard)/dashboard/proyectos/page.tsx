@@ -76,12 +76,9 @@ function isProjectFinished(tasks: { isCompleted: boolean }[]): boolean {
 
 function filterTasksForPlanningKpis<
   T extends { lamp: { isApprovedForPlanning: boolean } },
->(approvalStatus: ProjectApprovalStatus, tasks: T[]): T[] {
+>(tasks: T[]): T[] {
   return tasks.filter((task) =>
-    isLampEligibleForPlanning({
-      projectApprovalStatus: approvalStatus,
-      lampApproved: task.lamp.isApprovedForPlanning,
-    }),
+    isLampEligibleForPlanning(task.lamp.isApprovedForPlanning),
   );
 }
 
@@ -194,7 +191,7 @@ export default async function ProyectosPage({
 
   const projectRows = projects.map((p) => {
     const hours = hoursFromTasks(p.tasks, doneByTaskId, assignedByTaskId);
-    const planningTasks = filterTasksForPlanningKpis(p.approvalStatus, p.tasks);
+    const planningTasks = filterTasksForPlanningKpis(p.tasks);
     const planningHours = hoursFromTasks(planningTasks, doneByTaskId, assignedByTaskId);
     const pending = Math.max(0, hours.estimated - hours.done);
     const pct = hours.estimated > 0 ? Math.round((hours.done / hours.estimated) * 100) : 0;
@@ -228,10 +225,7 @@ export default async function ProyectosPage({
     { codigo: string; nombre: string; estimated: number; done: number; assigned: number }
   >();
   for (const row of visibleRows) {
-    const planningTasks = filterTasksForPlanningKpis(
-      row.project.approvalStatus,
-      row.project.tasks,
-    );
+    const planningTasks = filterTasksForPlanningKpis(row.project.tasks);
     for (const task of planningTasks) {
       const naveId = task.nave.id;
       const current = naveHoursById.get(naveId) ?? {

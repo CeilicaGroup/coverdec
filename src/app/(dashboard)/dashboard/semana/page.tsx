@@ -39,6 +39,8 @@ import {
   buildPlanGrid,
   WeekPersonGrid,
 } from "@/features/planning/week-person-grid";
+import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
+import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 
 export default async function SemanaPage({
   searchParams,
@@ -60,7 +62,7 @@ export default async function SemanaPage({
     ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const adHocOptions = canManageAdHoc ? await listAdHocFormOptions() : null;
 
-  const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta] = await Promise.all([
+  const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta, typologyImages, elementTypeImages] = await Promise.all([
     getNavePersonnel(naveScope),
     getHolidaysForRange(days[0], days[4]),
     getAbsencesForRange(days[0], days[4]),
@@ -76,6 +78,8 @@ export default async function SemanaPage({
       userId: actualRecordsUserIdForContext(ctx),
     }),
     getPlanningWeekMeta({ naveScope, weekStart }),
+    loadTypologyImageAvailability(),
+    loadElementTypeImageAvailability(),
   ]);
 
   const holidayDates = expandHolidayRangesToIsoDays(
@@ -168,6 +172,8 @@ export default async function SemanaPage({
             canManageAdHoc={canManageAdHoc}
             recordsPersonId={ctx.role === Role.OPERARIO ? ctx.personId : null}
             entriesByPersonDayTask={entriesByPersonDayTask}
+            typologyImages={typologyImages}
+            elementTypeImages={elementTypeImages}
           />
         </CardContent>
       </Card>

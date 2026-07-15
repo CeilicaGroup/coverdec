@@ -26,6 +26,7 @@ import {
 } from "./lamp-element-draft-fields";
 import type { ElementTypology } from "@/generated/prisma";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
+import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 
 function configsToDraft(
   configs: LampElementConfig[],
@@ -48,12 +49,14 @@ export function EditLampElementsDialog({
   initialElements,
   elementTypes,
   typologyImages,
+  elementTypeImages,
 }: {
   lampId: string;
   lampName: string;
   initialElements: LampElementConfig[];
   elementTypes: ElementTypeOption[];
   typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -166,6 +169,7 @@ export function EditLampElementsDialog({
               draftRows={draftRows}
               elementTypes={elementTypes}
               typologyImages={typologyImages}
+              elementTypeImages={elementTypeImages}
               onUpdate={updateDraft}
               onRemove={removeDraft}
             />
