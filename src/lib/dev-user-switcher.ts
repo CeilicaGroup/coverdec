@@ -1,10 +1,7 @@
-/** QA-only user switcher; never enabled in production. */
+/** QA user switcher; opt-in outside development via ENABLE_DEV_USER_SWITCHER. */
 export function isDevUserSwitcherEnabled(): boolean {
-  if (process.env.NODE_ENV === "production") return false;
-  return (
-    process.env.NODE_ENV === "development" ||
-    process.env.ENABLE_DEV_USER_SWITCHER === "true"
-  );
+  if (process.env.ENABLE_DEV_USER_SWITCHER === "true") return true;
+  return process.env.NODE_ENV === "development";
 }
 
 /** Seed users can use passwords other than DEV_USER_SWITCH_PASSWORD. */

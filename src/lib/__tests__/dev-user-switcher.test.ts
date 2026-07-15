@@ -10,9 +10,16 @@ describe("isDevUserSwitcherEnabled", () => {
     return import("@/lib/dev-user-switcher");
   }
 
-  it("is disabled in production regardless of flag", async () => {
+  it("is enabled in production when flag is true", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("ENABLE_DEV_USER_SWITCHER", "true");
+    const { isDevUserSwitcherEnabled } = await loadHelper();
+    expect(isDevUserSwitcherEnabled()).toBe(true);
+  });
+
+  it("is disabled in production when flag is absent", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENABLE_DEV_USER_SWITCHER", "");
     const { isDevUserSwitcherEnabled } = await loadHelper();
     expect(isDevUserSwitcherEnabled()).toBe(false);
   });
