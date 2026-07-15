@@ -9,10 +9,7 @@ import { getSession } from "@/lib/auth-server";
 import { recordAuditEvent } from "@/lib/audit/record-audit-event";
 import { getDefaultDashboardPath } from "@/lib/dashboard-path";
 import { prisma } from "@/lib/db";
-import {
-  assertDevUserSwitcherEnabled,
-  resolveDevPasswordCandidates,
-} from "@/lib/dev-user-switcher";
+import { assertDevUserSwitcherEnabled } from "@/lib/dev-user-switcher";
 import { childLogger } from "@/lib/logger";
 
 const log = childLogger({ module: "dev.user-switcher" });
@@ -85,47 +82,14 @@ export async function switchDevUser(
   });
   if (!target) throw new Error("Usuario no encontrado.");
 
-  const passwordCandidates = resolveDevPasswordCandidates(target.email);
-  if (passwordCandidates.length === 0) {
-    throw new Error(
-      "Falta DEV_USER_SWITCH_PASSWORD en el entorno para usar el conmutador de usuario.",
-    );
-  }
-
   const hdrs = await requestHeaders();
   const currentSession = await getSession();
   const previousUserId = currentSession?.user.id ?? null;
 
-  await auth.api.signOut({ headers: hdrs });
-
-  let signedIn = false;
-  for (const password of passwordCandidates) {
-    try {
-      const signIn = await auth.api.signInEmail({
-        body: { email: target.email, password },
-        headers: hdrs,
-      });
-      if (signIn?.user) {
-        signedIn = true;
-        break;
-      }
-    } catch (error) {
-      log.debug(
-        { targetUserId: target.id, email: target.email, err: error },
-        "dev user switch password attempt failed",
-      );
-    }
-  }
-
-  if (!signedIn) {
-    log.warn(
-      { targetUserId: target.id, email: target.email },
-      "dev user switch sign-in failed",
-    );
-    throw new Error(
-      "Contraseña dev no válida para este usuario. Usa usuarios del seed o configura DEV_USER_SWITCH_PASSWORD.",
-    );
-  }
+  const result = await auth.api.devSwitchUser({
+    body: { userId: target.id },
+    headers: hdrs,
+  });
 
   const requestMeta = {
     ipAddress:
@@ -151,7 +115,7 @@ export async function switchDevUser(
     entityType: "User",
     entityId: target.id,
     metadata: {
-      previousUserId,
+      previousUserId: result.previousUserId ?? previousUserId,
       targetUserId: target.id,
       targetRole: target.role,
     },
@@ -159,7 +123,7 @@ export async function switchDevUser(
 
   log.info(
     {
-      previousUserId,
+      previousUserId: result.previousUserId ?? previousUserId,
       targetUserId: target.id,
       targetRole: target.role,
     },

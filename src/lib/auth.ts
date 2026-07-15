@@ -5,6 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { AuditOutcome, Role } from "@/generated/prisma";
+import { devUserSwitchAuthPlugin } from "@/lib/dev-user-switch-auth-plugin";
 import { prisma } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit/record-audit-event";
 
@@ -142,6 +143,7 @@ export const auth = betterAuth({
         OPERARIO: userAc,
       },
     }),
+    devUserSwitchAuthPlugin(),
     nextCookies(),
   ],
 });

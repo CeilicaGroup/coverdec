@@ -46,53 +46,6 @@ describe("isDevUserSwitcherEnabled", () => {
   });
 });
 
-describe("requireDevUserSwitchPassword", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  it("throws when password env is missing", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("DEV_USER_SWITCH_PASSWORD", "");
-    const { requireDevUserSwitchPassword } = await import("@/lib/dev-user-switcher");
-    expect(() => requireDevUserSwitchPassword()).toThrow(
-      "Falta DEV_USER_SWITCH_PASSWORD",
-    );
-  });
-
-  it("returns trimmed password when configured", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("DEV_USER_SWITCH_PASSWORD", "  coverdec123  ");
-    const { requireDevUserSwitchPassword } = await import("@/lib/dev-user-switcher");
-    expect(requireDevUserSwitchPassword()).toBe("coverdec123");
-  });
-});
-
-describe("resolveDevPasswordCandidates", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  it("prefers seed admin password before default", async () => {
-    vi.stubEnv("DEV_USER_SWITCH_PASSWORD", "coverdec123");
-    const { resolveDevPasswordCandidates } = await import("@/lib/dev-user-switcher");
-    expect(resolveDevPasswordCandidates("admin@coverdec.local")).toEqual([
-      "admin12345",
-      "coverdec123",
-    ]);
-  });
-
-  it("uses default password for other seed users", async () => {
-    vi.stubEnv("DEV_USER_SWITCH_PASSWORD", "coverdec123");
-    const { resolveDevPasswordCandidates } = await import("@/lib/dev-user-switcher");
-    expect(resolveDevPasswordCandidates("claudio@coverdec.local")).toEqual([
-      "coverdec123",
-    ]);
-  });
-});
-
 describe("switchDevUser guard", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
