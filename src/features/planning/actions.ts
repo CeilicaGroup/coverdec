@@ -201,6 +201,11 @@ export async function publishPlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN]);
+      if (ctx.naveId) {
+        throw new Error(
+          "El planning se publica para todas las naves. Quita el filtro de nave.",
+        );
+      }
       const { weekStart } = publishSchema.parse(input);
       const result = await publishAllPlanningsForWeek(new Date(weekStart));
       if (result.publishedCount === 0) {
@@ -234,6 +239,11 @@ export async function undoPlanningAction(input: {
     async () => {
       const ctx = await requireDashboardContext();
       requireRole(ctx, [Role.ADMIN]);
+      if (ctx.naveId) {
+        throw new Error(
+          "El planning se deshace para todas las naves. Quita el filtro de nave.",
+        );
+      }
       const { weekStart, includeFutureWeeks } = undoSchema.parse(input);
       const result = await undoPlanningAllNaves({
         weekStart: new Date(weekStart),

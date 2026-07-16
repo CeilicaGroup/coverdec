@@ -327,6 +327,7 @@ export function GenerateButton({
   };
 
   const undoBlockedReason = (() => {
+    if (disabled && disabledReason) return disabledReason;
     if (canUndo) return null;
     if (hasRegistros) {
       return "Hay registros de horas en esta semana o en semanas posteriores. Usa Regenerar para ajustar el plan sin perder registros.";
@@ -341,7 +342,7 @@ export function GenerateButton({
   const undoButton = (
     <Button
       onClick={onUndoClick}
-      disabled={!canUndo || undoing || pending}
+      disabled={disabled || !canUndo || undoing || pending}
       variant="outline"
       className="gap-2"
       title={

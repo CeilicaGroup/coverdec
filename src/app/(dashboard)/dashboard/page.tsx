@@ -230,7 +230,7 @@ export default async function ResumenPage({
               disabled={!!ctx.naveId}
               disabledReason={
                 ctx.naveId
-                  ? "El planning se genera para todas las naves. Quita el filtro de nave."
+                  ? "El planning se genera, publica y deshace para todas las naves. Quita el filtro de nave."
                   : undefined
               }
             />
