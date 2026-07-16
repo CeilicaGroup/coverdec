@@ -150,25 +150,23 @@ export function PersonWeekList({
                             isCompleted={maps.completedByTask.get(e.taskId) ?? false}
                             canManageCompletion={canManageCompletion}
                             timeEntry={{
-                              entries: e.endedAt
-                                ? [
-                                    {
-                                      id: e.id,
-                                      startedAt: e.startedAt.toISOString(),
-                                      endedAt: e.endedAt.toISOString(),
-                                      notes: e.notes,
-                                      summaryLabel: formatActualEntrySummaryLabel(
-                                        e.date,
-                                        e.hours,
-                                        e.process ?? e.task?.process,
-                                      ),
-                                      dateIso: e.date,
-                                      hours: e.hours,
-                                      process: e.process ?? e.task?.process ?? null,
-                                      isRunning: e.isRunning,
-                                    },
-                                  ]
-                                : [],
+                              entries: [
+                                {
+                                  id: e.id,
+                                  startedAt: e.startedAt.toISOString(),
+                                  endedAt: e.endedAt?.toISOString() ?? null,
+                                  notes: e.notes,
+                                  summaryLabel: formatActualEntrySummaryLabel(
+                                    e.date,
+                                    e.hours,
+                                    e.process ?? e.task?.process,
+                                  ),
+                                  dateIso: e.date,
+                                  hours: e.hours,
+                                  process: e.process ?? e.task?.process ?? null,
+                                  isRunning: e.isRunning,
+                                },
+                              ],
                               userId: e.userId,
                               projectId: e.project?.id ?? e.task?.projectId ?? "",
                               lampId: e.lamp?.id ?? e.task?.lampId ?? undefined,
@@ -254,25 +252,23 @@ export function PersonWeekList({
                       isCompleted={maps.completedByTask.get(e.taskId) ?? false}
                       canManageCompletion={canManageCompletion}
                       timeEntry={{
-                        entries: e.endedAt
-                          ? [
-                              {
-                                id: e.id,
-                                startedAt: e.startedAt.toISOString(),
-                                endedAt: e.endedAt.toISOString(),
-                                notes: e.notes,
-                                summaryLabel: formatActualEntrySummaryLabel(
-                                  e.date,
-                                  e.hours,
-                                  e.process ?? e.task?.process,
-                                ),
-                                dateIso: e.date,
-                                hours: e.hours,
-                                process: e.process ?? e.task?.process ?? null,
-                                isRunning: e.isRunning,
-                              },
-                            ]
-                          : [],
+                        entries: [
+                          {
+                            id: e.id,
+                            startedAt: e.startedAt.toISOString(),
+                            endedAt: e.endedAt?.toISOString() ?? null,
+                            notes: e.notes,
+                            summaryLabel: formatActualEntrySummaryLabel(
+                              e.date,
+                              e.hours,
+                              e.process ?? e.task?.process,
+                            ),
+                            dateIso: e.date,
+                            hours: e.hours,
+                            process: e.process ?? e.task?.process ?? null,
+                            isRunning: e.isRunning,
+                          },
+                        ],
                         userId: e.userId,
                         projectId: e.project?.id ?? e.task?.projectId ?? "",
                         lampId: e.lamp?.id ?? e.task?.lampId ?? undefined,
@@ -342,18 +338,17 @@ export function PersonWeekList({
               const taskEntries = actualEntries
                 .filter(
                   (entry) =>
-                    entry.taskId === item.assignment.task.id &&
-                    entry.date === assignmentDateIso &&
-                    entry.endedAt,
+                    entry.taskId === item.assignment.task.id && entry.date === assignmentDateIso,
                 )
                 .map((entry) => ({
                   id: entry.id,
                   startedAt: entry.startedAt.toISOString(),
-                  endedAt: entry.endedAt!.toISOString(),
+                  endedAt: entry.endedAt?.toISOString() ?? null,
                   notes: entry.notes,
                   dateIso: entry.date,
                   hours: entry.hours,
                   process: entry.process ?? entry.task?.process ?? null,
+                  isRunning: entry.isRunning,
                 }));
 
               const task = item.assignment.task;
@@ -488,18 +483,17 @@ export function PersonWeekList({
         const taskEntries = actualEntries
           .filter(
             (entry) =>
-              entry.taskId === item.assignment.task.id &&
-              entry.date === assignmentDateIso &&
-              entry.endedAt,
+              entry.taskId === item.assignment.task.id && entry.date === assignmentDateIso,
           )
           .map((entry) => ({
             id: entry.id,
             startedAt: entry.startedAt.toISOString(),
-            endedAt: entry.endedAt!.toISOString(),
+            endedAt: entry.endedAt?.toISOString() ?? null,
             notes: entry.notes,
             dateIso: entry.date,
             hours: entry.hours,
             process: entry.process ?? entry.task?.process ?? null,
+            isRunning: entry.isRunning,
           }));
 
         const task = item.assignment.task;

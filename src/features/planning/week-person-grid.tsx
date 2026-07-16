@@ -83,7 +83,7 @@ export function buildEntriesByPersonDayTask(entries: ActualHourEntry[]) {
     {
       id: string;
       startedAt: string;
-      endedAt: string;
+      endedAt: string | null;
       notes: string | null;
       summaryLabel: string;
       dateIso: string;
@@ -93,13 +93,13 @@ export function buildEntriesByPersonDayTask(entries: ActualHourEntry[]) {
     }[]
   >();
   for (const e of entries) {
-    if (!e.personId || !e.taskId || !e.endedAt) continue;
+    if (!e.personId || !e.taskId) continue;
     const key = `${e.personId}|${e.date}|${e.taskId}`;
     const list = map.get(key) ?? [];
     list.push({
       id: e.id,
       startedAt: e.startedAt.toISOString(),
-      endedAt: e.endedAt.toISOString(),
+      endedAt: e.endedAt?.toISOString() ?? null,
       notes: e.notes,
       summaryLabel: formatActualEntrySummaryLabel(
         e.date,

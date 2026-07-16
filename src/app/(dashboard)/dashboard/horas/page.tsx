@@ -14,6 +14,8 @@ import { AdHocTasksPanel } from "./ad-hoc-tasks-panel";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import { planningRangeToDatetimeLocal } from "@/lib/datetime-local";
+import { workOrderGroupKey } from "@/features/work-orders/group-key";
+import type { ManualBreakScheduleSnapshot } from "./task-queue-panel";
 
 function weekdayLabel(date: Date): string {
   return new Intl.DateTimeFormat("es-ES", {
@@ -22,6 +24,24 @@ function weekdayLabel(date: Date): string {
   })
     .format(date)
     .replace(".", "");
+}
+
+function formatTaskMeasure(input: {
+  lamp: { surfaceM2: number | null; units: number };
+  lampElement: { surfaceM2: number | null; units: number } | null;
+}): string {
+  const lampElementSurface = input.lampElement?.surfaceM2 ?? null;
+  const lampElementUnits = input.lampElement?.units ?? 1;
+  if (lampElementSurface && lampElementSurface > 0) {
+    return `${lampElementSurface.toFixed(2)} m² · ${lampElementUnits} uds`;
+  }
+
+  const lampSurface = input.lamp.surfaceM2 ?? null;
+  if (lampSurface && lampSurface > 0) {
+    return `${lampSurface.toFixed(2)} m² · ${Math.max(1, input.lamp.units)} uds`;
+  }
+
+  return `${Math.max(1, input.lampElement?.units ?? input.lamp.units)} uds`;
 }
 
 export default async function HorasPage() {
@@ -43,8 +63,12 @@ export default async function HorasPage() {
     viewMode === "include_draft"
       ? {}
       : { status: PlanningStatus.PUBLISHED };
+  const scheduleOverrideStart = new Date(monday);
+  scheduleOverrideStart.setUTCDate(scheduleOverrideStart.getUTCDate() - 30);
+  const scheduleOverrideEnd = new Date(monday);
+  scheduleOverrideEnd.setUTCDate(scheduleOverrideEnd.getUTCDate() + 120);
 
-  const [openTimer, entries, processStyles, weekPlanning, adHocParticipantTasks] = await Promise.all([
+  const [openTimer, entries, processStyles, weekPlanning, adHocParticipantTasks, personSchedule] = await Promise.all([
     prisma.timeEntry.findFirst({
       where: { userId: ctx.userId, endedAt: null },
       include: { project: true, lamp: true, task: true },
@@ -53,7 +77,6 @@ export default async function HorasPage() {
       where: { userId: ctx.userId, startedAt: { gte: monday } },
       include: { project: true, lamp: true },
       orderBy: { startedAt: "desc" },
-      take: 50,
     }),
     getProcessBadgeStylesByCode(),
     prisma.planning.findMany({
@@ -101,7 +124,56 @@ export default async function HorasPage() {
           orderBy: { createdAt: "desc" },
         })
       : Promise.resolve([]),
+    ctx.personId
+      ? prisma.person.findUnique({
+          where: { id: ctx.personId },
+          select: {
+            workWindows: {
+              select: { dayOfWeek: true, startMinutes: true, endMinutes: true },
+            },
+            scheduleOverrides: {
+              where: {
+                date: {
+                  gte: scheduleOverrideStart,
+                  lte: scheduleOverrideEnd,
+                },
+              },
+              select: {
+                date: true,
+                windows: {
+                  select: { startMinutes: true, endMinutes: true },
+                  orderBy: { startMinutes: "asc" },
+                },
+              },
+              orderBy: { date: "asc" },
+            },
+          },
+        })
+      : Promise.resolve(null),
   ]);
+
+  const manualBreakSchedule: ManualBreakScheduleSnapshot | null =
+    personSchedule && personSchedule.workWindows.length > 0
+      ? {
+          weekly: [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+            dayOfWeek,
+            windows: personSchedule.workWindows
+              .filter((window) => window.dayOfWeek === dayOfWeek)
+              .sort((a, b) => a.startMinutes - b.startMinutes)
+              .map((window) => ({
+                startMinutes: window.startMinutes,
+                endMinutes: window.endMinutes,
+              })),
+          })),
+          overrides: personSchedule.scheduleOverrides.map((override) => ({
+            dateIso: override.date.toISOString().slice(0, 10),
+            windows: override.windows.map((window) => ({
+              startMinutes: window.startMinutes,
+              endMinutes: window.endMinutes,
+            })),
+          })),
+        }
+      : null;
 
   const processLabels = Object.fromEntries(
     [...processStyles.entries()].map(([code, s]) => [code, s.label]),
@@ -155,11 +227,37 @@ export default async function HorasPage() {
             lampId: true,
             order: true,
             systemKind: true,
+            workOrderId: true,
             project: { select: { id: true, name: true } },
-            lamp: { select: { id: true, name: true } },
+            lamp: {
+              select: {
+                id: true,
+                name: true,
+                surfaceM2: true,
+                units: true,
+                elementType: { select: { id: true } },
+              },
+            },
+            lampElement: {
+              select: {
+                label: true,
+                surfaceM2: true,
+                units: true,
+                elementType: { select: { id: true } },
+              },
+            },
             workOrder: { select: { number: true, status: true } },
           },
         });
+
+  const groupedPendingCount = new Map<string, number>();
+  for (const task of assignedTasks) {
+    if (!task.workOrderId) continue;
+    const groupKey = workOrderGroupKey(task);
+    if (!groupKey) continue;
+    const bucket = `${task.workOrderId}:${groupKey}`;
+    groupedPendingCount.set(bucket, (groupedPendingCount.get(bucket) ?? 0) + 1);
+  }
 
   const assignedLampIds = [...new Set(assignedTasks.map((t) => t.lampId))];
   const [lampTasks, processDefs, lastEndedByTaskRaw] = await Promise.all([
@@ -218,11 +316,15 @@ export default async function HorasPage() {
 
   const workerQueue = assignedTasks
     .map((t) => ({
+      workOrderId: t.workOrderId,
+      groupKey: workOrderGroupKey(t),
       id: t.id,
       projectId: t.projectId,
       projectName: t.project.name,
       lampId: t.lampId,
       lampName: t.lamp.name,
+      elementLabel: t.lampElement?.label?.trim() || t.lamp.name,
+      measureLabel: formatTaskMeasure({ lamp: t.lamp, lampElement: t.lampElement }),
       process: t.process,
       order: t.order,
       plannedRanges: taskRanges.get(t.id) ?? [],
@@ -230,6 +332,10 @@ export default async function HorasPage() {
       blockedReason: blockedReasonForTask(t),
       workOrderNumber: t.workOrder?.number ?? null,
       workOrderStatus: t.workOrder?.status ?? null,
+      groupPendingCount:
+        t.workOrderId && workOrderGroupKey(t)
+          ? groupedPendingCount.get(`${t.workOrderId}:${workOrderGroupKey(t)}`) ?? 1
+          : 1,
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 
@@ -240,10 +346,28 @@ export default async function HorasPage() {
           id: t.projectId,
           name: t.projectName,
           lamps: new Map<string, { id: string; name: string }>(),
-          tasks: [] as { id: string; process: string; lampId: string }[],
+          tasks: [] as {
+            id: string;
+            process: string;
+            lampId: string;
+            workOrderId: string | null;
+            groupKey: string | null;
+            groupPendingCount: number;
+            elementLabel: string;
+            measureLabel: string;
+          }[],
         };
         project.lamps.set(t.lampId, { id: t.lampId, name: t.lampName });
-        project.tasks.push({ id: t.id, process: t.process, lampId: t.lampId });
+        project.tasks.push({
+          id: t.id,
+          process: t.process,
+          lampId: t.lampId,
+          workOrderId: t.workOrderId ?? null,
+          groupKey: t.groupKey ?? null,
+          groupPendingCount: t.groupPendingCount ?? 1,
+          elementLabel: t.elementLabel,
+          measureLabel: t.measureLabel,
+        });
         acc.set(t.projectId, project);
         return acc;
       },
@@ -253,7 +377,16 @@ export default async function HorasPage() {
           id: string;
           name: string;
           lamps: Map<string, { id: string; name: string }>;
-          tasks: { id: string; process: string; lampId: string }[];
+          tasks: {
+            id: string;
+            process: string;
+            lampId: string;
+            workOrderId: string | null;
+            groupKey: string | null;
+            groupPendingCount: number;
+            elementLabel: string;
+            measureLabel: string;
+          }[];
         }
       >(),
     ).values(),
@@ -310,6 +443,7 @@ export default async function HorasPage() {
       <TaskQueuePanel
         nextTask={nextTask}
         queue={workerQueue}
+        manualBreakSchedule={manualBreakSchedule}
         projects={projects.map((p) => ({
           id: p.id,
           name: p.name,

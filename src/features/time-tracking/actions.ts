@@ -21,8 +21,44 @@ import {
   closeWorkOrderIfAllTasksComplete,
   reopenWorkOrderIfClosed,
 } from "@/features/work-orders/close";
+import { workOrderGroupKey } from "@/features/work-orders/group-key";
+import {
+  distributeHoursByMeasure,
+  splitRangesByTaskHours,
+  type GroupedOtMeasureTask,
+  type GroupedOtTimeRange,
+} from "@/features/time-tracking/grouped-ot";
+import {
+  applyBreakHandling,
+  type BreakScheduleContext,
+  type BreakHandling,
+  type TimeRangeSlice,
+} from "@/features/time-tracking/break-handling";
+import {
+  buildScheduleOverrides,
+  buildWeeklyScheduleFromWorkWindows,
+} from "@/features/planning/person-day-capacity";
 
 const log = childLogger({ module: "time-tracking.actions" });
+
+interface GroupCandidateTask extends GroupedOtMeasureTask {
+  id: string;
+  projectId: string;
+  lampId: string;
+  process: string;
+  workOrderSequence: number | null;
+  isCompleted: boolean;
+  lamp: {
+    surfaceM2: number | null;
+    units: number;
+    elementType: { id: string } | null;
+  } | null;
+  lampElement: {
+    surfaceM2: number | null;
+    units: number;
+    elementType: { id: string };
+  } | null;
+}
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
@@ -86,6 +122,55 @@ async function assertTaskMatchesSelection(params: {
   if (params.process && task.process !== params.process) {
     throw new Error("La tarea no coincide con el proceso seleccionado.");
   }
+}
+
+function utcDayStart(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+async function loadBreakScheduleForRanges(
+  personId: string | null,
+  ranges: TimeRangeSlice[],
+): Promise<BreakScheduleContext | null> {
+  if (!personId || ranges.length === 0) return null;
+  const start = ranges.reduce(
+    (min, range) => (range.startedAt < min ? range.startedAt : min),
+    ranges[0]!.startedAt,
+  );
+  const end = ranges.reduce(
+    (max, range) => (range.endedAt > max ? range.endedAt : max),
+    ranges[0]!.endedAt,
+  );
+
+  const person = await prisma.person.findUnique({
+    where: { id: personId },
+    select: {
+      workWindows: {
+        select: { dayOfWeek: true, startMinutes: true, endMinutes: true },
+      },
+      scheduleOverrides: {
+        where: {
+          date: {
+            gte: utcDayStart(start),
+            lte: utcDayStart(end),
+          },
+        },
+        select: {
+          date: true,
+          windows: {
+            select: { startMinutes: true, endMinutes: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!person || person.workWindows.length === 0) return null;
+
+  return {
+    weekly: buildWeeklyScheduleFromWorkWindows(person.workWindows),
+    overrides: buildScheduleOverrides(person.scheduleOverrides),
+  };
 }
 
 const startSchema = z.object({
@@ -163,6 +248,261 @@ export async function stopTimer(
 }
 
 const completeTaskSchema = z.object({ taskId: z.string().min(1) });
+
+const groupedCompleteSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("timer"),
+    taskId: z.string().min(1),
+    timerEntryId: z.string().min(1),
+    quantity: z.number().int().min(1).max(100),
+    notes: z.string().max(500).optional(),
+  }),
+  z.object({
+    mode: z.literal("manualRanges"),
+    taskId: z.string().min(1),
+    projectId: z.string().min(1),
+    lampId: z.string().min(1).optional(),
+    process: z.string().min(1),
+    breakHandling: z.enum(["worked_extra", "took_break"]).optional(),
+    quantity: z.number().int().min(1).max(100),
+    notes: z.string().max(500).optional(),
+    ranges: z
+      .array(
+        z.object({
+          startedAt: z.string().min(8),
+          endedAt: z.string().min(8),
+        }),
+      )
+      .min(1)
+      .max(20),
+  }),
+]);
+
+export async function recordAndCompleteGroupedOtTasks(
+  input: z.infer<typeof groupedCompleteSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction("time-tracking.recordAndCompleteGroupedOtTasks", async () => {
+    const ctx = await requireDashboardContext();
+    const data = groupedCompleteSchema.parse(input);
+    let manualRangeResult:
+      | ReturnType<typeof applyBreakHandling>
+      | null = null;
+
+    await assertTaskAccessible(ctx, data.taskId);
+    if (data.mode === "manualRanges") {
+      await assertNoOpenTimer(ctx.userId);
+      await assertTaskMatchesSelection(data);
+      const parsedRanges = data.ranges.map((range) => ({
+        startedAt: new Date(range.startedAt),
+        endedAt: new Date(range.endedAt),
+      }));
+      assertNoInternalOverlaps(parsedRanges);
+      const schedule = await loadBreakScheduleForRanges(ctx.personId, parsedRanges);
+      manualRangeResult = applyBreakHandling(parsedRanges, schedule, data.breakHandling);
+      for (const range of manualRangeResult.ranges) {
+        await assertNoTimeOverlap(ctx.userId, range.startedAt, range.endedAt);
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const baseTask = await tx.task.findFirst({
+        where: { id: data.taskId },
+        select: {
+          id: true,
+          projectId: true,
+          lampId: true,
+          process: true,
+          isCompleted: true,
+          workOrderId: true,
+          workOrderSequence: true,
+          lamp: {
+            select: {
+              surfaceM2: true,
+              units: true,
+              elementType: { select: { id: true } },
+            },
+          },
+          lampElement: {
+            select: {
+              surfaceM2: true,
+              units: true,
+              elementType: { select: { id: true } },
+            },
+          },
+        },
+      });
+      if (!baseTask) throw new Error("Tarea no encontrada.");
+      if (baseTask.isCompleted) throw new Error("La tarea ya está completada.");
+      if (!baseTask.workOrderId) {
+        throw new Error("Esta tarea no pertenece a una OT agrupable.");
+      }
+      const groupKey = workOrderGroupKey(baseTask);
+      if (!groupKey) {
+        throw new Error("No se puede determinar el grupo de esta tarea.");
+      }
+
+      const pendingTasks = await tx.task.findMany({
+        where: {
+          workOrderId: baseTask.workOrderId,
+          isCompleted: false,
+        },
+        select: {
+          id: true,
+          projectId: true,
+          lampId: true,
+          process: true,
+          workOrderSequence: true,
+          isCompleted: true,
+          lamp: {
+            select: {
+              surfaceM2: true,
+              units: true,
+              elementType: { select: { id: true } },
+            },
+          },
+          lampElement: {
+            select: {
+              surfaceM2: true,
+              units: true,
+              elementType: { select: { id: true } },
+            },
+          },
+        },
+      });
+
+      const sameGroup = pendingTasks
+        .filter((task) => workOrderGroupKey(task) === groupKey)
+        .sort((a, b) => {
+          const aSeq = a.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
+          const bSeq = b.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
+          if (aSeq !== bSeq) return aSeq - bSeq;
+          return a.id.localeCompare(b.id);
+        });
+
+      if (sameGroup.length === 0) {
+        throw new Error("No hay tareas pendientes en el grupo seleccionado.");
+      }
+      if (data.quantity > sameGroup.length) {
+        throw new Error(`Solo quedan ${sameGroup.length} tareas pendientes en el grupo.`);
+      }
+
+      const selectedTasks = sameGroup.slice(0, data.quantity);
+      const selectedTaskIds = new Set(selectedTasks.map((task) => task.id));
+      if (!selectedTaskIds.has(baseTask.id)) {
+        throw new Error("Debes completar primero la tarea pendiente más prioritaria de la OT.");
+      }
+      const unlockState = await Promise.all(selectedTasks.map((task) => isTaskUnlocked(task.id)));
+      if (unlockState.some((isUnlocked) => !isUnlocked)) {
+        throw new Error(
+          "Alguna tarea del grupo está bloqueada: completa antes los procesos anteriores del mismo elemento.",
+        );
+      }
+
+      let ranges: GroupedOtTimeRange[] = [];
+      let totalHours = 0;
+      let timerEntryId: string | null = null;
+      const finishedAt = new Date();
+
+      if (data.mode === "timer") {
+        const openTimer = await tx.timeEntry.findFirst({
+          where: { id: data.timerEntryId, userId: ctx.userId, endedAt: null },
+          select: { id: true, taskId: true, projectId: true, lampId: true, process: true, startedAt: true },
+        });
+        if (!openTimer) throw new Error("No hay un timer activo válido para completar el grupo.");
+        if (openTimer.taskId !== data.taskId) {
+          throw new Error("El timer activo no corresponde a la tarea seleccionada.");
+        }
+        totalHours = resolveTimeEntryHours(
+          { startedAt: openTimer.startedAt, endedAt: finishedAt, hours: null },
+          finishedAt,
+        );
+        if (totalHours <= 0) {
+          throw new Error("El timer no tiene duración suficiente para registrar horas.");
+        }
+        ranges = [{ startedAt: openTimer.startedAt, endedAt: finishedAt }];
+        timerEntryId = openTimer.id;
+      } else {
+        ranges = manualRangeResult?.ranges ?? [];
+        totalHours = computeTotalHours(ranges);
+        if (totalHours <= 0) {
+          throw new Error("No se puede registrar un reparto con horas totales iguales a 0.");
+        }
+      }
+
+      const distributedHours = distributeHoursByMeasure(totalHours, selectedTasks);
+      const entrySegments = splitRangesByTaskHours(ranges, distributedHours);
+      const entryPayloads = entrySegments.flatMap((segments, index) =>
+        segments.map((segment) => ({
+          userId: ctx.userId,
+          projectId: selectedTasks[index].projectId,
+          lampId: selectedTasks[index].lampId,
+          taskId: selectedTasks[index].id,
+          process: selectedTasks[index].process,
+          source: data.mode === "timer" ? TimeEntrySource.TIMER : TimeEntrySource.MANUAL,
+          startedAt: segment.startedAt,
+          endedAt: segment.endedAt,
+          hours: segment.hours,
+          notes: data.notes,
+        })),
+      );
+      if (entryPayloads.length === 0) {
+        throw new Error("No se han podido generar registros de tiempo.");
+      }
+
+      if (data.mode === "timer" && timerEntryId) {
+        const [firstPayload, ...remainingPayloads] = entryPayloads;
+        await tx.timeEntry.update({
+          where: { id: timerEntryId },
+          data: {
+            projectId: firstPayload.projectId,
+            lampId: firstPayload.lampId,
+            taskId: firstPayload.taskId,
+            process: firstPayload.process,
+            source: firstPayload.source,
+            startedAt: firstPayload.startedAt,
+            endedAt: firstPayload.endedAt,
+            hours: firstPayload.hours,
+            notes: firstPayload.notes,
+          },
+        });
+        if (remainingPayloads.length > 0) {
+          await tx.timeEntry.createMany({
+            data: remainingPayloads,
+          });
+        }
+      } else {
+        await tx.timeEntry.createMany({
+          data: entryPayloads,
+        });
+      }
+
+      await tx.task.updateMany({
+        where: { id: { in: selectedTasks.map((task) => task.id) } },
+        data: { isCompleted: true },
+      });
+      await closeWorkOrderIfAllTasksComplete(tx, baseTask.workOrderId);
+    });
+
+    log.info(
+      {
+        userId: ctx.userId,
+        taskId: data.taskId,
+        quantity: data.quantity,
+        mode: data.mode,
+        breakHandling: data.mode === "manualRanges" ? (manualRangeResult?.appliedBreakHandling ?? null) : null,
+      },
+      "grouped ot tasks recorded and completed",
+    );
+    revalidateHorasAndLoad();
+
+    const { evaluateCatalogTimeDeviationForTask } = await import(
+      "./task-time-deviation-scan"
+    );
+    void evaluateCatalogTimeDeviationForTask(data.taskId).catch(() => {
+      /* scanner errors must not block grouped completion */
+    });
+  });
+}
 
 export async function completeTask(
   input: z.infer<typeof completeTaskSchema>,
@@ -283,6 +623,7 @@ const manualRangesSchema = z.object({
   process: z.string().min(1),
   notes: z.string().max(500).optional(),
   markCompleted: z.boolean().optional(),
+  breakHandling: z.enum(["worked_extra", "took_break"]).optional(),
   ranges: z
     .array(
       z.object({
@@ -315,15 +656,17 @@ export async function createManualEntriesFromRanges(
   }));
 
   assertNoInternalOverlaps(parsedRanges);
+  const schedule = await loadBreakScheduleForRanges(ctx.personId, parsedRanges);
+  const handledRanges = applyBreakHandling(parsedRanges, schedule, data.breakHandling);
 
-  for (const r of parsedRanges) {
+  for (const r of handledRanges.ranges) {
     await assertNoTimeOverlap(ctx.userId, r.startedAt, r.endedAt);
   }
 
-  const totalHours = computeTotalHours(parsedRanges);
+  const totalHours = computeTotalHours(handledRanges.ranges);
 
   await prisma.$transaction(async (tx) => {
-    for (const r of parsedRanges) {
+    for (const r of handledRanges.ranges) {
       const hours = (r.endedAt.getTime() - r.startedAt.getTime()) / 3600000;
       await tx.timeEntry.create({
         data: {
@@ -341,15 +684,26 @@ export async function createManualEntriesFromRanges(
       });
     }
     if (data.markCompleted) {
-      await tx.task.update({
+      const task = await tx.task.findFirst({
         where: { id: data.taskId },
-        data: { isCompleted: true },
+        select: { id: true, workOrderId: true },
       });
+      if (!task) throw new Error("Tarea no encontrada.");
+      await tx.task.update({ where: { id: task.id }, data: { isCompleted: true } });
+      if (task.workOrderId) {
+        await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
+      }
     }
   });
 
   log.info(
-    { userId: ctx.userId, taskId: data.taskId, ranges: data.ranges.length, totalHours },
+    {
+      userId: ctx.userId,
+      taskId: data.taskId,
+      ranges: handledRanges.ranges.length,
+      totalHours,
+      breakHandling: handledRanges.appliedBreakHandling ?? null,
+    },
     "manual ranges created",
   );
   revalidateHorasAndLoad();

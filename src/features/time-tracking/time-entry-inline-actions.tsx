@@ -127,7 +127,7 @@ export function TimeEntryInlineActions({
   useEffect(() => setMounted(true), []);
 
   const resolvedEntries = useMemo(() => {
-    if (entries && entries.length > 0) return entries.filter((e) => e.endedAt);
+    if (entries && entries.length > 0) return entries;
     if (entryId && endedAt) {
       return [{ id: entryId, startedAt, endedAt, notes }];
     }

@@ -8,9 +8,35 @@ import { WorkOrderBadge } from "@/components/work-order-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { completeTask, startTimer, stopTimer } from "@/features/time-tracking/actions";
+import {
+  completeTask,
+  recordAndCompleteGroupedOtTasks,
+  startTimer,
+  stopTimer,
+} from "@/features/time-tracking/actions";
 import { ManualEntryForm } from "./manual-entry-form";
+
+export interface ManualBreakScheduleSnapshot {
+  weekly: {
+    dayOfWeek: number;
+    windows: { startMinutes: number; endMinutes: number }[];
+  }[];
+  overrides: {
+    dateIso: string;
+    windows: { startMinutes: number; endMinutes: number }[];
+  }[];
+}
 
 export interface WorkerQueueTask {
   id: string;
@@ -18,11 +44,16 @@ export interface WorkerQueueTask {
   projectName: string;
   lampId: string;
   lampName: string;
+  elementLabel: string;
+  measureLabel: string;
   process: string;
   order: number;
   plannedRanges: string[];
   plannedDateRanges: { startedAt: string; endedAt: string }[];
   blockedReason: string | null;
+  workOrderId: string | null;
+  groupKey: string | null;
+  groupPendingCount: number;
   workOrderNumber: string | null;
   workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
 }
@@ -46,6 +77,7 @@ export function TaskQueuePanel({
   nextTask,
   queue,
   projects,
+  manualBreakSchedule,
   openTimer,
   processLabels = {},
 }: {
@@ -55,14 +87,26 @@ export function TaskQueuePanel({
     id: string;
     name: string;
     lamps: { id: string; name: string }[];
-    tasks: { id: string; process: string; lampId: string }[];
+    tasks: {
+      id: string;
+      process: string;
+      lampId: string;
+      workOrderId: string | null;
+      groupKey: string | null;
+      groupPendingCount: number;
+      elementLabel: string;
+      measureLabel: string;
+    }[];
   }[];
+  manualBreakSchedule: ManualBreakScheduleSnapshot | null;
   openTimer: OpenTimerInfo | null;
   processLabels?: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(Date.now());
   const [showManual, setShowManual] = useState(false);
+  const [showGroupedDialog, setShowGroupedDialog] = useState(false);
+  const [groupedQuantity, setGroupedQuantity] = useState("1");
 
   useEffect(() => {
     if (!openTimer) return;
@@ -74,6 +118,13 @@ export function TaskQueuePanel({
     openTimer && nextTask && openTimer.taskId && openTimer.taskId === nextTask.id,
   );
   const isNextTaskBlocked = Boolean(nextTask?.blockedReason);
+  const isGroupedNextTask = (nextTask?.groupPendingCount ?? 1) > 1;
+  const canCompleteSingle = !isNextTaskBlocked && (!openTimer || isTimerOnCurrentTask);
+  const canCompleteMultiple = !isNextTaskBlocked && isTimerOnCurrentTask;
+
+  useEffect(() => {
+    setGroupedQuantity("1");
+  }, [nextTask?.id, nextTask?.groupPendingCount]);
 
   const timerText = useMemo(() => {
     if (!openTimer) return null;
@@ -100,16 +151,28 @@ export function TaskQueuePanel({
               <div {...withWorkOrderHighlight(nextTask.workOrderNumber, "space-y-1")}>
                 <div className="text-xs text-muted-foreground">{nextTask.projectName}</div>
                 <div className="text-lg font-semibold">{nextTask.lampName}</div>
+                <div className="text-xs text-muted-foreground">
+                  Elemento: {nextTask.elementLabel} · Medida: {nextTask.measureLabel}
+                </div>
                 <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
                   <span>{processLabels[nextTask.process] ?? nextTask.process} · No completada</span>
                   <WorkOrderBadge
                     number={nextTask.workOrderNumber}
                     status={nextTask.workOrderStatus ?? undefined}
                   />
+                  {isGroupedNextTask ? (
+                    <span>· {nextTask.groupPendingCount} iguales pendientes</span>
+                  ) : null}
                 </div>
                 {nextTask.blockedReason ? (
                   <div className="text-xs text-amber-700 dark:text-amber-400">
                     {nextTask.blockedReason}
+                  </div>
+                ) : null}
+                {isGroupedNextTask && !isTimerOnCurrentTask ? (
+                  <div className="text-xs text-muted-foreground">
+                    Para completar varias tareas agrupadas con reparto automático, inicia el timer
+                    en esta tarea o usa registro manual.
                   </div>
                 ) : null}
                 <div className="text-xs text-muted-foreground">
@@ -129,7 +192,7 @@ export function TaskQueuePanel({
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-2", isGroupedNextTask && "lg:grid-cols-5", !isGroupedNextTask && "lg:grid-cols-4")}>
                 <Button
                   disabled={pending || !!openTimer || isNextTaskBlocked}
                   className="gap-2 w-full"
@@ -178,12 +241,20 @@ export function TaskQueuePanel({
 
                 <Button
                   variant="secondary"
-                  disabled={pending || !nextTask || !!openTimer || isNextTaskBlocked}
+                  disabled={pending || !nextTask || !canCompleteSingle}
                   className={cn("gap-2 w-full")}
                   onClick={() => {
                     if (!nextTask) return;
                     startTransition(async () => {
-                      const result = await completeTask({ taskId: nextTask.id });
+                      const result =
+                        isGroupedNextTask && openTimer && isTimerOnCurrentTask
+                          ? await recordAndCompleteGroupedOtTasks({
+                              mode: "timer",
+                              taskId: nextTask.id,
+                              timerEntryId: openTimer.id,
+                              quantity: 1,
+                            })
+                          : await completeTask({ taskId: nextTask.id });
                       const outcome = handleActionResult("task-queue.complete", result);
                       if (!outcome.success) {
                         toast.error(outcome.message);
@@ -194,8 +265,19 @@ export function TaskQueuePanel({
                   }}
                 >
                   <CheckCircle2 className="size-4" />
-                  Completar
+                  Completar 1
                 </Button>
+                {isGroupedNextTask ? (
+                  <Button
+                    variant="secondary"
+                    disabled={pending || !nextTask || !canCompleteMultiple}
+                    className="gap-2 w-full"
+                    onClick={() => setShowGroupedDialog(true)}
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Completar varias
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   disabled={pending || !nextTask}
@@ -211,6 +293,7 @@ export function TaskQueuePanel({
                 <div className="rounded-md border p-3">
                   <ManualEntryForm
                     projects={projects}
+                    manualBreakSchedule={manualBreakSchedule}
                     processLabels={processLabels}
                     lockTaskSelection
                     preset={{
@@ -223,6 +306,75 @@ export function TaskQueuePanel({
                   />
                 </div>
               ) : null}
+
+              <Dialog open={showGroupedDialog} onOpenChange={setShowGroupedDialog}>
+                <DialogContent className="w-full max-w-sm sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Completar tareas agrupadas</DialogTitle>
+                    <DialogDescription>
+                      Se crearán registros individuales por tarea con reparto proporcional por
+                      medida.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="grouped-quantity">Cantidad completada</Label>
+                      <Select value={groupedQuantity} onValueChange={(value) => setGroupedQuantity(value ?? "1")}>
+                        <SelectTrigger id="grouped-quantity" className="h-10">
+                          <SelectValue placeholder="Selecciona cantidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from(
+                            { length: Math.max(1, nextTask?.groupPendingCount ?? 1) },
+                            (_, idx) => idx + 1,
+                          ).map((amount) => (
+                            <SelectItem key={amount} value={String(amount)}>
+                              {amount}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se registrarán entradas individuales para las {groupedQuantity} primeras
+                      tareas pendientes del grupo.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowGroupedDialog(false)}
+                      disabled={pending}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      disabled={pending || !nextTask || !openTimer || !isTimerOnCurrentTask}
+                      onClick={() => {
+                        if (!nextTask || !openTimer) return;
+                        startTransition(async () => {
+                          const quantity = Number(groupedQuantity) || 1;
+                          const result = await recordAndCompleteGroupedOtTasks({
+                            mode: "timer",
+                            taskId: nextTask.id,
+                            timerEntryId: openTimer.id,
+                            quantity,
+                          });
+                          const outcome = handleActionResult("task-queue.complete-grouped", result);
+                          if (!outcome.success) {
+                            toast.error(outcome.message);
+                            return;
+                          }
+                          toast.success(`Completadas ${quantity} tareas agrupadas`);
+                          setShowGroupedDialog(false);
+                        });
+                      }}
+                    >
+                      Completar y repartir horas
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </CardContent>
@@ -254,6 +406,9 @@ export function TaskQueuePanel({
                       <div className="text-xs text-muted-foreground truncate">{t.projectName}</div>
                       <div className="font-medium truncate">
                         {idx + 1}. {t.lampName}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        Elemento: {t.elementLabel} · Medida: {t.measureLabel}
                       </div>
                       <div className="text-xs text-muted-foreground truncate flex items-center gap-1 flex-wrap">
                         <span>{processLabels[t.process] ?? t.process}</span>
