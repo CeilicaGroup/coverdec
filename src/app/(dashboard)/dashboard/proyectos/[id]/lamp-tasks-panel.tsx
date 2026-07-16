@@ -16,6 +16,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -57,7 +63,10 @@ import {
   type NaveAssignmentKind,
   type NaveSummary,
 } from "@/features/projects/task-nave";
-import { isSystemTransportTask } from "@/features/projects/transport-tasks";
+import {
+  isAutomaticTransportTask,
+  TRANSPORT_PROCESS_CODE,
+} from "@/features/projects/transport-tasks";
 import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
 import { toast } from "sonner";
 import type { ElementTypology } from "@/generated/prisma";
@@ -110,15 +119,42 @@ function navePickerLabel(
 }
 
 function taskIsStructurallyLocked(task: LampTaskRow): boolean {
-  return taskHasPlanningAssignments(task) || isSystemTransportTask(task);
+  return taskHasPlanningAssignments(task) || isAutomaticTransportTask(task);
 }
 
 function transportRouteLabel(task: LampTaskRow): string | null {
-  if (!isSystemTransportTask(task)) return null;
+  if (task.process !== TRANSPORT_PROCESS_CODE) return null;
   const from = task.transportFromNave?.codigo ?? task.nave?.codigo;
   const to = task.transportToNave?.codigo;
   if (!from || !to) return null;
   return `${from} → ${to}`;
+}
+
+function processDeleteBlockedReason(tasks: LampTaskRow[], pending: boolean): string | null {
+  if (pending) return "Hay otra operación en curso.";
+  if (tasks.some((task) => taskHasPlanningAssignments(task))) {
+    return "No se puede eliminar: alguna tarea tiene planning asignado.";
+  }
+  if (tasks.some((task) => isAutomaticTransportTask(task))) {
+    return "No se puede eliminar: incluye transporte automático.";
+  }
+  if (tasks.some((task) => task.doneHours > 0)) {
+    return "No se puede eliminar: alguna tarea tiene horas registradas.";
+  }
+  return null;
+}
+
+function taskDeleteBlockedReason(task: LampTaskRow): string | null {
+  if (taskHasPlanningAssignments(task)) {
+    return "No se puede eliminar: la tarea tiene planning asignado.";
+  }
+  if (isAutomaticTransportTask(task)) {
+    return "No se puede eliminar: es transporte automático.";
+  }
+  if (task.doneHours > 0) {
+    return "No se puede eliminar: la tarea tiene horas registradas.";
+  }
+  return null;
 }
 
 function defaultNaveLabelForGroup(
@@ -503,6 +539,7 @@ function AggregatedTaskTable({
           const canDelete =
             !matching.some((task) => taskIsStructurallyLocked(task)) &&
             matching.every((task) => task.doneHours <= 0);
+          const deleteReason = processDeleteBlockedReason(matching, pending);
 
           return (
             <tr key={row.process} className="border-t border-border/50">
@@ -518,7 +555,7 @@ function AggregatedTaskTable({
                       Planificada
                     </span>
                   ) : null}
-                  {matching.some((task) => isSystemTransportTask(task)) ? (
+                  {matching.some((task) => isAutomaticTransportTask(task)) ? (
                     <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
                       Auto
                     </span>
@@ -557,7 +594,11 @@ function AggregatedTaskTable({
                           onUpdated();
                         } catch (err) {
                           toast.error(
-                            err instanceof Error ? err.message : "Error",
+                            reportMutationError(
+                              "projects.assignProcessTasksNave",
+                              err,
+                              "No se pudo cambiar la nave del proceso.",
+                            ),
                           );
                         }
                       });
@@ -573,7 +614,7 @@ function AggregatedTaskTable({
                         {matching.map((task) => transportRouteLabel(task)).find(Boolean)}
                       </span>
                     ) : null}
-                    {catalogNaveId && !matching.some((task) => isSystemTransportTask(task)) ? (
+                    {catalogNaveId && !matching.some((task) => isAutomaticTransportTask(task)) ? (
                       <NaveAssignmentHint kind={assignmentKind} />
                     ) : null}
                   </div>
@@ -593,44 +634,77 @@ function AggregatedTaskTable({
               </td>
               {canManage ? (
                 <td className="py-1.5 px-2 text-right">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-destructive"
-                    disabled={!canDelete || pending}
-                    onClick={() => {
-                      const unitsLabel =
-                        matching.length > 1
-                          ? ` de las ${matching.length} unidades`
-                          : "";
-                      if (
-                        !confirm(
-                          `¿Eliminar el proceso ${row.process}${unitsLabel}?`,
-                        )
-                      ) {
-                        return;
-                      }
-                      startTransition(async () => {
-                        try {
-                          await deleteProcessTasks({
-                            lampId,
-                            elementGroupKey: groupKey,
-                            process: row.process,
-                          });
-                          toast.success("Proceso eliminado");
-                          onUpdated();
-                        } catch (err) {
-                          toast.error(
-                            err instanceof Error ? err.message : "Error",
-                          );
+                  {deleteReason ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              tabIndex={0}
+                              className="inline-flex cursor-not-allowed rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                          }
+                        >
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-destructive"
+                            disabled
+                            aria-label={`Eliminar proceso ${row.process}`}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs text-center">
+                          {deleteReason}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-destructive"
+                      disabled={!canDelete || pending}
+                      onClick={() => {
+                        const unitsLabel =
+                          matching.length > 1
+                            ? ` de las ${matching.length} unidades`
+                            : "";
+                        if (
+                          !confirm(
+                            `¿Eliminar el proceso ${row.process}${unitsLabel}?`,
+                          )
+                        ) {
+                          return;
                         }
-                      });
-                    }}
-                    aria-label={`Eliminar proceso ${row.process}`}
-                  >
-                    <Trash2 className="size-3" />
-                  </Button>
+                        startTransition(async () => {
+                          try {
+                            await deleteProcessTasks({
+                              lampId,
+                              elementGroupKey: groupKey,
+                              process: row.process,
+                            });
+                            toast.success("Proceso eliminado");
+                            onUpdated();
+                          } catch (err) {
+                            toast.error(
+                              reportMutationError(
+                                "projects.deleteProcessTasks",
+                                err,
+                                "No se pudo eliminar el proceso.",
+                              ),
+                            );
+                          }
+                        });
+                      }}
+                      aria-label={`Eliminar proceso ${row.process}`}
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  )}
                 </td>
               ) : null}
             </tr>
@@ -681,12 +755,16 @@ export function LampTasksPanel({
 
   const allProcessCodes = Object.keys(waitHoursByProcess);
   const availableProcesses = allProcessCodes.filter(
-    (p) => !usedProcesses.includes(p),
+    (process) =>
+      process === TRANSPORT_PROCESS_CODE || !usedProcesses.includes(process),
   );
 
   function availableProcessesForGroup(groupTasks: LampTaskRow[]): string[] {
     const usedInGroup = new Set(groupTasks.map((task) => task.process));
-    return allProcessCodes.filter((process) => !usedInGroup.has(process));
+    return allProcessCodes.filter(
+      (process) =>
+        process === TRANSPORT_PROCESS_CODE || !usedInGroup.has(process),
+    );
   }
 
   const sorted = useMemo(
@@ -783,6 +861,7 @@ export function LampTasksPanel({
         {bastidorGroups.map((group) => {
           const groupTasks = group.tasks as LampTaskRow[];
           const groupAvailableProcesses = availableProcessesForGroup(groupTasks);
+          const isManualGroup = group.key === MANUAL_ELEMENT_KEY;
           const sectionLabel = bastidorSummaryLabel(
             group.frameTypeName,
             group.unitCount,
@@ -815,8 +894,8 @@ export function LampTasksPanel({
                 typeDefaultNaveLabel={typeDefaultNaveLabel}
                 groupNaveKind={groupNaveKind}
                 canManage={canManage}
-                canAddExtra={groupAvailableProcesses.length > 0}
-                showAssignNave={canManage && naves.length > 0}
+                canAddExtra={!isManualGroup && groupAvailableProcesses.length > 0}
+                showAssignNave={!isManualGroup && canManage && naves.length > 0}
                 onAddExtra={() => openAddExtraDialog(group.key, groupAvailableProcesses)}
                 onAssignNave={() => setNaveDialogGroupKey(group.key)}
               />
@@ -892,7 +971,7 @@ export function LampTasksPanel({
                                     Planificada
                                   </span>
                                 ) : null}
-                                {isSystemTransportTask(t) ? (
+                                {isAutomaticTransportTask(t) ? (
                                   <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
                                     Auto
                                   </span>
@@ -935,9 +1014,11 @@ export function LampTasksPanel({
                                         router.refresh();
                                       } catch (err) {
                                         toast.error(
-                                          err instanceof Error
-                                            ? err.message
-                                            : "Error",
+                                          reportMutationError(
+                                            "projects.updateTaskNave",
+                                            err,
+                                            "No se pudo cambiar la nave de la tarea.",
+                                          ),
                                         );
                                       }
                                     });
@@ -990,9 +1071,11 @@ export function LampTasksPanel({
                                           router.refresh();
                                         } catch (err) {
                                           toast.error(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Error",
+                                            reportMutationError(
+                                              "projects.reorderTask",
+                                              err,
+                                              "No se pudo reordenar la tarea.",
+                                            ),
                                           );
                                         }
                                       });
@@ -1017,9 +1100,11 @@ export function LampTasksPanel({
                                           router.refresh();
                                         } catch (err) {
                                           toast.error(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Error",
+                                            reportMutationError(
+                                              "projects.reorderTask",
+                                              err,
+                                              "No se pudo reordenar la tarea.",
+                                            ),
                                           );
                                         }
                                       });
@@ -1042,38 +1127,68 @@ export function LampTasksPanel({
                                   >
                                     <Pencil className="size-3" />
                                   </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn("size-7 text-destructive")}
-                                    disabled={t.doneHours > 0 || taskIsStructurallyLocked(t)}
-                                    onClick={() => {
-                                      if (
-                                        !confirm(
-                                          `¿Eliminar la tarea ${t.process}?`,
-                                        )
-                                      ) {
-                                        return;
-                                      }
-                                      startTransition(async () => {
-                                        try {
-                                          await deleteTask({ taskId: t.id });
-                                          toast.success("Tarea eliminada");
-                                          router.refresh();
-                                        } catch (err) {
-                                          toast.error(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Error",
-                                          );
+                                  {taskDeleteBlockedReason(t) ? (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          render={
+                                            <span
+                                              tabIndex={0}
+                                              className="inline-flex cursor-not-allowed rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            />
+                                          }
+                                        >
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className={cn("size-7 text-destructive")}
+                                            disabled
+                                            aria-label="Eliminar tarea"
+                                          >
+                                            <Trash2 className="size-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" className="max-w-xs text-center">
+                                          {taskDeleteBlockedReason(t)}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className={cn("size-7 text-destructive")}
+                                      onClick={() => {
+                                        if (
+                                          !confirm(
+                                            `¿Eliminar la tarea ${t.process}?`,
+                                          )
+                                        ) {
+                                          return;
                                         }
-                                      });
-                                    }}
-                                    aria-label="Eliminar tarea"
-                                  >
-                                    <Trash2 className="size-3" />
-                                  </Button>
+                                        startTransition(async () => {
+                                          try {
+                                            await deleteTask({ taskId: t.id });
+                                            toast.success("Tarea eliminada");
+                                            router.refresh();
+                                          } catch (err) {
+                                            toast.error(
+                                              reportMutationError(
+                                                "projects.deleteTask",
+                                                err,
+                                                "No se pudo eliminar la tarea.",
+                                              ),
+                                            );
+                                          }
+                                        });
+                                      }}
+                                      aria-label="Eliminar tarea"
+                                    >
+                                      <Trash2 className="size-3" />
+                                    </Button>
+                                  )}
                                 </div>
                               </td>
                             ) : null}

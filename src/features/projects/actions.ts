@@ -57,7 +57,7 @@ import {
 } from "@/features/projects/task-planning-lock";
 import {
   blueprintToTaskCreateData,
-  isSystemTransportTask,
+  isAutomaticTransportTask,
   syncTransportTasksForLamp,
   TRANSPORT_PROCESS_CODE,
 } from "@/features/projects/transport-tasks";
@@ -94,7 +94,7 @@ async function loadScopedTaskIds(args: {
     select: { id: true, systemKind: true, process: true },
   });
   return tasks
-    .filter((task) => !args.excludeTransport || !isSystemTransportTask(task))
+    .filter((task) => !args.excludeTransport || !isAutomaticTransportTask(task))
     .map((task) => task.id);
 }
 
@@ -114,7 +114,7 @@ async function persistTasksNave(taskIds: string[], naveId: string) {
     },
   });
 
-  if (tasks.some((task) => isSystemTransportTask(task))) {
+  if (tasks.some((task) => isAutomaticTransportTask(task))) {
     throw new Error("Las tareas de transporte automático no permiten cambiar la nave manualmente.");
   }
 
@@ -627,9 +627,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = addExtraTaskSchema.parse(input);
-    if (data.process === TRANSPORT_PROCESS_CODE) {
-      throw new Error("Las tareas de transporte se generan automáticamente entre naves.");
-    }
+    const isExtraTransport = data.process === TRANSPORT_PROCESS_CODE;
 
     const lamp = await prisma.lamp.findFirst({
       where: { id: data.lampId },
@@ -674,15 +672,17 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
   
     if (data.elementGroupKey) {
       const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
-      const exists = await prisma.task.count({
-        where: elementTaskScopeWhere({
-          lampId: lamp.id,
-          elementTypeId,
-          process: data.process,
-        }),
-      });
-      if (exists > 0) {
-        throw new Error("Ese proceso ya existe en este elemento.");
+      if (!isExtraTransport) {
+        const exists = await prisma.task.count({
+          where: elementTaskScopeWhere({
+            lampId: lamp.id,
+            elementTypeId,
+            process: data.process,
+          }),
+        });
+        if (exists > 0) {
+          throw new Error("Ese proceso ya existe en este elemento.");
+        }
       }
   
       const naveId = await resolveExtraTaskNaveId(elementTypeId, data.process);
@@ -734,29 +734,11 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       return;
     }
   
-    const primaryLampElement = lamp.elementTypeId
-      ? await prisma.lampElement.findFirst({
-          where: { lampId: lamp.id, elementTypeId: lamp.elementTypeId },
-          select: { id: true },
-        })
-      : null;
-  
-    if (primaryLampElement) {
-      const exists = await prisma.task.count({
-        where: {
-          lampId: lamp.id,
-          lampElementId: primaryLampElement.id,
-          process: data.process,
-        },
-      });
-      if (exists > 0) {
-        throw new Error("Ese proceso ya existe en este elemento.");
-      }
-    } else {
+    if (!isExtraTransport) {
       const exists = await prisma.task.count({
         where: { lampId: lamp.id, process: data.process, lampElementId: null },
       });
-      if (exists > 0) throw new Error("Ese proceso ya existe en esta lámpara.");
+      if (exists > 0) throw new Error("Ese proceso ya existe fuera de los elementos.");
     }
   
     const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId, data.process);
@@ -767,7 +749,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         data: {
           projectId: lamp.projectId,
           lampId: lamp.id,
-          lampElementId: primaryLampElement?.id,
+          lampElementId: null,
           process: data.process,
           estimatedHours: data.estimatedHours,
           order,
@@ -923,7 +905,7 @@ export async function applyDefaultNavesToElement(
       },
     });
 
-    const productionTasks = tasks.filter((task) => !isSystemTransportTask(task));
+    const productionTasks = tasks.filter((task) => !isAutomaticTransportTask(task));
 
     if (productionTasks.some((task) => taskHasPlanningAssignments(task))) {
       throw new Error(
@@ -974,10 +956,6 @@ export async function deleteProcessTasks(
   const ctx = await requireDashboardContext();
     requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
     const data = deleteProcessTasksSchema.parse(input);
-    if (data.process === TRANSPORT_PROCESS_CODE) {
-      throw new Error("Las tareas de transporte se gestionan automáticamente.");
-    }
-
     const tasks = await prisma.task.findMany({
       where: elementTaskScopeWhere({
         lampId: data.lampId,
@@ -987,18 +965,20 @@ export async function deleteProcessTasks(
       include: { _count: { select: { assignments: true, timeEntries: true } } },
     });
   
-    if (tasks.length === 0) {
+    const deletableTasks = tasks.filter((task) => !isAutomaticTransportTask(task));
+
+    if (deletableTasks.length === 0) {
       throw new Error("No hay tareas de ese proceso en este elemento.");
     }
   
-    if (tasks.some((task) => task._count.timeEntries > 0)) {
+    if (deletableTasks.some((task) => task._count.timeEntries > 0)) {
       throw new Error("No se puede eliminar: alguna tarea tiene horas registradas.");
     }
-    assertTasksNotPlannedFromRows(tasks);
+    assertTasksNotPlannedFromRows(deletableTasks);
   
     const workOrderIds = [
       ...new Set(
-        tasks
+        deletableTasks
           .map((task) => task.workOrderId)
           .filter((id): id is string => id != null),
       ),
@@ -1006,7 +986,7 @@ export async function deleteProcessTasks(
 
     await prisma.$transaction(async (tx) => {
       await tx.task.deleteMany({
-        where: { id: { in: tasks.map((task) => task.id) } },
+        where: { id: { in: deletableTasks.map((task) => task.id) } },
       });
       await deleteEmptyOpenWorkOrders(tx, workOrderIds);
     });
@@ -1032,7 +1012,7 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
     });
     if (!task) throw new Error("Tarea no encontrada");
 
-    if (isSystemTransportTask(task)) {
+    if (isAutomaticTransportTask(task)) {
       throw new Error("Las tareas de transporte automático no se pueden eliminar manualmente.");
     }
   
@@ -1103,7 +1083,7 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
       select: { id: true, lampId: true, order: true, systemKind: true, process: true },
     });
     if (!task) throw new Error("Tarea no encontrada");
-    if (isSystemTransportTask(task)) {
+    if (isAutomaticTransportTask(task)) {
       throw new Error("Las tareas de transporte automático no se pueden reordenar manualmente.");
     }
   

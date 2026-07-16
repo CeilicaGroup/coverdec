@@ -20,6 +20,12 @@ export function isSystemTransportTask(task: {
   );
 }
 
+export function isAutomaticTransportTask(task: {
+  systemKind?: TaskSystemKind | null;
+}): boolean {
+  return task.systemKind === TaskSystemKind.TRANSPORT;
+}
+
 export async function loadTransportDefaultHours(
   tx: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<number> {
@@ -158,11 +164,11 @@ async function syncTransportTasksForChain(
   }
 
   const productionTasks = params.tasks
-    .filter((task) => !isSystemTransportTask(task))
+    .filter((task) => !isAutomaticTransportTask(task))
     .sort((a, b) => a.order - b.order || a.process.localeCompare(b.process, "es"));
 
   const transportTasks = params.tasks
-    .filter((task) => isSystemTransportTask(task))
+    .filter((task) => isAutomaticTransportTask(task))
     .sort((a, b) => a.order - b.order);
 
   const gaps = computeTransportGaps(productionTasks);
@@ -254,10 +260,10 @@ async function syncTransportTasksForChain(
   });
 
   const productionRows = refreshed
-    .filter((task) => !isSystemTransportTask(task))
+    .filter((task) => !isAutomaticTransportTask(task))
     .map((task) => ({ id: task.id, order: task.order }));
   const transportRows = refreshed
-    .filter((task) => isSystemTransportTask(task))
+    .filter((task) => isAutomaticTransportTask(task))
     .map((task) => ({
       id: task.id,
       transportAfterTaskId: task.transportAfterTaskId,
