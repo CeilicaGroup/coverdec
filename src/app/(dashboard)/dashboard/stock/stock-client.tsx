@@ -1,7 +1,7 @@
 "use client";
 
 import { reportMutationError } from "@/lib/mutation-error";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil } from "lucide-react";
 import Link from "next/link";
@@ -99,6 +99,10 @@ export function StockClient({
   const [assignLampId, setAssignLampId] = useState<string | null>(null);
   const [assignProjectId, setAssignProjectId] = useState("");
   const [assignName, setAssignName] = useState("");
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
 
   const parsed = useParsedElementDrafts(draftRows, elementTypes);
   const canSubmit =
@@ -303,7 +307,11 @@ export function StockClient({
                             }}
                           >
                             <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Proyecto destino" />
+                              <SelectValue placeholder="Proyecto destino">
+                                {assignProjectId
+                                  ? (projectNameById.get(assignProjectId) ?? "Proyecto no disponible")
+                                  : undefined}
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                               {projects.map((project) => (

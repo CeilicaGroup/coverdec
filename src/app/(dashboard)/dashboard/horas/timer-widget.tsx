@@ -84,6 +84,7 @@ export function TimerWidget({
     if (process && t.process !== process) return false;
     return true;
   });
+  const selectedTaskOption = taskOptions.find((task) => task.id === taskId) ?? null;
 
   return (
     <form
@@ -189,7 +190,11 @@ export function TimerWidget({
         <Label>Tarea</Label>
         <Select value={taskId} onValueChange={(v) => setTaskId(v ?? "")}>
           <SelectTrigger>
-            <SelectValue placeholder="Selecciona tarea" />
+            <SelectValue placeholder="Selecciona tarea">
+              {selectedTaskOption
+                ? (processLabels[selectedTaskOption.process] ?? selectedTaskOption.process)
+                : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {taskOptions.map((t) => (

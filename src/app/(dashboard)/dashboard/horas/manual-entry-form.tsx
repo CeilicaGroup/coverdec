@@ -174,7 +174,9 @@ export function ManualEntryForm({
         <Label>Tarea</Label>
         <Select value={taskId} onValueChange={(v) => setTaskId(v ?? "")}>
           <SelectTrigger disabled={lockTaskSelection}>
-            <SelectValue placeholder="Selecciona tarea" />
+            <SelectValue placeholder="Selecciona tarea">
+              {selectedTask ? (processLabels[selectedTask.process] ?? selectedTask.process) : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {availableTasks.map((t) => (

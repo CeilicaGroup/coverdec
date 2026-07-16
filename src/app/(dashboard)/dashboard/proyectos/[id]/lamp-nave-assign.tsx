@@ -37,6 +37,7 @@ export function LampNaveAssign({
   if (naves.length === 0) return null;
 
   const currentNave = naves.find((n) => n.id === currentNaveId);
+  const selectedNaveName = naves.find((n) => n.id === currentNaveId)?.nombre;
 
   const onAssign = (value: string | null) => {
     if (!value || value === "none") return;
@@ -76,7 +77,9 @@ export function LampNaveAssign({
       onOpenChange={(o) => { if (!o) setOpen(false); }}
     >
       <SelectTrigger className="h-6 text-[10px] w-32">
-        <SelectValue />
+        <SelectValue placeholder="Nave">
+          {selectedNaveName ?? undefined}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {naves.map((n) => (

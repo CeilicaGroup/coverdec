@@ -1,7 +1,7 @@
 "use client";
 
 import { reportMutationError } from "@/lib/mutation-error";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -42,6 +42,10 @@ export function CreateOrderDialog({
   const [hours, setHours] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [notes, setNotes] = useState("");
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -85,7 +89,9 @@ export function CreateOrderDialog({
             <Label>Proyecto</Label>
             <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecciona proyecto" />
+                <SelectValue placeholder="Selecciona proyecto">
+                  {projectId ? (projectNameById.get(projectId) ?? "Proyecto no disponible") : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {projects.map((p) => (

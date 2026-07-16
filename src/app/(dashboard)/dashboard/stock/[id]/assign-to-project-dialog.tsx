@@ -1,7 +1,7 @@
 "use client";
 
 import { reportMutationError } from "@/lib/mutation-error";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,10 @@ export function AssignToProjectDialog({
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState("");
   const [newName, setNewName] = useState(lampName);
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
 
   if (projects.length === 0) return null;
 
@@ -86,7 +90,9 @@ export function AssignToProjectDialog({
             <Label>Proyecto destino</Label>
             <Select value={projectId} onValueChange={(value) => setProjectId(value ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecciona proyecto" />
+                <SelectValue placeholder="Selecciona proyecto">
+                  {projectId ? (projectNameById.get(projectId) ?? "Proyecto no disponible") : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {projects.map((project) => (

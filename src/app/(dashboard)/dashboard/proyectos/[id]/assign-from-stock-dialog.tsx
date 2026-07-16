@@ -66,6 +66,16 @@ export function AssignFromStockDialog({
     () => stockLamps.find((lamp) => lamp.id === lampId) ?? null,
     [lampId, stockLamps],
   );
+  const stockLabelById = useMemo(
+    () =>
+      new Map(
+        stockLamps.map((lamp) => [
+          lamp.id,
+          `${lamp.name}${lamp.batchCodes[0] ? ` · ${lamp.batchCodes[0]}` : ""}`,
+        ]),
+      ),
+    [stockLamps],
+  );
 
   if (stockLamps.length === 0) return null;
 
@@ -124,7 +134,9 @@ export function AssignFromStockDialog({
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecciona lámpara" />
+                <SelectValue placeholder="Selecciona lámpara">
+                  {lampId ? stockLabelById.get(lampId) : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {stockLamps.map((lamp) => (
