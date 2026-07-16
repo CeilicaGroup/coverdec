@@ -98,6 +98,16 @@ function pendingHours(tasks: EligibleWorkOrderTask[]) {
     .reduce((sum, t) => sum + t.estimatedHours, 0);
 }
 
+function taskTypeLabels(tasks: EligibleWorkOrderTask[]): string[] {
+  const labels = new Set<string>();
+  for (const task of tasks) {
+    const elementLabel = getTaskLampElementVisualProps(task).label ?? "Sin elemento";
+    const processLabel = task.processDefinition.label ?? task.process;
+    labels.add(`${elementLabel} · ${processLabel}`);
+  }
+  return [...labels];
+}
+
 function ElementProcessCell({
   tasks,
   processStylesByCode,
@@ -112,10 +122,28 @@ function ElementProcessCell({
   const summary = summarizeWorkOrderElementProcess(tasks);
   if (summary.kind === "unknown") return <span className="text-muted-foreground">—</span>;
   if (summary.kind === "multiple") {
+    const labels = taskTypeLabels(tasks);
+    const first = labels[0] ?? "Varios";
     return (
-      <span className="text-sm text-muted-foreground">
-        Varios ({summary.count})
-      </span>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="text-sm text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">
+                {first} (+{Math.max(0, labels.length - 1)})
+              </span>
+            }
+          />
+          <TooltipContent side="top" className="max-w-sm">
+            <p className="mb-1.5 font-medium">Tipos de tarea en la OT</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              {labels.map((label, index) => (
+                <li key={`${label}-${index}`}>{label}</li>
+              ))}
+            </ol>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   }
   const first = tasks.find((t) => t.process === summary.processCode) ?? tasks[0];

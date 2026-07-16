@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:cleanup-empty-work-orders": "tsx scripts/cleanup-empty-work-orders.ts",
     "db:backfill-lamp-name-keys": "tsx prisma/backfill-lamp-name-keys.ts",
     "db:backfill-person-single-nave": "tsx prisma/backfill-person-single-nave.ts",
     "db:reset": "prisma migrate reset --skip-seed",

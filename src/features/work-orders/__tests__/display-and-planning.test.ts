@@ -43,6 +43,23 @@ describe("summarizeWorkOrderElementProcess", () => {
     ]);
     expect(summary).toEqual({ kind: "multiple", count: 2 });
   });
+
+  it("falls back to first task when no grouping key exists", () => {
+    const summary = summarizeWorkOrderElementProcess([
+      {
+        id: "t1",
+        process: "OPERO",
+        ...baseTask,
+        lampElement: null,
+        lamp: { name: "L1", elementType: null },
+      },
+    ]);
+    expect(summary).toEqual({
+      kind: "single",
+      elementName: "—",
+      processCode: "OPERO",
+    });
+  });
 });
 
 describe("summarizeWorkOrderAssignee", () => {

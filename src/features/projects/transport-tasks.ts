@@ -3,6 +3,7 @@ import { TaskSystemKind } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import type { TaskBlueprint } from "@/features/projects/lamp-tasks";
 import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
+import { deleteEmptyOpenWorkOrders } from "@/features/work-orders/cleanup-empty";
 
 export const TRANSPORT_PROCESS_CODE = "TRANSPORTE";
 
@@ -70,6 +71,7 @@ interface ChainTaskRow {
   order: number;
   naveId: string;
   estimatedHours: number;
+  workOrderId: string | null;
   systemKind: TaskSystemKind | null;
   transportFromNaveId: string | null;
   transportToNaveId: string | null;
@@ -179,6 +181,7 @@ async function syncTransportTasksForChain(
   );
 
   const matchedTransportIds = new Set<string>();
+  const affectedWorkOrderIds = new Set<string>();
   for (const gap of gaps) {
     const existing = transportByAfter.get(gap.afterTaskId);
     if (existing) matchedTransportIds.add(existing.id);
@@ -191,6 +194,7 @@ async function syncTransportTasksForChain(
         "Hay un transporte obsoleto con horas o planning registrados; revísalo antes de cambiar naves.",
       );
     }
+    if (transport.workOrderId) affectedWorkOrderIds.add(transport.workOrderId);
     await tx.task.delete({ where: { id: transport.id } });
   }
 
@@ -198,6 +202,7 @@ async function syncTransportTasksForChain(
     const existing = transportByAfter.get(gap.afterTaskId);
     if (existing) {
       if (taskHasWork(existing)) {
+        if (existing.workOrderId) affectedWorkOrderIds.add(existing.workOrderId);
         await tx.task.update({
           where: { id: existing.id },
           data: {
@@ -210,6 +215,7 @@ async function syncTransportTasksForChain(
         });
         continue;
       }
+      if (existing.workOrderId) affectedWorkOrderIds.add(existing.workOrderId);
       await tx.task.update({
         where: { id: existing.id },
         data: {
@@ -281,6 +287,8 @@ async function syncTransportTasksForChain(
       });
     }
   }
+
+  await deleteEmptyOpenWorkOrders(tx, [...affectedWorkOrderIds]);
 }
 
 export async function syncTransportTasksForLamp(
@@ -307,6 +315,7 @@ export async function syncTransportTasksForLamp(
       order: true,
       naveId: true,
       estimatedHours: true,
+      workOrderId: true,
       systemKind: true,
       transportFromNaveId: true,
       transportToNaveId: true,

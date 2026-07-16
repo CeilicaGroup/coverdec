@@ -50,7 +50,14 @@ export function summarizeWorkOrderElementProcess(
     if (key) keys.add(key);
   }
 
-  if (keys.size === 0) return { kind: "unknown" };
+  if (keys.size === 0) {
+    const first = tasks[0]!;
+    return {
+      kind: "single",
+      elementName: elementTypeName(first),
+      processCode: first.process,
+    };
+  }
   if (keys.size > 1) return { kind: "multiple", count: keys.size };
 
   const first = tasks.find((t) => workOrderGroupKey(t) !== null);
