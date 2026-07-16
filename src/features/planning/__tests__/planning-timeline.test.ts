@@ -168,4 +168,127 @@ describe("buildPlanningTimeline", () => {
     expect(dryImpCnc?.kind).toBe("dry-wait");
     expect(dryImpCnc?.scheduleLabel).toContain("mín. 12h");
   });
+
+  it("orders dry-wait chronologically with same-day assignments", () => {
+    const items = buildPlanningTimeline(
+      [
+        slice({
+          id: "a-morning",
+          taskId: "morning",
+          order: 0,
+          process: "CNC",
+          date: new Date("2026-06-10T00:00:00.000Z"),
+          startSlot: 8,
+          endSlot: 9,
+        }),
+        slice({
+          id: "a-imp",
+          taskId: "imp",
+          order: 1,
+          process: "IMPRIMACION",
+          date: new Date("2026-06-10T00:00:00.000Z"),
+          startSlot: 10,
+          endSlot: 10.5,
+        }),
+        slice({
+          id: "a-noon",
+          taskId: "noon",
+          order: 2,
+          process: "CNC",
+          date: new Date("2026-06-10T00:00:00.000Z"),
+          startSlot: 12,
+          endSlot: 13,
+        }),
+      ],
+      processByCode,
+      [
+        { id: "morning", lampId: "l1", order: 0, process: "CNC" },
+        { id: "imp", lampId: "l1", order: 1, process: "IMPRIMACION" },
+        { id: "noon", lampId: "l1", order: 2, process: "CNC" },
+      ],
+    );
+
+    const signature = items.map((item) =>
+      item.kind === "work" ? item.assignment.id : item.id,
+    );
+    expect(signature).toEqual([
+      "a-morning",
+      "a-imp",
+      "dry-l1-imp-noon",
+      "a-noon",
+    ]);
+  });
+
+  it("uses lamp context from each chain", () => {
+    const items = buildPlanningTimeline(
+      [
+        slice({
+          id: "a-l1-imp",
+          taskId: "l1-imp",
+          lampId: "l1",
+          order: 0,
+          process: "IMPRIMACION",
+        }),
+        slice({
+          id: "a-l1-paint",
+          taskId: "l1-paint",
+          lampId: "l1",
+          order: 1,
+          process: "PINTURA",
+        }),
+        {
+          ...slice({
+            id: "a-l2-imp",
+            taskId: "l2-imp",
+            lampId: "l2",
+            order: 0,
+            process: "IMPRIMACION",
+          }),
+          task: {
+            ...slice({
+              id: "a-l2-imp",
+              taskId: "l2-imp",
+              lampId: "l2",
+              order: 0,
+              process: "IMPRIMACION",
+            }).task,
+            lamp: { name: "L2" },
+          },
+        },
+        {
+          ...slice({
+            id: "a-l2-paint",
+            taskId: "l2-paint",
+            lampId: "l2",
+            order: 1,
+            process: "PINTURA",
+          }),
+          task: {
+            ...slice({
+              id: "a-l2-paint",
+              taskId: "l2-paint",
+              lampId: "l2",
+              order: 1,
+              process: "PINTURA",
+            }).task,
+            lamp: { name: "L2" },
+          },
+        },
+      ],
+      processByCode,
+      [
+        { id: "l1-imp", lampId: "l1", order: 0, process: "IMPRIMACION" },
+        { id: "l1-paint", lampId: "l1", order: 1, process: "PINTURA" },
+        { id: "l2-imp", lampId: "l2", order: 0, process: "IMPRIMACION" },
+        { id: "l2-paint", lampId: "l2", order: 1, process: "PINTURA" },
+      ],
+    );
+
+    const waits = items.filter((item) => item.kind === "dry-wait");
+    const l1Wait = waits.find((item) => item.kind === "dry-wait" && item.lampId === "l1");
+    const l2Wait = waits.find((item) => item.kind === "dry-wait" && item.lampId === "l2");
+
+    expect(l1Wait?.kind === "dry-wait" && l1Wait.lampName).toBe("L1");
+    expect(l2Wait?.kind === "dry-wait" && l2Wait.lampName).toBe("L2");
+  });
 });

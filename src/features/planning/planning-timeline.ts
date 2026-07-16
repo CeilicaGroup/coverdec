@@ -74,6 +74,7 @@ export interface DryWaitTimelineItem {
   afterProcess: ProcessCode;
   waitHours: number;
   date: Date;
+  startSlot: number;
   scheduleLabel: string;
 }
 
@@ -94,6 +95,25 @@ function compareAssignments(a: PlanningAssignmentSlice, b: PlanningAssignmentSli
     a.startSlot - b.startSlot ||
     a.endSlot - b.endSlot
   );
+}
+
+function compareTimelineItems(a: PlanningTimelineItem, b: PlanningTimelineItem): number {
+  const aDate = a.kind === "work" ? a.assignment.date : a.date;
+  const bDate = b.kind === "work" ? b.assignment.date : b.date;
+  const d = aDate.getTime() - bDate.getTime();
+  if (d !== 0) return d;
+
+  const aStart = a.kind === "work" ? a.assignment.startSlot : a.startSlot;
+  const bStart = b.kind === "work" ? b.assignment.startSlot : b.startSlot;
+  const startDelta = aStart - bStart;
+  if (startDelta !== 0) return startDelta;
+
+  const aEnd = a.kind === "work" ? a.assignment.endSlot : a.startSlot;
+  const bEnd = b.kind === "work" ? b.assignment.endSlot : b.startSlot;
+  const endDelta = aEnd - bEnd;
+  if (endDelta !== 0) return endDelta;
+
+  return timelineSortKey(a).localeCompare(timelineSortKey(b));
 }
 
 function lastSlice(slices: PlanningAssignmentSlice[]): PlanningAssignmentSlice {
@@ -233,10 +253,9 @@ export function buildPlanningTimeline(
 
   for (const chain of chainsByKey.values()) {
     const lampId = chain[0]?.lampId ?? "";
-    const lampName =
-      [...byTask.values()]
-        .map((slices) => slices[0]?.task.lamp?.name ?? null)
-        .find((name) => name != null) ?? null;
+    const lampName = chain
+      .map((item) => byTask.get(item.id)?.[0]?.task.lamp?.name ?? null)
+      .find((name) => name != null) ?? null;
 
     for (let i = 0; i < chain.length - 1; i++) {
       const pred = chain[i]!;
@@ -261,6 +280,7 @@ export function buildPlanningTimeline(
         afterProcess: pred.process,
         waitHours,
         date: predEnd.date,
+        startSlot: predEnd.endSlot,
         scheduleLabel: scheduleGapLabel(predEnd, succStart, waitHours),
       });
     }
@@ -272,22 +292,7 @@ export function buildPlanningTimeline(
   }));
 
   const merged: PlanningTimelineItem[] = [...work, ...dryWaits];
-  merged.sort((a, b) => {
-    const aDate = a.kind === "work" ? a.assignment.date : a.date;
-    const bDate = b.kind === "work" ? b.assignment.date : b.date;
-    const d = aDate.getTime() - bDate.getTime();
-    if (d !== 0) return d;
-    if (a.kind === "work" && b.kind === "work") {
-      return compareAssignments(a.assignment, b.assignment);
-    }
-    if (a.kind === "dry-wait" && b.kind === "work") {
-      return a.scheduleLabel.localeCompare(slotToLabel(b.assignment.startSlot));
-    }
-    if (a.kind === "work" && b.kind === "dry-wait") {
-      return slotToLabel(a.assignment.startSlot).localeCompare(b.scheduleLabel);
-    }
-    return timelineSortKey(a).localeCompare(timelineSortKey(b));
-  });
+  merged.sort(compareTimelineItems);
 
   return merged;
 }

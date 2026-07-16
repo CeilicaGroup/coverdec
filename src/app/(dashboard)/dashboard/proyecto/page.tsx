@@ -537,7 +537,6 @@ function PlanProjectTable({
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
                 <TableCell className="text-xs text-muted-foreground">—</TableCell>
-                <TableCell />
               </TableRow>
             ) : (() => {
               const planStartedAt = toIsoUtcFromDateAndHour(
