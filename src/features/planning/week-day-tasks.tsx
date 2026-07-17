@@ -62,6 +62,21 @@ export function WeekDayTasks({
   elementTypeImages,
   emptyClassName = "text-[10px]",
 }: WeekDayTasksProps) {
+  function entriesForTaskOnDay(taskId: string): ReturnType<typeof entriesByPersonDayTask.get> {
+    const exact = entriesByPersonDayTask.get(`${personId}|${dayKey}|${taskId}`) ?? [];
+    if (exact.length > 0 || view !== "plan") return exact;
+
+    const taskEntriesAcrossWeek = [...entriesByPersonDayTask.entries()]
+      .filter(([key]) => key.startsWith(`${personId}|`) && key.endsWith(`|${taskId}`))
+      .flatMap(([, value]) => value)
+      .sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+      );
+
+    return taskEntriesAcrossWeek;
+  }
+
   if (isAbsent) {
     return (
       <div className={`rounded bg-muted px-2 py-1 ${emptyClassName} text-muted-foreground text-center`}>
@@ -119,7 +134,7 @@ export function WeekDayTasks({
         const endedAt = view === "actual" && t.endedAt ? t.endedAt : planEndedAt;
         const cellEntries =
           t.taskId != null
-            ? (entriesByPersonDayTask.get(`${personId}|${dayKey}|${t.taskId}`) ?? [])
+            ? (entriesForTaskOnDay(t.taskId) ?? [])
             : [];
 
         const woHighlight = withWorkOrderHighlight(
