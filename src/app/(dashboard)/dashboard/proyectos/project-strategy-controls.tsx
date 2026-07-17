@@ -123,7 +123,7 @@ export function ProjectStrategyControls({
   };
 
   return (
-    <div className="space-y-2 min-w-[280px]">
+    <div className="w-full min-w-0 space-y-2 sm:min-w-[280px]">
       <Select value={preset} onValueChange={onPresetChange} disabled={pending}>
         <SelectTrigger size="sm" className="w-full">
           <SelectValue />

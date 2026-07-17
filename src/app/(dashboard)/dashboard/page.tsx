@@ -532,13 +532,15 @@ function ProjectsTable({
                     <TableCell className="text-right font-mono text-xs font-semibold">
                       {formatHours(row.pendingHours)}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1 max-w-[140px]">
+                    <TableCell className="whitespace-normal min-w-0">
+                      <div className="flex max-w-full flex-wrap gap-1 overflow-hidden">
                         {row.pendingProcesses.slice(0, 5).map((p) => (
                           <ProcessBadge
                             key={p}
                             code={p}
                             definition={processStyles.get(p)}
+                            truncate
+                            className="max-w-[140px]"
                           />
                         ))}
                         {row.pendingProcesses.length > 5 ? (
