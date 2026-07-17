@@ -61,4 +61,28 @@ describe("callPlanningSolver", () => {
     expect(result.assignments).toHaveLength(1);
     expect(result.assignments[0]?.hours).toBe(2);
   });
+
+  it("returns a readable timeout error without duplicated recommendation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          assignments: [],
+          warnings: [
+            {
+              taskId: "t1",
+              reason:
+                "El optimizador no encontró solución a tiempo (presupuesto 60s, estado UNKNOWN). Regenera el planning o aumenta SOLVER_MAX_SECONDS.",
+            },
+          ],
+          unscheduledHours: 2,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(callPlanningSolver(minimalInput())).rejects.toThrow(
+      "El optimizador agotó el tiempo de cálculo (60s de presupuesto). Regenera el planning o aumenta SOLVER_MAX_SECONDS en el entorno.",
+    );
+  });
 });

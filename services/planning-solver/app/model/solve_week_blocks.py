@@ -79,7 +79,7 @@ class SchedulerWeights:
 @dataclass(frozen=True)
 class SchedulerConfig:
     horizon_days: int = HORIZON_DAYS
-    max_solve_seconds: int = 180
+    max_solve_seconds: int = 240
     weights: SchedulerWeights = field(default_factory=SchedulerWeights)
 
 

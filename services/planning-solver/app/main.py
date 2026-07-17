@@ -39,7 +39,7 @@ def health() -> dict[str, str]:
 
 @app.post("/solve", response_model=SolveResponse)
 def solve(body: SolveRequest) -> SolveResponse:
-    max_seconds = int(os.environ.get("SOLVER_MAX_SECONDS", "180"))
+    max_seconds = int(os.environ.get("SOLVER_MAX_SECONDS", "240"))
     started = time.perf_counter()
     result = solve_week(
         body,

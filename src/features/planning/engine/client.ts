@@ -17,6 +17,18 @@ const log = childLogger({ module: "planning.solver-client" });
 /** Margen sobre SOLVER_MAX_SECONDS para serialización y build del modelo CP-SAT. */
 const SOLVER_HTTP_MARGIN_MS = 60_000;
 const MIN_HTTP_TIMEOUT_MS = 240_000;
+const DEFAULT_SOLVER_MAX_SECONDS = 240;
+
+function formatSolverTimeoutMessage(reason: string): string {
+  const budgetMatch = reason.match(/presupuesto\s+(\d+)s/i);
+  const budgetText = budgetMatch?.[1]
+    ? ` (${budgetMatch[1]}s de presupuesto)`
+    : "";
+  return (
+    `El optimizador agotó el tiempo de cálculo${budgetText}. ` +
+    "Regenera el planning o aumenta SOLVER_MAX_SECONDS en el entorno."
+  );
+}
 
 function solverTimeoutMs(): number {
   const explicit = process.env.PLANNING_SOLVER_TIMEOUT_MS?.trim();
@@ -26,8 +38,11 @@ function solverTimeoutMs(): number {
       return Math.max(30_000, parsed);
     }
   }
-  const solverSec = Number(process.env.SOLVER_MAX_SECONDS ?? 180);
-  const fromSolver = (Number.isFinite(solverSec) ? solverSec : 180) * 1000 + SOLVER_HTTP_MARGIN_MS;
+  const solverSec = Number(process.env.SOLVER_MAX_SECONDS ?? DEFAULT_SOLVER_MAX_SECONDS);
+  const fromSolver =
+    (Number.isFinite(solverSec) ? solverSec : DEFAULT_SOLVER_MAX_SECONDS) *
+      1000 +
+    SOLVER_HTTP_MARGIN_MS;
   return Math.max(MIN_HTTP_TIMEOUT_MS, fromSolver);
 }
 
@@ -148,9 +163,7 @@ export async function callPlanningSolver(
     w.reason.includes("solución a tiempo"),
   );
   if (result.assignments.length === 0 && timeoutWarning) {
-    throw new SolverInfeasibleError(
-      `${timeoutWarning.reason} Regenera el planning o aumenta SOLVER_MAX_SECONDS en el entorno.`,
-    );
+    throw new SolverInfeasibleError(formatSolverTimeoutMessage(timeoutWarning.reason));
   }
 
   return result;

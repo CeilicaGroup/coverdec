@@ -41,7 +41,7 @@ services:
       context: ./services/planning-solver
       dockerfile: Dockerfile
     environment:
-      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-180}
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-240}
       SOLVER_NUM_WORKERS: ${SOLVER_NUM_WORKERS:-4}
     volumes:
       - ./services/planning-solver/app:/app/app
@@ -81,7 +81,7 @@ services:
       DATABASE_URL: >-
         postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:-coverdec}@db:5432/${POSTGRES_DB:-coverdec}?schema=public
       PLANNING_SOLVER_URL: http://planning-solver:8000
-      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-180}
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-240}
       PLANNING_SOLVER_TIMEOUT_MS: ${PLANNING_SOLVER_TIMEOUT_MS:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-32-bytes-secret}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}

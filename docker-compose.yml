@@ -9,7 +9,7 @@
 # Opcionales (tienen default):
 #   POSTGRES_USER=coverdec
 #   POSTGRES_DB=coverdec
-#   SOLVER_MAX_SECONDS=180
+#   SOLVER_MAX_SECONDS=240
 #   LOG_LEVEL=info
 #   PORT=3000
 #   RESEND_API_KEY=<clave Resend>          # worker: canal email
@@ -50,7 +50,7 @@ services:
       context: ./services/planning-solver
       dockerfile: Dockerfile
     environment:
-      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-180}
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-240}
       SOLVER_NUM_WORKERS: ${SOLVER_NUM_WORKERS:-4}
     healthcheck:
       test:
@@ -77,7 +77,7 @@ services:
       DATABASE_URL: >-
         postgresql://${POSTGRES_USER:-coverdec}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-coverdec}
       PLANNING_SOLVER_URL: http://planning-solver:8000
-      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-180}
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-240}
       PLANNING_SOLVER_TIMEOUT_MS: ${PLANNING_SOLVER_TIMEOUT_MS:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
