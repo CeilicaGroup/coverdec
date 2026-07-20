@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addWeeks,
   isWeekStartPastDate,
+  isHorizonEmptyWeekError,
   maxWeeksForMode,
   shouldContinueHorizon,
   weekContainsDate,
@@ -139,5 +140,22 @@ describe("planning-horizon", () => {
       true,
     );
     expect(isWeekStartPastDate(anchor, "2026-06-30")).toBe(false);
+  });
+
+  it("isHorizonEmptyWeekError detects natural horizon end messages", () => {
+    expect(
+      isHorizonEmptyWeekError(
+        new Error(
+          "No quedan horas por planificar en esta semana: el trabajo ya está cubierto en borradores de semanas anteriores.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isHorizonEmptyWeekError(
+        new Error("No hay tareas con horas pendientes en proyectos activos."),
+      ),
+    ).toBe(true);
+    expect(isHorizonEmptyWeekError(new Error("Otro error"))).toBe(false);
+    expect(isHorizonEmptyWeekError("string")).toBe(false);
   });
 });

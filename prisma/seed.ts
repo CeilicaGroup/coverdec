@@ -1,4 +1,4 @@
-import { ElementTypology, PrismaClient, ProjectKind, Role } from "../src/generated/prisma";
+import { ElementTypology, PrismaClient, ProjectApprovalStatus, ProjectKind, Role } from "../src/generated/prisma";
 import { auth } from "../src/lib/auth";
 import { defaultWeeklyTemplate } from "../src/features/planning/engine/slots/person-schedule";
 import {
@@ -6,6 +6,7 @@ import {
   formatLampElementUnitLabel,
 } from "../src/features/projects/lamp-tasks";
 import { lampNameFields } from "../src/features/projects/lamp-name-validation";
+import { syncProjectApprovalStatus } from "../src/features/projects/sync-project-approval";
 
 const prisma = new PrismaClient();
 
@@ -291,7 +292,10 @@ async function seedLampWithTasks(
 
   await prisma.$transaction(async (tx) => {
     const created = existingLampId
-      ? await tx.lamp.findUniqueOrThrow({ where: { id: existingLampId } })
+      ? await tx.lamp.update({
+          where: { id: existingLampId },
+          data: { isApprovedForPlanning: true },
+        })
       : await tx.lamp.create({
           data: {
             projectId,
@@ -299,6 +303,7 @@ async function seedLampWithTasks(
             ...lampNameFields(lamp.name),
             surfaceM2: lamp.surfaceM2,
             units: lamp.units,
+            isApprovedForPlanning: true,
           },
         });
 
@@ -441,6 +446,10 @@ async function main() {
         where: { projectId: project.id, name: lamp.name },
       });
       if (exists) {
+        await prisma.lamp.update({
+          where: { id: exists.id },
+          data: { isApprovedForPlanning: true },
+        });
         const taskCount = await prisma.task.count({ where: { lampId: exists.id } });
         if (taskCount > 0) continue;
         await seedLampWithTasks(
@@ -454,6 +463,7 @@ async function main() {
       }
       await seedLampWithTasks(project.id, lamp, elementType, firstNave.id);
     }
+    await syncProjectApprovalStatus(project.id);
     console.log(`  ${project.name} (${lamps.length} lámparas)`);
   }
 
@@ -568,6 +578,7 @@ async function main() {
       isBillable: false,
       isActive: true,
       kind: ProjectKind.STOCK,
+      approvalStatus: ProjectApprovalStatus.PENDING_APPROVAL,
     },
   });
 
@@ -585,6 +596,7 @@ async function main() {
       isBillable: false,
       isActive: true,
       kind: ProjectKind.IMPREVISTAS,
+      approvalStatus: ProjectApprovalStatus.PENDING_APPROVAL,
     },
   });
 

@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
+import { ProjectApprovalStatus } from "@/generated/prisma";
 import { lampNameFields } from "@/features/projects/lamp-name-validation";
+import { syncProjectApprovalStatus } from "@/features/projects/sync-project-approval";
 import {
   elementTaskScopeWhere,
   loadTaskNaveContext,
@@ -106,6 +108,7 @@ export async function applyProyectoRows(
     void processResult;
 
     const taskOrderByLamp = new Map<string, number>();
+    const touchedProjectIds = new Set<string>();
 
     for (const row of importable) {
       const elementType = matchElementTypeByBastidorName(index, row.frameTypeName);
@@ -135,8 +138,11 @@ export async function applyProyectoRows(
           name: row.projectName.trim(),
           deliveryDate: row.deliveryDate,
           isActive: !archive,
+          approvalStatus: ProjectApprovalStatus.PENDING_APPROVAL,
         },
       });
+
+      touchedProjectIds.add(project.id);
 
       if (existingProject) summary.projectsUpdated += 1;
       else summary.projectsCreated += 1;
@@ -250,6 +256,10 @@ export async function applyProyectoRows(
         data: { isActive: false },
       });
       summary.projectsArchived += updated.count;
+    }
+
+    for (const projectId of touchedProjectIds) {
+      await syncProjectApprovalStatus(projectId, tx);
     }
   });
 

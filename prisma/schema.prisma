@@ -401,7 +401,7 @@ model Project {
   isBillable   Boolean   @default(true)
   isActive     Boolean   @default(true)
   kind         ProjectKind @default(PRODUCCION)
-  approvalStatus ProjectApprovalStatus @default(IN_PRODUCTION)
+  approvalStatus ProjectApprovalStatus @default(PENDING_APPROVAL)
   planningPreset ProjectPlanningPreset @default(EQUILIBRADO)
   planningCostPriority Int @default(50)
   planningStability Int @default(50)
@@ -817,6 +817,31 @@ model FactoryItem {
   notes       String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  @@index([status])
+}
+
+// ---------- Jobs asíncronos de planning ----------
+
+enum PlanningJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model PlanningJob {
+  id          String            @id @default(cuid())
+  status      PlanningJobStatus @default(PENDING)
+  horizonMode Json
+  weekStart   DateTime
+  planFromDate String?
+  progress    Json?
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
 
   @@index([status])
 }

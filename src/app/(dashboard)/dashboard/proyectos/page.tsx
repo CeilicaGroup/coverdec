@@ -22,7 +22,7 @@ import {
 } from "@/lib/format";
 import { RiskBadge } from "@/components/risk-badge";
 import { Badge } from "@/components/ui/badge";
-import { Role, ProjectApprovalStatus } from "@/generated/prisma";
+import { Role } from "@/generated/prisma";
 import {
   PROJECT_KIND_BADGE_CLASS,
   PROJECT_KIND_LABELS,
@@ -33,6 +33,7 @@ import {
 } from "@/features/projects/task-nave";
 import {
   PROJECT_APPROVAL_STATUS_LABELS,
+  deriveProjectApprovalStatus,
   isLampEligibleForPlanning,
 } from "@/lib/project-approval";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
@@ -116,6 +117,7 @@ export default async function ProyectosPage({
       include: {
         responsibleUser: { select: { name: true } },
         _count: { select: { lamps: true, tasks: true } },
+        lamps: { select: { isApprovedForPlanning: true } },
         tasks: {
           select: {
             id: true,
@@ -360,7 +362,13 @@ export default async function ProyectosPage({
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-[10px]">
-                        {PROJECT_APPROVAL_STATUS_LABELS[p.approvalStatus]}
+                        {
+                          PROJECT_APPROVAL_STATUS_LABELS[
+                            deriveProjectApprovalStatus(
+                              p.lamps.map((lamp) => lamp.isApprovedForPlanning),
+                            )
+                          ]
+                        }
                       </Badge>
                     </TableCell>
                     <TableCell>

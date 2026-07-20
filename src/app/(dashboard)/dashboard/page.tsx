@@ -80,6 +80,8 @@ import {
 } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../_components/planning-empty-notice";
 import { listCatalogTimeDeviations } from "@/features/time-tracking/catalog-time-stats";
+import { PlanningJobProvider } from "@/features/planning/use-planning-job-polling";
+import { PlanningJobBanner } from "./planning-job-banner";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
 
@@ -211,8 +213,9 @@ export default async function ResumenPage({
   });
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <PageHeader
+    <PlanningJobProvider enabled={canManagePlanningRole}>
+      <div className="p-6 lg:p-8 space-y-6">
+        <PageHeader
         title={`Resumen S${week} · ${year}`}
         description={`Semana ${formatWeekRange(weekStart)}`}
         actions={
@@ -257,6 +260,8 @@ export default async function ResumenPage({
           </div>
         }
       />
+
+      {canManagePlanningRole ? <PlanningJobBanner /> : null}
 
       {timeDeviations.alertCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/5">
@@ -417,7 +422,8 @@ export default async function ResumenPage({
           Borrador generado sin asignaciones. Revisa los proyectos pendientes y vuelve a generar tras añadir tareas.
         </div>
       )}
-    </div>
+      </div>
+    </PlanningJobProvider>
   );
 }
 

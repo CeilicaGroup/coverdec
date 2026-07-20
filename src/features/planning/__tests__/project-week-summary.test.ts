@@ -105,3 +105,61 @@ describe("project week summary with prior draft planning", () => {
     expect(rows[0]!.pendingHours).toBe(10);
   });
 });
+
+describe("approved tasks only in resumen summaries", () => {
+  it("counts only approved tasks when query filtered out unapproved lamps", () => {
+    const partialApprovalProjects = [
+      {
+        id: "p1",
+        code: "PARTIAL",
+        name: "Partial",
+        deliveryDate: null,
+        planningPreset: "EQUILIBRADO" as const,
+        planningCostPriority: 50,
+        planningStability: 50,
+        planningDeadlineBoost: 50,
+        tasks: [
+          {
+            id: "t1",
+            lampId: "l-approved",
+            process: "CNC",
+            estimatedHours: 10,
+            doneHours: 0,
+            pendingHours: 10,
+            isCompleted: false,
+          },
+        ],
+      },
+    ] as ProjectWithLoad[];
+
+    const rows = summarizeAllActiveProjects(
+      partialApprovalProjects,
+      null,
+      new Map(),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.estimatedHours).toBe(10);
+    expect(rows[0]!.pendingHours).toBe(10);
+  });
+
+  it("excludes projects with no approved tasks from summary", () => {
+    const noApprovedTasks = [
+      {
+        id: "p2",
+        code: "NONE",
+        name: "No approved",
+        deliveryDate: null,
+        planningPreset: "EQUILIBRADO" as const,
+        planningCostPriority: 50,
+        planningStability: 50,
+        planningDeadlineBoost: 50,
+        tasks: [],
+      },
+    ] as ProjectWithLoad[];
+
+    const rows = summarizeAllActiveProjects(noApprovedTasks, null, new Map());
+
+    expect(rows).toHaveLength(0);
+  });
+});

@@ -28,18 +28,15 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
-  generatePlanningAction,
-  getPlanningHorizonProgressAction,
-  prepareHorizonGenerationAction,
   publishPlanningAction,
   undoPlanningAction,
+  startPlanningJobAction,
 } from "@/features/planning/actions";
 import {
   HORIZON_MODE_OPTIONS,
   type HorizonModeKind,
   type PlanningHorizonMode,
 } from "@/features/planning/planning-horizon-schema";
-import { addWeeks, maxWeeksForMode } from "@/features/planning/planning-horizon";
 import {
   defaultPlanFromDateIso,
   planFromHelpText,
@@ -48,6 +45,7 @@ import {
 import { formatWeekRange } from "@/lib/week";
 import type { Role } from "@/generated/prisma";
 import { canManagePlanning } from "@/features/planning/planning-visibility";
+import { usePlanningJob } from "@/features/planning/use-planning-job-polling";
 
 export interface GenerateButtonProject {
   id: string;
@@ -72,10 +70,6 @@ function buildHorizonMode(
     case "UNTIL_DATE":
       return { kind: "UNTIL_DATE", untilIso };
   }
-}
-
-function weekIsoFromDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 export function GenerateButton({
@@ -107,6 +101,15 @@ export function GenerateButton({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const {
+    isGenerating,
+    progressLabel,
+    trackJob,
+    planningWarnings,
+    unscheduledHours,
+    warningsOpen,
+    setWarningsOpen,
+  } = usePlanningJob();
   const [pending, startTransition] = useTransition();
   const [undoing, startUndoTransition] = useTransition();
   const [publishing, setPublishing] = useState(false);
@@ -115,14 +118,12 @@ export function GenerateButton({
   const [horizonKind, setHorizonKind] = useState<HorizonModeKind>("ALL_PROJECTS");
   const [projectId, setProjectId] = useState("");
   const [untilIso, setUntilIso] = useState("");
-  const [progressLabel, setProgressLabel] = useState<string | null>(null);
-  const [planningWarnings, setPlanningWarnings] = useState<string[]>([]);
-  const [unscheduledHours, setUnscheduledHours] = useState(0);
-  const [warningsOpen, setWarningsOpen] = useState(false);
   const workWeek = useMemo(() => weekWorkdayIsoRange(weekStart), [weekStart]);
   const [planFromDate, setPlanFromDate] = useState(() =>
     defaultPlanFromDateIso(weekStart),
   );
+
+  const isBusy = isGenerating || pending;
 
   useEffect(() => {
     setPlanFromDate(defaultPlanFromDateIso(weekStart));
@@ -161,111 +162,22 @@ export function GenerateButton({
 
     startTransition(async () => {
       try {
-        const prepareOutcome = handleActionResult(
-          "planning.prepareHorizonGeneration",
-          await prepareHorizonGenerationAction({ weekStart, horizonMode }),
+        const outcome = handleActionResult(
+          "planning.startPlanningJob",
+          await startPlanningJobAction({
+            weekStart,
+            horizonMode,
+            planFromDate,
+          }),
         );
-        if (!prepareOutcome.success) {
-          toast.error(prepareOutcome.message);
+        if (!outcome.success) {
+          toast.error(outcome.message);
           return;
         }
 
-        const maxWeeks = maxWeeksForMode(horizonMode);
-        let weeksGenerated = 0;
-        let totalAssignments = 0;
-        let totalUnscheduled = 0;
-        const allWarnings: string[] = [];
-        let totalPendingBefore = 0;
-        let projectPendingBefore = 0;
-
-        const initialProgress = await getPlanningHorizonProgressAction({
-          weekStart,
-          horizonMode,
-          weeksGenerated: 0,
-          totalPendingBeforeHours: 0,
-          projectPendingBeforeHours: 0,
-        });
-        totalPendingBefore = initialProgress.totalPendingHours;
-        projectPendingBefore = initialProgress.projectPendingHours;
-
-        while (weeksGenerated < maxWeeks) {
-          const currentWeekStart = addWeeks(new Date(weekStart), weeksGenerated);
-          const weekIso = weekIsoFromDate(currentWeekStart);
-          const weekNum = weeksGenerated + 1;
-          setProgressLabel(
-            maxWeeks > 1 ? `Generando S${weekNum}${maxWeeks <= 4 ? `/${maxWeeks}` : ""}…` : null,
-          );
-
-          const generateOutcome = handleActionResult(
-            "planning.generatePlanning",
-            await generatePlanningAction({
-              weekStart: weekIso,
-              horizonMode,
-              planFromDate: weeksGenerated === 0 ? planFromDate : undefined,
-            }),
-          );
-          if (!generateOutcome.success) {
-            toast.error(generateOutcome.message);
-            return;
-          }
-          const result = generateOutcome.data;
-
-          weeksGenerated += 1;
-          totalAssignments += result.assignmentsCount;
-          totalUnscheduled += result.unscheduledHours;
-          allWarnings.push(...result.warnings);
-
-          const progress = await getPlanningHorizonProgressAction({
-            weekStart,
-            horizonMode,
-            weeksGenerated,
-            totalPendingBeforeHours: totalPendingBefore,
-            projectPendingBeforeHours: projectPendingBefore,
-            lastWeekOutstandingHours: result.unscheduledHours,
-          });
-
-          totalPendingBefore = progress.totalPendingHours;
-          projectPendingBefore = progress.projectPendingHours;
-
-          if (!progress.shouldContinue) {
-            break;
-          }
-        }
-
-        setProgressLabel(null);
-        setPlanningWarnings(allWarnings);
-        setUnscheduledHours(totalUnscheduled);
-
-        const warningCount = allWarnings.length;
-        const weeksLabel =
-          weeksGenerated === 1
-            ? "1 semana"
-            : `${weeksGenerated} semanas`;
-
-        let toastMessage = `Planning generado: ${weeksLabel}, ${totalAssignments} asignaciones`;
-        if (horizonKind === "PROJECT" && selectedProjectId) {
-          const projectName =
-            projectsWithPending.find((p) => p.id === selectedProjectId)?.name ??
-            "proyecto";
-          toastMessage = `Planning generado para ${projectName}: ${weeksLabel}, ${totalAssignments} asignaciones`;
-        }
-        if (warningCount > 0) {
-          toastMessage += ` (${warningCount} avisos)`;
-        }
-
-        toast.success(
-          toastMessage,
-          warningCount > 0
-            ? {
-                action: {
-                  label: "Ver avisos",
-                  onClick: () => setWarningsOpen(true),
-                },
-              }
-            : undefined,
-        );
+        trackJob(outcome.data.jobId);
+        toast.info("Generación de planning iniciada");
       } catch (err) {
-        setProgressLabel(null);
         toast.error(reportMutationError("Error generando planning", err));
       }
     });
@@ -342,7 +254,7 @@ export function GenerateButton({
   const undoButton = (
     <Button
       onClick={onUndoClick}
-      disabled={disabled || !canUndo || undoing || pending}
+      disabled={disabled || !canUndo || undoing || isBusy}
       variant="outline"
       className="gap-2"
       title={
@@ -570,8 +482,8 @@ export function GenerateButton({
             </Tooltip>
           </TooltipProvider>
         ) : (
-          <Button onClick={onGenerate} disabled={pending} className="gap-2">
-            {pending ? (
+          <Button onClick={onGenerate} disabled={isBusy} className="gap-2">
+            {isBusy ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Sparkles className="size-4" />
@@ -582,7 +494,7 @@ export function GenerateButton({
         {anyDraft && (
           <Button
             onClick={onPublish}
-            disabled={publishing || disabled}
+            disabled={publishing || disabled || isBusy}
             variant="outline"
             className="gap-2"
           >

@@ -133,6 +133,16 @@ export function shouldContinueHorizon(input: HorizonProgressInput): HorizonProgr
   return { shouldContinue: true };
 }
 
+/** Semana sin trabajo planificable: fin natural del horizonte multi-semana. */
+export function isHorizonEmptyWeekError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message;
+  return (
+    msg.includes("No quedan horas por planificar en esta semana") ||
+    msg.startsWith("No hay tareas con horas pendientes")
+  );
+}
+
 export async function hasPublishedFuturePlannings(
   naveId: string,
   fromWeekStart: Date,

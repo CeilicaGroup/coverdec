@@ -15,6 +15,8 @@ import { PushRegistration } from "./_components/push-registration";
 import { isDevUserSwitcherEnabled } from "@/lib/dev-user-switcher";
 import { listDevSwitcherUsers } from "@/features/dev/user-switcher-actions";
 
+export const maxDuration = 900;
+
 export default async function DashboardLayout({
   children,
 }: {

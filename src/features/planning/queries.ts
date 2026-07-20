@@ -665,21 +665,19 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
   if (naveScope !== null && naveScope.length === 0) return [];
   const taskNaveFilter =
     naveScope !== null ? { naveId: { in: naveScope } } : undefined;
+  const approvedTaskWhere = {
+    lamp: { isApprovedForPlanning: true },
+    ...(taskNaveFilter ?? {}),
+  };
   const projects = await prisma.project.findMany({
-    where:
-      naveScope !== null
-        ? {
-            isActive: true,
-            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
-            tasks: { some: taskNaveFilter! },
-          }
-        : {
-            isActive: true,
-            approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
-          },
+    where: {
+      isActive: true,
+      approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+      tasks: { some: approvedTaskWhere },
+    },
     include: {
       tasks: {
-        where: taskNaveFilter,
+        where: approvedTaskWhere,
         select: {
           id: true,
           lampId: true,

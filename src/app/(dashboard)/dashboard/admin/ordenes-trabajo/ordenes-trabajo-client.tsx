@@ -245,6 +245,7 @@ export function OrdenesTrabajoClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
+  const [unassignedDetailsOpen, setUnassignedDetailsOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<WorkOrderRow | null>(null);
   const [splitOrder, setSplitOrder] = useState<WorkOrderRow | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<WorkOrderRow | null>(null);
@@ -528,6 +529,14 @@ export function OrdenesTrabajoClient({
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={() => setUnassignedDetailsOpen(true)}
+                >
+                  Ver detalles
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={onAutoGroup}
                   disabled={pending}
                 >
@@ -753,6 +762,35 @@ export function OrdenesTrabajoClient({
             </Table>
           </CardContent>
         </Card>
+
+        <Dialog open={unassignedDetailsOpen} onOpenChange={setUnassignedDetailsOpen}>
+          <DialogContent className="flex max-w-2xl max-h-[85vh] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Tareas sin OT</DialogTitle>
+              </DialogHeader>
+              <WorkOrderTaskPicker
+                tasks={eligibleTasks}
+                selectedIds={[]}
+                onToggle={() => {}}
+                processStylesByCode={processStylesByCode}
+                typologyImages={typologyImages}
+                elementTypeImages={elementTypeImages}
+                emptyMessage="No hay tareas pendientes sin OT"
+                readOnly
+              />
+            </div>
+            <DialogFooter className="shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUnassignedDetailsOpen(false)}
+              >
+                Cerrar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="flex max-w-2xl max-h-[85vh] flex-col overflow-hidden">

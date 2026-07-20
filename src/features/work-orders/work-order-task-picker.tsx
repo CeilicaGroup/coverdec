@@ -49,6 +49,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   typologyImages,
   elementTypeImages,
   emptyMessage = "No hay tareas disponibles",
+  readOnly = false,
 }: {
   tasks: T[];
   selectedIds: string[];
@@ -57,6 +58,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   typologyImages?: TypologyImageAvailability;
   elementTypeImages?: ElementTypeImageAvailability;
   emptyMessage?: string;
+  readOnly?: boolean;
 }) {
   const [filters, setFilters] = useState<WorkOrderTaskFilters>(
     EMPTY_WORK_ORDER_TASK_FILTERS,
@@ -171,8 +173,9 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          {selectedIds.length} seleccionadas · {filteredTasks.length} de{" "}
-          {tasks.length} visibles
+          {readOnly
+            ? `${filteredTasks.length} de ${tasks.length} visibles`
+            : `${selectedIds.length} seleccionadas · ${filteredTasks.length} de ${tasks.length} visibles`}
         </span>
         {hasActiveFilters ? (
           <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
@@ -189,35 +192,53 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
             Ninguna tarea coincide con los filtros
           </p>
         ) : (
-          filteredTasks.map((task) => (
-            <label
-              key={task.id}
-              className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer"
-            >
-              <Checkbox
-                checked={selectedIds.includes(task.id)}
-                onCheckedChange={() => onToggle(task.id)}
-              />
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="text-sm font-medium truncate">{taskLabel(task)}</div>
-                <LampElementVisual
-                  {...getTaskLampElementVisualProps(task)}
-                  typologyImages={typologyImages}
-                  elementTypeImages={elementTypeImages}
-                  size="sm"
-                  compact
-                />
-                <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                  <span className="font-mono">{task.nave.codigo}</span>
-                  <ProcessBadge
-                    code={task.process}
-                    definition={processStylesByCode[task.process]}
+          filteredTasks.map((task) => {
+            const content = (
+              <>
+                {!readOnly ? (
+                  <Checkbox
+                    checked={selectedIds.includes(task.id)}
+                    onCheckedChange={() => onToggle(task.id)}
                   />
-                  <span>{formatHours(task.estimatedHours)}</span>
+                ) : null}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="text-sm font-medium truncate">{taskLabel(task)}</div>
+                  <LampElementVisual
+                    {...getTaskLampElementVisualProps(task)}
+                    typologyImages={typologyImages}
+                    elementTypeImages={elementTypeImages}
+                    size="sm"
+                    compact
+                  />
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className="font-mono">{task.nave.codigo}</span>
+                    <ProcessBadge
+                      code={task.process}
+                      definition={processStylesByCode[task.process]}
+                    />
+                    <span>{formatHours(task.estimatedHours)}</span>
+                  </div>
                 </div>
-              </div>
-            </label>
-          ))
+              </>
+            );
+
+            if (readOnly) {
+              return (
+                <div key={task.id} className="flex items-start gap-3 p-3">
+                  {content}
+                </div>
+              );
+            }
+
+            return (
+              <label
+                key={task.id}
+                className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+              >
+                {content}
+              </label>
+            );
+          })
         )}
       </div>
     </div>

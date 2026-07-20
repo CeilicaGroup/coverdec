@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
@@ -12,184 +13,23 @@ import {
   undoPlanningAllNaves,
   listFuturePlannings,
 } from "@/features/planning/service";
-import { generatePlanningAllNaves } from "@/features/planning/planning-all-naves";
 import {
-  addWeeks,
   clearFutureDraftPlanningsAll,
-  countPendingPlanningHoursAll,
   hasPublishedFuturePlanningsAll,
   isMultiWeekMode,
-  relevantPendingHours,
-  shouldContinueHorizon,
 } from "@/features/planning/planning-horizon";
 import { planningHorizonModeSchema } from "@/features/planning/planning-horizon-schema";
-import { assertPlanFromDateInWorkWeek } from "@/features/planning/plan-from";
 import { hasRegistrosFromWeekAll } from "@/features/planning/planning-registros";
 import { prisma } from "@/lib/db";
 import { Role, PlanningStatus } from "@/generated/prisma";
-
-const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-
-const generateSchema = z.object({
-  weekStart: z.string().min(8),
-  horizonMode: planningHorizonModeSchema,
-  planFromDate: isoDateSchema.optional(),
-});
-
-export async function generatePlanningAction(input: {
-  weekStart: string;
-  horizonMode: z.input<typeof planningHorizonModeSchema>;
-  planFromDate?: string;
-}): Promise<
-  ActionResult<{
-    planningId: string;
-    warnings: string[];
-    unscheduledHours: number;
-    assignmentsCount: number;
-  }>
-> {
-  return runServerAction(
-    "planning.generatePlanning",
-    async () => {
-      const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN]);
-      if (ctx.naveId) {
-        throw new Error(
-          "El planning se genera para todas las naves. Quita el filtro de nave.",
-        );
-      }
-      const { weekStart, horizonMode, planFromDate } = generateSchema.parse(input);
-
-      const planFrom =
-        planFromDate !== undefined
-          ? ("DATE" as const)
-          : ("WEEK_START" as const);
-
-      if (planFrom === "DATE") {
-        assertPlanFromDateInWorkWeek(weekStart, planFromDate!);
-      }
-
-      const result = await generatePlanningAllNaves({
-        weekStart: new Date(weekStart),
-        replaceDraft: true,
-        planFrom,
-        planFromAt:
-          planFrom === "DATE"
-            ? new Date(`${planFromDate}T00:00:00.000Z`)
-            : new Date(),
-      });
-      revalidatePath("/dashboard", "layout");
-      return {
-        planningId: result.planningIds[0] ?? "",
-        warnings: result.warnings,
-        unscheduledHours: result.unscheduledHours,
-        assignmentsCount: result.assignmentsCount,
-      };
-    },
-    (result) => ({
-      summary: `Generar planning global semana ${input.weekStart}`,
-      entityType: "Planning",
-      entityId: result.planningId,
-      metadata: {
-        weekStart: input.weekStart,
-        horizonMode: input.horizonMode,
-        planFromDate: input.planFromDate,
-        global: true,
-      },
-    }),
-  );
-}
-
-export async function prepareHorizonGenerationAction(input: {
-  weekStart: string;
-  horizonMode: z.input<typeof planningHorizonModeSchema>;
-}): Promise<ActionResult<void>> {
-  return runServerAction(
-    "planning.prepareHorizonGeneration",
-    async () => {
-      const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN]);
-      if (ctx.naveId) {
-        throw new Error(
-          "El planning se genera para todas las naves. Quita el filtro de nave.",
-        );
-      }
-
-      const naveIds = await loadActiveNaveIdsOrdered();
-      const { weekStart, horizonMode } = generateSchema.parse(input);
-      const anchor = getMondayOf(new Date(weekStart));
-
-      if (isMultiWeekMode(horizonMode)) {
-        if (await hasPublishedFuturePlanningsAll(naveIds, anchor)) {
-          throw new Error(
-            "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
-          );
-        }
-        await clearFutureDraftPlanningsAll(naveIds, anchor);
-      }
-
-      revalidatePath("/dashboard", "layout");
-    },
-    {
-      summary: `Preparar horizonte de planning global desde ${input.weekStart}`,
-      metadata: input,
-    },
-  );
-}
-
-export async function getPlanningHorizonProgressAction(input: {
-  weekStart: string;
-  horizonMode: z.input<typeof planningHorizonModeSchema>;
-  weeksGenerated: number;
-  totalPendingBeforeHours: number;
-  projectPendingBeforeHours: number;
-  lastWeekOutstandingHours?: number;
-}) {
-  await requireDashboardContext();
-  const naveIds = await loadActiveNaveIdsOrdered();
-
-  const parsed = generateSchema.parse({
-    weekStart: input.weekStart,
-    horizonMode: input.horizonMode,
-  });
-  const anchor = getMondayOf(new Date(parsed.weekStart));
-  const projectId =
-    parsed.horizonMode.kind === "PROJECT" ? parsed.horizonMode.projectId : undefined;
-
-  const snapshot = await countPendingPlanningHoursAll({
-    naveIds,
-    beforeWeekStart: addWeeks(anchor, input.weeksGenerated),
-    projectId,
-  });
-
-  const projectPending =
-    projectId != null
-      ? (snapshot.projectPendingHours.get(projectId) ?? 0)
-      : 0;
-
-  const progress = shouldContinueHorizon({
-    mode: parsed.horizonMode,
-    anchorWeekStart: anchor,
-    weeksGenerated: input.weeksGenerated,
-    totalPendingBeforeHours: input.totalPendingBeforeHours,
-    totalPendingAfterHours: snapshot.totalPendingHours,
-    projectPendingBeforeHours: input.projectPendingBeforeHours,
-    projectPendingAfterHours: projectPending,
-    lastWeekOutstandingHours: input.lastWeekOutstandingHours,
-  });
-
-  return {
-    totalPendingHours: snapshot.totalPendingHours,
-    projectPendingHours: projectPending,
-    shouldContinue: progress.shouldContinue,
-    stallReason: progress.stallReason,
-    relevantPendingHours: relevantPendingHours(
-      parsed.horizonMode,
-      snapshot.totalPendingHours,
-      projectPending,
-    ),
-  };
-}
+import {
+  startPlanningJob,
+  executePlanningJob,
+  getActivePlanningJob,
+  getPlanningJobById,
+  type PlanningJobProgress,
+  type PlanningJobResult,
+} from "./planning-job";
 
 const publishSchema = z.object({ weekStart: z.string().min(8) });
 
@@ -315,5 +155,108 @@ export async function getPlanningUndoState(weekStartIso: string): Promise<{
     isPublished: plannings.every((p) => p.status === PlanningStatus.PUBLISHED),
     hasPlanning: true,
     anyDraft: plannings.some((p) => p.status === PlanningStatus.DRAFT),
+  };
+}
+
+// --------------- Async planning job actions ---------------
+
+const startJobSchema = z.object({
+  weekStart: z.string().min(8),
+  horizonMode: planningHorizonModeSchema,
+  planFromDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+
+export async function startPlanningJobAction(input: {
+  weekStart: string;
+  horizonMode: z.input<typeof planningHorizonModeSchema>;
+  planFromDate?: string;
+}): Promise<ActionResult<{ jobId: string }>> {
+  return runServerAction(
+    "planning.startPlanningJob",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN]);
+      if (ctx.naveId) {
+        throw new Error(
+          "El planning se genera para todas las naves. Quita el filtro de nave.",
+        );
+      }
+      const parsed = startJobSchema.parse(input);
+
+      const naveIds = await loadActiveNaveIdsOrdered();
+      const anchor = getMondayOf(new Date(parsed.weekStart));
+      if (isMultiWeekMode(parsed.horizonMode)) {
+        if (await hasPublishedFuturePlanningsAll(naveIds, anchor)) {
+          throw new Error(
+            "Hay plannings publicados en semanas posteriores. Deshaz o regenera esas semanas primero.",
+          );
+        }
+        await clearFutureDraftPlanningsAll(naveIds, anchor);
+      }
+
+      const jobId = await startPlanningJob({
+        weekStart: parsed.weekStart,
+        horizonMode: parsed.horizonMode,
+        planFromDate: parsed.planFromDate,
+      });
+
+      after(async () => {
+        await executePlanningJob(jobId);
+      });
+
+      revalidatePath("/dashboard", "layout");
+      return { jobId };
+    },
+    (result) => ({
+      summary: `Iniciar job de planning asíncrono semana ${input.weekStart}`,
+      entityType: "PlanningJob",
+      entityId: result.jobId,
+      metadata: {
+        weekStart: input.weekStart,
+        horizonMode: input.horizonMode,
+        planFromDate: input.planFromDate,
+      },
+    }),
+  );
+}
+
+export interface PlanningJobStatusResponse {
+  jobId: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  progress: PlanningJobProgress | null;
+  result: PlanningJobResult | null;
+  error: string | null;
+}
+
+export async function getPlanningJobStatusAction(
+  jobId: string,
+): Promise<PlanningJobStatusResponse | null> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN]);
+  const job = await getPlanningJobById(jobId);
+  if (!job) return null;
+  return {
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress as PlanningJobProgress | null,
+    result: job.result as PlanningJobResult | null,
+    error: job.error,
+  };
+}
+
+export async function getActivePlanningJobAction(): Promise<PlanningJobStatusResponse | null> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN]);
+  const job = await getActivePlanningJob();
+  if (!job) return null;
+  return {
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress as PlanningJobProgress | null,
+    result: job.result as PlanningJobResult | null,
+    error: job.error,
   };
 }

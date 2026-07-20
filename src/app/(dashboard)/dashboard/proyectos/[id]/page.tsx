@@ -29,7 +29,7 @@ import { loadElementTypeImageAvailability } from "@/features/catalog/element-typ
 import { LampElementsSummary } from "@/components/typology-symbol";
 import { isManualEstimateLamp } from "@/lib/manual-lamp";
 import { isManualEstimateProjectKind, isStockProjectKind, PROJECT_KIND_LABELS } from "@/lib/project-kind";
-import { PROJECT_APPROVAL_STATUS_LABELS } from "@/lib/project-approval";
+import { PROJECT_APPROVAL_STATUS_LABELS, deriveProjectApprovalStatus } from "@/lib/project-approval";
 import { isStockLampAssignable } from "@/features/stock/stock-assignable";
 import { DeleteLampButton } from "./delete-lamp-button";
 import { RenameLampButton } from "./rename-lamp-button";
@@ -39,7 +39,7 @@ import { ProjectDangerZone } from "./project-danger-zone";
 import { ProjectLampSection, ProjectLampsList } from "./project-lamps-list";
 import { LampApprovalToggle } from "./lamp-approval-toggle";
 import { EditProjectDialog } from "../edit-project-dialog";
-import { Role, ProjectApprovalStatus } from "@/generated/prisma";
+import { Role } from "@/generated/prisma";
 import { listStockLamps } from "@/features/stock/actions";
 import { canManagePlanning } from "@/features/planning/planning-visibility";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
@@ -91,6 +91,10 @@ export default async function ProjectDetailPage({
     },
   });
   if (!project) notFound();
+
+  const approvalStatus = deriveProjectApprovalStatus(
+    project.lamps.map((lamp) => lamp.isApprovedForPlanning),
+  );
 
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const canManagePlanningRole = canManagePlanning(ctx.role);
@@ -255,7 +259,7 @@ export default async function ProjectDetailPage({
     <div className="p-6 lg:p-8 space-y-6">
       <PageHeader
         title={project.name}
-        description={`${project.code} · ${PROJECT_KIND_LABELS[project.kind]} · ${PROJECT_APPROVAL_STATUS_LABELS[project.approvalStatus]} · ${project.client ?? project.obra ?? "Sin cliente"}`}
+        description={`${project.code} · ${PROJECT_KIND_LABELS[project.kind]} · ${PROJECT_APPROVAL_STATUS_LABELS[approvalStatus]} · ${project.client ?? project.obra ?? "Sin cliente"}`}
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
             {canManage ? (
@@ -278,7 +282,7 @@ export default async function ProjectDetailPage({
                     deliveryDate: project.deliveryDate,
                     isBillable: project.isBillable,
                     kind: project.kind,
-                    approvalStatus: project.approvalStatus,
+                    approvalStatus,
                     notes: project.notes,
                     responsibleUserId: project.responsibleUserId,
                   }}
