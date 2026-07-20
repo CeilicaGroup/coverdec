@@ -9,12 +9,14 @@ import {
   Layers,
   Pencil,
   Plus,
+  Split,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -53,8 +56,15 @@ import {
   autoGroupIdenticalTasks,
   createWorkOrder,
   deleteWorkOrder,
+  splitWorkOrder,
+  updateWorkOrderAlertThresholds,
   updateWorkOrder,
 } from "@/features/work-orders/actions";
+import {
+  buildWorkOrderAttentionMetrics,
+  compareWorkOrdersByAttention,
+  type WorkOrderAttentionStatus,
+} from "@/features/work-orders/attention-priority";
 import type { TaskAssigneeSummary } from "@/features/work-orders/display-context";
 import {
   summarizeWorkOrderAssignee,
@@ -92,10 +102,26 @@ interface WorkOrderRow {
   tasks: EligibleWorkOrderTask[];
 }
 
+const DEFAULT_MAX_PENDING_HOURS = 16;
+const DEFAULT_MAX_TASKS = 8;
+
 function pendingHours(tasks: EligibleWorkOrderTask[]) {
   return tasks
     .filter((t) => !t.isCompleted)
     .reduce((sum, t) => sum + t.estimatedHours, 0);
+}
+
+function parseThreshold(value: string, fallback: number): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
+
+function attentionStatusLabel(status: WorkOrderAttentionStatus): string {
+  if (status === "excess_both") return "Exceso horas y tareas";
+  if (status === "excess_hours") return "Exceso de horas";
+  if (status === "excess_tasks") return "Exceso de tareas";
+  return "Normal";
 }
 
 function taskTypeLabels(tasks: EligibleWorkOrderTask[]): string[] {
@@ -198,6 +224,7 @@ export function OrdenesTrabajoClient({
   processStylesByCode,
   workOrderIdsWithTimeEntries,
   workOrderIdsWithPlanningAssignments,
+  initialAlertThresholds,
   typologyImages,
   elementTypeImages,
 }: {
@@ -208,6 +235,10 @@ export function OrdenesTrabajoClient({
   processStylesByCode: Record<string, ProcessBadgeStyle>;
   workOrderIdsWithTimeEntries: string[];
   workOrderIdsWithPlanningAssignments: string[];
+  initialAlertThresholds: {
+    maxPendingHours: number;
+    maxTasks: number;
+  };
   typologyImages: TypologyImageAvailability;
   elementTypeImages: ElementTypeImageAvailability;
 }) {
@@ -215,14 +246,21 @@ export function OrdenesTrabajoClient({
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<WorkOrderRow | null>(null);
+  const [splitOrder, setSplitOrder] = useState<WorkOrderRow | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<WorkOrderRow | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [editTaskIds, setEditTaskIds] = useState<string[]>([]);
+  const [splitTaskIds, setSplitTaskIds] = useState<string[]>([]);
   const [editTasksById, setEditTasksById] = useState<Map<string, EligibleWorkOrderTask>>(
     new Map(),
   );
   const [notes, setNotes] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [splitNotes, setSplitNotes] = useState("");
+  const [maxPendingHoursInput, setMaxPendingHoursInput] = useState(
+    String(initialAlertThresholds.maxPendingHours),
+  );
+  const [maxTasksInput, setMaxTasksInput] = useState(String(initialAlertThresholds.maxTasks));
 
   const assigneeByTaskId = useMemo(
     () => new Map(Object.entries(assigneeByTaskIdRecord)),
@@ -265,6 +303,12 @@ export function OrdenesTrabajoClient({
     setEditNotes(order.notes ?? "");
   };
 
+  const openSplit = (order: WorkOrderRow) => {
+    setSplitOrder(order);
+    setSplitTaskIds([]);
+    setSplitNotes("");
+  };
+
   const toggleTask = (taskId: string) => {
     setSelectedTaskIds((prev) =>
       prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
@@ -277,6 +321,12 @@ export function OrdenesTrabajoClient({
     if (!task) return;
     setEditTasksById((prev) => new Map(prev).set(taskId, task));
     setEditTaskIds((prev) => [...prev, taskId]);
+  };
+
+  const toggleSplitTask = (taskId: string) => {
+    setSplitTaskIds((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
+    );
   };
 
   const moveTask = (index: number, direction: -1 | 1) => {
@@ -367,6 +417,24 @@ export function OrdenesTrabajoClient({
     });
   };
 
+  const onSplit = () => {
+    if (!splitOrder) return;
+    startTransition(async () => {
+      const result = await splitWorkOrder({
+        id: splitOrder.id,
+        taskIds: splitTaskIds,
+        notes: splitNotes.trim() || null,
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`OT ${splitOrder.number} dividida en ${result.data.number}`);
+      setSplitOrder(null);
+      router.refresh();
+    });
+  };
+
   const addableTasks = editOrder
     ? eligibleTasks.filter((t) => !editTaskIds.includes(t.id))
     : [];
@@ -376,6 +444,68 @@ export function OrdenesTrabajoClient({
     () => pendingHours(eligibleTasks),
     [eligibleTasks],
   );
+  const maxPendingHours = useMemo(
+    () => parseThreshold(maxPendingHoursInput, DEFAULT_MAX_PENDING_HOURS),
+    [maxPendingHoursInput],
+  );
+  const maxTasks = useMemo(
+    () => parseThreshold(maxTasksInput, DEFAULT_MAX_TASKS),
+    [maxTasksInput],
+  );
+  const persistAlertThresholds = () => {
+    const normalized = {
+      maxPendingHours: parseThreshold(maxPendingHoursInput, DEFAULT_MAX_PENDING_HOURS),
+      maxTasks: parseThreshold(maxTasksInput, DEFAULT_MAX_TASKS),
+    };
+    setMaxPendingHoursInput(String(normalized.maxPendingHours));
+    setMaxTasksInput(String(normalized.maxTasks));
+    startTransition(async () => {
+      const result = await updateWorkOrderAlertThresholds(normalized);
+      if (!result.ok) {
+        toast.error(result.error);
+      }
+    });
+  };
+  const workOrdersWithAttention = useMemo(
+    () =>
+      workOrders
+        .map((order) => {
+          const orderPendingHours = pendingHours(order.tasks);
+          return {
+            ...order,
+            pendingHours: orderPendingHours,
+            taskCount: order.tasks.length,
+            attention: buildWorkOrderAttentionMetrics(
+              {
+                status: order.status,
+                pendingHours: orderPendingHours,
+                taskCount: order.tasks.length,
+              },
+              { maxPendingHours, maxTasks },
+            ),
+          };
+        })
+        .sort(compareWorkOrdersByAttention),
+    [maxPendingHours, maxTasks, workOrders],
+  );
+  const excessiveOpenCount = useMemo(
+    () =>
+      workOrdersWithAttention.filter(
+        (order) => order.status === "OPEN" && order.attention.needsAttention,
+      ).length,
+    [workOrdersWithAttention],
+  );
+  const splitSelectedHours = useMemo(() => {
+    if (!splitOrder) return 0;
+    const selected = new Set(splitTaskIds);
+    return splitOrder.tasks
+      .filter((task) => selected.has(task.id))
+      .reduce((sum, task) => sum + task.estimatedHours, 0);
+  }, [splitOrder, splitTaskIds]);
+  const splitRemainingHours = useMemo(() => {
+    if (!splitOrder) return 0;
+    return pendingHours(splitOrder.tasks) - splitSelectedHours;
+  }, [splitOrder, splitSelectedHours]);
 
   return (
     <TooltipProvider>
@@ -411,7 +541,7 @@ export function OrdenesTrabajoClient({
           </Card>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <Select value={statusFilter} onValueChange={onStatusFilter}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Estado">
@@ -434,7 +564,63 @@ export function OrdenesTrabajoClient({
             <Plus className="size-4 mr-1.5" />
             Nueva OT
           </Button>
+          <div className="ml-auto flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="ot-max-hours" className="text-xs text-muted-foreground">
+                Alerta horas
+              </Label>
+              <Input
+                id="ot-max-hours"
+                type="number"
+                min={1}
+                className="h-9 w-24"
+                value={maxPendingHoursInput}
+                onChange={(e) => setMaxPendingHoursInput(e.target.value)}
+                onBlur={persistAlertThresholds}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    persistAlertThresholds();
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ot-max-tasks" className="text-xs text-muted-foreground">
+                Alerta tareas
+              </Label>
+              <Input
+                id="ot-max-tasks"
+                type="number"
+                min={1}
+                className="h-9 w-24"
+                value={maxTasksInput}
+                onChange={(e) => setMaxTasksInput(e.target.value)}
+                onBlur={persistAlertThresholds}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    persistAlertThresholds();
+                  }
+                }}
+              />
+            </div>
+          </div>
         </div>
+
+        {excessiveOpenCount > 0 ? (
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardContent className="py-3">
+              <div className="flex items-center gap-2 text-sm">
+                <AlertTriangle className="size-4 shrink-0 text-destructive" />
+                <span>
+                  {excessiveOpenCount} OT abierta{excessiveOpenCount !== 1 ? "s" : ""} requiere
+                  mayor atención con los umbrales actuales ({maxPendingHours}h / {maxTasks} tareas).
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardContent className="p-0">
@@ -443,6 +629,7 @@ export function OrdenesTrabajoClient({
                 <TableRow>
                   <TableHead>OT</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Atención</TableHead>
                   <TableHead>Elemento · Proceso</TableHead>
                   <TableHead>Operario</TableHead>
                   <TableHead>Tareas</TableHead>
@@ -453,14 +640,14 @@ export function OrdenesTrabajoClient({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {workOrders.length === 0 ? (
+                {workOrdersWithAttention.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       No hay órdenes de trabajo
                     </TableCell>
                   </TableRow>
                 ) : (
-                  workOrders.map((order) => {
+                  workOrdersWithAttention.map((order) => {
                     const blockReason = deleteBlockReason(order.id);
                     const deleteButton = (
                       <Button
@@ -490,6 +677,16 @@ export function OrdenesTrabajoClient({
                           </Badge>
                         </TableCell>
                         <TableCell>
+                          {order.attention.needsAttention ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <AlertTriangle className="size-3.5" />
+                              {attentionStatusLabel(order.attention.status)}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Normal</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <ElementProcessCell
                             tasks={order.tasks}
                             processStylesByCode={processStylesByCode}
@@ -503,13 +700,29 @@ export function OrdenesTrabajoClient({
                             assigneeByTaskId={assigneeByTaskId}
                           />
                         </TableCell>
-                        <TableCell>{order.tasks.length}</TableCell>
-                        <TableCell>{formatHours(pendingHours(order.tasks))}</TableCell>
+                        <TableCell>{order.taskCount}</TableCell>
+                        <TableCell>{formatHours(order.pendingHours)}</TableCell>
                         <TableCell>{formatShortDate(order.createdAt)}</TableCell>
                         <TableCell>
                           {order.closedAt ? formatShortDate(order.closedAt) : "—"}
                         </TableCell>
                         <TableCell className="text-right space-x-1">
+                          {order.status === "OPEN" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openSplit(order)}
+                              disabled={pending || order.taskCount < 2}
+                              title={
+                                order.taskCount < 2
+                                  ? "Se necesitan al menos 2 tareas para dividir"
+                                  : "Dividir OT"
+                              }
+                            >
+                              <Split className="size-4" />
+                            </Button>
+                          ) : null}
                           {order.status === "OPEN" ? (
                             <Button
                               type="button"
@@ -690,6 +903,80 @@ export function OrdenesTrabajoClient({
                 disabled={pending || editTaskIds.length < 1}
               >
                 Guardar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={splitOrder != null} onOpenChange={(open) => !open && setSplitOrder(null)}>
+          <DialogContent className="flex max-w-2xl max-h-[85vh] flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Dividir {splitOrder?.number}</DialogTitle>
+              </DialogHeader>
+              {splitOrder ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="split-wo-notes">Notas de la nueva OT</Label>
+                    <Textarea
+                      id="split-wo-notes"
+                      value={splitNotes}
+                      onChange={(e) => setSplitNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="rounded-md border p-3 text-sm">
+                    <p>
+                      Seleccionadas: {splitTaskIds.length} · {formatHours(splitSelectedHours)}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Permanecen en origen: {splitOrder.tasks.length - splitTaskIds.length} ·{" "}
+                      {formatHours(splitRemainingHours)}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tareas a mover</Label>
+                    <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
+                      {splitOrder.tasks.map((task) => (
+                        <label
+                          key={task.id}
+                          className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={splitTaskIds.includes(task.id)}
+                            onCheckedChange={() => toggleSplitTask(task.id)}
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="text-sm font-medium truncate">
+                              {workOrderTaskLabel(task)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {formatHours(task.estimatedHours)}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter className="shrink-0">
+              <Button type="button" variant="outline" onClick={() => setSplitOrder(null)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={onSplit}
+                disabled={
+                  pending ||
+                  !splitOrder ||
+                  splitTaskIds.length < 1 ||
+                  splitTaskIds.length >= splitOrder.tasks.length
+                }
+              >
+                Confirmar división
               </Button>
             </DialogFooter>
           </DialogContent>

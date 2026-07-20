@@ -12,10 +12,13 @@ import { allocateWorkOrderNumber } from "./number";
 import {
   createWorkOrderSchema,
   deleteWorkOrderSchema,
+  splitWorkOrderSchema,
+  updateWorkOrderAlertThresholdsSchema,
   updateWorkOrderSchema,
 } from "./schema";
 import { assertWorkOrderDeletable } from "./delete-guard";
 import { assignTasksToWorkOrder } from "./validate-tasks";
+import { splitWorkOrderInTx } from "./split-work-order";
 
 const log = childLogger({ module: "work-orders.actions" });
 
@@ -131,5 +134,55 @@ export async function autoGroupIdenticalTasks(): Promise<
     log.info(result, "work orders auto-grouped");
     revalidateWorkOrders();
     return result;
+  });
+}
+
+export async function splitWorkOrder(
+  input: unknown,
+): Promise<ActionResult<{ id: string; number: string }>> {
+  return runServerAction("work-orders.split", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN]);
+    const data = splitWorkOrderSchema.parse(input);
+
+    const result = await prisma.$transaction((tx) =>
+      splitWorkOrderInTx(tx, {
+        workOrderId: data.id,
+        taskIds: data.taskIds,
+        notes: data.notes,
+      }),
+    );
+
+    log.info({ sourceId: data.id, newId: result.id }, "work order split");
+    revalidateWorkOrders();
+    return result;
+  });
+}
+
+export async function updateWorkOrderAlertThresholds(
+  input: unknown,
+): Promise<ActionResult<void>> {
+  return runServerAction("work-orders.updateAlertThresholds", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN]);
+    const data = updateWorkOrderAlertThresholdsSchema.parse(input);
+
+    await prisma.user.update({
+      where: { id: ctx.userId },
+      data: {
+        workOrderAlertMaxPendingHours: data.maxPendingHours,
+        workOrderAlertMaxTasks: data.maxTasks,
+      },
+    });
+
+    log.info(
+      {
+        userId: ctx.userId,
+        maxPendingHours: data.maxPendingHours,
+        maxTasks: data.maxTasks,
+      },
+      "work order alert thresholds updated",
+    );
+    revalidatePath(WORK_ORDERS_PATH);
   });
 }

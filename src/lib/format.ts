@@ -55,6 +55,7 @@ export function formatDate(date: Date | string | null | undefined): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: DEFAULT_DISPLAY_TIME_ZONE,
   });
 }
 
@@ -65,6 +66,7 @@ export function formatShortDate(date: Date | string | null | undefined): string 
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: DEFAULT_DISPLAY_TIME_ZONE,
   });
 }
 
@@ -76,6 +78,7 @@ export function formatDayMonthYear(date: Date | string | null | undefined): stri
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: DEFAULT_DISPLAY_TIME_ZONE,
   });
 }
 

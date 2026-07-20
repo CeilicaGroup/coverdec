@@ -1,0 +1,3 @@
+ALTER TABLE "User"
+ADD COLUMN "workOrderAlertMaxPendingHours" INTEGER NOT NULL DEFAULT 16,
+ADD COLUMN "workOrderAlertMaxTasks" INTEGER NOT NULL DEFAULT 8;

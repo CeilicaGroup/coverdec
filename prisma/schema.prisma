@@ -165,6 +165,8 @@ model User {
   banExpires    DateTime?
   personId      String?  @unique
   activeNaveId  String?
+  workOrderAlertMaxPendingHours Int @default(16)
+  workOrderAlertMaxTasks        Int @default(8)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

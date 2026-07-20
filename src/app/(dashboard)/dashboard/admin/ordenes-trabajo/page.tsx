@@ -1,5 +1,6 @@
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { Role } from "@/generated/prisma";
+import { prisma } from "@/lib/db";
 import { PageHeader } from "@/app/(dashboard)/_components/page-header";
 import { getProcessBadgeStylesByCode } from "@/features/planning/queries";
 import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
@@ -37,6 +38,13 @@ export default async function OrdenesTrabajoPage({
     loadTypologyImageAvailability(),
     loadElementTypeImageAvailability(),
   ]);
+  const userThresholds = await prisma.user.findUnique({
+    where: { id: ctx.userId },
+    select: {
+      workOrderAlertMaxPendingHours: true,
+      workOrderAlertMaxTasks: true,
+    },
+  });
 
   const taskIds = workOrders.flatMap((order) => order.tasks.map((t) => t.id));
   const assigneeByTaskId = await loadAssigneeByTaskIds(taskIds);
@@ -63,6 +71,10 @@ export default async function OrdenesTrabajoPage({
         workOrderIdsWithPlanningAssignments={[
           ...workOrderIdsWithPlanningAssignments,
         ]}
+        initialAlertThresholds={{
+          maxPendingHours: userThresholds?.workOrderAlertMaxPendingHours ?? 16,
+          maxTasks: userThresholds?.workOrderAlertMaxTasks ?? 8,
+        }}
         typologyImages={typologyImages}
         elementTypeImages={elementTypeImages}
       />
