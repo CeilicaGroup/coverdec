@@ -40,6 +40,19 @@ def health() -> dict[str, str]:
 @app.post("/solve", response_model=SolveResponse)
 def solve(body: SolveRequest) -> SolveResponse:
     max_seconds = int(os.environ.get("SOLVER_MAX_SECONDS", "240"))
+    num_workers = int(os.environ.get("SOLVER_NUM_WORKERS", "4"))
+    logger.info(
+        "solve start",
+        extra={
+            "taskCount": len(body.tasks),
+            "personCount": len(body.people),
+            "fixedAssignmentCount": len(body.fixedAssignments),
+            "busySlotCount": len(body.busySlots),
+            "previousHoursCount": len(body.previousHours),
+            "solverMaxSeconds": max_seconds,
+            "solverNumWorkers": num_workers,
+        },
+    )
     started = time.perf_counter()
     result = solve_week(
         body,

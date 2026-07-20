@@ -18,6 +18,7 @@ const log = childLogger({ module: "planning.solver-client" });
 const SOLVER_HTTP_MARGIN_MS = 60_000;
 const MIN_HTTP_TIMEOUT_MS = 240_000;
 const DEFAULT_SOLVER_MAX_SECONDS = 240;
+const TRANSIENT_SOLVER_RETRY_DELAY_MS = 750;
 
 function formatSolverTimeoutMessage(reason: string): string {
   const budgetMatch = reason.match(/presupuesto\s+(\d+)s/i);
@@ -56,6 +57,34 @@ function solverBaseUrl(): string {
   return url.replace(/\/$/, "");
 }
 
+function isTransientSolverFetchError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = `${err.name}: ${err.message}`.toLowerCase();
+  return (
+    message.includes("other side closed") ||
+    message.includes("fetch failed") ||
+    message.includes("socket") ||
+    message.includes("econnreset") ||
+    message.includes("und_err_socket")
+  );
+}
+
+function classifySolverNetworkError(err: unknown): string {
+  if (!(err instanceof Error)) return "No se pudo contactar con el solver de planning.";
+  const message = `${err.name}: ${err.message}`.toLowerCase();
+  if (message.includes("timeout") || message.includes("abort")) {
+    return "No se pudo contactar con el solver: tiempo de espera agotado.";
+  }
+  if (message.includes("other side closed") || message.includes("socket")) {
+    return "No se pudo contactar con el solver: el servicio cerró la conexión.";
+  }
+  return `No se pudo contactar con el solver: ${err.message}`;
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function callPlanningSolver(
   input: SolverInput,
 ): Promise<EngineResult> {
@@ -63,33 +92,45 @@ export async function callPlanningSolver(
   const payload = serializeSolverInput(input);
   const solverUrl = `${base}/solve`;
   const started = Date.now();
+  const body = JSON.stringify(payload);
 
   log.info(
     {
       solverUrl,
       planFrom: input.planFrom ?? null,
       deferredTaskCount: input.deferredTasks?.length ?? 0,
+      payloadBytes: Buffer.byteLength(body, "utf8"),
       solverRequestSummary: summarizeSolverRequest(payload),
       solverRequest: payload,
     },
     "planning solver request",
   );
 
-  let response: Response;
-  try {
-    response = await fetch(solverUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(solverTimeoutMs()),
-    });
-  } catch (err) {
-    log.error({ err, base }, "planning solver request failed");
-    throw new SolverUnavailableError(
-      err instanceof Error
-        ? `No se pudo contactar con el solver: ${err.message}`
-        : "No se pudo contactar con el solver de planning.",
-    );
+  let response: Response | null = null;
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      response = await fetch(solverUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(solverTimeoutMs()),
+      });
+      break;
+    } catch (err) {
+      const transient = isTransientSolverFetchError(err);
+      log.error(
+        { err, base, attempt, maxAttempts, transient },
+        "planning solver request failed",
+      );
+      if (!transient || attempt >= maxAttempts) {
+        throw new SolverUnavailableError(classifySolverNetworkError(err));
+      }
+      await delay(TRANSIENT_SOLVER_RETRY_DELAY_MS);
+    }
+  }
+  if (!response) {
+    throw new SolverUnavailableError("No se pudo contactar con el solver de planning.");
   }
 
   const text = await response.text();

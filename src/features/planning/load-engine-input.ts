@@ -38,6 +38,7 @@ import { computeWorkOrderPipelines } from "./work-order-pipeline";
 import type {
   EngineAbsence,
   EngineBookedHours,
+  EngineBusySlot,
   EngineFixedAssignment,
   EngineHoliday,
   EnginePerson,
@@ -229,6 +230,67 @@ export function buildPreviousHoursFromAssignments(
     previousHours.set(key, (previousHours.get(key) ?? 0) + a.hours);
   }
   return previousHours;
+}
+
+function mergeBusyTimeSlots(
+  slots: EngineBusySlot[],
+): EngineBusySlot[] {
+  const byPersonDay = new Map<string, EngineBusySlot[]>();
+  for (const slot of slots) {
+    const key = `${slot.personId}|${slot.date.toISOString().slice(0, 10)}`;
+    const list = byPersonDay.get(key) ?? [];
+    list.push(slot);
+    byPersonDay.set(key, list);
+  }
+
+  const merged: EngineBusySlot[] = [];
+  for (const list of byPersonDay.values()) {
+    const sorted = [...list].sort((a, b) => a.startSlot - b.startSlot);
+    if (sorted.length === 0) continue;
+    let current = { ...sorted[0]! };
+    for (let i = 1; i < sorted.length; i++) {
+      const next = sorted[i]!;
+      if (next.startSlot <= current.endSlot + 1e-6) {
+        current.endSlot = Math.max(current.endSlot, next.endSlot);
+        current.hours = current.endSlot - current.startSlot;
+      } else {
+        merged.push(current);
+        current = { ...next };
+      }
+    }
+    merged.push(current);
+  }
+
+  return merged;
+}
+
+function allowedTaskPersonDayKeys(
+  tasks: EngineTask[],
+  people: EnginePerson[],
+): Set<string> {
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const allowed = new Set<string>();
+  for (const task of tasks) {
+    for (const person of people) {
+      if (person.naveId !== task.naveId) continue;
+      if (task.ownerPersonId && task.ownerPersonId !== person.id) continue;
+      if (
+        !person.primary.includes(task.process) &&
+        !person.fallback.includes(task.process)
+      ) {
+        continue;
+      }
+      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+        allowed.add(`${task.id}|${person.id}|${dayIdx}`);
+      }
+    }
+    if (task.ownerPersonId && peopleById.has(task.ownerPersonId)) {
+      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+        allowed.add(`${task.id}|${task.ownerPersonId}|${dayIdx}`);
+      }
+    }
+  }
+  return allowed;
 }
 
 export function buildFixedAssignmentsFromPrevious(
@@ -434,7 +496,7 @@ export async function loadSolverInput(args: {
     };
 
   const personIds = new Set(peopleRaw.map((p) => p.id));
-  const busySlots = crossNaveAssignments
+  const busySlotsRaw = crossNaveAssignments
     .filter((a) => personIds.has(a.personId))
     .map((a) => ({
       personId: a.personId,
@@ -443,6 +505,7 @@ export async function loadSolverInput(args: {
       endSlot: a.endSlot,
       hours: a.hours,
     }));
+  const busySlots = mergeBusyTimeSlots(busySlotsRaw);
 
   const doneHoursByTask = await loadDoneHoursByTaskIds(
     prisma,
@@ -819,11 +882,18 @@ export async function loadSolverInput(args: {
   };
 
   if (assignmentsForStability.length > 0) {
-    input.previousHours = buildPreviousHoursFromAssignments(
+    const rawPreviousHours = buildPreviousHoursFromAssignments(
       assignmentsForStability,
       weekStart,
       halfDoneIds,
     );
+    const allowedKeys = allowedTaskPersonDayKeys(engineTasks, enginePeople);
+    const previousHours = new Map<string, number>();
+    for (const [key, hours] of rawPreviousHours.entries()) {
+      if (!allowedKeys.has(key)) continue;
+      previousHours.set(key, hours);
+    }
+    input.previousHours = previousHours;
   }
 
   const workOrderNumberById = new Map<string, string>();

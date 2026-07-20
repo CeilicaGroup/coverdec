@@ -57,6 +57,9 @@ HORIZON_DAYS: int = 5
 QUARTERS_PER_DAY = 24 * 4
 HORIZON_Q: int = HORIZON_DAYS * QUARTERS_PER_DAY
 
+NO_INTERLEAVE_MODE_LEGACY = "legacy"
+NO_INTERLEAVE_MODE_COMPACT = "compact"
+
 TIER_COVERAGE: int = 10**6
 TIER_DEADLINE: int = 10**3
 TIER_COST: int = 1
@@ -145,6 +148,24 @@ class ProblemData:
     wo_collapse: dict[str, WoCollapseGroup] = field(default_factory=dict)
     candidate_ids_by_task: dict[str, list[str]] = field(default_factory=dict)
     work_order_pipelines: list[WorkOrderPipelineEdge] = field(default_factory=list)
+    candidate_ids_by_process_nave: dict[tuple[str, str], tuple[str, ...]] = field(
+        default_factory=dict
+    )
+    people_by_id: dict[str, EnginePerson] = field(default_factory=dict)
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _no_interleave_mode() -> str:
+    mode = os.environ.get("PLANNING_SOLVER_NO_INTERLEAVE_MODE", NO_INTERLEAVE_MODE_LEGACY)
+    if mode not in {NO_INTERLEAVE_MODE_LEGACY, NO_INTERLEAVE_MODE_COMPACT}:
+        return NO_INTERLEAVE_MODE_LEGACY
+    return mode
 
 
 def _add_days(d: date, n: int) -> date:
@@ -294,17 +315,34 @@ def _max_demand_by_person(
     tasks: list[EngineTask],
     people: list[EnginePerson],
     process_by_code: dict,
+    candidate_cache: dict[tuple[str, str], tuple[str, ...]],
 ) -> dict[str, int]:
     result: dict[str, int] = defaultdict(int)
+    people_by_id = {person.id: person for person in people}
     for task in tasks:
         if task.process not in process_by_code:
             continue
         demand_q = round(task.pendingHours * QUARTERS_PER_HOUR)
-        for person in pick_candidates(people, task.process, task_nave_id=task.naveId):
+        for person in _task_candidates_cached(
+            people_by_id,
+            candidate_cache,
+            task,
+        ):
             if task.ownerPersonId and person.id != task.ownerPersonId:
                 continue
             result[person.id] = max(result[person.id], demand_q)
     return dict(result)
+
+
+def _task_candidates_cached(
+    people_by_id: dict[str, EnginePerson],
+    candidate_cache: dict[tuple[str, str], tuple[str, ...]],
+    task: EngineTask,
+) -> list[EnginePerson]:
+    candidate_ids = candidate_cache.get((task.process, task.naveId))
+    if candidate_ids is None:
+        return []
+    return [people_by_id[candidate_id] for candidate_id in candidate_ids if candidate_id in people_by_id]
 
 
 def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | None:
@@ -369,6 +407,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         s = sched_by_person.get(person.id)
         weekly = s.weekly if s else []
         overrides = s.overrides if s else []
+        overrides_by_date = {override.date: override for override in overrides}
         day_tls: list[WorkerDayTimeline] = []
         for day_idx, day in enumerate(days):
             if day_idx < first_day:
@@ -377,7 +416,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
                 )
                 continue
 
-            override = next((o for o in overrides if o.date == day), None)
+            override = overrides_by_date.get(day)
             absence = absence_lookup.get((person.id, day))
             ab_hours = 0.0
             ab_block: tuple[int, int] | None = None
@@ -409,7 +448,24 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         week_timelines[person.id] = WorkerWeekTimeline.build_from_days(day_tls)
 
     weights = _coerce_weights(request, config.weights)
-    max_demand_by_person = _max_demand_by_person(tasks, request.people, process_by_code)
+    candidate_ids_by_process_nave: dict[tuple[str, str], tuple[str, ...]] = {}
+    for process in process_by_code:
+        for person in request.people:
+            key = (process, person.naveId)
+            if key in candidate_ids_by_process_nave:
+                continue
+            candidate_ids_by_process_nave[key] = tuple(
+                candidate.id
+                for candidate in pick_candidates(
+                    request.people, process, task_nave_id=person.naveId
+                )
+            )
+    max_demand_by_person = _max_demand_by_person(
+        tasks,
+        request.people,
+        process_by_code,
+        candidate_ids_by_process_nave,
+    )
     placement_catalogs: dict[str, WorkerPlacementCatalog] = {}
     for person_id, week_tl in week_timelines.items():
         max_q = max_demand_by_person.get(person_id, 0)
@@ -439,6 +495,8 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         wo_collapse=wo_collapse,
         candidate_ids_by_task=candidate_ids_by_task,
         work_order_pipelines=pipelines,
+        candidate_ids_by_process_nave=candidate_ids_by_process_nave,
+        people_by_id={person.id: person for person in request.people},
     )
 
 
@@ -626,14 +684,21 @@ def _task_candidates(data: ProblemData, task: EngineTask) -> list[EnginePerson]:
             for person in data.people
             if person.id in allowed and person.naveId == task.naveId
         ]
-    return pick_candidates(data.people, task.process, task_nave_id=task.naveId)
+    candidates = data.candidate_ids_by_process_nave.get((task.process, task.naveId))
+    if candidates is None:
+        return []
+    return [
+        data.people_by_id[candidate_id]
+        for candidate_id in candidates
+        if candidate_id in data.people_by_id
+    ]
 
 
 def _block_debug_rows(data: ProblemData, mv: ModelVars) -> list[dict]:
     rows: list[dict] = []
     for task in data.tasks:
         blocks = mv.by_task.get(task.id, [])
-        cand = pick_candidates(data.people, task.process, task_nave_id=task.naveId)
+        cand = _task_candidates(data, task)
         rows.append(
             {
                 "taskId": task.id,
@@ -651,9 +716,13 @@ def _diagnose_no_candidate(data: ProblemData, task: EngineTask) -> str:
         return (
             f"{NO_CANDIDATE_PREFIX} El proceso «{task.process}» no está en el catálogo."
         )
-    candidates = pick_candidates(data.people, task.process, task_nave_id=task.naveId)
+    candidates = _task_candidates(data, task)
     if not candidates:
-        any_specialty = pick_candidates(data.people, task.process, task_nave_id=None)
+        any_specialty = [
+            person
+            for person in data.people
+            if task.process in person.primary or task.process in person.fallback
+        ]
         if any_specialty:
             return (
                 f"{NO_CANDIDATE_PREFIX} Ningún operario de la nave tiene el proceso "
@@ -738,7 +807,10 @@ def _add_constraints(
     _add_lamp_ordering(model, data, mv)
     _add_work_order_constraints(model, data, mv, by_wo)
     _add_work_order_pipeline_constraints(model, data, mv)
-    _add_work_order_no_interleave(model, mv, by_wo)
+    if _no_interleave_mode() == NO_INTERLEAVE_MODE_COMPACT:
+        _add_work_order_no_interleave_compact(model, mv, by_wo)
+    else:
+        _add_work_order_no_interleave(model, mv, by_wo)
     _add_max_one_worker_per_task(model, data, mv)
 
     return unscheduled
@@ -956,6 +1028,20 @@ def _add_work_order_no_interleave(
                 )
 
 
+def _add_work_order_no_interleave_compact(
+    model: cp_model.CpModel,
+    mv: ModelVars,
+    by_wo: dict[str, list[EngineTask]],
+) -> None:
+    """
+    Compact mode hook behind feature flag.
+
+    Keeps exact semantics by reusing legacy implementation until the compact
+    formulation is fully validated in canary.
+    """
+    _add_work_order_no_interleave(model, mv, by_wo)
+
+
 def _add_max_one_worker_per_task(
     model: cp_model.CpModel,
     data: ProblemData,
@@ -1041,18 +1127,14 @@ def _apply_fixed_assignments(
     data: ProblemData,
     mv: ModelVars,
 ) -> None:
+    block_by_task_person = {
+        (bv.block.task_id, bv.block.person_id): bv for bv in mv.all_blocks
+    }
     for fixed in data.fixed_assignments:
         day_idx = (fixed.date - data.week_start).days
         if day_idx < 0 or day_idx >= len(data.days):
             continue
-        bv = next(
-            (
-                b
-                for b in mv.by_task.get(fixed.taskId, [])
-                if b.block.person_id == fixed.personId
-            ),
-            None,
-        )
+        bv = block_by_task_person.get((fixed.taskId, fixed.personId))
         if bv is None:
             continue
         week_tl = bv.block.week_tl
@@ -1531,21 +1613,41 @@ def solve_week(
             unscheduledHours=0.0,
         )
 
+    candidate_pairs = sum(len(_task_candidates(data, task)) for task in data.tasks)
+    partition_enabled = _env_flag("PLANNING_SOLVER_ENABLE_COMPONENT_PARTITION", False)
+    no_interleave_mode = _no_interleave_mode()
+    logger.info(
+        "solver input metrics: tasks=%d people=%d candidatePairs=%d fixed=%d busy=%d previous=%d partition=%s noInterleave=%s",
+        len(data.tasks),
+        len(data.people),
+        candidate_pairs,
+        len(data.fixed_assignments),
+        len(data.busy_slots),
+        len(data.prev_q),
+        partition_enabled,
+        no_interleave_mode,
+    )
+    if partition_enabled:
+        logger.info(
+            "component partition requested but not enabled for exactness; falling back to monolithic solve",
+        )
+
     model = cp_model.CpModel()
     model_started = time.perf_counter()
     mv, placement_rows_total = _build_block_variables(model, data)
     model_build_ms = int((time.perf_counter() - model_started) * 1000)
     block_count = len(mv.all_blocks)
-    task_debug = _block_debug_rows(data, mv)
+    task_debug = _block_debug_rows(data, mv) if logger.isEnabledFor(logging.DEBUG) else []
     logger.info(
         "task blocks: tasks=%d with_blocks=%d without_blocks=%d blockCount=%d placementRows=%d",
-        len(task_debug),
-        sum(1 for r in task_debug if r["blockCount"] > 0),
-        sum(1 for r in task_debug if r["blockCount"] == 0),
+        len(data.tasks),
+        sum(1 for task in data.tasks if len(mv.by_task.get(task.id, [])) > 0),
+        sum(1 for task in data.tasks if len(mv.by_task.get(task.id, [])) == 0),
         block_count,
         placement_rows_total,
     )
-    logger.info("task blocks detail: %s", task_debug)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("task blocks detail: %s", task_debug)
 
     unplannable = _find_unplannable_warnings(data, mv)
     if unplannable:
@@ -1593,16 +1695,17 @@ def solve_week(
         mv, unscheduled, solver, request.fixedAssignments, data
     )
     if response.unscheduledHours > 0:
-        unscheduled_by_task = {
-            task_id: solver.Value(u_var) / QUARTERS_PER_HOUR
-            for task_id, u_var in unscheduled.items()
-            if solver.Value(u_var) > 0
-        }
         logger.info(
             "solve diagnostics: assignments=%d unscheduledHours=%.2f unscheduledTasks=%d",
             len(response.assignments),
             response.unscheduledHours,
-            len(unscheduled_by_task),
+            sum(1 for u_var in unscheduled.values() if solver.Value(u_var) > 0),
         )
-        logger.info("solve diagnostics unscheduledByTask: %s", unscheduled_by_task)
+        if logger.isEnabledFor(logging.DEBUG):
+            unscheduled_by_task = {
+                task_id: solver.Value(u_var) / QUARTERS_PER_HOUR
+                for task_id, u_var in unscheduled.items()
+                if solver.Value(u_var) > 0
+            }
+            logger.debug("solve diagnostics unscheduledByTask: %s", unscheduled_by_task)
     return response

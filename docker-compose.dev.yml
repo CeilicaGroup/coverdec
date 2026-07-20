@@ -43,6 +43,8 @@ services:
     environment:
       SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-240}
       SOLVER_NUM_WORKERS: ${SOLVER_NUM_WORKERS:-4}
+      PLANNING_SOLVER_ENABLE_COMPONENT_PARTITION: ${PLANNING_SOLVER_ENABLE_COMPONENT_PARTITION:-false}
+      PLANNING_SOLVER_NO_INTERLEAVE_MODE: ${PLANNING_SOLVER_NO_INTERLEAVE_MODE:-legacy}
     volumes:
       - ./services/planning-solver/app:/app/app
     command:

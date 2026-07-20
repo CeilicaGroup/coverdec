@@ -244,27 +244,34 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       waitHours: p.waitHours,
     })),
     people: input.people,
-    tasks: input.tasks.map((t) => ({
-      id: t.id,
-      projectId: t.projectId,
-      projectPriority: t.projectPriority,
-      deadlineCurveExponent: t.deadlineCurveExponent,
-      overduePenaltyMultiplier: t.overduePenaltyMultiplier,
-      projectDeliveryDate: t.projectDeliveryDate
-        ? t.projectDeliveryDate.toISOString()
-        : null,
-      lampId: t.lampId,
-      lampElementId: t.lampElementId ?? null,
-      order: t.order,
-      process: t.process,
-      pendingHours: t.pendingHours,
-      naveId: t.naveId,
-      minWeekQuarter: t.minWeekQuarter ?? 0,
-      canFragment: t.canFragment ?? true,
-      ownerPersonId: t.ownerPersonId ?? null,
-      workOrderId: t.workOrderId ?? null,
-      workOrderSequence: t.workOrderSequence ?? null,
-    })),
+    tasks: input.tasks.map((t) => {
+      const base = {
+        id: t.id,
+        projectId: t.projectId,
+        projectPriority: t.projectPriority,
+        deadlineCurveExponent: t.deadlineCurveExponent,
+        overduePenaltyMultiplier: t.overduePenaltyMultiplier,
+        projectDeliveryDate: t.projectDeliveryDate
+          ? t.projectDeliveryDate.toISOString()
+          : null,
+        lampId: t.lampId,
+        order: t.order,
+        process: t.process,
+        pendingHours: t.pendingHours,
+        naveId: t.naveId,
+      };
+      return {
+        ...base,
+        ...(t.lampElementId ? { lampElementId: t.lampElementId } : {}),
+        ...(t.minWeekQuarter && t.minWeekQuarter > 0
+          ? { minWeekQuarter: t.minWeekQuarter }
+          : {}),
+        ...(t.canFragment === false ? { canFragment: false } : {}),
+        ...(t.ownerPersonId ? { ownerPersonId: t.ownerPersonId } : {}),
+        ...(t.workOrderId ? { workOrderId: t.workOrderId } : {}),
+        ...(t.workOrderSequence != null ? { workOrderSequence: t.workOrderSequence } : {}),
+      };
+    }),
     absences: input.absences.map((a) => ({
       personId: a.personId,
       date: toIsoDate(a.date),
@@ -277,7 +284,9 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
     schedules,
     previousHours,
     firstSchedulableDayIndex: input.firstSchedulableDayIndex,
-    firstSchedulableWeekQuarter: input.firstSchedulableWeekQuarter,
+    ...(input.firstSchedulableWeekQuarter != null
+      ? { firstSchedulableWeekQuarter: input.firstSchedulableWeekQuarter }
+      : {}),
     fixedAssignments: input.fixedAssignments.map((f) => ({
       taskId: f.taskId,
       personId: f.personId,
@@ -299,11 +308,15 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       endSlot: b.endSlot,
       hours: b.hours,
     })),
-    workOrderPipelines: input.workOrderPipelines?.map((edge) => ({
-      predecessorWorkOrderId: edge.predecessorWorkOrderId,
-      successorWorkOrderId: edge.successorWorkOrderId,
-      minCompletedHours: edge.minCompletedHours,
-    })),
+    ...(input.workOrderPipelines && input.workOrderPipelines.length > 0
+      ? {
+          workOrderPipelines: input.workOrderPipelines.map((edge) => ({
+            predecessorWorkOrderId: edge.predecessorWorkOrderId,
+            successorWorkOrderId: edge.successorWorkOrderId,
+            minCompletedHours: edge.minCompletedHours,
+          })),
+        }
+      : {}),
   };
 }
 

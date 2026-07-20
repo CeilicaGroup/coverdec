@@ -85,4 +85,24 @@ describe("callPlanningSolver", () => {
       "El optimizador agotó el tiempo de cálculo (60s de presupuesto). Regenera el planning o aumenta SOLVER_MAX_SECONDS en el entorno.",
     );
   });
+
+  it("retries once on transient fetch failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed: other side closed"))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            assignments: [],
+            warnings: [],
+            unscheduledHours: 0,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callPlanningSolver(minimalInput());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -102,10 +102,10 @@ describe("serializeSolverInput", () => {
     });
 
     const payload = serializeSolverInput(input);
-    expect(payload.tasks[0]?.canFragment).toBe(true);
-    expect(payload.tasks[0]?.ownerPersonId).toBeNull();
-    expect(payload.tasks[0]?.workOrderId).toBeNull();
-    expect(payload.tasks[0]?.workOrderSequence).toBeNull();
+    expect(payload.tasks[0]?.canFragment).toBeUndefined();
+    expect(payload.tasks[0]?.ownerPersonId).toBeUndefined();
+    expect(payload.tasks[0]?.workOrderId).toBeUndefined();
+    expect(payload.tasks[0]?.workOrderSequence).toBeUndefined();
   });
 
   it("serializes workOrderId and workOrderSequence on tasks", () => {
