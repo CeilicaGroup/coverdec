@@ -12,8 +12,25 @@ describe("computeWeekProgress", () => {
       priorPlannedHours: 23,
       assignedThisWeekHours: 11,
     });
+    expect(p.donePct).toBe(10);
+    expect(p.priorPlannedPct).toBe(23);
+    expect(p.weekPlannedPct).toBe(11);
     expect(p.progressBasePct).toBe(33);
     expect(p.progressEndPct).toBe(44);
+  });
+
+  it("stacks segments without double-counting done and prior", () => {
+    const p = computeWeekProgress({
+      estimatedHours: 100,
+      doneHours: 60,
+      priorPlannedHours: 0,
+      assignedThisWeekHours: 40,
+    });
+    expect(p.donePct).toBe(60);
+    expect(p.priorPlannedPct).toBe(0);
+    expect(p.weekPlannedPct).toBe(40);
+    expect(p.progressBasePct).toBe(60);
+    expect(p.progressEndPct).toBe(100);
   });
 
   it("caps at 100%", () => {
@@ -25,6 +42,7 @@ describe("computeWeekProgress", () => {
     });
     expect(p.progressBasePct).toBe(100);
     expect(p.progressEndPct).toBe(100);
+    expect(p.weekPlannedPct).toBe(0);
   });
 });
 

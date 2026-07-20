@@ -69,7 +69,7 @@ import {
   buildPlannedEndByProjectId,
   buildPriorPlannedHoursByProjectId,
   buildPriorPlannedHoursByTaskId,
-  getPriorPlanningAssignments,
+  getPriorPlanningAssignmentsForScope,
 } from "@/features/planning/prior-week-planning";
 import { WeekProgressBar } from "@/components/week-progress-bar";
 import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
@@ -114,13 +114,9 @@ export default async function ResumenPage({
     getPlanningWeights(ctx.naveId),
     getPlanningDeadlineSettings(ctx.naveId),
     getProcessBadgeStylesByCode(),
-    ctx.naveId
-      ? getPriorPlanningAssignments({
-          naveId: ctx.naveId,
-          beforeWeekStart: weekStart,
-          includeDraftPriorWeeks: true,
-        })
-      : Promise.resolve([]),
+    getPriorPlanningAssignmentsForScope(naveScope, weekStart, {
+      includeDraftPriorWeeks: true,
+    }),
     listCatalogTimeDeviations(),
   ]);
   const weekQuickStatus = await getWeekPlanningRegistroStatusRange({
@@ -444,6 +440,9 @@ interface ProjectTableRow {
   assignedThisWeek?: number;
   progressPct: number;
   expectedProgressPct?: number;
+  doneProgressPct: number;
+  priorPlannedProgressPct: number;
+  weekPlannedProgressPct: number;
   risk: "OK" | "ATENCION" | "RIESGO" | "SIN_FECHA";
   daysLeft: number | null;
   expectedCompletion?: Date | null;
@@ -515,8 +514,9 @@ function ProjectsTable({
                     </TableCell>
                     <TableCell>
                       <WeekProgressBar
-                        basePct={row.progressPct}
-                        endPct={row.expectedProgressPct ?? row.progressPct}
+                        donePct={row.doneProgressPct}
+                        priorPlannedPct={row.priorPlannedProgressPct}
+                        weekPlannedPct={row.weekPlannedProgressPct}
                       />
                     </TableCell>
                     <TableCell>

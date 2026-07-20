@@ -1,22 +1,26 @@
 import { cn } from "@/lib/utils";
 
 interface WeekProgressBarProps {
-  basePct: number;
-  endPct: number;
+  donePct: number;
+  priorPlannedPct?: number;
+  weekPlannedPct: number;
   className?: string;
   /** Altura de la barra (tailwind class). */
   barClassName?: string;
 }
 
 export function WeekProgressBar({
-  basePct,
-  endPct,
+  donePct,
+  priorPlannedPct = 0,
+  weekPlannedPct,
   className,
   barClassName = "h-1.5",
 }: WeekProgressBarProps) {
-  const base = Math.min(100, Math.max(0, basePct));
-  const end = Math.min(100, Math.max(base, endPct));
-  const weekPct = Math.max(0, end - base);
+  const done = Math.min(100, Math.max(0, donePct));
+  const prior = Math.min(100 - done, Math.max(0, priorPlannedPct));
+  const week = Math.min(100 - done - prior, Math.max(0, weekPlannedPct));
+  const base = done + prior;
+  const end = Math.min(100, base + week);
 
   return (
     <div className={cn("space-y-0.5 min-w-[88px]", className)}>
@@ -26,18 +30,25 @@ export function WeekProgressBar({
           barClassName,
         )}
       >
-        {base > 0 ? (
+        {done > 0 ? (
           <div
             className="h-full bg-emerald-600 dark:bg-emerald-500 shrink-0"
-            style={{ width: `${base}%` }}
-            title={`Avance hasta esta semana: ${base}%`}
+            style={{ width: `${done}%` }}
+            title={`Avance real: ${done}%`}
           />
         ) : null}
-        {weekPct > 0 ? (
+        {prior > 0 ? (
+          <div
+            className="h-full bg-sky-500/80 shrink-0"
+            style={{ width: `${prior}%` }}
+            title={`Planificado en semanas anteriores: ${prior} p.p.`}
+          />
+        ) : null}
+        {week > 0 ? (
           <div
             className="h-full bg-primary shrink-0"
-            style={{ width: `${weekPct}%` }}
-            title={`Planificado esta semana: +${weekPct} p.p.`}
+            style={{ width: `${week}%` }}
+            title={`Planificado esta semana: +${week} p.p.`}
           />
         ) : null}
       </div>

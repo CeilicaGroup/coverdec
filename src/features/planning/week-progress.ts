@@ -71,10 +71,21 @@ export interface WeekProgress {
   doneHours: number;
   priorPlannedHours: number;
   assignedThisWeekHours: number;
+  /** % del estimado ya realizado (fichajes + tareas completadas). */
+  donePct: number;
+  /** % adicional planificado en semanas anteriores. */
+  priorPlannedPct: number;
+  /** % adicional planificado en la semana visible. */
+  weekPlannedPct: number;
   /** Avance al inicio de la semana vista (hecho + planificado en semanas anteriores). */
   progressBasePct: number;
   /** Avance tras incluir el planning de esta semana. */
   progressEndPct: number;
+}
+
+function hoursToPct(hours: number, estimatedHours: number): number {
+  if (estimatedHours <= 1e-6) return 0;
+  return Math.round((hours / estimatedHours) * 100);
 }
 
 export function computeWeekProgress(input: WeekProgressInput): WeekProgress {
@@ -89,27 +100,33 @@ export function computeWeekProgress(input: WeekProgressInput): WeekProgress {
       doneHours,
       priorPlannedHours,
       assignedThisWeekHours,
+      donePct: 0,
+      priorPlannedPct: 0,
+      weekPlannedPct: 0,
       progressBasePct: 0,
       progressEndPct: 0,
     };
   }
 
-  const baseHours = Math.min(
-    estimatedHours,
-    doneHours + priorPlannedHours,
+  const doneSeg = Math.min(estimatedHours, doneHours);
+  const priorSeg = Math.min(estimatedHours - doneSeg, priorPlannedHours);
+  const weekSeg = Math.min(
+    estimatedHours - doneSeg - priorSeg,
+    assignedThisWeekHours,
   );
-  const endHours = Math.min(
-    estimatedHours,
-    doneHours + priorPlannedHours + assignedThisWeekHours,
-  );
+  const baseHours = doneSeg + priorSeg;
+  const endHours = baseHours + weekSeg;
 
   return {
     estimatedHours,
     doneHours,
     priorPlannedHours,
     assignedThisWeekHours,
-    progressBasePct: Math.round((baseHours / estimatedHours) * 100),
-    progressEndPct: Math.round((endHours / estimatedHours) * 100),
+    donePct: hoursToPct(doneSeg, estimatedHours),
+    priorPlannedPct: hoursToPct(priorSeg, estimatedHours),
+    weekPlannedPct: hoursToPct(weekSeg, estimatedHours),
+    progressBasePct: hoursToPct(baseHours, estimatedHours),
+    progressEndPct: hoursToPct(endHours, estimatedHours),
   };
 }
 

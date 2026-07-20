@@ -1,4 +1,5 @@
 import { PlanningStatus } from "@/generated/prisma";
+import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import { prisma } from "@/lib/db";
 import { slotEndToHour } from "@/features/planning/engine/slot-format";
 import { minuteToWeekQuarter } from "@/features/planning/plan-from";
@@ -361,6 +362,21 @@ export async function getPriorPlanningAssignments(args: {
     naveIds: [args.naveId],
     beforeWeekStart: args.beforeWeekStart,
     includeDraftPriorWeeks: args.includeDraftPriorWeeks,
+  });
+}
+
+export async function getPriorPlanningAssignmentsForScope(
+  naveScope: string[] | null,
+  beforeWeekStart: Date,
+  options?: { includeDraftPriorWeeks?: boolean },
+): Promise<PriorPlanningAssignment[]> {
+  if (naveScope !== null && naveScope.length === 0) return [];
+  const naveIds =
+    naveScope === null ? await loadActiveNaveIdsOrdered() : naveScope;
+  return getPriorPlanningAssignmentsForNaves({
+    naveIds,
+    beforeWeekStart,
+    includeDraftPriorWeeks: options?.includeDraftPriorWeeks,
   });
 }
 

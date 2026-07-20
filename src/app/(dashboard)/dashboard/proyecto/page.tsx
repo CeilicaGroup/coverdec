@@ -49,7 +49,7 @@ import { actualRecordsUserIdForContext } from "@/features/planning/record-visibi
 import {
   buildPlannedEndByProjectId,
   buildPriorPlannedHoursByTaskId,
-  getPriorPlanningAssignments,
+  getPriorPlanningAssignmentsForScope,
   mergePlannedEndByProject,
 } from "@/features/planning/prior-week-planning";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
@@ -102,13 +102,9 @@ export default async function ProyectoPage({
       weekStart,
       userId: actualRecordsUserIdForContext(ctx),
     }),
-    ctx.naveId
-      ? getPriorPlanningAssignments({
-          naveId: ctx.naveId,
-          beforeWeekStart: weekStart,
-          includeDraftPriorWeeks: true,
-        })
-      : Promise.resolve([]),
+    getPriorPlanningAssignmentsForScope(naveScope, weekStart, {
+      includeDraftPriorWeeks: true,
+    }),
   ]);
   const assignments = toPlanningAssignmentSlices(planning?.assignments ?? []);
   const priorPlannedHoursByTask = buildPriorPlannedHoursByTaskId(priorAssignments);

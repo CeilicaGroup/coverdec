@@ -37,6 +37,7 @@ import type { ProcessCode } from "@/types/process";
 import {
   computeTaskHourTotals,
   loadDoneHoursByTaskIds,
+  resolveTaskDoneHours,
 } from "@/features/time-tracking/task-hours-derived";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -698,10 +699,13 @@ export async function getActiveProjectsWithLoad(naveScope: string[] | null) {
   return projects.map((project) => ({
     ...project,
     tasks: project.tasks.map((task) => {
-      const totals = computeTaskHourTotals(
-        task.estimatedHours,
-        doneByTaskId.get(task.id) ?? 0,
-      );
+      const loggedDone = doneByTaskId.get(task.id) ?? 0;
+      const effectiveDone = resolveTaskDoneHours({
+        estimatedHours: task.estimatedHours,
+        doneHours: loggedDone,
+        isCompleted: task.isCompleted,
+      });
+      const totals = computeTaskHourTotals(task.estimatedHours, effectiveDone);
       return {
         ...task,
         doneHours: totals.doneHours,
@@ -1078,6 +1082,9 @@ export interface ActiveProjectRow {
   progressPct: number;
   /** % avance esperado al terminar esta semana = (hecho + asignado) / estimado × 100 */
   expectedProgressPct: number;
+  doneProgressPct: number;
+  priorPlannedProgressPct: number;
+  weekPlannedProgressPct: number;
   risk: "OK" | "ATENCION" | "RIESGO" | "SIN_FECHA";
   daysLeft: number | null;
   /** Última fecha de asignación real en el planning de la semana (no estimación por capacidad). */
@@ -1278,6 +1285,9 @@ export function summarizeAllActiveProjects(
       assignedThisWeek,
       progressPct: progress.progressBasePct,
       expectedProgressPct: progress.progressEndPct,
+      doneProgressPct: progress.donePct,
+      priorPlannedProgressPct: progress.priorPlannedPct,
+      weekPlannedProgressPct: progress.weekPlannedPct,
       risk: riskFromPlannedEnd(p.deliveryDate, lastPlannedDate),
       daysLeft: daysUntil(p.deliveryDate),
       expectedCompletion: lastPlannedDate,
@@ -1312,6 +1322,9 @@ export interface UnassignedProjectRow {
   assignedThisWeek: number;
   progressPct: number;
   expectedProgressPct?: number;
+  doneProgressPct: number;
+  priorPlannedProgressPct: number;
+  weekPlannedProgressPct: number;
   risk: ReturnType<typeof riskFromDelivery>;
   daysLeft: number | null;
   pendingProcesses: string[];
@@ -1401,6 +1414,9 @@ export function summarizeUnassignedProjects(
       assignedThisWeek,
       progressPct: progress.progressBasePct,
       expectedProgressPct: progress.progressEndPct,
+      doneProgressPct: progress.donePct,
+      priorPlannedProgressPct: progress.priorPlannedPct,
+      weekPlannedProgressPct: progress.weekPlannedPct,
       risk: riskFromDelivery(p.deliveryDate),
       daysLeft: daysUntil(p.deliveryDate),
       pendingProcesses,

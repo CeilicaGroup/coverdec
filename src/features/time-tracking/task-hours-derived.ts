@@ -91,6 +91,16 @@ export function computeTaskHourTotals(
   };
 }
 
+/** Tareas completadas cuentan como 100% de su estimado aunque no tengan fichajes. */
+export function resolveTaskDoneHours(task: {
+  estimatedHours: number;
+  doneHours: number;
+  isCompleted: boolean;
+}): number {
+  if (task.isCompleted) return task.estimatedHours;
+  return task.doneHours;
+}
+
 export function computeTaskPlanningTotals(args: {
   estimatedHours: number;
   doneHours: number;

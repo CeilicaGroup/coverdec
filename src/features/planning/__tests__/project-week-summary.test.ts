@@ -163,3 +163,57 @@ describe("approved tasks only in resumen summaries", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("completed tasks without time entries", () => {
+  it("counts completed task hours in progress segments", () => {
+    const mixedProjects = [
+      {
+        id: "p1",
+        code: "DONE",
+        name: "Done mix",
+        deliveryDate: null,
+        planningPreset: "EQUILIBRADO" as const,
+        planningCostPriority: 50,
+        planningStability: 50,
+        planningDeadlineBoost: 50,
+        tasks: [
+          {
+            id: "t1",
+            process: "CNC",
+            estimatedHours: 60,
+            doneHours: 60,
+            pendingHours: 0,
+            isCompleted: true,
+          },
+          {
+            id: "t2",
+            process: "ENSAMBLAJE",
+            estimatedHours: 40,
+            doneHours: 0,
+            pendingHours: 40,
+            isCompleted: false,
+          },
+        ],
+      },
+    ] as ProjectWithLoad[];
+
+    const planning = {
+      assignments: [
+        {
+          taskId: "t2",
+          hours: 16,
+          date: new Date("2026-06-09T00:00:00.000Z"),
+          task: { projectId: "p1" },
+        },
+      ],
+    } as never;
+
+    const rows = summarizeAllActiveProjects(mixedProjects, planning, new Map());
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.doneProgressPct).toBe(60);
+    expect(rows[0]!.weekPlannedProgressPct).toBe(16);
+    expect(rows[0]!.progressPct).toBe(60);
+    expect(rows[0]!.expectedProgressPct).toBe(76);
+  });
+});
