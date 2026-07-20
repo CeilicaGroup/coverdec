@@ -103,6 +103,98 @@ export interface PlanningWeekMetaAll {
   allPublished: boolean;
 }
 
+export interface WeekPlanningRegistroStatus {
+  weekStart: Date;
+  hasPlanning: boolean;
+  hasRegistros: boolean;
+}
+
+export function buildWeekPlanningRegistroStatusRange(args: {
+  anchorWeekStart: Date;
+  beforeWeeks: number;
+  afterWeeks: number;
+  planningWeekStarts: Date[];
+  registroDates: Date[];
+}): WeekPlanningRegistroStatus[] {
+  const anchor = getMondayOf(args.anchorWeekStart);
+  const beforeWeeks = Math.max(0, args.beforeWeeks);
+  const afterWeeks = Math.max(0, args.afterWeeks);
+
+  const planningWeekSet = new Set(
+    args.planningWeekStarts.map((date) => getMondayOf(date).toISOString().slice(0, 10)),
+  );
+  const registrosWeekSet = new Set(
+    args.registroDates.map((date) => getMondayOf(date).toISOString().slice(0, 10)),
+  );
+
+  const rows: WeekPlanningRegistroStatus[] = [];
+  for (let offset = -beforeWeeks; offset <= afterWeeks; offset++) {
+    const weekStart = new Date(anchor.getTime() + offset * 7 * DAY_MS);
+    const iso = weekStart.toISOString().slice(0, 10);
+    rows.push({
+      weekStart,
+      hasPlanning: planningWeekSet.has(iso),
+      hasRegistros: registrosWeekSet.has(iso),
+    });
+  }
+
+  return rows;
+}
+
+export async function getWeekPlanningRegistroStatusRange(args: {
+  naveScope: string[] | null;
+  anchorWeekStart: Date;
+  beforeWeeks?: number;
+  afterWeeks?: number;
+}): Promise<WeekPlanningRegistroStatus[]> {
+  const beforeWeeks = Math.max(0, args.beforeWeeks ?? 8);
+  const afterWeeks = Math.max(0, args.afterWeeks ?? 8);
+  const anchor = getMondayOf(args.anchorWeekStart);
+
+  if (args.naveScope !== null && args.naveScope.length === 0) {
+    return buildWeekPlanningRegistroStatusRange({
+      anchorWeekStart: anchor,
+      beforeWeeks,
+      afterWeeks,
+      planningWeekStarts: [],
+      registroDates: [],
+    });
+  }
+
+  const rangeStart = new Date(anchor.getTime() - beforeWeeks * 7 * DAY_MS);
+  const rangeEndMonday = new Date(anchor.getTime() + afterWeeks * 7 * DAY_MS);
+  const rangeEndExclusive = new Date(rangeEndMonday.getTime() + 7 * DAY_MS);
+
+  const planningRows = await prisma.planning.findMany({
+    where: {
+      weekStart: { gte: rangeStart, lte: rangeEndMonday },
+      ...(args.naveScope !== null ? { naveId: { in: args.naveScope } } : {}),
+    },
+    select: { weekStart: true },
+  });
+
+  const registroRows = await prisma.timeEntry.findMany({
+    where: {
+      startedAt: { gte: rangeStart, lt: rangeEndExclusive },
+      user: {
+        personId: { not: null },
+        ...(args.naveScope !== null
+          ? { person: { personNaves: { some: { naveId: { in: args.naveScope } } } } }
+          : {}),
+      },
+    },
+    select: { startedAt: true },
+  });
+
+  return buildWeekPlanningRegistroStatusRange({
+    anchorWeekStart: anchor,
+    beforeWeeks,
+    afterWeeks,
+    planningWeekStarts: planningRows.map((row) => row.weekStart),
+    registroDates: registroRows.map((row) => row.startedAt),
+  });
+}
+
 /** Metadatos agregados del planning de la semana en todas las naves activas. */
 export async function getPlanningWeekMetaAll({
   weekStart,

@@ -112,7 +112,7 @@ export function GenerateButton({
   const [publishing, setPublishing] = useState(false);
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
   const [includeFutureWeeks, setIncludeFutureWeeks] = useState(true);
-  const [horizonKind, setHorizonKind] = useState<HorizonModeKind>("WEEK");
+  const [horizonKind, setHorizonKind] = useState<HorizonModeKind>("ALL_PROJECTS");
   const [projectId, setProjectId] = useState("");
   const [untilIso, setUntilIso] = useState("");
   const [progressLabel, setProgressLabel] = useState<string | null>(null);

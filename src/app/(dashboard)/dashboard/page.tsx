@@ -32,6 +32,7 @@ import {
   getPlanningForWeek,
   getPlanningWeekMeta,
   getPlanningWeekMetaAll,
+  getWeekPlanningRegistroStatusRange,
   getPlanningDeadlineSettings,
   getPlanningWeights,
   getProcessBadgeStylesByCode,
@@ -92,6 +93,7 @@ export default async function ResumenPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
+  const currentWeekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
   const days = weekDays(weekStart);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
@@ -119,6 +121,22 @@ export default async function ResumenPage({
       : Promise.resolve([]),
     listCatalogTimeDeviations(),
   ]);
+  const weekQuickStatus = await getWeekPlanningRegistroStatusRange({
+    naveScope,
+    anchorWeekStart: weekStart,
+    beforeWeeks: 8,
+    afterWeeks: 12,
+  });
+  const weekQuickOptions = weekQuickStatus.map((row) => {
+    const monday = getMondayOf(row.weekStart);
+    const weekInfo = isoWeek(monday);
+    return {
+      weekIso: monday.toISOString().slice(0, 10),
+      weekLabel: `S${String(weekInfo.week).padStart(2, "0")} · ${formatWeekRange(monday)}`,
+      hasPlanning: row.hasPlanning,
+      hasRegistros: row.hasRegistros,
+    };
+  });
 
   const holidayDates = expandHolidayRangesToIsoDays(
     holidays,
@@ -201,7 +219,8 @@ export default async function ResumenPage({
           <div className="flex items-center gap-2">
             <WeekNav
               weekLabel={`S${String(week).padStart(2, "0")} · ${formatWeekRange(weekStart)}`}
-              weekIso={getMondayOf(weekStart).toISOString().slice(0, 10)}
+              weekIso={currentWeekIso}
+              weekOptions={weekQuickOptions}
             />
             {ctx.naveId && canManagePlanningRole ? (
               <PlanningWeightsPopover
