@@ -538,12 +538,24 @@ class WorkerPlacementCatalog:
         if week_tl.cap <= 0 or max_demand_q <= 0:
             return WorkerPlacementCatalog(person_id, week_tl, (), horizon_days, ())
 
-        seen: set[tuple[int, int]] = set()
-        placements: list[BlockPlacement] = []
         cap = week_tl.cap
         max_d = min(max_demand_q, cap)
 
+        # Only start blocks at segment boundaries (morning/afternoon/day starts)
+        # plus every 4th quarter within a segment (hourly offsets).
+        # This reduces O(cap^2) → O(starts * max_d) with starts << cap.
+        seg_starts = set(week_tl.segment_start_indices())
+        allowed_starts: list[int] = []
         for i in range(cap):
+            if i in seg_starts:
+                allowed_starts.append(i)
+            elif i % QUARTERS_PER_HOUR == 0:
+                allowed_starts.append(i)
+
+        seen: set[tuple[int, int]] = set()
+        placements: list[BlockPlacement] = []
+
+        for i in allowed_starts:
             for d in range(1, min(max_d, cap - i) + 1):
                 key = (i, d)
                 if key in seen:

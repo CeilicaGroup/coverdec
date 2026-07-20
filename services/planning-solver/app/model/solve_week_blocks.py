@@ -84,6 +84,8 @@ class SchedulerConfig:
     horizon_days: int = HORIZON_DAYS
     max_solve_seconds: int = 240
     weights: SchedulerWeights = field(default_factory=SchedulerWeights)
+    relative_gap_limit: float = 0.0
+    early_stop_gap: float = 0.05
 
 
 class LampEdge(NamedTuple):
@@ -323,13 +325,17 @@ def _max_demand_by_person(
         if task.process not in process_by_code:
             continue
         demand_q = round(task.pendingHours * QUARTERS_PER_HOUR)
+        if task.ownerPersonId:
+            if task.ownerPersonId in people_by_id:
+                result[task.ownerPersonId] = max(
+                    result[task.ownerPersonId], demand_q,
+                )
+            continue
         for person in _task_candidates_cached(
             people_by_id,
             candidate_cache,
             task,
         ):
-            if task.ownerPersonId and person.id != task.ownerPersonId:
-                continue
             result[person.id] = max(result[person.id], demand_q)
     return dict(result)
 
@@ -580,8 +586,6 @@ def _build_block_variables(
             continue
 
         for person in _task_candidates(data, task):
-            if task.ownerPersonId and person.id != task.ownerPersonId:
-                continue
             catalog = data.placement_catalogs.get(person.id)
             if catalog is None:
                 continue
@@ -676,6 +680,9 @@ def _build_block_variables(
 
 
 def _task_candidates(data: ProblemData, task: EngineTask) -> list[EnginePerson]:
+    if task.ownerPersonId:
+        person = data.people_by_id.get(task.ownerPersonId)
+        return [person] if person and person.naveId == task.naveId else []
     override_ids = data.candidate_ids_by_task.get(task.id)
     if override_ids is not None:
         allowed = set(override_ids)
@@ -1561,6 +1568,52 @@ def _extract_solution(
     )
 
 
+class _EarlyStopCallback(cp_model.CpSolverSolutionCallback):
+    """Stop the solver once coverage is full and the gap is tight enough."""
+
+    def __init__(
+        self,
+        unscheduled_vars: list[cp_model.IntVar],
+        gap_threshold: float,
+    ) -> None:
+        super().__init__()
+        self._unscheduled = unscheduled_vars
+        self._gap = gap_threshold
+
+    def on_solution_callback(self) -> None:
+        total_unsched = sum(self.Value(v) for v in self._unscheduled)
+        if total_unsched > 0:
+            return
+        best = self.ObjectiveValue()
+        bound = self.BestObjectiveBound()
+        if best == 0 or abs(best - bound) / max(1, abs(best)) <= self._gap:
+            self.StopSearch()
+
+
+def _dynamic_max_seconds(
+    base: int,
+    task_count: int,
+    block_count: int,
+) -> int:
+    """Scale solver budget down for small problems."""
+    if task_count <= 5 and block_count <= 20:
+        return min(base, 15)
+    if task_count <= 15 and block_count <= 80:
+        return min(base, 45)
+    if task_count <= 30 and block_count <= 200:
+        return min(base, 90)
+    return base
+
+
+def _dynamic_gap_limit(task_count: int, block_count: int) -> float:
+    """Loosen the gap tolerance for small problems to exit faster."""
+    if task_count <= 10 and block_count <= 50:
+        return 0.02
+    if task_count <= 30 and block_count <= 200:
+        return 0.01
+    return 0.0
+
+
 def _infeasible_response(
     tasks: list[EngineTask],
     status: int,
@@ -1592,6 +1645,250 @@ def _infeasible_response(
     )
 
 
+class _UnionFind:
+    """Lightweight disjoint-set for partitioning tasks and workers."""
+
+    def __init__(self) -> None:
+        self._parent: dict[str, str] = {}
+        self._rank: dict[str, int] = {}
+
+    def _ensure(self, x: str) -> None:
+        if x not in self._parent:
+            self._parent[x] = x
+            self._rank[x] = 0
+
+    def find(self, x: str) -> str:
+        self._ensure(x)
+        root = x
+        while self._parent[root] != root:
+            root = self._parent[root]
+        while self._parent[x] != root:
+            self._parent[x], x = root, self._parent[x]
+        return root
+
+    def union(self, a: str, b: str) -> None:
+        ra, rb = self.find(a), self.find(b)
+        if ra == rb:
+            return
+        if self._rank[ra] < self._rank[rb]:
+            ra, rb = rb, ra
+        self._parent[rb] = ra
+        if self._rank[ra] == self._rank[rb]:
+            self._rank[ra] += 1
+
+    def components(self) -> dict[str, set[str]]:
+        groups: dict[str, set[str]] = defaultdict(set)
+        for x in self._parent:
+            groups[self.find(x)].add(x)
+        return dict(groups)
+
+
+def _partition_components(
+    data: ProblemData,
+) -> list[set[str]] | None:
+    """Find independent task groups that share no workers, chains, or OT links.
+
+    Returns None when everything is connected (single component) or partitioning
+    would not help (<=1 component).
+    """
+    if len(data.tasks) <= 1:
+        return None
+
+    uf = _UnionFind()
+    task_ids = {t.id for t in data.tasks}
+    for t in data.tasks:
+        uf.find(t.id)
+
+    # Link tasks sharing a candidate worker
+    worker_first_task: dict[str, str] = {}
+    for t in data.tasks:
+        for person in _task_candidates(data, t):
+            prev = worker_first_task.get(person.id)
+            if prev is not None:
+                uf.union(prev, t.id)
+            else:
+                worker_first_task[person.id] = t.id
+
+    # Link lamp/element chains
+    for edge in data.lamp_edges:
+        if edge.predecessor_id in task_ids and edge.successor_id in task_ids:
+            uf.union(edge.predecessor_id, edge.successor_id)
+
+    # Link work order task groups
+    wo_tasks: dict[str, list[str]] = defaultdict(list)
+    for t in data.tasks:
+        if t.workOrderId:
+            wo_tasks[t.workOrderId].append(t.id)
+    for members in wo_tasks.values():
+        for tid in members[1:]:
+            uf.union(members[0], tid)
+
+    # Link work order pipelines
+    for edge in data.work_order_pipelines:
+        pred_id = synthetic_task_id(edge.predecessorWorkOrderId)
+        succ_id = synthetic_task_id(edge.successorWorkOrderId)
+        if pred_id in task_ids and succ_id in task_ids:
+            uf.union(pred_id, succ_id)
+
+    components = uf.components()
+    task_components = [ids & task_ids for ids in components.values() if ids & task_ids]
+    if len(task_components) <= 1:
+        return None
+    return task_components
+
+
+def _build_component_data(
+    data: ProblemData,
+    component_task_ids: set[str],
+) -> ProblemData:
+    """Build a sub-ProblemData for one partition component."""
+    task_set = component_task_ids
+    tasks = [t for t in data.tasks if t.id in task_set]
+
+    person_ids: set[str] = set()
+    for t in tasks:
+        for person in _task_candidates(data, t):
+            person_ids.add(person.id)
+    people = [p for p in data.people if p.id in person_ids]
+
+    lamp_edges = [
+        e for e in data.lamp_edges
+        if e.predecessor_id in task_set or e.successor_id in task_set
+    ]
+    fixed_assignments = [
+        f for f in data.fixed_assignments if f.taskId in task_set
+    ]
+    busy_slots = [
+        b for b in data.busy_slots if b.personId in person_ids
+    ]
+    prev_q = {
+        k: v for k, v in data.prev_q.items()
+        if k.split("|", 1)[0] in task_set
+    }
+
+    wo_ids = {t.workOrderId for t in tasks if t.workOrderId}
+    pipelines = [
+        e for e in data.work_order_pipelines
+        if (
+            e.predecessorWorkOrderId in wo_ids
+            or e.successorWorkOrderId in wo_ids
+        )
+    ]
+
+    placement_catalogs = {
+        pid: cat for pid, cat in data.placement_catalogs.items()
+        if pid in person_ids
+    }
+    candidate_ids_by_task = {
+        tid: ids for tid, ids in data.candidate_ids_by_task.items()
+        if tid in task_set
+    }
+    candidate_ids_by_process_nave = data.candidate_ids_by_process_nave
+    wo_collapse = {
+        k: v for k, v in data.wo_collapse.items() if k in task_set
+    }
+    people_by_id = {
+        pid: p for pid, p in data.people_by_id.items()
+        if pid in person_ids
+    }
+
+    return ProblemData(
+        tasks=tasks,
+        demand_q={t.id: data.demand_q[t.id] for t in tasks},
+        days=data.days,
+        week_start=data.week_start,
+        timelines={
+            k: v for k, v in data.timelines.items() if k[0] in person_ids
+        },
+        week_timelines={
+            k: v for k, v in data.week_timelines.items() if k in person_ids
+        },
+        process_by_code=data.process_by_code,
+        prev_q=prev_q,
+        people=people,
+        lamp_edges=lamp_edges,
+        weights=data.weights,
+        fixed_assignments=fixed_assignments,
+        busy_slots=busy_slots,
+        placement_catalogs=placement_catalogs,
+        wo_collapse=wo_collapse,
+        candidate_ids_by_task=candidate_ids_by_task,
+        work_order_pipelines=pipelines,
+        candidate_ids_by_process_nave=candidate_ids_by_process_nave,
+        people_by_id=people_by_id,
+    )
+
+
+def _solve_single(
+    data: ProblemData,
+    config: SchedulerConfig,
+    prepare_ms: int,
+) -> SolveResponse:
+    """Build model and solve for one (possibly partitioned) ProblemData."""
+    model = cp_model.CpModel()
+    model_started = time.perf_counter()
+    mv, placement_rows_total = _build_block_variables(model, data)
+    model_build_ms = int((time.perf_counter() - model_started) * 1000)
+    block_count = len(mv.all_blocks)
+
+    unplannable = _find_unplannable_warnings(data, mv)
+    if unplannable:
+        total_q = sum(data.demand_q.get(t.id, 0) for t in data.tasks)
+        return SolveResponse(
+            assignments=[],
+            warnings=unplannable,
+            unscheduledHours=total_q / QUARTERS_PER_HOUR,
+        )
+
+    _inject_busy_slots(model, data, mv)
+    unscheduled = _add_constraints(model, data, mv)
+    _apply_fixed_assignments(model, data, mv)
+    _build_objective(model, data, mv, unscheduled)
+
+    solver = cp_model.CpSolver()
+    effective_max = _dynamic_max_seconds(
+        config.max_solve_seconds, len(data.tasks), block_count,
+    )
+    solver.parameters.max_time_in_seconds = effective_max
+    num_workers = int(os.environ.get("SOLVER_NUM_WORKERS", "4"))
+    solver.parameters.num_search_workers = max(0, num_workers)
+    gap = config.relative_gap_limit or _dynamic_gap_limit(
+        len(data.tasks), block_count,
+    )
+    if gap > 0:
+        solver.parameters.relative_gap_limit = gap
+    early_cb = _EarlyStopCallback(
+        list(unscheduled.values()), config.early_stop_gap,
+    )
+
+    solve_started_cp = time.perf_counter()
+    status = solver.Solve(model, early_cb)
+    solve_ms = int((time.perf_counter() - solve_started_cp) * 1000)
+    status_name = solver.StatusName(status)
+
+    logger.info(
+        "solver metrics: taskCount=%d blockCount=%d placementRows=%d woCollapsed=%d "
+        "prepareMs=%d modelBuildMs=%d solveMs=%d status=%s",
+        len(data.tasks),
+        block_count,
+        placement_rows_total,
+        len(data.wo_collapse),
+        prepare_ms,
+        model_build_ms,
+        solve_ms,
+        status_name,
+    )
+
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return _infeasible_response(
+            data.tasks, status, solver, config.max_solve_seconds, data.wo_collapse
+        )
+
+    return _extract_solution(
+        mv, unscheduled, solver, data.fixed_assignments, data
+    )
+
+
 def solve_week(
     request: SolveRequest,
     config: SchedulerConfig | None = None,
@@ -1614,98 +1911,71 @@ def solve_week(
         )
 
     candidate_pairs = sum(len(_task_candidates(data, task)) for task in data.tasks)
-    partition_enabled = _env_flag("PLANNING_SOLVER_ENABLE_COMPONENT_PARTITION", False)
     no_interleave_mode = _no_interleave_mode()
+
+    components = _partition_components(data)
+    partition_count = len(components) if components else 1
+
     logger.info(
-        "solver input metrics: tasks=%d people=%d candidatePairs=%d fixed=%d busy=%d previous=%d partition=%s noInterleave=%s",
+        "solver input metrics: tasks=%d people=%d candidatePairs=%d fixed=%d "
+        "busy=%d previous=%d components=%d noInterleave=%s",
         len(data.tasks),
         len(data.people),
         candidate_pairs,
         len(data.fixed_assignments),
         len(data.busy_slots),
         len(data.prev_q),
-        partition_enabled,
+        partition_count,
         no_interleave_mode,
     )
-    if partition_enabled:
+
+    if components and len(components) > 1:
         logger.info(
-            "component partition requested but not enabled for exactness; falling back to monolithic solve",
+            "solving %d independent components: sizes=%s",
+            len(components),
+            [len(c) for c in components],
         )
+        all_assignments: list[EngineAssignment] = []
+        all_warnings: list[EngineWarning] = []
+        total_unscheduled = 0.0
 
-    model = cp_model.CpModel()
-    model_started = time.perf_counter()
-    mv, placement_rows_total = _build_block_variables(model, data)
-    model_build_ms = int((time.perf_counter() - model_started) * 1000)
-    block_count = len(mv.all_blocks)
-    task_debug = _block_debug_rows(data, mv) if logger.isEnabledFor(logging.DEBUG) else []
-    logger.info(
-        "task blocks: tasks=%d with_blocks=%d without_blocks=%d blockCount=%d placementRows=%d",
-        len(data.tasks),
-        sum(1 for task in data.tasks if len(mv.by_task.get(task.id, [])) > 0),
-        sum(1 for task in data.tasks if len(mv.by_task.get(task.id, [])) == 0),
-        block_count,
-        placement_rows_total,
-    )
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("task blocks detail: %s", task_debug)
+        for idx, comp_task_ids in enumerate(components):
+            comp_data = _build_component_data(data, comp_task_ids)
+            comp_response = _solve_single(comp_data, config, prepare_ms)
+            logger.info(
+                "component %d/%d solved: tasks=%d assignments=%d unscheduled=%.2f",
+                idx + 1,
+                len(components),
+                len(comp_task_ids),
+                len(comp_response.assignments),
+                comp_response.unscheduledHours,
+            )
+            all_assignments.extend(comp_response.assignments)
+            all_warnings.extend(comp_response.warnings)
+            total_unscheduled += comp_response.unscheduledHours
 
-    unplannable = _find_unplannable_warnings(data, mv)
-    if unplannable:
-        total_q = sum(data.demand_q.get(t.id, 0) for t in data.tasks)
+        total_ms = int((time.perf_counter() - solve_started) * 1000)
+        logger.info(
+            "partitioned solve done: components=%d totalMs=%d assignments=%d unscheduled=%.2f",
+            len(components),
+            total_ms,
+            len(all_assignments),
+            total_unscheduled,
+        )
         return SolveResponse(
-            assignments=[],
-            warnings=unplannable,
-            unscheduledHours=total_q / QUARTERS_PER_HOUR,
+            assignments=all_assignments,
+            warnings=all_warnings,
+            unscheduledHours=total_unscheduled,
         )
 
-    _inject_busy_slots(model, data, mv)
-    unscheduled = _add_constraints(model, data, mv)
-    _apply_fixed_assignments(model, data, mv)
-    _build_objective(model, data, mv, unscheduled)
+    response = _solve_single(data, config, prepare_ms)
+    total_ms = int((time.perf_counter() - solve_started) * 1000)
+    logger.info("monolithic solve done: totalMs=%d", total_ms)
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = config.max_solve_seconds
-    num_workers = int(os.environ.get("SOLVER_NUM_WORKERS", "4"))
-    solver.parameters.num_search_workers = max(0, num_workers)
-    solve_started_cp = time.perf_counter()
-    status = solver.Solve(model)
-    solve_ms = int((time.perf_counter() - solve_started_cp) * 1000)
-    status_name = solver.StatusName(status)
-
-    logger.info(
-        "solver metrics: taskCount=%d blockCount=%d placementRows=%d woCollapsed=%d "
-        "prepareMs=%d modelBuildMs=%d solveMs=%d totalMs=%d status=%s",
-        len(data.tasks),
-        block_count,
-        placement_rows_total,
-        len(data.wo_collapse),
-        prepare_ms,
-        model_build_ms,
-        solve_ms,
-        int((time.perf_counter() - solve_started) * 1000),
-        status_name,
-    )
-
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return _infeasible_response(
-            data.tasks, status, solver, config.max_solve_seconds, data.wo_collapse
-        )
-
-    response = _extract_solution(
-        mv, unscheduled, solver, request.fixedAssignments, data
-    )
     if response.unscheduledHours > 0:
         logger.info(
-            "solve diagnostics: assignments=%d unscheduledHours=%.2f unscheduledTasks=%d",
+            "solve diagnostics: assignments=%d unscheduledHours=%.2f",
             len(response.assignments),
             response.unscheduledHours,
-            sum(1 for u_var in unscheduled.values() if solver.Value(u_var) > 0),
         )
-        if logger.isEnabledFor(logging.DEBUG):
-            unscheduled_by_task = {
-                task_id: solver.Value(u_var) / QUARTERS_PER_HOUR
-                for task_id, u_var in unscheduled.items()
-                if solver.Value(u_var) > 0
-            }
-            logger.debug("solve diagnostics unscheduledByTask: %s", unscheduled_by_task)
     return response

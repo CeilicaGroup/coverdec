@@ -271,9 +271,16 @@ function allowedTaskPersonDayKeys(
   const peopleById = new Map(people.map((person) => [person.id, person]));
   const allowed = new Set<string>();
   for (const task of tasks) {
+    if (task.ownerPersonId) {
+      if (peopleById.has(task.ownerPersonId)) {
+        for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+          allowed.add(`${task.id}|${task.ownerPersonId}|${dayIdx}`);
+        }
+      }
+      continue;
+    }
     for (const person of people) {
       if (person.naveId !== task.naveId) continue;
-      if (task.ownerPersonId && task.ownerPersonId !== person.id) continue;
       if (
         !person.primary.includes(task.process) &&
         !person.fallback.includes(task.process)
@@ -282,11 +289,6 @@ function allowedTaskPersonDayKeys(
       }
       for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
         allowed.add(`${task.id}|${person.id}|${dayIdx}`);
-      }
-    }
-    if (task.ownerPersonId && peopleById.has(task.ownerPersonId)) {
-      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
-        allowed.add(`${task.id}|${task.ownerPersonId}|${dayIdx}`);
       }
     }
   }
@@ -507,13 +509,9 @@ export async function loadSolverInput(args: {
     }));
   const busySlots = mergeBusyTimeSlots(busySlotsRaw);
 
-  const doneHoursByTask = await loadDoneHoursByTaskIds(
-    prisma,
-    tasksRaw.map((task) => task.id),
-    planFromAt,
-  );
   const taskIds = tasksRaw.map((task) => task.id);
-  const [primaryWorkerByTask, priorOwnerByTask] = await Promise.all([
+  const [doneHoursByTask, primaryWorkerByTask, priorOwnerByTask] = await Promise.all([
+    loadDoneHoursByTaskIds(prisma, taskIds, planFromAt),
     loadPrimaryWorkerByTaskIds(prisma, taskIds, planFromAt),
     getPriorPlanningOwnerByTaskIdForNaves({
       naveIds,
