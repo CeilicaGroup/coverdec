@@ -1723,12 +1723,20 @@ def _partition_components(
         for tid in members[1:]:
             uf.union(members[0], tid)
 
-    # Link work order pipelines
+    # Link work order pipelines (by actual task IDs belonging to each WO)
+    tasks_by_wo: dict[str, list[str]] = defaultdict(list)
+    for t in data.tasks:
+        wo_id = t.workOrderId
+        if wo_id:
+            tasks_by_wo[wo_id].append(t.id)
+        group = data.wo_collapse.get(t.id)
+        if group:
+            tasks_by_wo[group.work_order_id].append(t.id)
     for edge in data.work_order_pipelines:
-        pred_id = synthetic_task_id(edge.predecessorWorkOrderId)
-        succ_id = synthetic_task_id(edge.successorWorkOrderId)
-        if pred_id in task_ids and succ_id in task_ids:
-            uf.union(pred_id, succ_id)
+        pred_tasks = tasks_by_wo.get(edge.predecessorWorkOrderId, [])
+        succ_tasks = tasks_by_wo.get(edge.successorWorkOrderId, [])
+        if pred_tasks and succ_tasks:
+            uf.union(pred_tasks[0], succ_tasks[0])
 
     components = uf.components()
     task_components = [ids & task_ids for ids in components.values() if ids & task_ids]
