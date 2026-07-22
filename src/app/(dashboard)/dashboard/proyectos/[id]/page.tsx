@@ -20,10 +20,16 @@ import {
   buildCatalogNaveByProcess,
 } from "@/features/projects/task-nave";
 import { LampTasksPanel } from "./lamp-tasks-panel";
+import { LampExtraProcessControls } from "./lamp-extra-process-controls";
+import { ProjectExtrasPanel } from "./project-extras-panel";
 import {
   fallbackLampConfig,
   lampElementsToConfig,
 } from "@/features/projects/sync-lamp-elements";
+import {
+  isProjectExtrasLamp,
+} from "@/features/projects/project-extras-lamp";
+import { TRANSPORT_PROCESS_CODE } from "@/features/projects/transport-tasks";
 import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
 import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 import { LampElementsSummary } from "@/components/typology-symbol";
@@ -241,6 +247,16 @@ export default async function ProjectDetailPage({
     0,
   );
   const totalPendingToPlan = Math.max(0, totalEstimated - totalDone - totalAssigned);
+  const productionLamps = lamps.filter((l) => !isProjectExtrasLamp(l));
+  const projectExtrasLamp = lamps.find((l) => isProjectExtrasLamp(l)) ?? null;
+  const allProcessCodes = processDefs.map((p) => p.code);
+  const projectExtrasUsed = new Set(
+    (projectExtrasLamp?.tasks ?? []).map((t) => t.process),
+  );
+  const projectExtrasAvailableProcesses = allProcessCodes.filter(
+    (process) =>
+      process === TRANSPORT_PROCESS_CODE || !projectExtrasUsed.has(process),
+  );
   const availableStockLamps = stockLamps
     .filter((lamp) => isStockLampAssignable(lamp.stockStatus))
     .map((lamp) => ({
@@ -335,15 +351,15 @@ export default async function ProjectDetailPage({
           ) : null}
         </CardHeader>
         <CardContent className="p-0">
-          {project.lamps.length === 0 ? (
+          {productionLamps.length === 0 ? (
             <p className="text-center text-muted-foreground py-8 text-sm">
               {isManualEstimateProjectKind(project.kind)
                 ? "Aún sin lámparas. Puedes crear una por elementos o asignarle un total de horas."
                 : "Aún sin lámparas. Añade una con elemento y medida para generar las tareas."}
             </p>
           ) : (
-            <ProjectLampsList lampCount={lamps.length}>
-              {lamps.map((l) => {
+            <ProjectLampsList lampCount={productionLamps.length}>
+              {productionLamps.map((l) => {
                 const manualLamp = isManualEstimateLamp(l);
                 const lampPending = l.tasks.reduce((a, t) => a + Math.max(0, t.estimatedHours - t.doneHours), 0);
                 const lampEstimated = l.tasks.reduce((a, t) => a + t.estimatedHours, 0);
@@ -380,12 +396,22 @@ export default async function ProjectDetailPage({
                         />
                       )
                     : (l.elementType?.name ?? "—");
+                const lampLevelUsed = new Set(
+                  l.tasks
+                    .filter((t) => t.lampElementId == null)
+                    .map((t) => t.process),
+                );
+                const lampAvailableProcesses = allProcessCodes.filter(
+                  (process) =>
+                    process === TRANSPORT_PROCESS_CODE ||
+                    !lampLevelUsed.has(process),
+                );
                 return (
                   <ProjectLampSection
                     key={l.id}
                     summary={elementSummary}
                     pendingHours={lampPending}
-                    defaultExpanded={lamps.length <= 2}
+                    defaultExpanded={productionLamps.length <= 2}
                     header={
                       <>
                         <RenameLampButton lampId={l.id} initialName={l.name} canManage={canManage} />
@@ -395,6 +421,16 @@ export default async function ProjectDetailPage({
                           canManage={canManagePlanningRole}
                         />
                       </>
+                    }
+                    actions={
+                      !manualLamp ? (
+                        <LampExtraProcessControls
+                          lampId={l.id}
+                          lampAvailableProcesses={lampAvailableProcesses}
+                          naves={naves}
+                          canManage={canManage}
+                        />
+                      ) : null
                     }
                   >
                     {manualLamp || canManage || showStockActions ? (
@@ -450,7 +486,6 @@ export default async function ProjectDetailPage({
                     <LampTasksPanel
                       lampId={l.id}
                       tasks={l.tasks}
-                      usedProcesses={l.tasks.map((t) => t.process)}
                       waitHoursByProcess={waitHoursByProcess}
                       processStylesByCode={processStylesByCode}
                       canManage={canManage}
@@ -467,6 +502,15 @@ export default async function ProjectDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <ProjectExtrasPanel
+        projectId={project.id}
+        tasks={projectExtrasLamp?.tasks ?? []}
+        availableProcesses={projectExtrasAvailableProcesses}
+        processStylesByCode={processStylesByCode}
+        naves={naves}
+        canManage={canManage}
+      />
     </div>
   );
 }

@@ -330,7 +330,6 @@ export default async function StockBatchDetailPage({
           <LampTasksPanel
             lampId={lamp.id}
             tasks={tasks}
-            usedProcesses={tasks.map((t) => t.process)}
             waitHoursByProcess={Object.fromEntries(
               processDefs.map((p) => [p.code, p.waitHours]),
             )}

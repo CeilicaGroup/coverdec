@@ -17,6 +17,7 @@ import {
   ProjectKind,
   ProjectPlanningPreset,
   Role,
+  TaskSystemKind,
 } from "@/generated/prisma";
 import {
   createLampInputSchema,
@@ -36,7 +37,7 @@ import {
 import {
   buildTasksFromElement,
   formatLampElementUnitLabel,
-  getNextTaskOrder,
+  getNextOrderInChain,
 } from "@/features/projects/lamp-tasks";
 import {
   syncLampElements,
@@ -62,6 +63,7 @@ import {
   TRANSPORT_PROCESS_CODE,
 } from "@/features/projects/transport-tasks";
 import { syncProjectApprovalStatus } from "@/features/projects/sync-project-approval";
+import { getOrCreateProjectExtrasLamp } from "@/features/projects/project-extras-lamp";
 
 const log = childLogger({ module: "projects.actions" });
 
@@ -688,9 +690,8 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       const naveId = await resolveExtraTaskNaveId(elementTypeId, data.process);
   
       await prisma.$transaction(async (tx) => {
-        let order = await getNextTaskOrder(tx, lamp.id);
-  
         if (elementTypeId === null) {
+          const order = await getNextOrderInChain(tx, lamp.id, null);
           await tx.task.create({
             data: {
               projectId: lamp.projectId,
@@ -702,6 +703,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
               naveId,
             },
           });
+          await syncTransportTasksForLamp(tx, lamp.id);
           return;
         }
   
@@ -715,6 +717,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         }
   
         for (const lampElement of lampElements) {
+          const order = await getNextOrderInChain(tx, lamp.id, lampElement.id);
           await tx.task.create({
             data: {
               projectId: lamp.projectId,
@@ -722,7 +725,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
               lampElementId: lampElement.id,
               process: data.process,
               estimatedHours: data.estimatedHours,
-              order: order++,
+              order,
               naveId,
             },
           });
@@ -744,7 +747,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId, data.process);
   
     await prisma.$transaction(async (tx) => {
-      const order = await getNextTaskOrder(tx, lamp.id);
+      const order = await getNextOrderInChain(tx, lamp.id, null);
       await tx.task.create({
         data: {
           projectId: lamp.projectId,
@@ -762,6 +765,70 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     await revalidateProjectSurfaces(lamp.projectId, lamp.id);
     },
     { summary: "Añadir tarea extra", entityType: "Task" },
+  );
+}
+
+const addExtraProjectTaskSchema = z.object({
+  projectId: z.string().min(1),
+  process: z.string().min(1),
+  estimatedHours: z.number().positive(),
+  naveId: z.string().min(1).optional(),
+});
+
+export async function addExtraProjectTask(
+  input: z.infer<typeof addExtraProjectTaskSchema>,
+) {
+  return runAuditedMutation(
+    "projects.addExtraProjectTask",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = addExtraProjectTaskSchema.parse(input);
+
+      const project = await prisma.project.findFirst({
+        where: { id: data.projectId, isActive: true },
+        select: { id: true },
+      });
+      if (!project) throw new Error("Proyecto no encontrado");
+
+      const { fallbackNaveId } = await loadTaskNaveContext(prisma);
+      const naveId = data.naveId ?? fallbackNaveId;
+      if (!naveId) throw new Error("No hay naves activas configuradas.");
+      if (data.naveId) await assertActiveNaveId(data.naveId);
+
+      await prisma.$transaction(async (tx) => {
+        const extrasLamp = await getOrCreateProjectExtrasLamp(tx, project.id);
+
+        if (data.process !== TRANSPORT_PROCESS_CODE) {
+          const exists = await tx.task.count({
+            where: {
+              lampId: extrasLamp.id,
+              process: data.process,
+              lampElementId: null,
+            },
+          });
+          if (exists > 0) {
+            throw new Error("Ese proceso ya existe en los procesos del proyecto.");
+          }
+        }
+
+        const order = await getNextOrderInChain(tx, extrasLamp.id, null);
+        await tx.task.create({
+          data: {
+            projectId: project.id,
+            lampId: extrasLamp.id,
+            lampElementId: null,
+            process: data.process,
+            estimatedHours: data.estimatedHours,
+            order,
+            naveId,
+          },
+        });
+      });
+
+      await revalidateProjectSurfaces(project.id);
+    },
+    { summary: "Añadir proceso extra al proyecto", entityType: "Task" },
   );
 }
 
@@ -1080,7 +1147,14 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
 
     const task = await prisma.task.findUnique({
       where: { id: data.taskId },
-      select: { id: true, lampId: true, order: true, systemKind: true, process: true },
+      select: {
+        id: true,
+        lampId: true,
+        lampElementId: true,
+        order: true,
+        systemKind: true,
+        process: true,
+      },
     });
     if (!task) throw new Error("Tarea no encontrada");
     if (isAutomaticTransportTask(task)) {
@@ -1090,9 +1164,14 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
     await prisma.$transaction(async (tx) => {
       await assertTasksNotPlanned([task.id]);
 
+      // Only swap within the same element chain so other sections stay put.
+      // Include systemKind null explicitly: Prisma/SQL `NOT (systemKind = TRANSPORT)`
+      // drops NULL rows, and normal production tasks use null.
       const sibling = await tx.task.findFirst({
         where: {
           lampId: task.lampId,
+          lampElementId: task.lampElementId,
+          OR: [{ systemKind: null }, { systemKind: { not: TaskSystemKind.TRANSPORT } }],
           order:
             data.direction === "up"
               ? { lt: task.order }
@@ -1113,6 +1192,8 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
         where: { id: sibling.id },
         data: { order: task.order },
       });
+
+      await syncTransportTasksForLamp(tx, task.lampId);
     });
   
     await revalidateLampSurfaces(task.lampId);

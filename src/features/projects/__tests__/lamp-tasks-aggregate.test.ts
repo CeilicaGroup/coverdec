@@ -114,4 +114,59 @@ describe("groupTasksByBastidor", () => {
     expect(groups[0]?.unitCount).toBe(2);
     expect(groups[0]?.tasks).toHaveLength(2);
   });
+
+  it("keeps element groups stable and places sin-elemento last", () => {
+    const groups = groupTasksByBastidor([
+      {
+        order: 0,
+        lampElement: null,
+      },
+      {
+        order: 5,
+        lampElement: {
+          id: "b",
+          label: "Panel",
+          surfaceM2: 2,
+          elementType: { id: "et-b", name: "Bastidor" },
+        },
+      },
+      {
+        order: 1,
+        lampElement: {
+          id: "a",
+          label: "Luz",
+          surfaceM2: 1,
+          elementType: { id: "et-a", name: "Iluminacion" },
+        },
+      },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual([
+      "et-b",
+      "et-a",
+      "__sin_elemento__",
+    ]);
+  });
+});
+
+describe("getNextOrderInChain", () => {
+  it("returns max order + 1 for the chain", async () => {
+    const { getNextOrderInChain } = await import("@/features/projects/lamp-tasks");
+    const tx = {
+      task: {
+        aggregate: async () => ({ _max: { order: 3 } }),
+      },
+    };
+    await expect(getNextOrderInChain(tx as never, "lamp-1", "el-1")).resolves.toBe(4);
+    await expect(getNextOrderInChain(tx as never, "lamp-1", null)).resolves.toBe(4);
+  });
+
+  it("returns 0 when the chain is empty", async () => {
+    const { getNextOrderInChain } = await import("@/features/projects/lamp-tasks");
+    const tx = {
+      task: {
+        aggregate: async () => ({ _max: { order: null } }),
+      },
+    };
+    await expect(getNextOrderInChain(tx as never, "lamp-1", null)).resolves.toBe(0);
+  });
 });

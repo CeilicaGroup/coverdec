@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -120,6 +121,26 @@ function navePickerLabel(
 
 function taskIsStructurallyLocked(task: LampTaskRow): boolean {
   return taskHasPlanningAssignments(task) || isAutomaticTransportTask(task);
+}
+
+/** Production tasks in the same element chain (reorder neighbors). */
+function chainProductionNeighbors(
+  tasks: LampTaskRow[],
+  task: LampTaskRow,
+): { canMoveUp: boolean; canMoveDown: boolean } {
+  const chainKey = task.lampElement?.id ?? null;
+  const chain = tasks
+    .filter(
+      (t) =>
+        (t.lampElement?.id ?? null) === chainKey && !isAutomaticTransportTask(t),
+    )
+    .sort((a, b) => a.order - b.order);
+  const index = chain.findIndex((t) => t.id === task.id);
+  if (index < 0) return { canMoveUp: false, canMoveDown: false };
+  return {
+    canMoveUp: index > 0,
+    canMoveDown: index < chain.length - 1,
+  };
 }
 
 function transportRouteLabel(task: LampTaskRow): string | null {
@@ -339,7 +360,7 @@ function ElementSectionBar({
               onClick={onAddExtra}
             >
               <Plus className="size-3" />
-              Añadir proceso extra
+              Añadir proceso
             </Button>
           ) : null}
           {showAssignNave ? (
@@ -718,7 +739,6 @@ function AggregatedTaskTable({
 export function LampTasksPanel({
   lampId,
   tasks,
-  usedProcesses,
   waitHoursByProcess,
   processStylesByCode,
   canManage,
@@ -730,7 +750,6 @@ export function LampTasksPanel({
 }: {
   lampId: string;
   tasks: LampTaskRow[];
-  usedProcesses: ProcessCode[];
   waitHoursByProcess: Record<string, number>;
   processStylesByCode: Record<string, ProcessBadgeStyle>;
   canManage: boolean;
@@ -754,10 +773,6 @@ export function LampTasksPanel({
   const [addNaveId, setAddNaveId] = useState("");
 
   const allProcessCodes = Object.keys(waitHoursByProcess);
-  const availableProcesses = allProcessCodes.filter(
-    (process) =>
-      process === TRANSPORT_PROCESS_CODE || !usedProcesses.includes(process),
-  );
 
   function availableProcessesForGroup(groupTasks: LampTaskRow[]): string[] {
     const usedInGroup = new Set(groupTasks.map((task) => task.process));
@@ -774,11 +789,8 @@ export function LampTasksPanel({
 
   const bastidorGroups = useMemo(() => groupTasksByBastidor(sorted), [sorted]);
 
-  function defaultNaveIdForExtraTask(
-    groupKey: string | null,
-    process?: string,
-  ): string {
-    if (groupKey && process) {
+  function defaultNaveIdForExtraTask(groupKey: string, process?: string): string {
+    if (process) {
       return (
         catalogNaveByElementProcess[groupKey]?.[process] ??
         elementTypeDefaultNaves[groupKey] ??
@@ -786,16 +798,10 @@ export function LampTasksPanel({
         ""
       );
     }
-    if (groupKey) {
-      return elementTypeDefaultNaves[groupKey] ?? naves[0]?.id ?? "";
-    }
-    if (bastidorGroups.length === 1) {
-      return elementTypeDefaultNaves[bastidorGroups[0]!.key] ?? naves[0]?.id ?? "";
-    }
-    return naves[0]?.id ?? "";
+    return elementTypeDefaultNaves[groupKey] ?? naves[0]?.id ?? "";
   }
 
-  function openAddExtraDialog(groupKey: string | null, processes: string[]) {
+  function openAddExtraDialog(groupKey: string, processes: string[]) {
     setAddGroupKey(groupKey);
     setAddProcess(processes[0] ?? "");
     setAddHours("");
@@ -896,7 +902,9 @@ export function LampTasksPanel({
                 canManage={canManage}
                 canAddExtra={!isManualGroup && groupAvailableProcesses.length > 0}
                 showAssignNave={!isManualGroup && canManage && naves.length > 0}
-                onAddExtra={() => openAddExtraDialog(group.key, groupAvailableProcesses)}
+                onAddExtra={() =>
+                  openAddExtraDialog(group.key, groupAvailableProcesses)
+                }
                 onAssignNave={() => setNaveDialogGroupKey(group.key)}
               />
 
@@ -939,7 +947,7 @@ export function LampTasksPanel({
                   <tbody>
                     {[...groupTasks]
                       .sort((a, b) => a.order - b.order)
-                      .map((t, idx, groupSorted) => {
+                      .map((t, _idx, groupSorted) => {
                         const waitAfter = dryWaitHoursForProcess(
                           t.process,
                           waitHoursByProcess,
@@ -952,6 +960,10 @@ export function LampTasksPanel({
                           naveIds: [t.naveId],
                           catalogNaveId,
                         });
+                        const { canMoveUp, canMoveDown } = chainProductionNeighbors(
+                          groupSorted,
+                          t,
+                        );
                         return (
                           <tr
                             key={t.id}
@@ -1060,7 +1072,7 @@ export function LampTasksPanel({
                                     variant="ghost"
                                     size="icon"
                                     className="size-7"
-                                    disabled={idx === 0 || taskIsStructurallyLocked(t)}
+                                    disabled={!canMoveUp || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
                                         try {
@@ -1089,7 +1101,7 @@ export function LampTasksPanel({
                                     variant="ghost"
                                     size="icon"
                                     className="size-7"
-                                    disabled={idx === groupSorted.length - 1 || taskIsStructurallyLocked(t)}
+                                    disabled={!canMoveDown || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
                                         try {
@@ -1222,21 +1234,6 @@ export function LampTasksPanel({
         />
       ) : null}
 
-      {canManage && availableProcesses.length > 0 ? (
-        <div className="px-3 py-2 border-t">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs"
-            onClick={() => openAddExtraDialog(null, availableProcesses)}
-          >
-            <Plus className="size-3" />
-            Añadir proceso extra
-          </Button>
-        </div>
-      ) : null}
-
       <Dialog open={editTask != null} onOpenChange={(o) => !o && setEditTask(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1333,16 +1330,18 @@ export function LampTasksPanel({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {addGroupKey ? "Añadir proceso extra al elemento" : "Añadir proceso extra"}
-            </DialogTitle>
+            <DialogTitle>Añadir proceso</DialogTitle>
+            <DialogDescription>
+              Se añade a todas las unidades de este elemento, al final de su
+              secuencia.
+            </DialogDescription>
           </DialogHeader>
           <form
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
               const h = Number(addHours);
-              if (!addProcess || !h || h <= 0) {
+              if (!addGroupKey || !addProcess || !h || h <= 0) {
                 toast.error("Completa proceso y horas");
                 return;
               }
@@ -1356,7 +1355,7 @@ export function LampTasksPanel({
                     lampId,
                     process: addProcess,
                     estimatedHours: h,
-                    ...(addGroupKey ? { elementGroupKey: addGroupKey } : {}),
+                    elementGroupKey: addGroupKey,
                     ...(addNaveId ? { naveId: addNaveId } : {}),
                   });
                   toast.success("Proceso añadido");
@@ -1389,7 +1388,7 @@ export function LampTasksPanel({
                         (bastidorGroups.find((group) => group.key === addGroupKey)
                           ?.tasks ?? []) as LampTaskRow[],
                       )
-                    : availableProcesses
+                    : []
                   ).map((p) => (
                     <SelectItem key={p} value={p}>
                       {p}

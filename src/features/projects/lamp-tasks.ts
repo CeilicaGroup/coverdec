@@ -155,11 +155,14 @@ export function groupTasksByElement<
 
   return [...groups.values()]
     .map(({ unitElementIds: _ids, ...group }) => group)
-    .sort(
-      (a, b) =>
-        Math.min(...a.tasks.map((t) => t.order)) -
-        Math.min(...b.tasks.map((t) => t.order)),
-    );
+    .sort((a, b) => {
+      // Lamp-level extras (no element) always render after typed element groups.
+      if (a.key === "__sin_elemento__") return 1;
+      if (b.key === "__sin_elemento__") return -1;
+      const byName = a.elementTypeName.localeCompare(b.elementTypeName, "es");
+      if (byName !== 0) return byName;
+      return a.key.localeCompare(b.key, "es");
+    });
 }
 
 /** @deprecated Use groupTasksByElement */
@@ -282,6 +285,19 @@ export async function getNextTaskOrder(
 ): Promise<number> {
   const agg = await tx.task.aggregate({
     where: { lampId },
+    _max: { order: true },
+  });
+  return (agg._max.order ?? -1) + 1;
+}
+
+/** Next order within a single production chain (lamp + element unit, or lamp-level null). */
+export async function getNextOrderInChain(
+  tx: Prisma.TransactionClient,
+  lampId: string,
+  lampElementId: string | null,
+): Promise<number> {
+  const agg = await tx.task.aggregate({
+    where: { lampId, lampElementId },
     _max: { order: true },
   });
   return (agg._max.order ?? -1) + 1;

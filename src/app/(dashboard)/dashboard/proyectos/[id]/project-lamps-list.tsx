@@ -52,12 +52,14 @@ export function ProjectLampsList({
 
 export function ProjectLampSection({
   header,
+  actions,
   summary,
   pendingHours,
   defaultExpanded = false,
   children,
 }: {
   header: React.ReactNode;
+  actions?: ReactNode;
   summary: ReactNode;
   pendingHours: number;
   defaultExpanded?: boolean;
@@ -94,6 +96,9 @@ export function ProjectLampSection({
           <div className="text-xs text-muted-foreground min-w-0 flex-1 truncate">
             {summary}
           </div>
+        ) : null}
+        {actions ? (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>
         ) : null}
         <div className="text-xs font-mono ml-auto shrink-0">
           Pendiente:{" "}
