@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   AlertTriangle,
   Layers,
   Pencil,
@@ -62,7 +63,6 @@ import {
 } from "@/features/work-orders/actions";
 import {
   buildWorkOrderAttentionMetrics,
-  compareWorkOrdersByAttention,
   type WorkOrderAttentionStatus,
 } from "@/features/work-orders/attention-priority";
 import type { TaskAssigneeSummary } from "@/features/work-orders/display-context";
@@ -73,12 +73,20 @@ import {
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { EligibleWorkOrderTask } from "@/features/work-orders/queries";
 import {
+  DEFAULT_WORK_ORDER_SORT,
+  nextWorkOrderSortState,
+  sortWorkOrders,
+  type WorkOrderSortColumn,
+  type WorkOrderSortState,
+} from "@/features/work-orders/sort-work-orders";
+import {
   WorkOrderTaskDetails,
   WorkOrderTaskPicker,
 } from "@/features/work-orders/work-order-task-picker";
 import { formatHours, formatShortDate } from "@/lib/format";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
 import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
+import { cn } from "@/lib/utils";
 
 type WorkOrderStatusFilter = "OPEN" | "CLOSED" | "ALL";
 
@@ -122,6 +130,48 @@ function attentionStatusLabel(status: WorkOrderAttentionStatus): string {
   if (status === "excess_hours") return "Exceso de horas";
   if (status === "excess_tasks") return "Exceso de tareas";
   return "Normal";
+}
+
+function SortableHead({
+  column,
+  label,
+  sort,
+  onSort,
+  className,
+}: {
+  column: WorkOrderSortColumn;
+  label: string;
+  sort: WorkOrderSortState;
+  onSort: (column: WorkOrderSortColumn) => void;
+  className?: string;
+}) {
+  const active = sort.column === column;
+  const Icon = !active
+    ? ArrowUpDown
+    : sort.direction === "asc"
+      ? ArrowUp
+      : ArrowDown;
+
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center gap-1 -ml-1 px-1 py-0.5 rounded-sm hover:bg-muted/60",
+          active && "text-foreground font-semibold",
+        )}
+        onClick={() => onSort(column)}
+      >
+        <span>{label}</span>
+        <Icon
+          className={cn(
+            "size-3.5 shrink-0",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+        />
+      </button>
+    </TableHead>
+  );
 }
 
 function taskTypeLabels(tasks: EligibleWorkOrderTask[]): string[] {
@@ -262,6 +312,11 @@ export function OrdenesTrabajoClient({
     String(initialAlertThresholds.maxPendingHours),
   );
   const [maxTasksInput, setMaxTasksInput] = useState(String(initialAlertThresholds.maxTasks));
+  const [sort, setSort] = useState<WorkOrderSortState>(DEFAULT_WORK_ORDER_SORT);
+
+  const toggleSort = (column: WorkOrderSortColumn) => {
+    setSort((prev) => nextWorkOrderSortState(prev, column));
+  };
 
   const assigneeByTaskId = useMemo(
     () => new Map(Object.entries(assigneeByTaskIdRecord)),
@@ -467,28 +522,26 @@ export function OrdenesTrabajoClient({
       }
     });
   };
-  const workOrdersWithAttention = useMemo(
-    () =>
-      workOrders
-        .map((order) => {
-          const orderPendingHours = pendingHours(order.tasks);
-          return {
-            ...order,
+  const workOrdersWithAttention = useMemo(() => {
+    const rows = workOrders.map((order) => {
+      const orderPendingHours = pendingHours(order.tasks);
+      return {
+        ...order,
+        pendingHours: orderPendingHours,
+        taskCount: order.tasks.length,
+        taskIds: order.tasks.map((t) => t.id),
+        attention: buildWorkOrderAttentionMetrics(
+          {
+            status: order.status,
             pendingHours: orderPendingHours,
             taskCount: order.tasks.length,
-            attention: buildWorkOrderAttentionMetrics(
-              {
-                status: order.status,
-                pendingHours: orderPendingHours,
-                taskCount: order.tasks.length,
-              },
-              { maxPendingHours, maxTasks },
-            ),
-          };
-        })
-        .sort(compareWorkOrdersByAttention),
-    [maxPendingHours, maxTasks, workOrders],
-  );
+          },
+          { maxPendingHours, maxTasks },
+        ),
+      };
+    });
+    return sortWorkOrders(rows, sort, assigneeByTaskId);
+  }, [assigneeByTaskId, maxPendingHours, maxTasks, sort, workOrders]);
   const excessiveOpenCount = useMemo(
     () =>
       workOrdersWithAttention.filter(
@@ -636,15 +689,25 @@ export function OrdenesTrabajoClient({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>OT</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Atención</TableHead>
-                  <TableHead>Elemento · Proceso</TableHead>
-                  <TableHead>Operario</TableHead>
-                  <TableHead>Tareas</TableHead>
-                  <TableHead>Horas pend.</TableHead>
-                  <TableHead>Creada</TableHead>
-                  <TableHead>Cerrada</TableHead>
+                  <SortableHead column="number" label="OT" sort={sort} onSort={toggleSort} />
+                  <SortableHead column="status" label="Estado" sort={sort} onSort={toggleSort} />
+                  <SortableHead column="attention" label="Atención" sort={sort} onSort={toggleSort} />
+                  <SortableHead
+                    column="elementProcess"
+                    label="Elemento · Proceso"
+                    sort={sort}
+                    onSort={toggleSort}
+                  />
+                  <SortableHead column="assignee" label="Operario" sort={sort} onSort={toggleSort} />
+                  <SortableHead column="taskCount" label="Tareas" sort={sort} onSort={toggleSort} />
+                  <SortableHead
+                    column="pendingHours"
+                    label="Horas pend."
+                    sort={sort}
+                    onSort={toggleSort}
+                  />
+                  <SortableHead column="createdAt" label="Creada" sort={sort} onSort={toggleSort} />
+                  <SortableHead column="closedAt" label="Cerrada" sort={sort} onSort={toggleSort} />
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
