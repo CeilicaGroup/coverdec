@@ -73,6 +73,23 @@ function formatHms(ms: number) {
   return `${hh}:${mm}:${ss}`;
 }
 
+function resolveActiveTask(
+  queue: WorkerQueueTask[],
+  nextTask: WorkerQueueTask | null,
+  selectedTaskId: string | null,
+  openTimer: OpenTimerInfo | null,
+): WorkerQueueTask | null {
+  if (openTimer?.taskId) {
+    const timerTask = queue.find((t) => t.id === openTimer.taskId);
+    if (timerTask) return timerTask;
+  }
+  if (selectedTaskId) {
+    const selected = queue.find((t) => t.id === selectedTaskId);
+    if (selected && !selected.blockedReason) return selected;
+  }
+  return nextTask;
+}
+
 export function TaskQueuePanel({
   nextTask,
   queue,
@@ -107,6 +124,34 @@ export function TaskQueuePanel({
   const [showManual, setShowManual] = useState(false);
   const [showGroupedDialog, setShowGroupedDialog] = useState(false);
   const [groupedQuantity, setGroupedQuantity] = useState("1");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const activeTask = useMemo(
+    () => resolveActiveTask(queue, nextTask, selectedTaskId, openTimer),
+    [queue, nextTask, selectedTaskId, openTimer],
+  );
+
+  const recommendedTaskIndex = useMemo(() => {
+    if (!nextTask) return null;
+    const idx = queue.findIndex((t) => t.id === nextTask.id);
+    return idx >= 0 ? idx + 1 : null;
+  }, [queue, nextTask]);
+
+  const showsRecommendedHint = Boolean(
+    activeTask &&
+      nextTask &&
+      activeTask.id !== nextTask.id &&
+      !activeTask.blockedReason &&
+      recommendedTaskIndex != null,
+  );
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    const selected = queue.find((t) => t.id === selectedTaskId);
+    if (!selected || selected.blockedReason) {
+      setSelectedTaskId(null);
+    }
+  }, [queue, selectedTaskId]);
 
   useEffect(() => {
     if (!openTimer) return;
@@ -114,17 +159,18 @@ export function TaskQueuePanel({
     return () => clearInterval(t);
   }, [openTimer]);
 
-  const isTimerOnCurrentTask = Boolean(
-    openTimer && nextTask && openTimer.taskId && openTimer.taskId === nextTask.id,
+  const isTimerOnActiveTask = Boolean(
+    openTimer && activeTask && openTimer.taskId && openTimer.taskId === activeTask.id,
   );
-  const isNextTaskBlocked = Boolean(nextTask?.blockedReason);
-  const isGroupedNextTask = (nextTask?.groupPendingCount ?? 1) > 1;
-  const canCompleteSingle = !isNextTaskBlocked && (!openTimer || isTimerOnCurrentTask);
-  const canCompleteMultiple = !isNextTaskBlocked && isTimerOnCurrentTask;
+  const isTimerOnOtherTask = Boolean(openTimer && !isTimerOnActiveTask);
+  const isActiveTaskBlocked = Boolean(activeTask?.blockedReason);
+  const isGroupedActiveTask = (activeTask?.groupPendingCount ?? 1) > 1;
+  const canCompleteSingle = !isActiveTaskBlocked && (!openTimer || isTimerOnActiveTask);
+  const canCompleteMultiple = !isActiveTaskBlocked && isTimerOnActiveTask;
 
   useEffect(() => {
     setGroupedQuantity("1");
-  }, [nextTask?.id, nextTask?.groupPendingCount]);
+  }, [activeTask?.id, activeTask?.groupPendingCount]);
 
   const timerText = useMemo(() => {
     if (!openTimer) return null;
@@ -132,44 +178,86 @@ export function TaskQueuePanel({
     return formatHms(now - started);
   }, [now, openTimer]);
 
+  function renderQueueTaskDetails(t: WorkerQueueTask, idx: number) {
+    return (
+      <>
+        <div className="min-w-0">
+          <div className="text-xs text-muted-foreground truncate">{t.projectName}</div>
+          <div className="font-medium truncate">
+            {idx + 1}. {t.lampName}
+          </div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            Elemento: {t.elementLabel} · Medida: {t.measureLabel}
+          </div>
+          <div className="text-xs text-muted-foreground truncate flex items-center gap-1 flex-wrap">
+            <span>{processLabels[t.process] ?? t.process}</span>
+            <WorkOrderBadge
+              number={t.workOrderNumber}
+              status={t.workOrderStatus ?? undefined}
+            />
+          </div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {t.plannedRanges.length > 0
+              ? t.plannedRanges.join(" · ")
+              : "Sin franja planificada"}
+          </div>
+          {t.blockedReason ? (
+            <div className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
+              {t.blockedReason}
+            </div>
+          ) : null}
+        </div>
+        <div className="font-mono text-xs tabular-nums shrink-0">
+          {t.blockedReason ? "Bloqueada" : activeTask?.id === t.id ? "Activa" : "Libre"}
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-2">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
-            <span>Siguiente tarea</span>
+            <span>Tarea activa</span>
             {openTimer ? (
               <span className="font-mono text-sm text-muted-foreground">{timerText}</span>
             ) : null}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!nextTask ? (
+          {!activeTask ? (
             <div className="text-sm text-muted-foreground">No tienes tareas pendientes.</div>
           ) : (
             <>
-              <div {...withWorkOrderHighlight(nextTask.workOrderNumber, "space-y-1")}>
-                <div className="text-xs text-muted-foreground">{nextTask.projectName}</div>
-                <div className="text-lg font-semibold">{nextTask.lampName}</div>
+              <div {...withWorkOrderHighlight(activeTask.workOrderNumber, "space-y-1")}>
+                <div className="text-xs text-muted-foreground">{activeTask.projectName}</div>
+                <div className="text-lg font-semibold">{activeTask.lampName}</div>
                 <div className="text-xs text-muted-foreground">
-                  Elemento: {nextTask.elementLabel} · Medida: {nextTask.measureLabel}
+                  Elemento: {activeTask.elementLabel} · Medida: {activeTask.measureLabel}
                 </div>
                 <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span>{processLabels[nextTask.process] ?? nextTask.process} · No completada</span>
+                  <span>{processLabels[activeTask.process] ?? activeTask.process} · No completada</span>
                   <WorkOrderBadge
-                    number={nextTask.workOrderNumber}
-                    status={nextTask.workOrderStatus ?? undefined}
+                    number={activeTask.workOrderNumber}
+                    status={activeTask.workOrderStatus ?? undefined}
                   />
-                  {isGroupedNextTask ? (
-                    <span>· {nextTask.groupPendingCount} iguales pendientes</span>
+                  {isGroupedActiveTask ? (
+                    <span>· {activeTask.groupPendingCount} iguales pendientes</span>
                   ) : null}
                 </div>
-                {nextTask.blockedReason ? (
+                {activeTask.blockedReason ? (
                   <div className="text-xs text-amber-700 dark:text-amber-400">
-                    {nextTask.blockedReason}
+                    {activeTask.blockedReason}
                   </div>
                 ) : null}
-                {isGroupedNextTask && !isTimerOnCurrentTask ? (
+                {showsRecommendedHint && nextTask ? (
+                  <div className="text-xs text-muted-foreground">
+                    Tarea recomendada: #{recommendedTaskIndex} · {nextTask.lampName} ·{" "}
+                    {processLabels[nextTask.process] ?? nextTask.process}
+                  </div>
+                ) : null}
+                {isGroupedActiveTask && !isTimerOnActiveTask ? (
                   <div className="text-xs text-muted-foreground">
                     Para completar varias tareas agrupadas con reparto automático, inicia el timer
                     en esta tarea o usa registro manual.
@@ -177,33 +265,33 @@ export function TaskQueuePanel({
                 ) : null}
                 <div className="text-xs text-muted-foreground">
                   Horario planificado:{" "}
-                  {nextTask.plannedRanges.length > 0
-                    ? nextTask.plannedRanges.join(" · ")
+                  {activeTask.plannedRanges.length > 0
+                    ? activeTask.plannedRanges.join(" · ")
                     : "Sin franja planificada"}
                 </div>
               </div>
 
-              {openTimer && !isTimerOnCurrentTask ? (
+              {isTimerOnOtherTask ? (
                 <div className="rounded-md border p-3 text-sm">
                   <div className="font-medium">Tienes un timer activo</div>
                   <div className="text-muted-foreground">
-                    Proyecto: {openTimer.projectName}. Para continuar, primero para el contador.
+                    Proyecto: {openTimer!.projectName}. Para continuar, primero para el contador.
                   </div>
                 </div>
               ) : null}
 
-              <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-2", isGroupedNextTask && "lg:grid-cols-5", !isGroupedNextTask && "lg:grid-cols-4")}>
+              <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-2", isGroupedActiveTask && "lg:grid-cols-5", !isGroupedActiveTask && "lg:grid-cols-4")}>
                 <Button
-                  disabled={pending || !!openTimer || isNextTaskBlocked}
+                  disabled={pending || !!openTimer || isActiveTaskBlocked}
                   className="gap-2 w-full"
                   onClick={() => {
-                    if (!nextTask) return;
+                    if (!activeTask) return;
                     startTransition(async () => {
                       const result = await startTimer({
-                          projectId: nextTask.projectId,
-                          lampId: nextTask.lampId,
-                          taskId: nextTask.id,
-                          process: nextTask.process,
+                          projectId: activeTask.projectId,
+                          lampId: activeTask.lampId,
+                          taskId: activeTask.id,
+                          process: activeTask.process,
                         });
                       const outcome = handleActionResult("task-queue.start", result);
                       if (!outcome.success) {
@@ -241,20 +329,20 @@ export function TaskQueuePanel({
 
                 <Button
                   variant="secondary"
-                  disabled={pending || !nextTask || !canCompleteSingle}
+                  disabled={pending || !activeTask || !canCompleteSingle}
                   className={cn("gap-2 w-full")}
                   onClick={() => {
-                    if (!nextTask) return;
+                    if (!activeTask) return;
                     startTransition(async () => {
                       const result =
-                        isGroupedNextTask && openTimer && isTimerOnCurrentTask
+                        isGroupedActiveTask && openTimer && isTimerOnActiveTask
                           ? await recordAndCompleteGroupedOtTasks({
                               mode: "timer",
-                              taskId: nextTask.id,
+                              taskId: activeTask.id,
                               timerEntryId: openTimer.id,
                               quantity: 1,
                             })
-                          : await completeTask({ taskId: nextTask.id });
+                          : await completeTask({ taskId: activeTask.id });
                       const outcome = handleActionResult("task-queue.complete", result);
                       if (!outcome.success) {
                         toast.error(outcome.message);
@@ -267,10 +355,10 @@ export function TaskQueuePanel({
                   <CheckCircle2 className="size-4" />
                   Completar 1
                 </Button>
-                {isGroupedNextTask ? (
+                {isGroupedActiveTask ? (
                   <Button
                     variant="secondary"
-                    disabled={pending || !nextTask || !canCompleteMultiple}
+                    disabled={pending || !activeTask || !canCompleteMultiple}
                     className="gap-2 w-full"
                     onClick={() => setShowGroupedDialog(true)}
                   >
@@ -280,7 +368,7 @@ export function TaskQueuePanel({
                 ) : null}
                 <Button
                   variant="outline"
-                  disabled={pending || !nextTask}
+                  disabled={pending || !activeTask}
                   className="gap-2 w-full"
                   onClick={() => setShowManual((v) => !v)}
                 >
@@ -289,7 +377,7 @@ export function TaskQueuePanel({
                 </Button>
               </div>
 
-              {showManual && nextTask ? (
+              {showManual && activeTask ? (
                 <div className="rounded-md border p-3">
                   <ManualEntryForm
                     projects={projects}
@@ -297,11 +385,11 @@ export function TaskQueuePanel({
                     processLabels={processLabels}
                     lockTaskSelection
                     preset={{
-                      projectId: nextTask.projectId,
-                      lampId: nextTask.lampId,
-                      taskId: nextTask.id,
-                      process: nextTask.process,
-                      ranges: nextTask.plannedDateRanges,
+                      projectId: activeTask.projectId,
+                      lampId: activeTask.lampId,
+                      taskId: activeTask.id,
+                      process: activeTask.process,
+                      ranges: activeTask.plannedDateRanges,
                     }}
                   />
                 </div>
@@ -325,7 +413,7 @@ export function TaskQueuePanel({
                         </SelectTrigger>
                         <SelectContent>
                           {Array.from(
-                            { length: Math.max(1, nextTask?.groupPendingCount ?? 1) },
+                            { length: Math.max(1, activeTask?.groupPendingCount ?? 1) },
                             (_, idx) => idx + 1,
                           ).map((amount) => (
                             <SelectItem key={amount} value={String(amount)}>
@@ -349,14 +437,14 @@ export function TaskQueuePanel({
                       Cancelar
                     </Button>
                     <Button
-                      disabled={pending || !nextTask || !openTimer || !isTimerOnCurrentTask}
+                      disabled={pending || !activeTask || !openTimer || !isTimerOnActiveTask}
                       onClick={() => {
-                        if (!nextTask || !openTimer) return;
+                        if (!activeTask || !openTimer) return;
                         startTransition(async () => {
                           const quantity = Number(groupedQuantity) || 1;
                           const result = await recordAndCompleteGroupedOtTasks({
                             mode: "timer",
-                            taskId: nextTask.id,
+                            taskId: activeTask.id,
                             timerEntryId: openTimer.id,
                             quantity,
                           });
@@ -388,57 +476,54 @@ export function TaskQueuePanel({
           {queue.length === 0 ? (
             <div className="text-sm text-muted-foreground">Sin tareas pendientes.</div>
           ) : (
-            <ul className={cn("space-y-2", queue.length > 5 && "max-h-96 overflow-y-auto pr-1")}>
-              {queue.slice(0, 20).map((t, idx) => {
-                const isCurrent = nextTask?.id === t.id;
-                return (
-                  <li
-                    key={t.id}
-                    {...withWorkOrderHighlight(
-                      t.workOrderNumber,
-                      cn(
-                        "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
-                        isCurrent && "border-primary",
-                      ),
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs text-muted-foreground truncate">{t.projectName}</div>
-                      <div className="font-medium truncate">
-                        {idx + 1}. {t.lampName}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate">
-                        Elemento: {t.elementLabel} · Medida: {t.measureLabel}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate flex items-center gap-1 flex-wrap">
-                        <span>{processLabels[t.process] ?? t.process}</span>
-                        <WorkOrderBadge
-                          number={t.workOrderNumber}
-                          status={t.workOrderStatus ?? undefined}
-                        />
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate">
-                        {t.plannedRanges.length > 0
-                          ? t.plannedRanges.join(" · ")
-                          : "Sin franja planificada"}
-                      </div>
-                      {t.blockedReason ? (
-                        <div className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
-                          {t.blockedReason}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="font-mono text-xs tabular-nums">
-                      {t.blockedReason ? "Bloqueada" : "Libre"}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              <p className="text-xs text-muted-foreground">
+                Selecciona una tarea libre para fichar sobre ella.
+              </p>
+              <ul className={cn("space-y-2", queue.length > 5 && "max-h-96 overflow-y-auto pr-1")}>
+                {queue.slice(0, 20).map((t, idx) => {
+                  const isActive = activeTask?.id === t.id;
+                  const isFree = !t.blockedReason;
+
+                  if (isFree) {
+                    return (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTaskId(t.id)}
+                          {...withWorkOrderHighlight(
+                            t.workOrderNumber,
+                            cn(
+                              "flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted/50",
+                              isActive && "border-primary",
+                            ),
+                          )}
+                        >
+                          {renderQueueTaskDetails(t, idx)}
+                        </button>
+                      </li>
+                    );
+                  }
+
+                  return (
+                    <li
+                      key={t.id}
+                      {...withWorkOrderHighlight(
+                        t.workOrderNumber,
+                        cn(
+                          "flex items-center justify-between gap-3 rounded-md border px-3 py-2 opacity-70 cursor-not-allowed",
+                        ),
+                      )}
+                    >
+                      {renderQueueTaskDetails(t, idx)}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
