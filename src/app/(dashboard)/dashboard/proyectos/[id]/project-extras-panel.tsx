@@ -72,6 +72,10 @@ export function ProjectExtrasPanel({
     () => [...tasks].sort((a, b) => a.order - b.order),
     [tasks],
   );
+  const selectedNave = naves.find((n) => n.id === naveId);
+  const selectedNaveLabel = selectedNave
+    ? `${selectedNave.codigo} · ${selectedNave.nombre}`
+    : "Nave";
 
   function openDialog() {
     setProcess(availableProcesses[0] ?? "");
@@ -254,7 +258,7 @@ export function ProjectExtrasPanel({
                 <Label>Nave</Label>
                 <Select value={naveId} onValueChange={(v) => setNaveId(v ?? "")}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Nave" />
+                    <SelectValue placeholder="Nave">{selectedNaveLabel}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {naves.map((nave) => (
