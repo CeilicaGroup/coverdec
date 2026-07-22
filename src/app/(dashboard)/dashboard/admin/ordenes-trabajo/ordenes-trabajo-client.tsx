@@ -73,8 +73,8 @@ import {
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import type { EligibleWorkOrderTask } from "@/features/work-orders/queries";
 import {
+  WorkOrderTaskDetails,
   WorkOrderTaskPicker,
-  workOrderTaskLabel,
 } from "@/features/work-orders/work-order-task-picker";
 import { formatHours, formatShortDate } from "@/lib/format";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
@@ -866,21 +866,29 @@ export function OrdenesTrabajoClient({
                           return (
                             <div
                               key={taskId}
-                              {...withWorkOrderHighlight(editOrder.number, "flex items-center gap-2 p-2")}
+                              {...withWorkOrderHighlight(editOrder.number, "flex items-start gap-2 p-2")}
                             >
-                              <span className="font-mono text-xs w-5 text-muted-foreground">
+                              <span className="font-mono text-xs w-5 shrink-0 pt-0.5 text-muted-foreground">
                                 {index + 1}
                               </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm truncate">
-                                  {task ? workOrderTaskLabel(task) : taskId}
-                                </div>
-                                {assignee ? (
-                                  <div className="text-[10px] text-muted-foreground truncate">
-                                    Operario: {assignee.label}
-                                  </div>
-                                ) : null}
-                              </div>
+                              {task ? (
+                                <WorkOrderTaskDetails
+                                  task={task}
+                                  processStylesByCode={processStylesByCode}
+                                  typologyImages={typologyImages}
+                                  elementTypeImages={elementTypeImages}
+                                  secondaryLine={
+                                    assignee ? (
+                                      <div className="text-[10px] text-muted-foreground truncate">
+                                        Operario: {assignee.label}
+                                      </div>
+                                    ) : null
+                                  }
+                                />
+                              ) : (
+                                <div className="min-w-0 flex-1 text-sm truncate">{taskId}</div>
+                              )}
+                              <div className="flex shrink-0 items-center gap-0">
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -910,6 +918,7 @@ export function OrdenesTrabajoClient({
                               >
                                 <Trash2 className="size-3.5 text-destructive" />
                               </Button>
+                              </div>
                             </div>
                           );
                         })
@@ -985,13 +994,13 @@ export function OrdenesTrabajoClient({
                             checked={splitTaskIds.includes(task.id)}
                             onCheckedChange={() => toggleSplitTask(task.id)}
                           />
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="text-sm font-medium truncate">
-                              {workOrderTaskLabel(task)}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground">
-                              {formatHours(task.estimatedHours)}
-                            </div>
+                          <div className="min-w-0 flex-1">
+                            <WorkOrderTaskDetails
+                              task={task}
+                              processStylesByCode={processStylesByCode}
+                              typologyImages={typologyImages}
+                              elementTypeImages={elementTypeImages}
+                            />
                           </div>
                         </label>
                       ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -28,7 +28,7 @@ import { formatHours } from "@/lib/format";
 import { IMPREVISTA_PROCESS_CODE } from "@/features/ad-hoc/constants";
 import { internalProjectDisplayLabel } from "@/lib/project-kind";
 
-function taskLabel(task: WorkOrderTaskFilterable) {
+function workOrderTaskTitle(task: WorkOrderTaskFilterable) {
   const projectLabel = internalProjectDisplayLabel(
     task.project.kind,
     task.project.name,
@@ -38,7 +38,52 @@ function taskLabel(task: WorkOrderTaskFilterable) {
     return `${projectLabel} · ${description}`;
   }
   const element = getTaskLampElementVisualProps(task).label;
-  return `${projectLabel} · ${task.lamp.name}${element ? ` · ${element}` : ""} · ${task.processDefinition.label}`;
+  return `${projectLabel} · ${task.lamp.name}${element ? ` · ${element}` : ""}`;
+}
+
+function taskLabel(task: WorkOrderTaskFilterable) {
+  if (task.process === IMPREVISTA_PROCESS_CODE) {
+    return workOrderTaskTitle(task);
+  }
+  return `${workOrderTaskTitle(task)} · ${task.processDefinition.label}`;
+}
+
+export function WorkOrderTaskDetails<T extends WorkOrderTaskFilterable>({
+  task,
+  processStylesByCode,
+  typologyImages,
+  elementTypeImages,
+  showHours = true,
+  secondaryLine,
+}: {
+  task: T;
+  processStylesByCode: Record<string, ProcessBadgeStyle>;
+  typologyImages?: TypologyImageAvailability;
+  elementTypeImages?: ElementTypeImageAvailability;
+  showHours?: boolean;
+  secondaryLine?: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 flex-1 space-y-1">
+      <div className="text-sm font-medium truncate">{workOrderTaskTitle(task)}</div>
+      {secondaryLine}
+      <LampElementVisual
+        {...getTaskLampElementVisualProps(task)}
+        typologyImages={typologyImages}
+        elementTypeImages={elementTypeImages}
+        size="sm"
+        compact
+      />
+      <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+        <span className="font-mono">{task.nave.codigo}</span>
+        <ProcessBadge
+          code={task.process}
+          definition={processStylesByCode[task.process]}
+        />
+        {showHours ? <span>{formatHours(task.estimatedHours)}</span> : null}
+      </div>
+    </div>
+  );
 }
 
 export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
@@ -201,24 +246,12 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
                     onCheckedChange={() => onToggle(task.id)}
                   />
                 ) : null}
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="text-sm font-medium truncate">{taskLabel(task)}</div>
-                  <LampElementVisual
-                    {...getTaskLampElementVisualProps(task)}
-                    typologyImages={typologyImages}
-                    elementTypeImages={elementTypeImages}
-                    size="sm"
-                    compact
-                  />
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                    <span className="font-mono">{task.nave.codigo}</span>
-                    <ProcessBadge
-                      code={task.process}
-                      definition={processStylesByCode[task.process]}
-                    />
-                    <span>{formatHours(task.estimatedHours)}</span>
-                  </div>
-                </div>
+                <WorkOrderTaskDetails
+                  task={task}
+                  processStylesByCode={processStylesByCode}
+                  typologyImages={typologyImages}
+                  elementTypeImages={elementTypeImages}
+                />
               </>
             );
 
