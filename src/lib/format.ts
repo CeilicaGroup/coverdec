@@ -70,6 +70,21 @@ export function formatShortDate(date: Date | string | null | undefined): string 
   });
 }
 
+/** Fecha corta con hora (ej. 22/07/2026 14:30). */
+export function formatShortDateTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: DEFAULT_DISPLAY_TIME_ZONE,
+  });
+}
+
 /** Eje de calendario / grid: día y mes cortos con año (ej. 19 may 2026). */
 export function formatDayMonthYear(date: Date | string | null | undefined): string {
   if (!date) return "—";

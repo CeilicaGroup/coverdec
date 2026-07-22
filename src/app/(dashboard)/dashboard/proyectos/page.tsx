@@ -17,7 +17,7 @@ import {
 import {
   daysUntil,
   formatHours,
-  formatShortDate,
+  formatShortDateTime,
   riskFromDelivery,
 } from "@/lib/format";
 import { RiskBadge } from "@/components/risk-badge";
@@ -385,7 +385,7 @@ export default async function ProyectosPage({
                       <RiskBadge level={riskFromDelivery(p.deliveryDate)} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {formatShortDate(p.deliveryDate)}
+                      {formatShortDateTime(p.deliveryDate)}
                       {p.deliveryDate && (
                         <div className="text-[10px] text-muted-foreground">
                           {daysUntil(p.deliveryDate)}d

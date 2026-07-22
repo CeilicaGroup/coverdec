@@ -26,6 +26,7 @@ import {
 import { createProject } from "@/features/projects/actions";
 import { ProjectKind } from "@/generated/prisma";
 import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
+import { fromDatetimeLocalInputValue } from "@/lib/datetime-local";
 import { toast } from "sonner";
 
 export function CreateProjectDialog({
@@ -63,7 +64,9 @@ export function CreateProjectDialog({
                   name,
                   client: client || undefined,
                   obra: obra || undefined,
-                  deliveryDate: deliveryDate || undefined,
+                  deliveryDate: deliveryDate
+                    ? fromDatetimeLocalInputValue(deliveryDate)
+                    : undefined,
                   isBillable,
                   kind,
                   responsibleUserId: responsibleUserId ?? undefined,
@@ -93,9 +96,9 @@ export function CreateProjectDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Fecha entrega</Label>
+            <Label>Fecha y hora de entrega</Label>
             <Input
-              type="date"
+              type="datetime-local"
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
             />

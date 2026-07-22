@@ -29,6 +29,10 @@ import { updateProject } from "@/features/projects/actions";
 import { ProjectKind, ProjectApprovalStatus } from "@/generated/prisma";
 import { PROJECT_KINDS, PROJECT_KIND_LABELS } from "@/lib/project-kind";
 import { PROJECT_APPROVAL_STATUS_LABELS } from "@/lib/project-approval";
+import {
+  fromDatetimeLocalInputValue,
+  toDatetimeLocalInputValue,
+} from "@/lib/datetime-local";
 import { toast } from "sonner";
 
 export interface EditableProject {
@@ -44,9 +48,9 @@ export interface EditableProject {
   responsibleUserId?: string | null;
 }
 
-function toDateInputValue(date: Date | null): string {
+function toDeliveryInputValue(date: Date | null): string {
   if (!date) return "";
-  return date.toISOString().slice(0, 10);
+  return toDatetimeLocalInputValue(date);
 }
 
 export function EditProjectDialog({
@@ -64,7 +68,7 @@ export function EditProjectDialog({
   const [name, setName] = useState(project.name);
   const [client, setClient] = useState(project.client ?? "");
   const [obra, setObra] = useState(project.obra ?? "");
-  const [deliveryDate, setDeliveryDate] = useState(toDateInputValue(project.deliveryDate));
+  const [deliveryDate, setDeliveryDate] = useState(toDeliveryInputValue(project.deliveryDate));
   const [isBillable, setIsBillable] = useState(project.isBillable);
   const [kind, setKind] = useState<ProjectKind>(project.kind);
   const [notes, setNotes] = useState(project.notes ?? "");
@@ -77,7 +81,7 @@ export function EditProjectDialog({
     setName(project.name);
     setClient(project.client ?? "");
     setObra(project.obra ?? "");
-    setDeliveryDate(toDateInputValue(project.deliveryDate));
+    setDeliveryDate(toDeliveryInputValue(project.deliveryDate));
     setIsBillable(project.isBillable);
     setKind(project.kind);
     setNotes(project.notes ?? "");
@@ -125,7 +129,9 @@ export function EditProjectDialog({
                   name,
                   client: client || undefined,
                   obra: obra || undefined,
-                  deliveryDate: deliveryDate || undefined,
+                  deliveryDate: deliveryDate
+                    ? fromDatetimeLocalInputValue(deliveryDate)
+                    : undefined,
                   isBillable,
                   kind,
                   responsibleUserId: responsibleUserId ?? undefined,
@@ -155,9 +161,9 @@ export function EditProjectDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Fecha entrega</Label>
+            <Label>Fecha y hora de entrega</Label>
             <Input
-              type="date"
+              type="datetime-local"
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
             />

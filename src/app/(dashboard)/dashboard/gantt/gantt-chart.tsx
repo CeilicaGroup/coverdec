@@ -36,7 +36,7 @@ import {
   slotToStartMinutes,
   timelineHoverSummary,
 } from "@/features/planning/gantt-timeline";
-import { formatDayMonthYear, formatHours, formatShortDate } from "@/lib/format";
+import { formatDayMonthYear, formatHours, formatShortDate, formatShortDateTime } from "@/lib/format";
 import { toUtcDay } from "@/lib/week";
 import { cn } from "@/lib/utils";
 import { computeTaskProgress } from "@/features/planning/task-progress";
@@ -402,7 +402,7 @@ function DeliveryDiamond({
     <div
       className="absolute top-0 bottom-0 z-20 flex items-center pointer-events-none"
       style={{ left: `${((delivIdx + 1) / total) * 100}%` }}
-      title={`Entrega ${formatShortDate(parseUtc(deliveryDate))}`}
+      title={`Entrega ${formatShortDateTime(parseUtc(deliveryDate))}`}
     >
       <svg
         width="10"

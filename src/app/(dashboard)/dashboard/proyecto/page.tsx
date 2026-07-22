@@ -39,6 +39,7 @@ import {
   daysUntil,
   formatHours,
   formatShortDate,
+  formatShortDateTime,
   formatTimeRangeFromStartAndHours,
   riskFromPlannedEnd,
 } from "@/lib/format";
@@ -229,7 +230,7 @@ export default async function ProyectoPage({
                   <span>
                     Entrega:{" "}
                     <span className="font-mono font-semibold text-foreground">
-                      {formatShortDate(row.project.deliveryDate)}
+                      {formatShortDateTime(row.project.deliveryDate)}
                     </span>
                   </span>
                   <span>

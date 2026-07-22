@@ -16,7 +16,7 @@ import {
   parseWeekParam,
   weekDays,
 } from "@/lib/week";
-import { formatHours, formatShortDate } from "@/lib/format";
+import { formatHours, formatShortDate, formatShortDateTime } from "@/lib/format";
 import type { ProcessCode } from "@/types/process";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absence-model";
@@ -523,7 +523,7 @@ function ProjectsTable({
                       <RiskBadge level={row.risk} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {formatShortDate(row.deliveryDate)}
+                      {formatShortDateTime(row.deliveryDate)}
                     </TableCell>
                     <TableCell>
                       <span

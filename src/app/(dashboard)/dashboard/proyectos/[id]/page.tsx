@@ -11,7 +11,7 @@ import { RiskBadge } from "@/components/risk-badge";
 import {
   daysUntil,
   formatHours,
-  formatShortDate,
+  formatShortDateTime,
   riskFromDelivery,
 } from "@/lib/format";
 import { AddLampForm } from "./add-lamp-form";
@@ -325,7 +325,7 @@ export default async function ProjectDetailPage({
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi label="Entrega" value={formatShortDate(project.deliveryDate)} sub={`${daysUntil(project.deliveryDate) ?? "—"} días`} />
+        <Kpi label="Entrega" value={formatShortDateTime(project.deliveryDate)} sub={`${daysUntil(project.deliveryDate) ?? "—"} días`} />
         <Kpi label="Estimado" value={formatHours(totalEstimated)} sub={`${allTasks.length} tareas`} />
         <Kpi label="Asignado" value={formatHours(totalAssigned)} sub="En planning" />
         <Kpi label="Hecho" value={formatHours(totalDone)} sub={`${totalEstimated > 0 ? Math.round((totalDone / totalEstimated) * 100) : 0}% avance`} />
