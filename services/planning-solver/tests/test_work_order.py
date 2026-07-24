@@ -278,3 +278,67 @@ def test_work_order_worker_cannot_interleave_other_tasks():
 
     if fill_slots[0].personId == worker:
         assert fill_end <= ot_start or fill_start >= ot_end
+
+
+def test_work_order_can_split_across_short_horizon():
+    """OT that does not fit in the remaining day: place prefix, leave rest unscheduled."""
+    friday = date(2026, 5, 8)  # day-index 4 from Monday 2026-05-04
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[
+                EngineProcessDef(code="CNC", waitHours=24),
+                EngineProcessDef(code="FILL", waitHours=0),
+            ],
+            people=[
+                EnginePerson(
+                    id="op-a",
+                    iniciales="OA",
+                    primary=["CNC", "FILL"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="t-cnc",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="CNC",
+                    pendingHours=4,
+                    workOrderId="wo-cut",
+                    workOrderSequence=0,
+                ),
+                EngineTask(
+                    id="t-fill",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=1,
+                    process="FILL",
+                    pendingHours=4,
+                    workOrderId="wo-cut",
+                    workOrderSequence=1,
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["op-a"]),
+            firstSchedulableDayIndex=4,
+        ),
+    )
+
+    assert result.assignments, "expected prefix of the OT to be scheduled"
+    assert all(a.date == friday for a in result.assignments)
+    assert {a.personId for a in result.assignments} == {"op-a"}
+    assigned_tasks = {a.taskId for a in result.assignments}
+    assert "t-cnc" in assigned_tasks
+    assert "t-fill" not in assigned_tasks
+    assert result.unscheduledHours >= 4

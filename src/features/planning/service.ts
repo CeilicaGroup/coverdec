@@ -16,6 +16,10 @@ import {
   type Prisma,
 } from "@/generated/prisma";
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
+import {
+  buildUnscheduledPlanningFailure,
+  planningErrorFromMessage,
+} from "@/features/planning/planning-generation-error";
 import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 import { assertNaveSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
 import { assertPlanningAssignmentsWorkOrderWorkers } from "@/features/work-orders/validate-planning-assignments";
@@ -54,39 +58,6 @@ const PLANNING_WRITE_TX_MS = 30_000;
 const ENGINE_HORIZON_DAYS = 5;
 /** Por debajo de 15 min de hueco sin colocar no bloqueamos el guardado del borrador. */
 const UNSCHEDULED_FAIL_THRESHOLD_HOURS = 0.25;
-
-function buildUnscheduledPlanningError(args: {
-  totalUnplaced: number;
-  deferredHours: number;
-  warnings: { taskId: string; reason: string }[];
-}): string {
-  const warningCount = args.warnings.length;
-  const reasonCounts = new Map<string, number>();
-  for (const warning of args.warnings) {
-    reasonCounts.set(warning.reason, (reasonCounts.get(warning.reason) ?? 0) + 1);
-  }
-  const topReasons = [...reasonCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([reason, count]) => `${reason} (${count} tarea(s))`);
-
-  const reasonSummary =
-    topReasons.length > 0
-      ? ` Motivos principales: ${topReasons.join("; ")}.`
-      : "";
-  const deferredSummary =
-    args.deferredHours > 0
-      ? ` Además, ${args.deferredHours.toFixed(1)}h quedaron aplazadas por secado/cadena.`
-      : "";
-
-  return (
-    `No se ha podido generar planning para esta semana: capacidad insuficiente. ` +
-    `Quedaron ${args.totalUnplaced.toFixed(1)}h sin asignar en ${warningCount} tarea(s).` +
-    reasonSummary +
-    deferredSummary +
-    " Revisa capacidad, especialidades, bloqueos de secado y fecha de inicio de planificación."
-  );
-}
 
 function toOverrideSlice(
   assignment: Pick<
@@ -346,7 +317,7 @@ export async function generatePlanning(
         : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
-      throw new Error(err.message);
+      throw planningErrorFromMessage(err.message);
     }
     throw err;
   }
@@ -394,13 +365,12 @@ export async function generatePlanning(
     mergedAssignments.length === 0 &&
     totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
   ) {
-    throw new Error(
-      buildUnscheduledPlanningError({
-        totalUnplaced,
-        deferredHours,
-        warnings: result.warnings,
-      }),
-    );
+    throw await buildUnscheduledPlanningFailure({
+      totalUnplaced,
+      deferredHours,
+      warnings: result.warnings,
+      firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
+    });
   }
 
   const planning = await prisma.$transaction(
@@ -575,7 +545,7 @@ export async function generateGlobalPlanning(args: {
         : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
-      throw new Error(err.message);
+      throw planningErrorFromMessage(err.message);
     }
     throw err;
   }
@@ -624,13 +594,12 @@ export async function generateGlobalPlanning(args: {
     mergedAssignments.length === 0 &&
     totalUnplaced > UNSCHEDULED_FAIL_THRESHOLD_HOURS
   ) {
-    throw new Error(
-      buildUnscheduledPlanningError({
-        totalUnplaced,
-        deferredHours,
-        warnings: result.warnings,
-      }),
-    );
+    throw await buildUnscheduledPlanningFailure({
+      totalUnplaced,
+      deferredHours,
+      warnings: result.warnings,
+      firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
+    });
   }
 
   const assignmentsByNaveId = new Map<string, EngineAssignment[]>();

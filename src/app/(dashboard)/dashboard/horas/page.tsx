@@ -228,6 +228,7 @@ export default async function HorasPage() {
             order: true,
             systemKind: true,
             workOrderId: true,
+            estimatedHours: true,
             project: { select: { id: true, name: true } },
             lamp: {
               select: {
@@ -249,6 +250,67 @@ export default async function HorasPage() {
             workOrder: { select: { number: true, status: true } },
           },
         });
+
+  const workOrderIds = [
+    ...new Set(assignedTasks.map((t) => t.workOrderId).filter((id): id is string => Boolean(id))),
+  ];
+  const [workOrderHoursRows, workOrderTasksForProgress] = await Promise.all([
+    workOrderIds.length === 0
+      ? Promise.resolve([])
+      : prisma.task.groupBy({
+          by: ["workOrderId"],
+          where: { workOrderId: { in: workOrderIds } },
+          _sum: { estimatedHours: true },
+        }),
+    workOrderIds.length === 0
+      ? Promise.resolve([])
+      : prisma.task.findMany({
+          where: { workOrderId: { in: workOrderIds } },
+          select: {
+            workOrderId: true,
+            lampId: true,
+            lampElementId: true,
+            isCompleted: true,
+          },
+        }),
+  ]);
+  const workOrderEstimatedHours = new Map(
+    workOrderHoursRows
+      .filter((row) => row.workOrderId != null)
+      .map((row) => [row.workOrderId!, row._sum.estimatedHours ?? 0]),
+  );
+
+  /** Por OT: elementos hechos / total (clave = lampElementId ?? lampId). */
+  const workOrderElementProgress = new Map<
+    string,
+    { done: number; total: number }
+  >();
+  {
+    const byWo = new Map<
+      string,
+      Map<string, { total: number; completed: number }>
+    >();
+    for (const task of workOrderTasksForProgress) {
+      if (!task.workOrderId) continue;
+      const elementKey = task.lampElementId ?? task.lampId;
+      let elements = byWo.get(task.workOrderId);
+      if (!elements) {
+        elements = new Map();
+        byWo.set(task.workOrderId, elements);
+      }
+      const entry = elements.get(elementKey) ?? { total: 0, completed: 0 };
+      entry.total += 1;
+      if (task.isCompleted) entry.completed += 1;
+      elements.set(elementKey, entry);
+    }
+    for (const [woId, elements] of byWo) {
+      let done = 0;
+      for (const entry of elements.values()) {
+        if (entry.completed === entry.total) done += 1;
+      }
+      workOrderElementProgress.set(woId, { done, total: elements.size });
+    }
+  }
 
   const groupedPendingCount = new Map<string, number>();
   for (const task of assignedTasks) {
@@ -327,6 +389,16 @@ export default async function HorasPage() {
       measureLabel: formatTaskMeasure({ lamp: t.lamp, lampElement: t.lampElement }),
       process: t.process,
       order: t.order,
+      estimatedHours: t.estimatedHours,
+      workOrderEstimatedHours: t.workOrderId
+        ? (workOrderEstimatedHours.get(t.workOrderId) ?? null)
+        : null,
+      workOrderElementsDone: t.workOrderId
+        ? (workOrderElementProgress.get(t.workOrderId)?.done ?? null)
+        : null,
+      workOrderElementsTotal: t.workOrderId
+        ? (workOrderElementProgress.get(t.workOrderId)?.total ?? null)
+        : null,
       plannedRanges: taskRanges.get(t.id) ?? [],
       plannedDateRanges: taskDateRanges.get(t.id) ?? [],
       blockedReason: blockedReasonForTask(t),

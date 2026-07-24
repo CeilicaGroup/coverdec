@@ -105,7 +105,23 @@ function usePlanningJobPolling(enabled: boolean) {
         );
         router.refresh();
       } else if (jobStatus.status === "FAILED") {
-        toast.error(jobStatus.error ?? "Error generando planning");
+        const failureWarnings = jobStatus.result?.warnings ?? [];
+        const failureUnscheduled = jobStatus.result?.totalUnscheduledHours ?? 0;
+        setPlanningWarnings(failureWarnings);
+        setUnscheduledHours(failureUnscheduled);
+
+        const summary = jobStatus.error ?? "Error generando planning";
+        toast.error(
+          summary,
+          failureWarnings.length > 0
+            ? {
+                action: {
+                  label: "Ver avisos",
+                  onClick: () => setWarningsOpen(true),
+                },
+              }
+            : undefined,
+        );
         router.refresh();
       }
     },

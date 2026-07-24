@@ -17,6 +17,10 @@ import {
 import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import { assertPlanFromDateInWorkWeek } from "./plan-from";
 import { getMondayOf } from "@/lib/week";
+import {
+  isPlanningGenerationError,
+  planningErrorFromMessage,
+} from "./planning-generation-error";
 
 const log = childLogger({ module: "planning.job" });
 
@@ -273,15 +277,24 @@ export async function executePlanningJob(jobId: string): Promise<void> {
       "planning job completed",
     );
   } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Error desconocido";
+    const structured = isPlanningGenerationError(err)
+      ? err
+      : planningErrorFromMessage(
+          err instanceof Error ? err.message : "Error desconocido",
+        );
 
     await prisma.planningJob.update({
       where: { id: jobId },
       data: {
         status: PlanningJobStatus.FAILED,
         completedAt: new Date(),
-        error: errorMessage,
+        error: structured.summary,
+        result: {
+          weeksGenerated: 0,
+          totalAssignments: 0,
+          totalUnscheduledHours: structured.unscheduledHours,
+          warnings: structured.warnings,
+        } satisfies PlanningJobResult,
       },
     });
 

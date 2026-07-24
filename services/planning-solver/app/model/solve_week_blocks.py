@@ -841,7 +841,7 @@ def _add_work_order_constraints(
 ) -> None:
     if by_wo is None:
         by_wo = _tasks_by_work_order(data.tasks)
-    for wo_tasks in by_wo.values():
+    for wo_id, wo_tasks in by_wo.items():
         if len(wo_tasks) < 2:
             continue
 
@@ -850,20 +850,24 @@ def _add_work_order_constraints(
             for bv in mv.by_task.get(task.id, []):
                 blocks_by_person[bv.block.person_id].append(bv)
 
-        for person_blocks in blocks_by_person.values():
-            if len(person_blocks) < 2:
+        # Un operario por OT, pero presence independiente por tarea: permite cortar
+        # la OT al final de la ventana y continuar la semana siguiente.
+        person_active: list[cp_model.BoolVar] = []
+        for person_id, person_blocks in blocks_by_person.items():
+            if not person_blocks:
                 continue
-            hub = person_blocks[0].presence
-            for bv in person_blocks[1:]:
-                model.Add(bv.presence == hub)
+            if len(person_blocks) == 1:
+                person_active.append(person_blocks[0].presence)
+                continue
+            active = model.NewBoolVar(f"wo_active_{wo_id}_{person_id}")
+            model.AddBoolOr([bv.presence for bv in person_blocks]).OnlyEnforceIf(active)
+            model.AddBoolAnd(
+                [bv.presence.Not() for bv in person_blocks],
+            ).OnlyEnforceIf(active.Not())
+            person_active.append(active)
 
-        person_hubs = [
-            blocks[0].presence
-            for blocks in blocks_by_person.values()
-            if blocks
-        ]
-        if len(person_hubs) > 1:
-            model.Add(sum(person_hubs) <= 1)
+        if len(person_active) > 1:
+            model.Add(sum(person_active) <= 1)
 
         for pred, succ in zip(wo_tasks, wo_tasks[1:]):
             pred_demand = data.demand_q.get(pred.id, 0)
@@ -995,8 +999,16 @@ def _add_work_order_no_interleave(
             if not ot_blocks:
                 continue
 
-            # Presencia ya acoplada en _add_work_order_constraints.
-            wo_active = ot_blocks[0].presence
+            if len(ot_blocks) == 1:
+                wo_active = ot_blocks[0].presence
+            else:
+                wo_active = model.NewBoolVar(f"wo_ni_active_{wo_id}_{person_id}")
+                model.AddBoolOr([bv.presence for bv in ot_blocks]).OnlyEnforceIf(
+                    wo_active,
+                )
+                model.AddBoolAnd(
+                    [bv.presence.Not() for bv in ot_blocks],
+                ).OnlyEnforceIf(wo_active.Not())
 
             wo_start = model.NewIntVar(0, horizon, f"wo_ns_{wo_id}_{person_id}")
             wo_end = model.NewIntVar(0, horizon, f"wo_ne_{wo_id}_{person_id}")

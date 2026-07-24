@@ -25,6 +25,7 @@ import {
   startTimer,
   stopTimer,
 } from "@/features/time-tracking/actions";
+import { formatHoursAsHhMm } from "@/lib/format";
 import { ManualEntryForm } from "./manual-entry-form";
 
 export interface ManualBreakScheduleSnapshot {
@@ -48,6 +49,10 @@ export interface WorkerQueueTask {
   measureLabel: string;
   process: string;
   order: number;
+  estimatedHours: number;
+  workOrderEstimatedHours: number | null;
+  workOrderElementsDone: number | null;
+  workOrderElementsTotal: number | null;
   plannedRanges: string[];
   plannedDateRanges: { startedAt: string; endedAt: string }[];
   blockedReason: string | null;
@@ -71,6 +76,21 @@ function formatHms(ms: number) {
   const mm = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
+}
+
+function taskTimeSummary(task: Pick<WorkerQueueTask, "estimatedHours" | "workOrderEstimatedHours">) {
+  const taskLabel = `Tarea ${formatHoursAsHhMm(task.estimatedHours)}`;
+  if (task.workOrderEstimatedHours == null) return taskLabel;
+  return `${taskLabel} · OT ${formatHoursAsHhMm(task.workOrderEstimatedHours)}`;
+}
+
+function workOrderElementsLabel(
+  task: Pick<WorkerQueueTask, "workOrderElementsDone" | "workOrderElementsTotal">,
+): string | null {
+  if (task.workOrderElementsTotal == null || task.workOrderElementsDone == null) {
+    return null;
+  }
+  return `${task.workOrderElementsDone}/${task.workOrderElementsTotal} elementos`;
 }
 
 function resolveActiveTask(
@@ -178,10 +198,16 @@ export function TaskQueuePanel({
     return formatHms(now - started);
   }, [now, openTimer]);
 
+  const activeElementsLabel = activeTask ? workOrderElementsLabel(activeTask) : null;
+
   function renderQueueTaskDetails(t: WorkerQueueTask, idx: number) {
+    const elementsLabel = workOrderElementsLabel(t);
     return (
       <>
         <div className="min-w-0">
+          <div className="font-mono text-xs tabular-nums text-foreground truncate">
+            {taskTimeSummary(t)}
+          </div>
           <div className="text-xs text-muted-foreground truncate">{t.projectName}</div>
           <div className="font-medium truncate">
             {idx + 1}. {t.lampName}
@@ -195,6 +221,7 @@ export function TaskQueuePanel({
               number={t.workOrderNumber}
               status={t.workOrderStatus ?? undefined}
             />
+            {elementsLabel ? <span>· {elementsLabel}</span> : null}
           </div>
           <div className="text-[11px] text-muted-foreground truncate">
             {t.plannedRanges.length > 0
@@ -231,6 +258,14 @@ export function TaskQueuePanel({
           ) : (
             <>
               <div {...withWorkOrderHighlight(activeTask.workOrderNumber, "space-y-1")}>
+                <div className="font-mono text-base tabular-nums font-semibold">
+                  {taskTimeSummary(activeTask)}
+                </div>
+                {isTimerOnActiveTask && timerText ? (
+                  <div className="font-mono text-2xl tabular-nums font-semibold tracking-tight">
+                    Fichando {timerText}
+                  </div>
+                ) : null}
                 <div className="text-xs text-muted-foreground">{activeTask.projectName}</div>
                 <div className="text-lg font-semibold">{activeTask.lampName}</div>
                 <div className="text-xs text-muted-foreground">
@@ -242,6 +277,7 @@ export function TaskQueuePanel({
                     number={activeTask.workOrderNumber}
                     status={activeTask.workOrderStatus ?? undefined}
                   />
+                  {activeElementsLabel ? <span>· {activeElementsLabel}</span> : null}
                   {isGroupedActiveTask ? (
                     <span>· {activeTask.groupPendingCount} iguales pendientes</span>
                   ) : null}

@@ -8,6 +8,15 @@ export function formatHours(hours: number | null | undefined): string {
   return `${text}h`;
 }
 
+/** Horas decimales → duración HH:MM (p. ej. 2.5 → 02:30). */
+export function formatHoursAsHhMm(hours: number | null | undefined): string {
+  if (hours == null || !Number.isFinite(hours)) return "—";
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const mm = String(totalMinutes % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 const DEFAULT_DISPLAY_TIME_ZONE = "Europe/Madrid";
 
 function hourDecimalInZone(
