@@ -12,7 +12,7 @@ import { rangeLabel, slotEndToHour, slotToHour } from "@/features/planning/engin
 import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
-import { formatHours } from "@/lib/format";
+import { formatHoursAsHhMm } from "@/lib/format";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
 import { AdHocTaskNotesIcon, AdHocTaskNotesTooltip } from "@/features/planning/ad-hoc-task-notes";
 import { DeleteAdHocTaskButton } from "@/features/ad-hoc/delete-ad-hoc-task-button";
@@ -114,7 +114,7 @@ export function WeekDayTasks({
                 ? [
                     {
                       id: `plan-${t.id}`,
-                      label: `${dayKey} · ${rangeLabel(t.startSlot, t.endSlot)} · ${formatHours(t.hours)} · ${t.process}`,
+                      label: `${dayKey} · ${rangeLabel(t.startSlot, t.endSlot)} · ${formatHoursAsHhMm(t.hours)} · ${t.process}`,
                       kind: "plan" as const,
                     },
                   ]
@@ -195,7 +195,7 @@ export function WeekDayTasks({
                 className="font-mono text-[10px] font-bold ml-auto"
                 style={{ color: colors.fgColor }}
               >
-                {formatHours(t.hours)}
+                {formatHoursAsHhMm(t.hours)}
               </span>
             </div>
             {t.taskId && canSeeRecords ? (

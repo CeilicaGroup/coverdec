@@ -2,7 +2,7 @@ import type { ProgressStripe } from "@/components/task-progress";
 import { rangeLabel } from "@/features/planning/engine/slot-format";
 import type { ActualHourEntry } from "@/features/planning/queries";
 import type { PlanningAssignmentSlice } from "@/features/planning/planning-timeline";
-import { formatHours, formatShortDate } from "@/lib/format";
+import { formatHoursAsHhMm, formatShortDate } from "@/lib/format";
 import type { PersonWeekListMaps } from "./person-week-list";
 
 export function buildPersonWeekListMaps(
@@ -59,7 +59,7 @@ function buildItemsByTaskFromPlan(
       label: `${formatShortDate(assignment.date)} · ${rangeLabel(
         assignment.startSlot,
         assignment.endSlot,
-      )} · ${formatHours(assignment.hours)}`,
+      )} · ${formatHoursAsHhMm(assignment.hours)}`,
       kind: "plan",
     });
     map.set(assignment.task.id, list);

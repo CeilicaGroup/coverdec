@@ -18,7 +18,7 @@ import { computeTaskProgress } from "@/features/planning/task-progress";
 import { TaskProgressActionsPanel } from "@/features/time-tracking/task-progress-actions-panel";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { toIsoUtcFromDateAndHour } from "@/lib/datetime-local";
-import { formatHours, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import { formatHoursAsHhMm, formatShortDate, formatTimeRangeFromStartAndHours } from "@/lib/format";
 import { TaskSystemKind } from "@/generated/prisma";
 import {
   Table,
@@ -129,7 +129,7 @@ export function PersonWeekList({
                     )}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs font-semibold">
-                    {formatHours(e.hours)}
+                    {formatHoursAsHhMm(e.hours)}
                   </TableCell>
                   <TableCell>
                     {e.taskId && canSeeRecords ? (
@@ -208,7 +208,7 @@ export function PersonWeekList({
                     {formatTimeRangeFromStartAndHours(e.startedAt, e.hours)}
                   </div>
                 </div>
-                <div className="font-mono text-xs font-semibold">{formatHours(e.hours)}</div>
+                <div className="font-mono text-xs font-semibold">{formatHoursAsHhMm(e.hours)}</div>
               </div>
               <div>
                 <div className="font-semibold text-sm">{e.project?.name ?? "—"}</div>
@@ -332,7 +332,7 @@ export function PersonWeekList({
                 label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
                   item.assignment.startSlot,
                   item.assignment.endSlot,
-                )} · ${formatHours(item.assignment.hours)} · ${item.assignment.process}`,
+                )} · ${formatHoursAsHhMm(item.assignment.hours)} · ${item.assignment.process}`,
                 kind: "plan" as const,
               };
               const taskEntries = actualEntries
@@ -408,7 +408,7 @@ export function PersonWeekList({
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs font-semibold">
-                    {formatHours(item.assignment.hours)}
+                    {formatHoursAsHhMm(item.assignment.hours)}
                   </TableCell>
                   <TableCell>
                     {canSeeRecords ? (
@@ -477,7 +477,7 @@ export function PersonWeekList({
           label: `${formatShortDate(item.assignment.date)} · ${rangeLabel(
             item.assignment.startSlot,
             item.assignment.endSlot,
-          )} · ${formatHours(item.assignment.hours)} · ${item.assignment.process}`,
+          )} · ${formatHoursAsHhMm(item.assignment.hours)} · ${item.assignment.process}`,
           kind: "plan" as const,
         };
         const taskEntries = actualEntries
@@ -525,7 +525,7 @@ export function PersonWeekList({
                   />
                 ) : null}
                 <div className="font-mono text-xs font-semibold">
-                  {formatHours(item.assignment.hours)}
+                  {formatHoursAsHhMm(item.assignment.hours)}
                 </div>
               </div>
             </div>

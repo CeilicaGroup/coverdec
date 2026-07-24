@@ -1,7 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { formatHours } from "@/lib/format";
+import { formatHoursAsHhMm } from "@/lib/format";
 import type { TaskProgress } from "@/features/planning/task-progress";
 import { type ReactNode, useCallback, useState } from "react";
 import {
@@ -11,7 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TaskProgressTooltipContext } from "@/components/task-progress-tooltip-context";
-
+import { cn } from "@/lib/utils";
 export interface ProgressStripe {
   id: string;
   label: string;
@@ -110,9 +109,9 @@ export function TaskProgressInline({
         ? progress.actualHours > progress.plannedDueHours + 0.01
         : false;
   const diffText = showDiff
-    ? ` · ${diff >= 0 ? "+" : ""}${formatHours(diff)}`
+    ? ` · ${diff >= 0 ? "+" : "-"}${formatHoursAsHhMm(Math.abs(diff))}`
     : "";
-  const text = `${stateLabel(progress)} · ${formatHours(progress.actualHours)}${diffText}`;
+  const text = `${stateLabel(progress)} · ${formatHoursAsHhMm(progress.actualHours)}${diffText}`;
   const deduped = Array.from(
     new Map(stripes.map((s) => [`${s.kind}|${s.label}|${Boolean(s.isRunning)}`, s])).values(),
   );

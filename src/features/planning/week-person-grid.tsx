@@ -14,7 +14,7 @@ import {
 } from "@/features/planning/queries";
 import { formatActualEntrySummaryLabel } from "@/features/time-tracking/entry-label";
 import { absenceCoversCivilIso } from "@/features/people/absence-model";
-import { formatDayMonthYear, formatHours, formatTimeRangeFromStartAndHours } from "@/lib/format";
+import { formatDayMonthYear, formatHoursAsHhMm, formatTimeRangeFromStartAndHours } from "@/lib/format";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
 import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 import { WeekDayTasks } from "./week-day-tasks";
@@ -244,7 +244,7 @@ export function buildPersonTaskSummary(
             : "sin hora");
         list.push({
           id: cell.id,
-          label: `${date} · ${when} · ${formatHours(cell.hours)} · ${cell.process}`,
+          label: `${date} · ${when} · ${formatHoursAsHhMm(cell.hours)} · ${cell.process}`,
         });
         items.set(cell.taskId, list);
         if (cell.isRunning) running.set(cell.taskId, true);
@@ -390,7 +390,7 @@ export function PersonWeekCalendar({
                 </div>
                 {dayTotal > 0 ? (
                   <div className="text-center text-[10px] font-semibold text-muted-foreground border-t pt-1">
-                    {formatHours(dayTotal)}
+                    {formatHoursAsHhMm(dayTotal)}
                   </div>
                 ) : null}
               </div>
@@ -421,7 +421,7 @@ export function PersonWeekCalendar({
                   ) : null}
                   {dayTotal > 0 ? (
                     <span className="text-[10px] font-semibold text-muted-foreground">
-                      {formatHours(dayTotal)}
+                      {formatHoursAsHhMm(dayTotal)}
                     </span>
                   ) : null}
                 </div>

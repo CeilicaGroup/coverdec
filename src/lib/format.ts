@@ -54,7 +54,7 @@ export function formatTimeRangeFromStartAndHours(
   timeZone: string = DEFAULT_DISPLAY_TIME_ZONE,
 ): string {
   const endedAt = new Date(startedAt.getTime() + hours * 3_600_000);
-  return `${formatHours(hourDecimalInZone(startedAt, timeZone))}–${formatHours(hourDecimalInZone(endedAt, timeZone))}`;
+  return `${formatHoursAsHhMm(hourDecimalInZone(startedAt, timeZone))}–${formatHoursAsHhMm(hourDecimalInZone(endedAt, timeZone))}`;
 }
 
 export function formatDate(date: Date | string | null | undefined): string {

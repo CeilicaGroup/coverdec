@@ -1,4 +1,4 @@
-import { formatHours } from "@/lib/format";
+import { formatHoursAsHhMm } from "@/lib/format";
 import {
   AFTERNOON_END,
   AFTERNOON_START,
@@ -37,7 +37,7 @@ export function slotEndToHour(slot: number): number {
 }
 
 function _hourToLabel(hour: number): string {
-  return formatHours(hour);
+  return formatHoursAsHhMm(hour);
 }
 
 export function slotToLabel(slot: number): string {
