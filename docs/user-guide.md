@@ -1,56 +1,44 @@
-# Guía de uso rápida
+# Guía de uso
+
+La ayuda detallada vive en la aplicación: **`/dashboard/ayuda`**. El contenido **depende del rol** (Operario, Jefe de producción o Administrador), lo indica en pantalla y explica pantallas, botones y flujos con el detalle operativo.
+
+Abre **Operativa → Ayuda** para la guía completa. Este archivo es un resumen de referencia.
 
 ## Acceso
 
-1. Abre la URL de la aplicación.
-2. Inicia sesión (el administrador inicial se crea con `npm run db:seed` en desarrollo).
-3. Si tienes varias empresas asignadas, elige la activa desde el menú de usuario (esquina inferior del sidebar).
+1. **Iniciar sesión** con Email y Contraseña → **Entrar**.
+2. **Administrador**: **Selecciona tu nave** → **Entrar** (luego puedes usar **Todas** en el selector de Planning).
+3. Aterrizaje: Operario → **Mis horas**; Jefe/Admin → **Resumen**.
 
-## Roles
+## Roles (menú)
 
-- **Operario**: en **Por persona** solo ve su ficha si está vinculado a `Person`; registro de horas (timer o manual); lectura del resto del planning según permisos.
-- **Jefe de producción**: todo lo anterior más generar/publicar planning, costes, fábrica, órdenes de producción, proyectos y catálogo.
-- **Admin**: igual que jefe; pensado para configuración y soporte.
+| Rol | Ve |
+| --- | --- |
+| **Operario** | Fichaje, Mis horas, Notificaciones, Ayuda; Planning limitado (semana, persona, proyecto). |
+| **Jefe** | Planning completo, Catálogo, Costes, Operativa. Sin Admin. |
+| **Admin** | Todo lo del jefe + Naves, Usuarios, Trazabilidad, OT, Importar/exportar. Sin Mis horas en menú. |
 
-## Flujo semanal típico (jefe)
+## Planning (jefe / admin)
 
-1. **Resumen**: elige semana con las flechas del calendario.
-2. Pulsa **Generar planning** (borrador). En **Alcance** puedes elegir: esta semana, 1 mes (4 semanas), hasta acabar todos los proyectos, hasta acabar un proyecto concreto, o hasta una fecha. Revisa avisos de tareas no asignadas.
-3. Revisa **Vista semana** o **Vista mes** (calendario mensual con resumen por día; pulsa un día para abrir la semana), **Por persona**, **Por proyecto** y **Disponibilidad**.
-4. **Publicar** cuando el borrador sea válido.
-5. En **Por persona**, pulsa **Imprimir** para reparto en nave (ausencias y fichas por operario).
+1. Admin: selector de nave en **Todas** (si hay nave filtrada, Generar/Publicar/Deshacer están deshabilitados).
+2. **Resumen**: Alcance + Planificar desde → **Generar planning** (borrador, job async, **Avisos del planning**).
+3. Revisar vistas; **Publicar**. Admin puede previsualizar con **+ borrador**.
+4. **Deshacer** (bloqueado si hay registros de horas → usar **Regenerar**).
+5. Estrategias globales y por proyecto (presets A tiempo / Equilibrado / Mínimo coste).
 
-## Registro de horas (operario)
+## Operario
 
-1. **Mis horas**.
-2. **Timer**: proyecto (y opcionalmente lámpara/proceso) → Iniciar → Parar.
-3. **Manual**: fecha/hora inicio, horas, proyecto.
+- **Fichaje diario**: jornada y descansos.
+- **Mis horas**: cola (Activa / Libre / Bloqueada), **Iniciar** / **Parar**, **Completar 1** / **Completar varias**, **Registro manual**, imprevistas. Bloqueos por precedencia o secado.
 
-## Personal y especialidades
+## Catálogo y personal
 
-En **Personal** cada operario tiene procesos clasificados en dos niveles:
+- **Proyectos** → lámparas (elementos o horas) → checkbox **Aprobada** para entrar al planning.
+- **Elementos** / procesos: tiempos del catálogo.
+- **Personal**: Responsable vs Apoyo; horario; ausencias (regenerar planning tras cambios).
 
-| Nivel | Uso habitual | Impacto en el planning |
-| --- | --- | --- |
-| **Responsable** | Rol principal del proceso (p. ej. pintura, CNC). | El motor asigna primero a los responsables. |
-| **Apoyo / sustituto** | Puede cubrir el proceso cuando el responsable no está (ausencia, saturación) o tiene competencia secundaria. | Candidato secundario: recibe trabajo si hace falta cubrir huecos. |
+## Admin
 
-**Tiempos:** ninguna categoría modifica las horas estimadas de las tareas (vienen del catálogo y del bastidor). Solo influyen en **quién** puede ser asignado y en **qué orden de preferencia**.
+Usuarios (+ canales Interna/Email/Push), naves, trazabilidad, OT, importar/exportar Excel.
 
-**Lámparas por horas (presupuesto/prototipo):** si creas una lámpara con un total de horas en lugar de elementos, el planning puede asignarla a **cualquier operario activo de la nave**. No hace falta marcar la especialidad «Estimación manual» en Personal.
-
-## Fábrica
-
-Lista importada desde Excel; cambia **Estado** con el desplegable (requiere rol jefe/admin).
-
-## Órdenes de producción
-
-**Nueva OP** rellena proyecto y datos; **Imprimir** abre hoja con marca CONTRACT+ y Coverdec Innovación SL.
-
-## Importación Excel (técnicos)
-
-```bash
-npx tsx scripts/import-excels.ts
-```
-
-Idempotente: vuelve a ejecutar tras cambios en los xlsx si hace falta sincronizar (ajustar empresa en el script si aplica).
+Para FAQ y el detalle de cada botón, usa la ayuda in-app filtrada por tu rol.

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   CalendarDays,
   Bell,
+  CircleHelp,
   ClipboardList,
   Gauge,
   FileSpreadsheet,
@@ -67,6 +68,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/dashboard/fichaje-diario", label: "Fichaje diario", icon: Timer },
       { href: "/dashboard/horas", label: "Mis horas", icon: Timer, adminHidden: true },
       { href: "/dashboard/notificaciones", label: "Notificaciones", icon: Bell },
+      { href: "/dashboard/ayuda", label: "Ayuda", icon: CircleHelp },
     ],
   },
   {
