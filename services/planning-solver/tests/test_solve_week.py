@@ -737,6 +737,50 @@ def test_owner_person_id_pins_worker():
     assert all(a.personId == "op-b" for a in task_assignments)
 
 
+def test_missing_owner_falls_back_to_specialty_candidates():
+    """If ownerPersonId is unavailable, use operators with the process specialty."""
+    result = run_solve(
+        SolveRequest(
+            weekStart=WEEK_START,
+            processes=[EngineProcessDef(code="CNC")],
+            people=[
+                EnginePerson(
+                    id="op-new",
+                    iniciales="ON",
+                    primary=["CNC"],
+                    fallback=[],
+                    capacityHours=8,
+                    hourlyRate=14.75,
+                    overtimeHourlyRate=22.13,
+                ),
+            ],
+            tasks=[
+                EngineTask(
+                    id="task-a",
+                    projectId="p1",
+                    projectPriority=50,
+                    projectDeliveryDate=datetime(2026, 6, 1),
+                    lampId="l1",
+                    order=0,
+                    process="CNC",
+                    pendingHours=4,
+                    ownerPersonId="op-gone",
+                ),
+            ],
+            weights=PlanningWeights(
+                wLate=1, wUnscheduled=5, wLoadBalance=0, wMove=0, wLaborCost=0
+            ),
+            schedules=_schedules(["op-new"]),
+        ),
+    )
+
+    assert result.unscheduledHours == 0
+    assert not any("NO_CANDIDATE:" in w.reason for w in result.warnings)
+    task_assignments = [a for a in result.assignments if a.taskId == "task-a"]
+    assert task_assignments
+    assert all(a.personId == "op-new" for a in task_assignments)
+
+
 def test_health_endpoint():
     from fastapi.testclient import TestClient
     from app.main import app

@@ -1,6 +1,5 @@
 import { childLogger } from "@/lib/logger";
 import {
-  formatNoCandidateWarning,
   isNoCandidateWarning,
   parseSolverResponse,
   serializeSolverInput,
@@ -189,7 +188,11 @@ export async function callPlanningSolver(
   );
   if (noCandidateWarnings.length > 0) {
     throw new SolverInfeasibleError(
-      noCandidateWarnings.map((w) => formatNoCandidateWarning(w.taskId, w.reason)).join("\n"),
+      "No se ha podido generar planning: faltan operarios o capacidad en alguna tarea.",
+      noCandidateWarnings.map((w) => ({
+        taskId: w.taskId,
+        reason: w.reason,
+      })),
     );
   }
 

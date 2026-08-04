@@ -15,6 +15,7 @@ export {
   SOLVER_NO_CANDIDATE_PREFIX,
   formatNoCandidateWarning,
   isNoCandidateWarning,
+  stripNoCandidatePrefix,
 } from "./solver-types";
 export { serializeSolverInput } from "./solver-types";
 

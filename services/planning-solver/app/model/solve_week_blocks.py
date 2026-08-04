@@ -326,11 +326,11 @@ def _max_demand_by_person(
             continue
         demand_q = round(task.pendingHours * QUARTERS_PER_HOUR)
         if task.ownerPersonId:
-            if task.ownerPersonId in people_by_id:
-                result[task.ownerPersonId] = max(
-                    result[task.ownerPersonId], demand_q,
-                )
-            continue
+            owner = people_by_id.get(task.ownerPersonId)
+            if owner and owner.naveId == task.naveId:
+                result[owner.id] = max(result[owner.id], demand_q)
+                continue
+            # Dueño ausente: atribuir demanda a candidatos por especialidad.
         for person in _task_candidates_cached(
             people_by_id,
             candidate_cache,
@@ -682,7 +682,9 @@ def _build_block_variables(
 def _task_candidates(data: ProblemData, task: EngineTask) -> list[EnginePerson]:
     if task.ownerPersonId:
         person = data.people_by_id.get(task.ownerPersonId)
-        return [person] if person and person.naveId == task.naveId else []
+        if person and person.naveId == task.naveId:
+            return [person]
+        # Dueño ausente o en otra nave: caer a especialidades (no bloquear la OT).
     override_ids = data.candidate_ids_by_task.get(task.id)
     if override_ids is not None:
         allowed = set(override_ids)
@@ -724,24 +726,48 @@ def _diagnose_no_candidate(data: ProblemData, task: EngineTask) -> str:
             f"{NO_CANDIDATE_PREFIX} El proceso «{task.process}» no está en el catálogo."
         )
     candidates = _task_candidates(data, task)
-    if not candidates:
-        any_specialty = [
-            person
-            for person in data.people
-            if task.process in person.primary or task.process in person.fallback
-        ]
-        if any_specialty:
+    if candidates:
+        return (
+            f"{NO_CANDIDATE_PREFIX} Los operarios de «{task.process}» "
+            "no tienen capacidad disponible en esta semana."
+        )
+
+    if task.ownerPersonId:
+        owner = data.people_by_id.get(task.ownerPersonId)
+        if owner is None:
             return (
-                f"{NO_CANDIDATE_PREFIX} Ningún operario de la nave tiene el proceso "
+                f"{NO_CANDIDATE_PREFIX} El operario asignado previamente a esta OT "
+                "no está disponible (inactivo o fuera de la nave) y ningún otro "
+                f"operario de la nave tiene el proceso «{task.process}» "
+                "configurado (primary/fallback)."
+            )
+        if owner.naveId != task.naveId:
+            return (
+                f"{NO_CANDIDATE_PREFIX} El operario asignado previamente pertenece "
+                "a otra nave y ningún operario de esta nave tiene el proceso "
                 f"«{task.process}» configurado (primary/fallback)."
             )
+
+    any_specialty = [
+        person
+        for person in data.people
+        if task.process in person.primary or task.process in person.fallback
+    ]
+    if any_specialty:
+        other_nave = any(person.naveId != task.naveId for person in any_specialty)
+        if other_nave and all(person.naveId != task.naveId for person in any_specialty):
+            return (
+                f"{NO_CANDIDATE_PREFIX} Hay operarios con el proceso «{task.process}» "
+                "en otra nave, pero ninguno de esta nave lo tiene configurado "
+                "(primary/fallback)."
+            )
         return (
-            f"{NO_CANDIDATE_PREFIX} Ningún operario tiene el proceso "
+            f"{NO_CANDIDATE_PREFIX} Ningún operario de la nave tiene el proceso "
             f"«{task.process}» configurado (primary/fallback)."
         )
     return (
-        f"{NO_CANDIDATE_PREFIX} Los operarios de «{task.process}» "
-        "no tienen capacidad disponible en esta semana."
+        f"{NO_CANDIDATE_PREFIX} Ningún operario tiene el proceso "
+        f"«{task.process}» configurado (primary/fallback)."
     )
 
 

@@ -18,7 +18,7 @@ import {
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
 import {
   buildUnscheduledPlanningFailure,
-  planningErrorFromMessage,
+  planningErrorFromSolverInfeasible,
 } from "@/features/planning/planning-generation-error";
 import { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
 import { assertNaveSchedulableTasksHaveOpenWorkOrder } from "@/features/work-orders/require-for-planning";
@@ -317,7 +317,7 @@ export async function generatePlanning(
         : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
-      throw planningErrorFromMessage(err.message);
+      throw await planningErrorFromSolverInfeasible(err);
     }
     throw err;
   }
@@ -545,7 +545,7 @@ export async function generateGlobalPlanning(args: {
         : await runPlanningEngine(engineInput);
   } catch (err) {
     if (err instanceof SolverInfeasibleError) {
-      throw planningErrorFromMessage(err.message);
+      throw await planningErrorFromSolverInfeasible(err);
     }
     throw err;
   }

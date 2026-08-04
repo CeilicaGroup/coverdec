@@ -1,4 +1,5 @@
 import { formatPlanningWarningMessages } from "@/features/planning/format-warnings";
+import type { SolverInfeasibleError } from "@/features/planning/engine/solver-types";
 
 const WEEKDAY_LABELS = ["lunes", "martes", "miércoles", "jueves", "viernes"] as const;
 
@@ -91,6 +92,19 @@ export function buildUnscheduledPlanningSummary(args: {
       ? ""
       : " Revisa capacidad, especialidades, bloqueos de secado y fecha de inicio de planificación.")
   );
+}
+
+export async function planningErrorFromSolverInfeasible(
+  err: SolverInfeasibleError,
+): Promise<PlanningGenerationError> {
+  if (err.warnings.length > 0) {
+    const formatted = await formatPlanningWarningMessages(err.warnings);
+    return new PlanningGenerationError({
+      summary: err.message,
+      warnings: formatted,
+    });
+  }
+  return planningErrorFromMessage(err.message);
 }
 
 export async function buildUnscheduledPlanningFailure(args: {

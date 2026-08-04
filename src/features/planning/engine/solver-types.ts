@@ -353,9 +353,15 @@ export class SolverUnavailableError extends Error {
 }
 
 export class SolverInfeasibleError extends Error {
-  constructor(message: string) {
+  readonly warnings: { taskId: string; reason: string }[];
+
+  constructor(
+    message: string,
+    warnings: { taskId: string; reason: string }[] = [],
+  ) {
     super(message);
     this.name = "SolverInfeasibleError";
+    this.warnings = warnings;
   }
 }
 
@@ -366,7 +372,12 @@ export function isNoCandidateWarning(reason: string): boolean {
   return reason.startsWith(SOLVER_NO_CANDIDATE_PREFIX);
 }
 
+export function stripNoCandidatePrefix(reason: string): string {
+  if (!isNoCandidateWarning(reason)) return reason;
+  return reason.slice(SOLVER_NO_CANDIDATE_PREFIX.length).trim();
+}
+
 export function formatNoCandidateWarning(taskId: string, reason: string): string {
-  const detail = reason.slice(SOLVER_NO_CANDIDATE_PREFIX.length).trim();
+  const detail = stripNoCandidatePrefix(reason);
   return `Tarea ${taskId}: ${detail}`;
 }
