@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fromDatetimeLocalInputValue } from "@/lib/datetime-local";
 import {
   applyBreakHandling,
   summarizeBreakOverlap,
@@ -18,15 +19,35 @@ const schedule: BreakScheduleContext = {
   overrides: [],
 };
 
+/** Monday 2026-07-20 wall-clock Europe/Madrid → UTC Date. */
+function madrid(time: string): Date {
+  return new Date(fromDatetimeLocalInputValue(`2026-07-20T${time}`));
+}
+
 describe("break handling for manual ranges", () => {
   it("detects overlap with midday break", () => {
     const summary = summarizeBreakOverlap(
-      [
-        {
-          startedAt: new Date("2026-07-20T13:30:00.000Z"),
-          endedAt: new Date("2026-07-20T15:30:00.000Z"),
-        },
-      ],
+      [{ startedAt: madrid("13:30"), endedAt: madrid("15:30") }],
+      schedule,
+    );
+
+    expect(summary.hasOverlap).toBe(true);
+    expect(summary.overlapMinutes).toBe(60);
+  });
+
+  it("does not flag afternoon-only range after the break", () => {
+    const summary = summarizeBreakOverlap(
+      [{ startedAt: madrid("15:30"), endedAt: madrid("17:00") }],
+      schedule,
+    );
+
+    expect(summary.hasOverlap).toBe(false);
+    expect(summary.overlapMinutes).toBe(0);
+  });
+
+  it("detects full-day range that spans the lunch break", () => {
+    const summary = summarizeBreakOverlap(
+      [{ startedAt: madrid("12:00"), endedAt: madrid("17:00") }],
       schedule,
     );
 
@@ -36,49 +57,34 @@ describe("break handling for manual ranges", () => {
 
   it("keeps range when user marks worked_extra", () => {
     const result = applyBreakHandling(
-      [
-        {
-          startedAt: new Date("2026-07-20T13:30:00.000Z"),
-          endedAt: new Date("2026-07-20T15:30:00.000Z"),
-        },
-      ],
+      [{ startedAt: madrid("13:30"), endedAt: madrid("15:30") }],
       schedule,
       "worked_extra",
     );
 
     expect(result.ranges).toHaveLength(1);
-    expect(result.ranges[0]?.startedAt.toISOString()).toBe("2026-07-20T13:30:00.000Z");
-    expect(result.ranges[0]?.endedAt.toISOString()).toBe("2026-07-20T15:30:00.000Z");
+    expect(result.ranges[0]?.startedAt.toISOString()).toBe(madrid("13:30").toISOString());
+    expect(result.ranges[0]?.endedAt.toISOString()).toBe(madrid("15:30").toISOString());
   });
 
   it("cuts out break segment when user marks took_break", () => {
     const result = applyBreakHandling(
-      [
-        {
-          startedAt: new Date("2026-07-20T13:30:00.000Z"),
-          endedAt: new Date("2026-07-20T15:30:00.000Z"),
-        },
-      ],
+      [{ startedAt: madrid("13:30"), endedAt: madrid("15:30") }],
       schedule,
       "took_break",
     );
 
     expect(result.ranges).toHaveLength(2);
-    expect(result.ranges[0]?.startedAt.toISOString()).toBe("2026-07-20T13:30:00.000Z");
-    expect(result.ranges[0]?.endedAt.toISOString()).toBe("2026-07-20T14:00:00.000Z");
-    expect(result.ranges[1]?.startedAt.toISOString()).toBe("2026-07-20T15:00:00.000Z");
-    expect(result.ranges[1]?.endedAt.toISOString()).toBe("2026-07-20T15:30:00.000Z");
+    expect(result.ranges[0]?.startedAt.toISOString()).toBe(madrid("13:30").toISOString());
+    expect(result.ranges[0]?.endedAt.toISOString()).toBe(madrid("14:00").toISOString());
+    expect(result.ranges[1]?.startedAt.toISOString()).toBe(madrid("15:00").toISOString());
+    expect(result.ranges[1]?.endedAt.toISOString()).toBe(madrid("15:30").toISOString());
   });
 
   it("throws when overlap exists and no decision is provided", () => {
     expect(() =>
       applyBreakHandling(
-        [
-          {
-            startedAt: new Date("2026-07-20T13:30:00.000Z"),
-            endedAt: new Date("2026-07-20T15:30:00.000Z"),
-          },
-        ],
+        [{ startedAt: madrid("13:30"), endedAt: madrid("15:30") }],
         schedule,
       ),
     ).toThrow(/trabajo extra o descanso/i);
