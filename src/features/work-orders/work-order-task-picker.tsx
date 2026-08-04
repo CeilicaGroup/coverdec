@@ -90,6 +90,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   tasks,
   selectedIds,
   onToggle,
+  onToggleMany,
   processStylesByCode,
   typologyImages,
   elementTypeImages,
@@ -99,6 +100,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   tasks: T[];
   selectedIds: string[];
   onToggle: (taskId: string) => void;
+  onToggleMany?: (taskIds: string[], selected: boolean) => void;
   processStylesByCode: Record<string, ProcessBadgeStyle>;
   typologyImages?: TypologyImageAvailability;
   elementTypeImages?: ElementTypeImageAvailability;
@@ -115,6 +117,14 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
     [tasks, filters],
   );
 
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const filteredIds = useMemo(
+    () => filteredTasks.map((task) => task.id),
+    [filteredTasks],
+  );
+  const allVisibleSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selectedIdSet.has(id));
+
   const hasActiveFilters =
     Boolean(filters.search?.trim()) ||
     Boolean(filters.projectId) ||
@@ -130,6 +140,19 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
+
+  const projectLabel = filters.projectId
+    ? options.projects.find((p) => p.id === filters.projectId)?.label
+    : undefined;
+  const processLabel = filters.processCode
+    ? options.processes.find((p) => p.code === filters.processCode)?.label
+    : undefined;
+  const naveLabel = filters.naveId
+    ? options.naves.find((n) => n.id === filters.naveId)?.label
+    : undefined;
+  const elementLabel = filters.elementTypeId
+    ? options.elements.find((e) => e.id === filters.elementTypeId)?.label
+    : undefined;
 
   return (
     <div className="space-y-3">
@@ -150,7 +173,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Proyecto" />
+            <SelectValue placeholder="Proyecto">{projectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {options.projects.map((p) => (
@@ -167,7 +190,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Proceso" />
+            <SelectValue placeholder="Proceso">{processLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {options.processes.map((p) => (
@@ -184,7 +207,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Nave" />
+            <SelectValue placeholder="Nave">{naveLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {options.naves.map((n) => (
@@ -204,7 +227,7 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Elemento" />
+            <SelectValue placeholder="Elemento">{elementLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {options.elements.map((e) => (
@@ -222,11 +245,23 @@ export function WorkOrderTaskPicker<T extends WorkOrderTaskFilterable>({
             ? `${filteredTasks.length} de ${tasks.length} visibles`
             : `${selectedIds.length} seleccionadas · ${filteredTasks.length} de ${tasks.length} visibles`}
         </span>
-        {hasActiveFilters ? (
-          <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-            Limpiar filtros
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-1">
+          {!readOnly && onToggleMany && filteredIds.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onToggleMany(filteredIds, !allVisibleSelected)}
+            >
+              {allVisibleSelected ? "Deseleccionar visibles" : "Seleccionar visibles"}
+            </Button>
+          ) : null}
+          {hasActiveFilters ? (
+            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="border rounded-md divide-y max-h-72 overflow-y-auto">

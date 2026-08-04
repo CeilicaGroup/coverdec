@@ -371,12 +371,41 @@ export function OrdenesTrabajoClient({
     );
   };
 
+  const toggleManyTasks = (taskIds: string[], selected: boolean) => {
+    setSelectedTaskIds((prev) => {
+      if (selected) {
+        const next = new Set(prev);
+        for (const id of taskIds) next.add(id);
+        return [...next];
+      }
+      const remove = new Set(taskIds);
+      return prev.filter((id) => !remove.has(id));
+    });
+  };
+
   const toggleEditAddTask = (taskId: string) => {
     if (editTaskIds.includes(taskId)) return;
     const task = eligibleById.get(taskId);
     if (!task) return;
     setEditTasksById((prev) => new Map(prev).set(taskId, task));
     setEditTaskIds((prev) => [...prev, taskId]);
+  };
+
+  const toggleEditAddManyTasks = (taskIds: string[], selected: boolean) => {
+    if (!selected) return;
+    const existing = new Set(editTaskIds);
+    const toAdd: string[] = [];
+    const nextMap = new Map(editTasksById);
+    for (const taskId of taskIds) {
+      if (existing.has(taskId)) continue;
+      const task = eligibleById.get(taskId);
+      if (!task) continue;
+      toAdd.push(taskId);
+      nextMap.set(taskId, task);
+    }
+    if (toAdd.length === 0) return;
+    setEditTasksById(nextMap);
+    setEditTaskIds((prev) => [...prev, ...toAdd]);
   };
 
   const toggleSplitTask = (taskId: string) => {
@@ -877,6 +906,7 @@ export function OrdenesTrabajoClient({
                     tasks={eligibleTasks}
                     selectedIds={selectedTaskIds}
                     onToggle={toggleTask}
+                    onToggleMany={toggleManyTasks}
                     processStylesByCode={processStylesByCode}
                     typologyImages={typologyImages}
                     elementTypeImages={elementTypeImages}
@@ -994,6 +1024,7 @@ export function OrdenesTrabajoClient({
                       tasks={addableTasks}
                       selectedIds={[]}
                       onToggle={toggleEditAddTask}
+                      onToggleMany={toggleEditAddManyTasks}
                       processStylesByCode={processStylesByCode}
                       typologyImages={typologyImages}
                       elementTypeImages={elementTypeImages}
