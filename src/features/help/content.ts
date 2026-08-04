@@ -265,8 +265,8 @@ const SECTIONS: HelpSection[] = [
       "Iniciar: arranca el timer (Fichando HH:MM:SS). Si ya tienes otro timer: primero para el contador activo.",
       "Parar: detiene el timer y guarda el tramo.",
       "Completar 1: marca la tarea actual como completada.",
-      "Completar varias: si el grupo OT tiene más de una unidad igual, indica la cantidad; el tiempo se reparte proporcionalmente por medida.",
-      "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Añade Rangos Inicio/Fin (Añadir rango). Toggle Completar tarea al guardar Sí/No. Si es grupo, Cantidad de tareas iguales completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
+      "Completar varias: si la OT tiene más de un producto pendiente, indica la cantidad; el tiempo se reparte proporcionalmente por horas estimadas.",
+      "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Añade Rangos Inicio/Fin (Añadir rango). Toggle Completar tarea al guardar Sí/No. Si es OT con varios productos, Cantidad de tareas de la OT completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
     ],
     bullets: [
       "Bloqueada: aún no se ha completado {proceso anterior} — respeta la secuencia productiva.",
@@ -409,7 +409,7 @@ const FAQ: HelpFaqItem[] = [
     id: "faq-completar-varias",
     question: "¿Cuándo uso Completar varias?",
     answer:
-      "Cuando la OT agrupa varias unidades iguales del mismo proceso. Indica la cantidad; el tiempo del tramo se reparte proporcionalmente por medida. Completar 1 solo cierra la unidad actual.",
+      "Cuando la OT agrupa varios productos (aunque sean de proyectos o tipos distintos). Indica la cantidad; el tiempo del tramo se reparte proporcionalmente por horas estimadas. Completar 1 solo cierra la unidad actual.",
     roles: OPERARIO_ONLY,
   },
   {

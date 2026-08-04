@@ -387,7 +387,7 @@ export function ManualEntryForm({
 
       {markCompleted && groupedPendingCount > 1 ? (
         <div className="space-y-2">
-          <Label>Cantidad de tareas iguales completadas</Label>
+          <Label>Cantidad de tareas de la OT completadas</Label>
           <Select
             value={groupedCompletionCount}
             onValueChange={(value) => setGroupedCompletionCount(value ?? "1")}
@@ -404,7 +404,8 @@ export function ManualEntryForm({
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            El tiempo total de los rangos se reparte proporcionalmente por medida en cada tarea.
+            El tiempo total de los rangos se reparte proporcionalmente por horas estimadas en cada
+            producto de la OT.
           </p>
         </div>
       ) : null}

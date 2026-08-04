@@ -36,26 +36,41 @@ export function taskMeasureForGroupedOt(task: GroupedOtMeasureTask): number {
   return 1;
 }
 
-export function distributeHoursByMeasure(
-  totalHours: number,
-  tasks: GroupedOtMeasureTask[],
-): number[] {
-  const measures = tasks.map(taskMeasureForGroupedOt);
-  const sumMeasures = measures.reduce((sum, value) => sum + value, 0);
-  if (sumMeasures <= 0) {
-    const evenHours = totalHours / tasks.length;
-    return tasks.map((_, index) =>
-      index === tasks.length - 1 ? totalHours - evenHours * index : evenHours,
+function distributeHoursByWeights(totalHours: number, weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const sumWeights = weights.reduce((sum, value) => sum + value, 0);
+  if (sumWeights <= 0) {
+    const evenHours = totalHours / weights.length;
+    return weights.map((_, index) =>
+      index === weights.length - 1 ? totalHours - evenHours * index : evenHours,
     );
   }
 
   const precision = 6;
-  const rounded = measures.map((measure) =>
-    Number(((totalHours * measure) / sumMeasures).toFixed(precision)),
+  const rounded = weights.map((weight) =>
+    Number(((totalHours * weight) / sumWeights).toFixed(precision)),
   );
   const assignedBeforeLast = rounded.slice(0, -1).reduce((sum, value) => sum + value, 0);
   rounded[rounded.length - 1] = Number((totalHours - assignedBeforeLast).toFixed(precision));
   return rounded;
+}
+
+export function distributeHoursByMeasure(
+  totalHours: number,
+  tasks: GroupedOtMeasureTask[],
+): number[] {
+  return distributeHoursByWeights(totalHours, tasks.map(taskMeasureForGroupedOt));
+}
+
+/** Reparto proporcional por horas estimadas de cada producto de la OT. */
+export function distributeHoursByEstimatedHours(
+  totalHours: number,
+  tasks: { estimatedHours: number }[],
+): number[] {
+  return distributeHoursByWeights(
+    totalHours,
+    tasks.map((task) => Math.max(0, task.estimatedHours)),
+  );
 }
 
 export function splitRangesByTaskHours(

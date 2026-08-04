@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  distributeHoursByEstimatedHours,
   distributeHoursByMeasure,
   splitRangesByTaskHours,
   taskMeasureForGroupedOt,
@@ -30,6 +31,29 @@ describe("grouped ot distribution", () => {
       { lamp: { surfaceM2: null, units: 1 }, lampElement: null },
       { lamp: { surfaceM2: null, units: 1 }, lampElement: null },
       { lamp: null, lampElement: null },
+    ]);
+    expect(distributed[0]).toBeCloseTo(1, 8);
+    expect(distributed[1]).toBeCloseTo(1, 8);
+    expect(distributed[2]).toBeCloseTo(1, 8);
+  });
+
+  it("distributes by estimated hours like the OT product example", () => {
+    const distributed = distributeHoursByEstimatedHours(6, [
+      { estimatedHours: 3 },
+      { estimatedHours: 2 },
+      { estimatedHours: 1.5 },
+    ]);
+    expect(distributed[0]).toBeCloseTo(2.769231, 5);
+    expect(distributed[1]).toBeCloseTo(1.846154, 5);
+    expect(distributed[2]).toBeCloseTo(1.384615, 5);
+    expect(distributed.reduce((sum, value) => sum + value, 0)).toBeCloseTo(6, 6);
+  });
+
+  it("falls back to uniform distribution when estimated hours are zero", () => {
+    const distributed = distributeHoursByEstimatedHours(3, [
+      { estimatedHours: 0 },
+      { estimatedHours: 0 },
+      { estimatedHours: 0 },
     ]);
     expect(distributed[0]).toBeCloseTo(1, 8);
     expect(distributed[1]).toBeCloseTo(1, 8);

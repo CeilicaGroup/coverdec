@@ -279,7 +279,7 @@ export function TaskQueuePanel({
                   />
                   {activeElementsLabel ? <span>· {activeElementsLabel}</span> : null}
                   {isGroupedActiveTask ? (
-                    <span>· {activeTask.groupPendingCount} iguales pendientes</span>
+                    <span>· {activeTask.groupPendingCount} pendientes en la OT</span>
                   ) : null}
                 </div>
                 {activeTask.blockedReason ? (
@@ -295,8 +295,8 @@ export function TaskQueuePanel({
                 ) : null}
                 {isGroupedActiveTask && !isTimerOnActiveTask ? (
                   <div className="text-xs text-muted-foreground">
-                    Para completar varias tareas agrupadas con reparto automático, inicia el timer
-                    en esta tarea o usa registro manual.
+                    Para completar varias tareas de la OT con reparto por horas estimadas, inicia el
+                    timer en esta tarea o usa registro manual.
                   </div>
                 ) : null}
                 <div className="text-xs text-muted-foreground">
@@ -437,7 +437,7 @@ export function TaskQueuePanel({
                     <DialogTitle>Completar tareas agrupadas</DialogTitle>
                     <DialogDescription>
                       Se crearán registros individuales por tarea con reparto proporcional por
-                      medida.
+                      horas estimadas.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3">

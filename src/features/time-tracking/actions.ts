@@ -21,11 +21,9 @@ import {
   closeWorkOrderIfAllTasksComplete,
   reopenWorkOrderIfClosed,
 } from "@/features/work-orders/close";
-import { workOrderGroupKey } from "@/features/work-orders/group-key";
 import {
-  distributeHoursByMeasure,
+  distributeHoursByEstimatedHours,
   splitRangesByTaskHours,
-  type GroupedOtMeasureTask,
   type GroupedOtTimeRange,
 } from "@/features/time-tracking/grouped-ot";
 import {
@@ -41,24 +39,6 @@ import {
 
 const log = childLogger({ module: "time-tracking.actions" });
 
-interface GroupCandidateTask extends GroupedOtMeasureTask {
-  id: string;
-  projectId: string;
-  lampId: string;
-  process: string;
-  workOrderSequence: number | null;
-  isCompleted: boolean;
-  lamp: {
-    surfaceM2: number | null;
-    units: number;
-    elementType: { id: string } | null;
-  } | null;
-  lampElement: {
-    surfaceM2: number | null;
-    units: number;
-    elementType: { id: string };
-  } | null;
-}
 function revalidateHorasAndLoad() {
   revalidatePath("/dashboard/horas");
   revalidatePath("/dashboard/semana");
@@ -315,30 +295,13 @@ export async function recordAndCompleteGroupedOtTasks(
           isCompleted: true,
           workOrderId: true,
           workOrderSequence: true,
-          lamp: {
-            select: {
-              surfaceM2: true,
-              units: true,
-              elementType: { select: { id: true } },
-            },
-          },
-          lampElement: {
-            select: {
-              surfaceM2: true,
-              units: true,
-              elementType: { select: { id: true } },
-            },
-          },
+          estimatedHours: true,
         },
       });
       if (!baseTask) throw new Error("Tarea no encontrada.");
       if (baseTask.isCompleted) throw new Error("La tarea ya está completada.");
       if (!baseTask.workOrderId) {
         throw new Error("Esta tarea no pertenece a una OT agrupable.");
-      }
-      const groupKey = workOrderGroupKey(baseTask);
-      if (!groupKey) {
-        throw new Error("No se puede determinar el grupo de esta tarea.");
       }
 
       const pendingTasks = await tx.task.findMany({
@@ -353,40 +316,25 @@ export async function recordAndCompleteGroupedOtTasks(
           process: true,
           workOrderSequence: true,
           isCompleted: true,
-          lamp: {
-            select: {
-              surfaceM2: true,
-              units: true,
-              elementType: { select: { id: true } },
-            },
-          },
-          lampElement: {
-            select: {
-              surfaceM2: true,
-              units: true,
-              elementType: { select: { id: true } },
-            },
-          },
+          estimatedHours: true,
         },
       });
 
-      const sameGroup = pendingTasks
-        .filter((task) => workOrderGroupKey(task) === groupKey)
-        .sort((a, b) => {
-          const aSeq = a.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
-          const bSeq = b.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
-          if (aSeq !== bSeq) return aSeq - bSeq;
-          return a.id.localeCompare(b.id);
-        });
+      const pendingInOt = pendingTasks.sort((a, b) => {
+        const aSeq = a.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
+        const bSeq = b.workOrderSequence ?? Number.MAX_SAFE_INTEGER;
+        if (aSeq !== bSeq) return aSeq - bSeq;
+        return a.id.localeCompare(b.id);
+      });
 
-      if (sameGroup.length === 0) {
-        throw new Error("No hay tareas pendientes en el grupo seleccionado.");
+      if (pendingInOt.length === 0) {
+        throw new Error("No hay tareas pendientes en la OT seleccionada.");
       }
-      if (data.quantity > sameGroup.length) {
-        throw new Error(`Solo quedan ${sameGroup.length} tareas pendientes en el grupo.`);
+      if (data.quantity > pendingInOt.length) {
+        throw new Error(`Solo quedan ${pendingInOt.length} tareas pendientes en la OT.`);
       }
 
-      const selectedTasks = sameGroup.slice(0, data.quantity);
+      const selectedTasks = pendingInOt.slice(0, data.quantity);
       const selectedTaskIds = new Set(selectedTasks.map((task) => task.id));
       if (!selectedTaskIds.has(baseTask.id)) {
         throw new Error("Debes completar primero la tarea pendiente más prioritaria de la OT.");
@@ -394,7 +342,7 @@ export async function recordAndCompleteGroupedOtTasks(
       const unlockState = await Promise.all(selectedTasks.map((task) => isTaskUnlocked(task.id)));
       if (unlockState.some((isUnlocked) => !isUnlocked)) {
         throw new Error(
-          "Alguna tarea del grupo está bloqueada: completa antes los procesos anteriores del mismo elemento.",
+          "Alguna tarea de la OT está bloqueada: completa antes los procesos anteriores del mismo elemento.",
         );
       }
 
@@ -429,7 +377,7 @@ export async function recordAndCompleteGroupedOtTasks(
         }
       }
 
-      const distributedHours = distributeHoursByMeasure(totalHours, selectedTasks);
+      const distributedHours = distributeHoursByEstimatedHours(totalHours, selectedTasks);
       const entrySegments = splitRangesByTaskHours(ranges, distributedHours);
       const entryPayloads = entrySegments.flatMap((segments, index) =>
         segments.map((segment) => ({

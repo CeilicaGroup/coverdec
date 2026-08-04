@@ -315,10 +315,10 @@ export default async function HorasPage() {
   const groupedPendingCount = new Map<string, number>();
   for (const task of assignedTasks) {
     if (!task.workOrderId) continue;
-    const groupKey = workOrderGroupKey(task);
-    if (!groupKey) continue;
-    const bucket = `${task.workOrderId}:${groupKey}`;
-    groupedPendingCount.set(bucket, (groupedPendingCount.get(bucket) ?? 0) + 1);
+    groupedPendingCount.set(
+      task.workOrderId,
+      (groupedPendingCount.get(task.workOrderId) ?? 0) + 1,
+    );
   }
 
   const assignedLampIds = [...new Set(assignedTasks.map((t) => t.lampId))];
@@ -404,10 +404,9 @@ export default async function HorasPage() {
       blockedReason: blockedReasonForTask(t),
       workOrderNumber: t.workOrder?.number ?? null,
       workOrderStatus: t.workOrder?.status ?? null,
-      groupPendingCount:
-        t.workOrderId && workOrderGroupKey(t)
-          ? groupedPendingCount.get(`${t.workOrderId}:${workOrderGroupKey(t)}`) ?? 1
-          : 1,
+      groupPendingCount: t.workOrderId
+        ? groupedPendingCount.get(t.workOrderId) ?? 1
+        : 1,
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 
