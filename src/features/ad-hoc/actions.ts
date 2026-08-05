@@ -9,6 +9,7 @@ import { runServerAction } from "@/lib/server-action";
 import type { ActionResult } from "@/lib/action-result";
 import { Role, TaskSystemKind } from "@/generated/prisma";
 import { createAdHocTaskRecord } from "./create-ad-hoc-task";
+import { updateAdHocTaskRecord } from "./update-ad-hoc-task";
 import { injectPendingAdHocIntoDraftPlanning } from "./schedule-ad-hoc-tasks";
 import {
   assertCanDeleteAdHocTask,
@@ -130,6 +131,84 @@ export async function createAdHocTask(
   );
 }
 
+const updateAdHocTaskSchema = createAdHocTaskSchema.extend({
+  taskId: z.string().min(1),
+});
+
+export async function updateAdHocTask(
+  input: z.infer<typeof updateAdHocTaskSchema>,
+): Promise<ActionResult<{ taskId: string }>> {
+  return runServerAction(
+    "ad-hoc.updateAdHocTask",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = updateAdHocTaskSchema.parse(input);
+
+      const uniquePersonIds = [...new Set(data.personIds)];
+      const people = await prisma.person.findMany({
+        where: { id: { in: uniquePersonIds }, isActive: true },
+        include: {
+          personNaves: { select: { naveId: true } },
+        },
+      });
+
+      if (people.length !== uniquePersonIds.length) {
+        throw new Error(AD_HOC_PERSON_NOT_FOUND_ERROR);
+      }
+
+      const naveId = resolveAdHocNaveId(
+        people.map((person) => ({
+          personId: person.id,
+          naveIds: person.personNaves.map((row) => row.naveId),
+        })),
+        data.naveId,
+      );
+
+      if (data.process) {
+        const processDef = await prisma.processDefinition.findUnique({
+          where: { code: data.process },
+          select: { code: true },
+        });
+        if (!processDef) throw new Error("Proceso no encontrado.");
+      }
+
+      const result = await prisma.$transaction((tx) =>
+        updateAdHocTaskRecord(tx, {
+          taskId: data.taskId,
+          personIds: uniquePersonIds,
+          naveId,
+          estimatedHours: data.estimatedHours,
+          notes: data.notes,
+          internalNotes: data.internalNotes,
+          projectId: data.projectId,
+          process: data.process ?? IMPREVISTA_PROCESS_CODE,
+        }),
+      );
+
+      log.info(
+        {
+          taskId: result.taskId,
+          personIds: uniquePersonIds,
+          naveId,
+          estimatedHours: data.estimatedHours,
+          projectId: data.projectId,
+          process: data.process,
+        },
+        "ad-hoc task updated",
+      );
+
+      revalidateAdHocPaths();
+      return { taskId: result.taskId };
+    },
+    (result) => ({
+      summary: "Editar tarea imprevista",
+      entityType: "Task",
+      entityId: result.taskId,
+    }),
+  );
+}
+
 const deleteAdHocTaskSchema = z.object({
   taskId: z.string().min(1),
 });
@@ -168,6 +247,7 @@ export async function deleteAdHocTask(
 
 export interface PendingAdHocTaskRow {
   id: string;
+  projectId: string;
   notes: string | null;
   internalNotes: string | null;
   projectName: string;
@@ -176,6 +256,7 @@ export interface PendingAdHocTaskRow {
   naveId: string;
   naveLabel: string;
   createdAt: string;
+  hasTimeEntries: boolean;
   participants: Array<{ id: string; label: string }>;
 }
 
@@ -202,8 +283,9 @@ export async function listPendingAdHocTasks(
       estimatedHours: true,
       naveId: true,
       createdAt: true,
-      project: { select: { name: true } },
+      project: { select: { id: true, name: true } },
       nave: { select: { codigo: true, nombre: true } },
+      _count: { select: { timeEntries: true } },
       participants: {
         select: {
           person: {
@@ -223,6 +305,7 @@ export async function listPendingAdHocTasks(
 
   return tasks.map((task) => ({
     id: task.id,
+    projectId: task.project.id,
     notes: task.notes,
     internalNotes: task.internalNotes,
     projectName: task.project.name,
@@ -231,6 +314,7 @@ export async function listPendingAdHocTasks(
     naveId: task.naveId,
     naveLabel: `${task.nave.codigo} · ${task.nave.nombre}`,
     createdAt: task.createdAt.toISOString(),
+    hasTimeEntries: task._count.timeEntries > 0,
     participants: task.participants.map(({ person }) => {
       const name = person.user?.name ?? person.alias ?? person.iniciales;
       return {

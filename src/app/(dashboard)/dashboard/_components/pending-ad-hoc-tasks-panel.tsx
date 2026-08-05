@@ -3,14 +3,18 @@
 import { CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PendingAdHocTaskRow } from "@/features/ad-hoc/actions";
+import { EditAdHocTaskDialog } from "@/features/ad-hoc/edit-ad-hoc-task-dialog";
 import { formatHours } from "@/lib/format";
+import type { AdHocFormOptions } from "@/app/(dashboard)/dashboard/_components/ad-hoc-task-form";
 
 export function PendingAdHocTasksPanel({
   tasks,
   processLabels,
+  formOptions,
 }: {
   tasks: PendingAdHocTaskRow[];
   processLabels: Record<string, string>;
+  formOptions: AdHocFormOptions;
 }) {
   if (tasks.length === 0) return null;
 
@@ -25,12 +29,15 @@ export function PendingAdHocTasksPanel({
       <CardContent className="space-y-2">
         <p className="text-xs text-muted-foreground">
           Estas imprevistas se planifican al regenerar el planning (Resumen →
-          Generar planning). Todos los operarios asignados irán en la misma
-          franja horaria.
+          Generar planning). Puedes editarlas aquí antes de regenerar. Todos los
+          operarios asignados irán en la misma franja horaria.
         </p>
         {tasks.map((task) => (
           <div key={task.id} className="rounded-md border p-3 space-y-1">
-            <p className="text-sm font-medium">{task.projectName}</p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium">{task.projectName}</p>
+              <EditAdHocTaskDialog task={task} options={formOptions} />
+            </div>
             {task.notes?.trim() ? (
               <p className="text-sm line-clamp-2">
                 <span className="text-muted-foreground">Empleado: </span>

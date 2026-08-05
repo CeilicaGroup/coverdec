@@ -185,7 +185,7 @@ const SECTIONS: HelpSection[] = [
       "Tras generar un borrador (o con un planning publicado), usa estas vistas para validar antes de publicar o para el día a día en nave.",
     ],
     bullets: [
-      "Vista semana: grid personas × días. Toggle Plan | Registros y escala Semana | Mes. Botón Imprevista → Nueva tarea imprevista (Admin/Jefe): proyecto obligatorio, observación para el empleado y motivo interno. Panel de imprevistas pendientes si las hay. Vacío en plan: mensaje para volver a Resumen y Generar planning.",
+      "Vista semana: grid personas × días. Toggle Plan | Registros y escala Semana | Mes. Botón Imprevista → Nueva tarea imprevista (Admin/Jefe): proyecto obligatorio, observación para el empleado y motivo interno. Panel de imprevistas pendientes si las hay (editables antes de regenerar el planning). Vacío en plan: mensaje para volver a Resumen y Generar planning.",
       "Vista mes: calendario del mes con horas planificadas o registradas; festivos marcados; mismos toggles Plan/Registros y Semana/Mes. Pulsa un día para enfocarte en esa semana.",
       "Por persona: Plan | Registros; layout Calendario | Lista; Imprimir (window.print, barra no-print). Cards por operario con totales y ausencias. Operario solo se ve a sí mismo.",
       "Por proyecto: agrupación semanal por proyecto (tareas, procesos, OTs, personas, progreso, riesgo vs entrega/fin planificado, esperas de secado). En registros, Admin/Jefe pueden acciones de progreso.",

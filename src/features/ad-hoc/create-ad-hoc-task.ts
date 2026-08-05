@@ -3,7 +3,7 @@ import { TaskSystemKind } from "@/generated/prisma";
 import {
   IMPREVISTA_PROCESS_CODE,
 } from "./constants";
-import { getOrCreateImprevistasLamp } from "./imprevistas-lamp";
+import { resolveAdHocProjectLamp } from "./resolve-ad-hoc-project-lamp";
 
 export interface CreateAdHocTaskInput {
   personIds: string[];
@@ -35,22 +35,7 @@ export async function createAdHocTaskRecord(
     throw new Error("Indica el motivo interno de la imprevista.");
   }
 
-  const project = await tx.project.findFirst({
-    where: { id: input.projectId, isActive: true },
-    include: { lamps: { take: 1, orderBy: { createdAt: "asc" }, select: { id: true } } },
-  });
-  if (!project) throw new Error("Proyecto no encontrado.");
-
-  let lampId: string;
-  let projectId: string;
-  if (project.lamps[0]) {
-    lampId = project.lamps[0].id;
-    projectId = project.id;
-  } else {
-    const pool = await getOrCreateImprevistasLamp(tx);
-    lampId = pool.id;
-    projectId = project.id;
-  }
+  const { projectId, lampId } = await resolveAdHocProjectLamp(tx, input.projectId);
 
   const maxOrder = await tx.task.aggregate({
     where: { lampId },

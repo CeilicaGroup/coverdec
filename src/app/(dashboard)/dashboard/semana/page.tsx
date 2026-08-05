@@ -137,10 +137,11 @@ export default async function SemanaPage({
           noPublished={planningNotice.noPublished}
         />
       )}
-      {canManageAdHoc && pendingAdHocTasks.length > 0 ? (
+      {canManageAdHoc && pendingAdHocTasks.length > 0 && adHocOptions ? (
         <PendingAdHocTasksPanel
           tasks={pendingAdHocTasks}
           processLabels={processLabels}
+          formOptions={adHocOptions}
         />
       ) : null}
       {view === "plan" && grid.size === 0 && !planningNotice.hiddenDraft && !planningNotice.noPublished && (
