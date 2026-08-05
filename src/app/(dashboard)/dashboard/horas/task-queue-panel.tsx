@@ -425,7 +425,6 @@ export function TaskQueuePanel({
                       lampId: activeTask.lampId,
                       taskId: activeTask.id,
                       process: activeTask.process,
-                      ranges: activeTask.plannedDateRanges,
                     }}
                   />
                 </div>

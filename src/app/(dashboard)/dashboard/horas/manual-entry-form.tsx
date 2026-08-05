@@ -92,7 +92,6 @@ export function ManualEntryForm({
     lampId: string;
     taskId: string;
     process: string;
-    ranges?: { startedAt: string; endedAt: string }[];
   } | null;
   lockTaskSelection?: boolean;
 }) {
@@ -107,12 +106,7 @@ export function ManualEntryForm({
   const [pendingDraft, setPendingDraft] = useState<ManualSubmitDraft | null>(null);
   const [pendingBreakOverlapMinutes, setPendingBreakOverlapMinutes] = useState(0);
   const [pendingBreakOverlapSegments, setPendingBreakOverlapSegments] = useState(0);
-  const [ranges, setRanges] = useState(() => {
-    if (preset?.ranges && preset.ranges.length > 0) {
-      return preset.ranges;
-    }
-    return [defaultRange()];
-  });
+  const [ranges, setRanges] = useState(() => [defaultRange()]);
 
   const project = projects.find((p) => p.id === projectId);
   const availableTasks =
@@ -135,10 +129,12 @@ export function ManualEntryForm({
     setProjectId(preset.projectId);
     setLampId(preset.lampId);
     setTaskId(preset.taskId);
-    if (preset.ranges && preset.ranges.length > 0) {
-      setRanges(preset.ranges);
-    }
-  }, [preset?.projectId, preset?.lampId, preset?.taskId, preset]);
+  }, [preset?.projectId, preset?.lampId, preset?.taskId]);
+
+  useEffect(() => {
+    if (!preset?.taskId) return;
+    setRanges([defaultRange()]);
+  }, [preset?.taskId]);
 
   useEffect(() => {
     setGroupedCompletionCount("1");
@@ -351,12 +347,16 @@ export function ManualEntryForm({
             onClick={() =>
               setRanges((prev) => {
                 const last = prev[prev.length - 1];
-                const fallback = defaultRange();
+                if (!last?.endedAt) {
+                  return [...prev, defaultRange()];
+                }
+                const start = new Date(fromDatetimeLocalInputValue(last.endedAt));
+                const end = new Date(start.getTime() + 60 * 60 * 1000);
                 return [
                   ...prev,
                   {
-                    startedAt: last?.endedAt ?? fallback.startedAt,
-                    endedAt: last?.endedAt ?? fallback.endedAt,
+                    startedAt: toDatetimeLocalInputValue(start),
+                    endedAt: toDatetimeLocalInputValue(end),
                   },
                 ];
               })
