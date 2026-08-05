@@ -11,6 +11,7 @@ import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
 import { Role } from "@/generated/prisma";
 import { resolveTimeEntryHours } from "@/features/time-tracking/entry-hours";
 import {
+  assertNoFutureCalendarDays,
   assertNoInternalOverlaps,
   computeTotalHours,
 } from "@/features/time-tracking/manual-ranges";
@@ -224,6 +225,7 @@ export async function recordAndCompleteGroupedOtTasks(
         endedAt: new Date(range.endedAt),
       }));
       assertNoInternalOverlaps(parsedRanges);
+      assertNoFutureCalendarDays(parsedRanges);
       const schedule = await loadBreakScheduleForRanges(ctx.personId, parsedRanges);
       manualRangeResult = applyBreakHandling(parsedRanges, schedule, data.breakHandling);
       for (const range of manualRangeResult.ranges) {
@@ -551,6 +553,7 @@ export async function createManualEntriesFromRanges(
   }));
 
   assertNoInternalOverlaps(parsedRanges);
+  assertNoFutureCalendarDays(parsedRanges);
   const schedule = await loadBreakScheduleForRanges(ctx.personId, parsedRanges);
   const handledRanges = applyBreakHandling(parsedRanges, schedule, data.breakHandling);
 

@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { assertNoInternalOverlaps, computeTotalHours } from "../manual-ranges";
+import { fromDatetimeLocalInputValue } from "@/lib/datetime-local";
+import {
+  assertNoFutureCalendarDays,
+  assertNoInternalOverlaps,
+  computeTotalHours,
+  FUTURE_CALENDAR_DAY_ERROR,
+} from "../manual-ranges";
+
+/** Fixed "now" = 27 Jul 2026 10:00 Europe/Madrid. */
+const now = new Date(fromDatetimeLocalInputValue("2026-07-27T10:00"));
+
+function madridRange(start: string, end: string) {
+  return {
+    startedAt: new Date(fromDatetimeLocalInputValue(start)),
+    endedAt: new Date(fromDatetimeLocalInputValue(end)),
+  };
+}
 
 describe("manual ranges", () => {
   it("computes total hours across ranges", () => {
@@ -58,3 +74,40 @@ describe("manual ranges", () => {
   });
 });
 
+describe("assertNoFutureCalendarDays", () => {
+  it("allows same-day ranges including hours after now", () => {
+    expect(() =>
+      assertNoFutureCalendarDays(
+        [madridRange("2026-07-27T10:00", "2026-07-27T18:00")],
+        now,
+      ),
+    ).not.toThrow();
+  });
+
+  it("allows past days", () => {
+    expect(() =>
+      assertNoFutureCalendarDays(
+        [madridRange("2026-07-26T08:00", "2026-07-26T12:00")],
+        now,
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a range on a future calendar day", () => {
+    expect(() =>
+      assertNoFutureCalendarDays(
+        [madridRange("2026-07-28T08:00", "2026-07-28T10:00")],
+        now,
+      ),
+    ).toThrow(FUTURE_CALENDAR_DAY_ERROR);
+  });
+
+  it("rejects a range that ends on a future calendar day", () => {
+    expect(() =>
+      assertNoFutureCalendarDays(
+        [madridRange("2026-07-27T22:00", "2026-07-28T01:00")],
+        now,
+      ),
+    ).toThrow(FUTURE_CALENDAR_DAY_ERROR);
+  });
+});

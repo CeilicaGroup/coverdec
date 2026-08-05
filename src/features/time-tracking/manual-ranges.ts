@@ -1,6 +1,27 @@
+import { toDatetimeLocalInputValue } from "@/lib/datetime-local";
+
 export interface TimeRange {
   startedAt: Date;
   endedAt: Date;
+}
+
+export const FUTURE_CALENDAR_DAY_ERROR =
+  "No se pueden registrar horas en días futuros. Usa la fecha de hoy o anterior.";
+
+function madridDayIso(date: Date): string {
+  return toDatetimeLocalInputValue(date).slice(0, 10);
+}
+
+export function assertNoFutureCalendarDays(
+  ranges: TimeRange[],
+  now: Date = new Date(),
+): void {
+  const todayIso = madridDayIso(now);
+  for (const range of ranges) {
+    if (madridDayIso(range.startedAt) > todayIso || madridDayIso(range.endedAt) > todayIso) {
+      throw new Error(FUTURE_CALENDAR_DAY_ERROR);
+    }
+  }
 }
 
 export function assertNoInternalOverlaps(ranges: TimeRange[]) {
@@ -24,4 +45,3 @@ export function computeTotalHours(ranges: TimeRange[]): number {
     0,
   );
 }
-

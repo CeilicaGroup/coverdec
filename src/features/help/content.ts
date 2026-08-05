@@ -266,7 +266,7 @@ const SECTIONS: HelpSection[] = [
       "Parar: detiene el timer y guarda el tramo.",
       "Completar 1: marca la tarea actual como completada.",
       "Completar varias: si la OT tiene más de un producto pendiente, indica la cantidad; el tiempo se reparte proporcionalmente por horas estimadas.",
-      "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Un rango Inicio/Fin con la fecha/hora actuales; Añadir rango si hace falta más. Toggle Completar tarea al guardar Sí/No. Si es OT con varios productos, Cantidad de tareas de la OT completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
+      "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Un rango Inicio/Fin con la fecha/hora actuales; Añadir rango si hace falta más. No admite días futuros (sí horas posteriores del mismo día o días anteriores). Toggle Completar tarea al guardar Sí/No. Si es OT con varios productos, Cantidad de tareas de la OT completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
     ],
     bullets: [
       "Bloqueada: aún no se ha completado {proceso anterior} — respeta la secuencia productiva.",
