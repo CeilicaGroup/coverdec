@@ -12,6 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { FestivoRow } from "../festivos/festivos-client";
 import { formatAbsenceDetail } from "@/features/people/absence-display";
@@ -41,6 +49,9 @@ import {
   updateOwnAttendanceBreak,
 } from "@/features/attendance/actions";
 import {
+  summarizeAttendanceBreakOverlap,
+} from "@/features/attendance/apply-attendance-break-handling";
+import {
   formatAttendanceSource,
   operarioCanDeleteSession,
   operarioCanEditSession,
@@ -55,6 +66,11 @@ import {
   workedSessionSecondsWithLiveBreak,
 } from "@/features/attendance/worked-minutes";
 import {
+  buildScheduleOverrides,
+  buildWeeklyScheduleFromWorkWindows,
+} from "@/features/planning/person-day-capacity";
+import type { BreakHandling } from "@/features/time-tracking/break-handling";
+import {
   civilIsoFromLocalDate,
   expandCivilIsoRange,
   formatCivilIsoDate,
@@ -68,6 +84,10 @@ interface PersonRow {
   userId: string | null;
   name: string;
   workWindows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[];
+  scheduleOverrides: {
+    dateIso: string;
+    windows: { startMinutes: number; endMinutes: number }[];
+  }[];
 }
 
 interface BreakRow {
@@ -179,6 +199,14 @@ export function DailyAttendanceClient(props: {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [sessionEditStartTime, setSessionEditStartTime] = useState("08:00");
   const [sessionEditEndTime, setSessionEditEndTime] = useState("14:00");
+  const [showBreakDecisionDialog, setShowBreakDecisionDialog] = useState(false);
+  const [pendingBreakOverlapMinutes, setPendingBreakOverlapMinutes] = useState(0);
+  const [pendingBreakOverlapSegments, setPendingBreakOverlapSegments] = useState(0);
+  const [pendingRangeDraft, setPendingRangeDraft] = useState<{
+    mode: "manual" | "admin";
+    startTime: string;
+    endTime: string;
+  } | null>(null);
 
   const selectedIso = civilIsoFromLocalDate(selectedDate);
   const visiblePersonId = props.canManage ? personId : props.currentPersonId;
@@ -276,6 +304,84 @@ export function DailyAttendanceClient(props: {
 
   const todayIso = civilIsoFromLocalDate(new Date());
   const visiblePerson = props.people.find((p) => p.id === visiblePersonId) ?? null;
+  const breakScheduleContext = useMemo(() => {
+    if (!visiblePerson || visiblePerson.workWindows.length === 0) return null;
+    return {
+      weekly: buildWeeklyScheduleFromWorkWindows(visiblePerson.workWindows),
+      overrides: buildScheduleOverrides(
+        visiblePerson.scheduleOverrides.map((override) => ({
+          date: new Date(`${override.dateIso}T00:00:00.000Z`),
+          windows: override.windows,
+        })),
+      ),
+    };
+  }, [visiblePerson]);
+
+  function submitAttendanceRange(
+    draft: { mode: "manual" | "admin"; startTime: string; endTime: string },
+    breakHandling?: BreakHandling,
+  ) {
+    startTransition(async () => {
+      const result =
+        draft.mode === "manual"
+          ? await createManualAttendanceSession({
+              date: selectedIso,
+              startTime: draft.startTime,
+              endTime: draft.endTime,
+              breakHandling,
+            })
+          : await adminUpsertAttendanceSession({
+              personId: visiblePersonId!,
+              date: selectedIso,
+              startTime: draft.startTime,
+              endTime: draft.endTime,
+              breakHandling,
+            });
+      const outcome = handleActionResult(
+        draft.mode === "manual" ? "fichaje.createManual" : "fichaje.adminUpsert",
+        result,
+      );
+      if (!outcome.success) {
+        toast.error(outcome.message);
+        return;
+      }
+      toast.success(
+        breakHandling === "took_break"
+          ? "Franja registrada con descanso de comida"
+          : draft.mode === "manual"
+            ? "Franja manual registrada"
+            : "Franja de fichaje guardada",
+      );
+      setShowBreakDecisionDialog(false);
+      setPendingRangeDraft(null);
+      router.refresh();
+    });
+  }
+
+  function registerAttendanceRange(mode: "manual" | "admin") {
+    if (mode === "admin" && !visiblePersonId) return;
+    if (endTime <= startTime) {
+      toast.error("La hora fin debe ser posterior a la hora inicio.");
+      return;
+    }
+    const startedAt = new Date(`${selectedIso}T${startTime}:00.000Z`);
+    const endedAt = new Date(`${selectedIso}T${endTime}:00.000Z`);
+    const overlap = summarizeAttendanceBreakOverlap(
+      { startedAt, endedAt },
+      selectedIso,
+      breakScheduleContext,
+    );
+    const draft = { mode, startTime, endTime };
+    if (overlap.hasOverlap) {
+      setPendingRangeDraft(draft);
+      setPendingBreakOverlapMinutes(overlap.overlapMinutes);
+      setPendingBreakOverlapSegments(overlap.overlapSegments.length);
+      setShowBreakDecisionDialog(true);
+      return;
+    }
+    submitAttendanceRange(draft);
+  }
+
   const todayWeekday = (() => {
     const d = new Date().getDay();
     if (d === 0 || d === 6) return 5;
@@ -620,22 +726,7 @@ export function DailyAttendanceClient(props: {
                       <Button
                         className="w-full min-h-11"
                         disabled={pending || isWorking}
-                        onClick={() =>
-                          startTransition(async () => {
-                            const result = await createManualAttendanceSession({
-                              date: selectedIso,
-                              startTime,
-                              endTime,
-                            });
-                            const outcome = handleActionResult("fichaje.createManual", result);
-                            if (!outcome.success) {
-                              toast.error(outcome.message);
-                              return;
-                            }
-                            toast.success("Franja manual registrada");
-                            router.refresh();
-                          })
-                        }
+                        onClick={() => registerAttendanceRange("manual")}
                       >
                         Registrar franja manual
                       </Button>
@@ -657,23 +748,7 @@ export function DailyAttendanceClient(props: {
                   <Button
                     disabled={pending || !visiblePersonId}
                     className="min-h-11 w-full sm:w-auto"
-                    onClick={() =>
-                      startTransition(async () => {
-                        const result = await adminUpsertAttendanceSession({
-                            personId: visiblePersonId!,
-                            date: selectedIso,
-                            startTime,
-                            endTime,
-                          });
-                        const outcome = handleActionResult("fichaje.adminUpsert", result);
-                        if (!outcome.success) {
-                          toast.error(outcome.message);
-                          return;
-                        }
-                        toast.success("Franja de fichaje guardada");
-                        router.refresh();
-                      })
-                    }
+                    onClick={() => registerAttendanceRange("admin")}
                   >
                     Añadir franja
                   </Button>
@@ -1241,6 +1316,53 @@ export function DailyAttendanceClient(props: {
         ) : null}
 
       </div>
+
+      <Dialog open={showBreakDecisionDialog} onOpenChange={setShowBreakDecisionDialog}>
+        <DialogContent className="w-full max-w-sm sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Coincide con franja de descanso</DialogTitle>
+            <DialogDescription>
+              El fichaje cruza {pendingBreakOverlapSegments} tramo(s) de descanso (
+              {pendingBreakOverlapMinutes} min).
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Indica si ese tiempo se trabajó como extra o si se hizo descanso (p. ej. comida
+            14–15) para ajustar la jornada.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                setShowBreakDecisionDialog(false);
+                setPendingRangeDraft(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={pending || !pendingRangeDraft}
+              onClick={() => {
+                if (!pendingRangeDraft) return;
+                submitAttendanceRange(pendingRangeDraft, "worked_extra");
+              }}
+            >
+              He trabajado extra
+            </Button>
+            <Button
+              disabled={pending || !pendingRangeDraft}
+              onClick={() => {
+                if (!pendingRangeDraft) return;
+                submitAttendanceRange(pendingRangeDraft, "took_break");
+              }}
+            >
+              He hecho descanso
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

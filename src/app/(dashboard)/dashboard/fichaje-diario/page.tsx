@@ -31,6 +31,15 @@ export default async function FichajeDiarioPage() {
         workWindows: {
           select: { dayOfWeek: true, startMinutes: true, endMinutes: true },
         },
+        scheduleOverrides: {
+          where: { date: { gte: start, lte: end } },
+          select: {
+            date: true,
+            windows: {
+              select: { startMinutes: true, endMinutes: true },
+            },
+          },
+        },
       },
       orderBy: { iniciales: "asc" },
     }),
@@ -114,6 +123,10 @@ export default async function FichajeDiarioPage() {
           userId: p.user?.id ?? null,
           name: p.user?.name ?? p.iniciales,
           workWindows: p.workWindows,
+          scheduleOverrides: p.scheduleOverrides.map((override) => ({
+            dateIso: override.date.toISOString().slice(0, 10),
+            windows: override.windows,
+          })),
         }))}
         sessions={sessions.map((s) => ({
           ...s,

@@ -30,6 +30,12 @@ import {
   updateOwnAttendanceSchema,
 } from "./validation";
 import { workedSessionMinutes } from "./worked-minutes";
+import {
+  applyAttendanceBreakHandling,
+  attendanceBreakCreateManyData,
+} from "./apply-attendance-break-handling";
+import { loadBreakScheduleForRanges } from "@/features/time-tracking/load-break-schedule";
+import type { BreakHandling } from "@/features/time-tracking/break-handling";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
 
@@ -370,6 +376,7 @@ export async function createManualAttendanceSession(input: {
   startTime: string;
   endTime: string;
   notes?: string;
+  breakHandling?: BreakHandling;
 }): Promise<ActionResult<void>> {
   return runServerAction("attendance.createManual", async () => {
     const ctx = await requireDashboardContext();
@@ -393,20 +400,37 @@ export async function createManualAttendanceSession(input: {
       startedAt,
       endedAt,
     });
-    const minutes = Math.max(
-      0,
-      workedSessionMinutes({ startedAt, endedAt, breaks: [] }, endedAt),
-    );
-    await prisma.attendanceSession.create({
-      data: {
-        userId: ctx.userId,
-        personId: ctx.personId,
-        source: AttendanceSource.MANUAL,
-        startedAt,
-        endedAt,
-        minutes,
-        notes: data.notes,
-      },
+
+    const schedule = await loadBreakScheduleForRanges(ctx.personId, [{ startedAt, endedAt }]);
+    const handled = applyAttendanceBreakHandling({
+      startedAt,
+      endedAt,
+      dayIso: data.date,
+      schedule,
+      breakHandling: data.breakHandling,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      const session = await tx.attendanceSession.create({
+        data: {
+          userId: ctx.userId,
+          personId: ctx.personId!,
+          source: AttendanceSource.MANUAL,
+          startedAt,
+          endedAt,
+          minutes: handled.minutes,
+          notes: data.notes,
+        },
+      });
+      if (handled.breaks.length > 0) {
+        await tx.attendanceBreak.createMany({
+          data: attendanceBreakCreateManyData(
+            session.id,
+            handled.breaks,
+            AttendanceSource.MANUAL,
+          ),
+        });
+      }
     });
 
     const day = data.date;
@@ -419,7 +443,15 @@ export async function createManualAttendanceSession(input: {
       scopeKeys: [`attendance-missing:${ctx.userId}:${day}`],
     });
 
-    log.info({ userId: ctx.userId, date: data.date }, "manual attendance session created");
+    log.info(
+      {
+        userId: ctx.userId,
+        date: data.date,
+        breakHandling: handled.appliedBreakHandling,
+        breakCount: handled.breaks.length,
+      },
+      "manual attendance session created",
+    );
     revalidateAttendancePaths();
   });
 }
@@ -666,6 +698,7 @@ export async function adminUpsertAttendanceSession(input: {
   startTime: string;
   endTime: string;
   notes?: string;
+  breakHandling?: BreakHandling;
 }): Promise<ActionResult<void>> {
   return runServerAction("attendance.adminUpsert", async () => {
   const ctx = await requireDashboardContext();
@@ -687,20 +720,37 @@ export async function adminUpsertAttendanceSession(input: {
     startedAt,
     endedAt,
   });
-  const minutes = Math.max(
-    0,
-    workedSessionMinutes({ startedAt, endedAt, breaks: [] }, endedAt),
-  );
-  await prisma.attendanceSession.create({
-    data: {
-      userId: person.user.id,
-      personId: data.personId,
-      source: AttendanceSource.ADMIN_EDIT,
-      startedAt,
-      endedAt,
-      minutes,
-      notes: data.notes,
-    },
+
+  const schedule = await loadBreakScheduleForRanges(data.personId, [{ startedAt, endedAt }]);
+  const handled = applyAttendanceBreakHandling({
+    startedAt,
+    endedAt,
+    dayIso: data.date,
+    schedule,
+    breakHandling: data.breakHandling,
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const session = await tx.attendanceSession.create({
+      data: {
+        userId: person.user!.id,
+        personId: data.personId,
+        source: AttendanceSource.ADMIN_EDIT,
+        startedAt,
+        endedAt,
+        minutes: handled.minutes,
+        notes: data.notes,
+      },
+    });
+    if (handled.breaks.length > 0) {
+      await tx.attendanceBreak.createMany({
+        data: attendanceBreakCreateManyData(
+          session.id,
+          handled.breaks,
+          AttendanceSource.ADMIN_EDIT,
+        ),
+      });
+    }
   });
 
   await resolveNotificationStates({

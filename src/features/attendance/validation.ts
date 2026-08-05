@@ -17,6 +17,8 @@ export const attendanceRangeSchema = z.object({
   personId: z.string().min(1).optional(),
 });
 
+export const breakHandlingSchema = z.enum(["worked_extra", "took_break"]).optional();
+
 export const adminUpsertAttendanceSchema = z
   .object({
     personId: z.string().min(1),
@@ -24,6 +26,7 @@ export const adminUpsertAttendanceSchema = z
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/),
     notes: z.string().max(500).optional(),
+    breakHandling: breakHandlingSchema,
   })
   .superRefine((data, ctx) => {
     if (data.endTime <= data.startTime) {
@@ -89,6 +92,7 @@ export const manualUpsertAttendanceSchema = z
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/),
     notes: z.string().max(500).optional(),
+    breakHandling: breakHandlingSchema,
   })
   .superRefine((data, ctx) => {
     if (data.endTime <= data.startTime) {

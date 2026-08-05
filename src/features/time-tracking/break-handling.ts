@@ -84,6 +84,14 @@ function breakWindowsForDate(dayIso: string, schedule: BreakScheduleContext): Wo
   return breaks;
 }
 
+/** Break gaps for a civil date from weekly/override work windows (minutes from midnight). */
+export function scheduleBreakWindowsForDate(
+  dayIso: string,
+  schedule: BreakScheduleContext,
+): WorkWindowMinutes[] {
+  return breakWindowsForDate(dayIso, schedule);
+}
+
 function enumerateMadridDaysInRange(range: TimeRangeSlice): string[] {
   const days: string[] = [];
   const cursor = utcMidnightFromIso(madridDateIso(range.startedAt));

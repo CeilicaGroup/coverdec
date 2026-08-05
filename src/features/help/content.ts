@@ -287,7 +287,7 @@ const SECTIONS: HelpSection[] = [
     bullets: [
       "En Mis horas (si entras como jefe vinculado): misma cola, timer y manual; Admin puede editar entradas de otros en la lista semanal según permisos de la pantalla.",
       "Fichaje diario: presencia, ausencias personales y festivos de empresa. Select de persona (tú ves a todo el equipo; el operario solo a sí mismo).",
-      "Controles del día: Iniciar jornada / Finalizar jornada; Iniciar descanso / Finalizar descanso; franja manual Inicio/Fin. Lista de sesiones: editar, Eliminar, pausas (Añadir pausa / editar / eliminar).",
+      "Controles del día: Iniciar jornada / Finalizar jornada; Iniciar descanso / Finalizar descanso; franja manual Inicio/Fin (si cruza la comida del horario: He trabajado extra | He hecho descanso). Lista de sesiones: editar, Eliminar, pausas (Añadir pausa / editar / eliminar).",
       "Festivos (Admin/Jefe): Inicio/Fin, Nombre, Añadir festivo / editar / eliminar. Restan capacidad del planning.",
       "Admin no tiene Mis horas en el menú; el alta de horas de proyecto la hacen los operarios.",
     ],
@@ -306,7 +306,7 @@ const SECTIONS: HelpSection[] = [
     steps: [
       "Abre el calendario: colores para fichajes, ausencia y festivo (pasa el cursor para el detalle).",
       "Iniciar jornada al empezar; Finalizar jornada al terminar.",
-      "Iniciar descanso / Finalizar descanso para pausas, o añade franjas manuales Inicio/Fin.",
+      "Iniciar descanso / Finalizar descanso para pausas, o añade franjas manuales Inicio/Fin. Si la franja cruza la comida del horario, elige He trabajado extra o He hecho descanso.",
       "En la lista de sesiones puedes editar Inicio/Fin, Eliminar y gestionar pausas (Añadir pausa).",
       "Si tienes ausencia ese día (vacaciones, etc.) aparecerá en la vista; el alta de ausencias largas la suele hacer el jefe en Personal.",
     ],
