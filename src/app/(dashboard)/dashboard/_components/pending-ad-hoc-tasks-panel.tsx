@@ -30,9 +30,19 @@ export function PendingAdHocTasksPanel({
         </p>
         {tasks.map((task) => (
           <div key={task.id} className="rounded-md border p-3 space-y-1">
-            <p className="text-sm font-medium line-clamp-2">
-              {task.notes?.trim() || "Sin descripción"}
-            </p>
+            <p className="text-sm font-medium">{task.projectName}</p>
+            {task.notes?.trim() ? (
+              <p className="text-sm line-clamp-2">
+                <span className="text-muted-foreground">Empleado: </span>
+                {task.notes.trim()}
+              </p>
+            ) : null}
+            {task.internalNotes?.trim() ? (
+              <p className="text-sm line-clamp-2">
+                <span className="text-muted-foreground">Interno: </span>
+                {task.internalNotes.trim()}
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
               {task.naveLabel} · {processLabels[task.process] ?? task.process} ·{" "}
               {formatHours(task.estimatedHours)}

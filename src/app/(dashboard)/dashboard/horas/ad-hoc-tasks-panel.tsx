@@ -58,11 +58,14 @@ export function AdHocTasksPanel({
           return (
             <div key={task.id} className="rounded-md border p-3 space-y-2">
               <div>
-                <p className="text-sm font-medium line-clamp-2">
-                  {task.notes?.trim() || "Imprevista"}
-                </p>
+                <p className="text-sm font-medium">{task.projectName}</p>
+                {task.notes?.trim() ? (
+                  <p className="text-sm text-foreground/90 mt-1 line-clamp-3">
+                    {task.notes.trim()}
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground mt-1">
-                  {task.projectName} · {processLabels[task.process] ?? task.process} ·{" "}
+                  {processLabels[task.process] ?? task.process} ·{" "}
                   {formatHours(task.estimatedHours)}
                 </p>
                 <p className="text-xs text-muted-foreground">

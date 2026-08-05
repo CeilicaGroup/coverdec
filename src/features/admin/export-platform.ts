@@ -126,6 +126,7 @@ async function fillTasksSheet(
     { header: "Orden", key: "order", width: 10 },
     { header: "NaveCodigo", key: "naveCodigo", width: 14 },
     { header: "Notas", key: "notes", width: 40 },
+    { header: "NotasInternas", key: "internalNotes", width: 40 },
     { header: "Creado", key: "createdAt", width: 20, style: { numFmt: DATE_FORMAT } },
     { header: "Actualizado", key: "updatedAt", width: 20, style: { numFmt: DATE_FORMAT } },
   ]);
@@ -144,6 +145,7 @@ async function fillTasksSheet(
       isCompleted: true,
       order: true,
       notes: true,
+      internalNotes: true,
       createdAt: true,
       updatedAt: true,
       project: { select: { code: true, name: true } },
@@ -172,6 +174,7 @@ async function fillTasksSheet(
       order: task.order,
       naveCodigo: task.nave.codigo,
       notes: toNullable(task.notes),
+      internalNotes: toNullable(task.internalNotes),
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
     });

@@ -74,7 +74,8 @@ export function AdHocTaskDialog({
   const [projectId, setProjectId] = useState("");
   const [naveId, setNaveId] = useState("");
   const [process, setProcess] = useState(IMPREVISTA_PROCESS_CODE);
-  const [description, setDescription] = useState("");
+  const [employeeNotes, setEmployeeNotes] = useState("");
+  const [internalNotes, setInternalNotes] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("1");
 
   const visiblePeople = useMemo(() => {
@@ -87,7 +88,8 @@ export function AdHocTaskDialog({
   const selectedProcess = options.processes.find((item) => item.code === process);
 
   function resetForm() {
-    setDescription("");
+    setEmployeeNotes("");
+    setInternalNotes("");
     setPersonIds([]);
     setProjectId("");
     setNaveId("");
@@ -127,7 +129,8 @@ export function AdHocTaskDialog({
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (personIds.length === 0 || !description.trim()) return;
+            if (personIds.length === 0 || !projectId) return;
+            if (!employeeNotes.trim() || !internalNotes.trim()) return;
             const hours = Number(estimatedHours);
             if (!Number.isFinite(hours) || hours <= 0) {
               toast.error("Indica una estimación de horas válida.");
@@ -137,8 +140,9 @@ export function AdHocTaskDialog({
               const result = await createAdHocTask({
                 personIds,
                 estimatedHours: hours,
-                notes: description.trim(),
-                projectId: projectId || undefined,
+                notes: employeeNotes.trim(),
+                internalNotes: internalNotes.trim(),
+                projectId,
                 naveId: naveId || undefined,
                 process: process || IMPREVISTA_PROCESS_CODE,
               });
@@ -163,13 +167,40 @@ export function AdHocTaskDialog({
           }}
         >
           <div className="space-y-2">
-            <Label>Observación</Label>
+            <Label>Proyecto</Label>
+            <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecciona proyecto">
+                  {projectId ? selectedProject?.label : undefined}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {options.projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Observación para el empleado</Label>
             <Textarea
               required
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Motivo y descripción del imprevisto"
-              rows={3}
+              value={employeeNotes}
+              onChange={(e) => setEmployeeNotes(e.target.value)}
+              placeholder="Instrucciones o detalle que verá el operario"
+              rows={2}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Motivo interno (no planificado)</Label>
+            <Textarea
+              required
+              value={internalNotes}
+              onChange={(e) => setInternalNotes(e.target.value)}
+              placeholder="Registro interno: por qué no estaba en la planificación"
+              rows={2}
             />
           </div>
           <div className="space-y-2">
@@ -223,24 +254,6 @@ export function AdHocTaskDialog({
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
-          <div className="space-y-2">
-            <Label>Proyecto (opcional)</Label>
-            <Select value={projectId} onValueChange={(v) => setProjectId(v ?? "")}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sin proyecto concreto">
-                  {projectId ? selectedProject?.label : "Sin proyecto"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Sin proyecto</SelectItem>
-                {options.projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="estimated-hours">Estimación (h)</Label>
@@ -310,7 +323,9 @@ export function AdHocTaskDialog({
               disabled={
                 pending ||
                 personIds.length === 0 ||
-                !description.trim() ||
+                !projectId ||
+                !employeeNotes.trim() ||
+                !internalNotes.trim() ||
                 !estimatedHours
               }
             >

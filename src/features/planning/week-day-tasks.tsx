@@ -153,7 +153,7 @@ export function WeekDayTasks({
                 />
               </div>
             ) : null}
-            <AdHocTaskNotesTooltip notes={t.notes}>
+            <AdHocTaskNotesTooltip notes={t.notes} internalNotes={t.internalNotes}>
               <div
                 {...woHighlight}
                 style={{
@@ -189,7 +189,7 @@ export function WeekDayTasks({
             />
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <ProcessBadge code={t.process} definition={processStyles.get(t.process)} />
-              <AdHocTaskNotesIcon notes={t.notes} />
+              <AdHocTaskNotesIcon notes={t.notes} internalNotes={t.internalNotes} />
               <WorkOrderBadge number={t.workOrderNumber} status={t.workOrderStatus ?? undefined} />
               <span
                 className="font-mono text-[10px] font-bold ml-auto"

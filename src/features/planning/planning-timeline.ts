@@ -33,6 +33,7 @@ export interface PlanningAssignmentSlice {
     lampId: string;
     lampElementId?: string | null;
     notes: string | null;
+    internalNotes?: string | null;
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lamp: {
       name: string | null;

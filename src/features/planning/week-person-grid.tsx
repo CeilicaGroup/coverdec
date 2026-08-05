@@ -66,6 +66,7 @@ export interface WeekGridCell {
   startedAt: string | null;
   endedAt: string | null;
   notes: string | null;
+  internalNotes: string | null;
   isAdHoc: boolean;
 }
 
@@ -159,6 +160,7 @@ export function buildPlanGrid(
       startedAt: null,
       endedAt: null,
       notes: a.task.notes?.trim() || a.notes?.trim() || null,
+      internalNotes: a.task.internalNotes?.trim() || null,
       isAdHoc: a.task.systemKind === TaskSystemKind.AD_HOC,
     });
     personMap.set(key, cell);
@@ -207,6 +209,7 @@ export function buildActualGrid(
       startedAt: e.startedAt.toISOString(),
       endedAt: e.endedAt?.toISOString() ?? null,
       notes: e.notes ?? e.task?.notes ?? null,
+      internalNotes: e.task?.internalNotes ?? null,
       isAdHoc: e.task?.systemKind === TaskSystemKind.AD_HOC,
     });
     personMap.set(e.date, cell);

@@ -6,7 +6,10 @@ import { IMPREVISTA_PROCESS_CODE } from "@/features/ad-hoc/constants";
 function createMockTx() {
   const tx = {
     project: {
-      findFirst: vi.fn(async () => null),
+      findFirst: vi.fn(async () => ({
+        id: "project-1",
+        lamps: [{ id: "lamp-1" }],
+      })),
       findUnique: vi.fn(async () => ({ id: "project-pool", kind: "IMPREVISTAS" })),
     },
     lamp: {
@@ -28,14 +31,16 @@ function createMockTx() {
 }
 
 describe("createAdHocTaskRecord", () => {
-  it("creates one task with participants and no planning assignments", async () => {
+  it("creates one task with participants and both notes", async () => {
     const { tx } = createMockTx();
 
     const result = await createAdHocTaskRecord(tx as never, {
       personIds: ["person-1", "person-2"],
       naveId: "nave-1",
       estimatedHours: 2,
-      notes: "Ajuste urgente",
+      notes: "Revisar soldadura",
+      internalNotes: "Urgencia cliente, no estaba en el plan",
+      projectId: "project-1",
       createdByUserId: "user-1",
     });
 
@@ -48,7 +53,10 @@ describe("createAdHocTaskRecord", () => {
           estimatedHours: 2,
           systemKind: TaskSystemKind.AD_HOC,
           naveId: "nave-1",
-          notes: "Ajuste urgente",
+          projectId: "project-1",
+          lampId: "lamp-1",
+          notes: "Revisar soldadura",
+          internalNotes: "Urgencia cliente, no estaba en el plan",
           process: IMPREVISTA_PROCESS_CODE,
           participants: {
             createMany: {
@@ -67,6 +75,9 @@ describe("createAdHocTaskRecord", () => {
       personIds: ["person-1", "person-1"],
       naveId: "nave-1",
       estimatedHours: 1,
+      notes: "Detalle empleado",
+      internalNotes: "Motivo interno",
+      projectId: "project-1",
       createdByUserId: "user-1",
     });
 
@@ -81,5 +92,22 @@ describe("createAdHocTaskRecord", () => {
         }),
       }),
     );
+  });
+
+  it("requires a real project", async () => {
+    const { tx } = createMockTx();
+    tx.project.findFirst.mockResolvedValueOnce(null as never);
+
+    await expect(
+      createAdHocTaskRecord(tx as never, {
+        personIds: ["person-1"],
+        naveId: "nave-1",
+        estimatedHours: 1,
+        notes: "Detalle",
+        internalNotes: "Motivo",
+        projectId: "missing",
+        createdByUserId: "user-1",
+      }),
+    ).rejects.toThrow(/Proyecto no encontrado/);
   });
 });

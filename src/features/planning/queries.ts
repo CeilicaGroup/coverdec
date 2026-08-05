@@ -339,6 +339,7 @@ export interface PlanningWeekAssignmentInput {
     projectId: string;
     lampId: string;
     notes: string | null;
+    internalNotes: string | null;
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lamp: PlanningAssignmentSlice["task"]["lamp"];
     lampElement?: PlanningAssignmentSlice["task"]["lampElement"];
@@ -373,6 +374,7 @@ export function toPlanningAssignmentSlices(
       projectId: a.task.projectId,
       lampId: a.task.lampId,
       notes: a.task.notes,
+      internalNotes: a.task.internalNotes,
       systemKind: a.task.systemKind,
       lamp: a.task.lamp,
       lampElement: a.task.lampElement,
@@ -496,6 +498,7 @@ export interface ActualHourEntry {
     lampId: string;
     isCompleted: boolean;
     notes: string | null;
+    internalNotes: string | null;
     systemKind: import("@/generated/prisma").TaskSystemKind | null;
     lampElement?: {
       id: string;
@@ -562,6 +565,7 @@ export async function getActualHoursForWeek({
           lampId: true,
           isCompleted: true,
           notes: true,
+          internalNotes: true,
           systemKind: true,
           lampElement: { select: taskLampElementVisualSelect },
           lamp: { select: { elementType: { select: lampElementTypeVisualSelect } } },
@@ -604,6 +608,7 @@ export async function getActualHoursForWeek({
           lampId: e.task.lampId,
           isCompleted: e.task.isCompleted,
           notes: e.task.notes,
+          internalNotes: e.task.internalNotes,
           systemKind: e.task.systemKind,
           lampElement: e.task.lampElement,
           lamp: e.task.lamp,
@@ -1917,6 +1922,7 @@ export async function getActualHoursForDateRange({
           lampId: true,
           isCompleted: true,
           notes: true,
+          internalNotes: true,
           systemKind: true,
           lampElement: { select: taskLampElementVisualSelect },
           lamp: { select: { elementType: { select: lampElementTypeVisualSelect } } },
@@ -1966,6 +1972,7 @@ export async function getActualHoursForDateRange({
             lampId: e.task.lampId,
             isCompleted: e.task.isCompleted,
             notes: e.task.notes,
+            internalNotes: e.task.internalNotes,
             systemKind: e.task.systemKind,
             lampElement: e.task.lampElement,
             lamp: e.task.lamp,

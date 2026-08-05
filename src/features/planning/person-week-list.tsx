@@ -354,6 +354,7 @@ export function PersonWeekList({
               const task = item.assignment.task;
               const isAdHoc = task.systemKind === TaskSystemKind.AD_HOC;
               const taskNotes = task.notes;
+              const taskInternalNotes = task.internalNotes;
               const hasTimeEntries = (maps.actualByTask.get(task.id) ?? 0) > 0;
 
               return (
@@ -368,7 +369,10 @@ export function PersonWeekList({
                     {rangeLabel(item.assignment.startSlot, item.assignment.endSlot)}
                   </TableCell>
                   <TableCell>
-                    <AdHocTaskNotesTooltip notes={taskNotes}>
+                    <AdHocTaskNotesTooltip
+                      notes={taskNotes}
+                      internalNotes={taskInternalNotes}
+                    >
                       <div>
                         <div className="font-semibold text-xs">
                           {task.project.name}
@@ -393,7 +397,10 @@ export function PersonWeekList({
                         code={item.assignment.process}
                         definition={processByCode.get(item.assignment.process)?.badge}
                       />
-                      <AdHocTaskNotesIcon notes={taskNotes} />
+                      <AdHocTaskNotesIcon
+                        notes={taskNotes}
+                        internalNotes={taskInternalNotes}
+                      />
                       <WorkOrderBadge
                         number={task.workOrder?.number}
                         status={task.workOrder?.status}
@@ -499,6 +506,7 @@ export function PersonWeekList({
         const task = item.assignment.task;
         const isAdHoc = task.systemKind === TaskSystemKind.AD_HOC;
         const taskNotes = task.notes;
+        const taskInternalNotes = task.internalNotes;
         const hasTimeEntries = (maps.actualByTask.get(task.id) ?? 0) > 0;
 
         return (
@@ -529,7 +537,10 @@ export function PersonWeekList({
                 </div>
               </div>
             </div>
-            <AdHocTaskNotesTooltip notes={taskNotes}>
+            <AdHocTaskNotesTooltip
+              notes={taskNotes}
+              internalNotes={taskInternalNotes}
+            >
               <div>
                 <div className="font-semibold text-sm">{task.project.name}</div>
                 {task.lamp?.name ? (
@@ -548,7 +559,10 @@ export function PersonWeekList({
                 code={item.assignment.process}
                 definition={processByCode.get(item.assignment.process)?.badge}
               />
-              <AdHocTaskNotesIcon notes={taskNotes} />
+              <AdHocTaskNotesIcon
+                notes={taskNotes}
+                internalNotes={taskInternalNotes}
+              />
               <WorkOrderBadge
                 number={task.workOrder?.number}
                 status={task.workOrder?.status}

@@ -14,14 +14,29 @@ function noteText(notes: string | null | undefined): string | null {
   return text ? text : null;
 }
 
+export function formatAdHocNotesTooltipContent(args: {
+  notes?: string | null;
+  internalNotes?: string | null;
+}): string | null {
+  const employee = noteText(args.notes);
+  const internal = noteText(args.internalNotes);
+  if (!employee && !internal) return null;
+  const parts: string[] = [];
+  if (employee) parts.push(`Empleado: ${employee}`);
+  if (internal) parts.push(`Interno: ${internal}`);
+  return parts.join("\n\n");
+}
+
 export function AdHocTaskNotesTooltip({
   notes,
+  internalNotes,
   children,
 }: {
-  notes: string | null | undefined;
+  notes?: string | null;
+  internalNotes?: string | null;
   children: ReactNode;
 }) {
-  const text = noteText(notes);
+  const text = formatAdHocNotesTooltipContent({ notes, internalNotes });
   if (!text) return <>{children}</>;
 
   return (
@@ -29,7 +44,7 @@ export function AdHocTaskNotesTooltip({
       <Tooltip>
         <TooltipTrigger
           render={
-            <span className="block w-full cursor-help" aria-label="Ver observación" />
+            <span className="block w-full cursor-help" aria-label="Ver observaciones" />
           }
         >
           {children}
@@ -44,10 +59,12 @@ export function AdHocTaskNotesTooltip({
 
 export function AdHocTaskNotesIcon({
   notes,
+  internalNotes,
 }: {
-  notes: string | null | undefined;
+  notes?: string | null;
+  internalNotes?: string | null;
 }) {
-  const text = noteText(notes);
+  const text = formatAdHocNotesTooltipContent({ notes, internalNotes });
   if (!text) return null;
 
   return (
@@ -57,7 +74,7 @@ export function AdHocTaskNotesIcon({
           render={
             <span
               className="inline-flex cursor-help shrink-0"
-              aria-label="Observación"
+              aria-label="Observaciones"
             />
           }
         >

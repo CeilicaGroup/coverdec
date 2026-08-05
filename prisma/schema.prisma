@@ -498,6 +498,7 @@ model Task {
   order          Int      @default(0)
   naveId         String
   notes          String?
+  internalNotes  String?
   workOrderId       String?
   workOrderSequence Int?
   systemKind        TaskSystemKind?

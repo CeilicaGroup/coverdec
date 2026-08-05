@@ -28,7 +28,8 @@ const createAdHocTaskSchema = z.object({
   personIds: z.array(z.string().min(1)).min(1),
   estimatedHours: z.number().positive().max(24),
   notes: z.string().min(1).max(500),
-  projectId: z.string().min(1).optional(),
+  internalNotes: z.string().min(1).max(500),
+  projectId: z.string().min(1),
   naveId: z.string().min(1).optional(),
   process: z.string().min(1).optional(),
 });
@@ -85,6 +86,7 @@ export async function createAdHocTask(
           naveId,
           estimatedHours: data.estimatedHours,
           notes: data.notes,
+          internalNotes: data.internalNotes,
           projectId: data.projectId,
           process: data.process ?? IMPREVISTA_PROCESS_CODE,
           createdByUserId: ctx.userId,
@@ -167,6 +169,8 @@ export async function deleteAdHocTask(
 export interface PendingAdHocTaskRow {
   id: string;
   notes: string | null;
+  internalNotes: string | null;
+  projectName: string;
   process: string;
   estimatedHours: number;
   naveId: string;
@@ -193,10 +197,12 @@ export async function listPendingAdHocTasks(
     select: {
       id: true,
       notes: true,
+      internalNotes: true,
       process: true,
       estimatedHours: true,
       naveId: true,
       createdAt: true,
+      project: { select: { name: true } },
       nave: { select: { codigo: true, nombre: true } },
       participants: {
         select: {
@@ -218,6 +224,8 @@ export async function listPendingAdHocTasks(
   return tasks.map((task) => ({
     id: task.id,
     notes: task.notes,
+    internalNotes: task.internalNotes,
+    projectName: task.project.name,
     process: task.process,
     estimatedHours: task.estimatedHours,
     naveId: task.naveId,

@@ -9,9 +9,10 @@ export interface CreateAdHocTaskInput {
   personIds: string[];
   naveId: string;
   estimatedHours: number;
-  notes?: string;
+  notes: string;
+  internalNotes: string;
   createdByUserId: string;
-  projectId?: string;
+  projectId: string;
   process?: string;
 }
 
@@ -25,28 +26,30 @@ export async function createAdHocTaskRecord(
   }
 
   const process = input.process?.trim() || IMPREVISTA_PROCESS_CODE;
+  const notes = input.notes.trim();
+  const internalNotes = input.internalNotes.trim();
+  if (!notes) {
+    throw new Error("Indica la observación para el empleado.");
+  }
+  if (!internalNotes) {
+    throw new Error("Indica el motivo interno de la imprevista.");
+  }
+
+  const project = await tx.project.findFirst({
+    where: { id: input.projectId, isActive: true },
+    include: { lamps: { take: 1, orderBy: { createdAt: "asc" }, select: { id: true } } },
+  });
+  if (!project) throw new Error("Proyecto no encontrado.");
 
   let lampId: string;
   let projectId: string;
-
-  if (input.projectId) {
-    const project = await tx.project.findFirst({
-      where: { id: input.projectId, isActive: true },
-      include: { lamps: { take: 1, orderBy: { createdAt: "asc" }, select: { id: true } } },
-    });
-    if (!project) throw new Error("Proyecto no encontrado.");
-    if (project.lamps[0]) {
-      lampId = project.lamps[0].id;
-      projectId = project.id;
-    } else {
-      const pool = await getOrCreateImprevistasLamp(tx);
-      lampId = pool.id;
-      projectId = pool.projectId;
-    }
+  if (project.lamps[0]) {
+    lampId = project.lamps[0].id;
+    projectId = project.id;
   } else {
     const pool = await getOrCreateImprevistasLamp(tx);
     lampId = pool.id;
-    projectId = pool.projectId;
+    projectId = project.id;
   }
 
   const maxOrder = await tx.task.aggregate({
@@ -63,7 +66,8 @@ export async function createAdHocTaskRecord(
       estimatedHours: input.estimatedHours,
       order: (maxOrder._max.order ?? 0) + 1,
       naveId: input.naveId,
-      notes: input.notes?.trim() || null,
+      notes,
+      internalNotes,
       systemKind: TaskSystemKind.AD_HOC,
       createdByUserId: input.createdByUserId,
       participants: {
