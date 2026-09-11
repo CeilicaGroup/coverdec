@@ -634,7 +634,11 @@ export async function loadSolverInput(args: {
       pendingHours: pending,
       naveId: t.naveId,
       canFragment: processCanFragment.get(t.process) ?? true,
-      ownerPersonId: ownerPersonIdByTask.get(t.id) ?? null,
+      requiredWorkers: t.requiredWorkers,
+      // Owner-pinning would collapse the candidate pool to 1 person, making
+      // a requiredWorkers>1 task infeasible — never pin those (see docs/plan).
+      ownerPersonId:
+        t.requiredWorkers > 1 ? null : ownerPersonIdByTask.get(t.id) ?? null,
       ...openWorkOrderFields(t),
       };
     });

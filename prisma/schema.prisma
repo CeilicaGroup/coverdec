@@ -366,14 +366,15 @@ model ElementType {
 }
 
 model ElementTypeProcess {
-  id            String  @id @default(cuid())
-  elementTypeId String
-  process       String
-  sequence      Int     @default(0)
-  hoursPerUnit  Float
-  fixedHours    Float   @default(0)
-  notes         String?
-  naveId        String?
+  id             String  @id @default(cuid())
+  elementTypeId  String
+  process        String
+  sequence       Int     @default(0)
+  hoursPerUnit   Float
+  fixedHours     Float   @default(0)
+  requiredWorkers Int    @default(1)
+  notes          String?
+  naveId         String?
 
   elementType ElementType       @relation(fields: [elementTypeId], references: [id], onDelete: Cascade)
   definition  ProcessDefinition @relation(fields: [process], references: [code], onDelete: Restrict, onUpdate: Cascade)
@@ -400,6 +401,7 @@ model Project {
   deliveryDate DateTime?
   isBillable   Boolean   @default(true)
   isActive     Boolean   @default(true)
+  isInWarehouse Boolean  @default(false)
   kind         ProjectKind @default(PRODUCCION)
   approvalStatus ProjectApprovalStatus @default(PENDING_APPROVAL)
   planningPreset ProjectPlanningPreset @default(EQUILIBRADO)
@@ -494,6 +496,7 @@ model Task {
   lampElementId  String?
   process        String
   estimatedHours Float
+  requiredWorkers Int     @default(1)
   isCompleted    Boolean  @default(false)
   order          Int      @default(0)
   naveId         String

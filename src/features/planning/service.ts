@@ -30,6 +30,8 @@ import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import {
   assertSingleWorkerPerTask,
   assertSingleWorkerPerWorkOrder,
+  buildTaskWorkerLimitMap,
+  buildWorkOrderWorkerLimitMap,
   findTasksWithMultipleWorkers,
 } from "@/features/planning/validate-assignments";
 import { buildWorkOrderIdByTaskId } from "@/features/work-orders/planning";
@@ -108,6 +110,7 @@ async function mergeSolverWithOverridesAndAdHoc(args: {
     isAfternoon: boolean;
   }>;
   solverAssignments: EngineAssignment[];
+  tasks: Array<{ id: string; requiredWorkers?: number }>;
 }): Promise<{
   mergedAssignments: EngineAssignment[];
   adHocTaskIds: Set<string>;
@@ -140,15 +143,22 @@ async function mergeSolverWithOverridesAndAdHoc(args: {
       });
 
   const adHocTaskIds = new Set(adHocSlices.map((assignment) => assignment.taskId));
+  const limitByTaskId = buildTaskWorkerLimitMap(args.tasks, overrideSlices);
 
-  assertSingleWorkerPerTask(args.solverAssignments, { exemptTaskIds: adHocTaskIds });
+  assertSingleWorkerPerTask(args.solverAssignments, {
+    exemptTaskIds: adHocTaskIds,
+    limitByTaskId,
+  });
 
   const mergedAssignments = mergeOverrideAssignmentsAfterSolver(
     [...overrideSlices, ...adHocSlices],
     args.solverAssignments,
   );
 
-  assertSingleWorkerPerTask(mergedAssignments, { exemptTaskIds: adHocTaskIds });
+  assertSingleWorkerPerTask(mergedAssignments, {
+    exemptTaskIds: adHocTaskIds,
+    limitByTaskId,
+  });
 
   return { mergedAssignments, adHocTaskIds, overrideSlices, adHocSlices };
 }
@@ -334,11 +344,14 @@ export async function generatePlanning(
     "planning solver done",
   );
 
-  const workerConflicts = findTasksWithMultipleWorkers(result.assignments);
+  const solverTaskLimitById = buildTaskWorkerLimitMap(engineInput.tasks);
+  const workerConflicts = findTasksWithMultipleWorkers(result.assignments).filter(
+    (c) => c.personIds.length > (solverTaskLimitById.get(c.taskId) ?? 1),
+  );
   if (workerConflicts.length > 0) {
     log.error(
       { naveId: args.naveId, year, week, conflicts: workerConflicts },
-      "planning rejected: task assigned to multiple workers",
+      "planning rejected: task assigned to more workers than allowed",
     );
   }
 
@@ -349,15 +362,18 @@ export async function generatePlanning(
       firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
       overrideAssignments,
       solverAssignments: result.assignments,
+      tasks: engineInput.tasks,
     });
 
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((t) => ({ id: t.id, workOrderId: t.workOrderId })),
   );
+  const limitByTaskId = buildTaskWorkerLimitMap(engineInput.tasks, overrideSlices);
   assertSingleWorkerPerWorkOrder(
     mergedAssignments,
     workOrderIdByTaskId,
     engineInput.workOrderNumberById,
+    { limitByWorkOrderId: buildWorkOrderWorkerLimitMap(limitByTaskId, workOrderIdByTaskId) },
   );
 
   const totalUnplaced = result.unscheduledHours + deferredHours;
@@ -563,11 +579,14 @@ export async function generateGlobalPlanning(args: {
     "global planning solver done",
   );
 
-  const workerConflicts = findTasksWithMultipleWorkers(result.assignments);
+  const globalSolverTaskLimitById = buildTaskWorkerLimitMap(engineInput.tasks);
+  const workerConflicts = findTasksWithMultipleWorkers(result.assignments).filter(
+    (c) => c.personIds.length > (globalSolverTaskLimitById.get(c.taskId) ?? 1),
+  );
   if (workerConflicts.length > 0) {
     log.error(
       { naveIds, year, week, conflicts: workerConflicts },
-      "global planning rejected: task assigned to multiple workers",
+      "global planning rejected: task assigned to more workers than allowed",
     );
   }
 
@@ -578,15 +597,18 @@ export async function generateGlobalPlanning(args: {
       firstSchedulableDayIndex: engineInput.firstSchedulableDayIndex,
       overrideAssignments,
       solverAssignments: result.assignments,
+      tasks: engineInput.tasks,
     });
 
   const workOrderIdByTaskId = buildWorkOrderIdByTaskId(
     engineInput.tasks.map((task) => ({ id: task.id, workOrderId: task.workOrderId })),
   );
+  const limitByTaskId = buildTaskWorkerLimitMap(engineInput.tasks, overrideSlices);
   assertSingleWorkerPerWorkOrder(
     mergedAssignments,
     workOrderIdByTaskId,
     engineInput.workOrderNumberById,
+    { limitByWorkOrderId: buildWorkOrderWorkerLimitMap(limitByTaskId, workOrderIdByTaskId) },
   );
 
   const totalUnplaced = result.unscheduledHours + deferredHours;

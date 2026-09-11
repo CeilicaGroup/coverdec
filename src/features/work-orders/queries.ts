@@ -127,6 +127,63 @@ export async function workOrdersHaveTimeEntries(
   );
 }
 
+/**
+ * Current executors per work order, for the "elegir ejecutores" picker —
+ * reads ALL PlanningAssignment rows (draft or published), unlike
+ * loadAssigneeByTaskIds (display-context.ts) which only shows published
+ * assignments. A draft-only plan must still prefill the picker correctly.
+ */
+export async function loadWorkOrderExecutorIds(
+  workOrderIds: string[],
+): Promise<Map<string, string[]>> {
+  if (workOrderIds.length === 0) return new Map();
+
+  const rows = await prisma.task.findMany({
+    where: { workOrderId: { in: workOrderIds }, isCompleted: false },
+    select: {
+      workOrderId: true,
+      assignments: { select: { personId: true } },
+    },
+  });
+
+  const byWorkOrder = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!row.workOrderId) continue;
+    const set = byWorkOrder.get(row.workOrderId) ?? new Set<string>();
+    for (const a of row.assignments) set.add(a.personId);
+    byWorkOrder.set(row.workOrderId, set);
+  }
+
+  return new Map([...byWorkOrder.entries()].map(([id, set]) => [id, [...set]]));
+}
+
+export interface ActivePersonOption {
+  id: string;
+  iniciales: string;
+  label: string;
+  naveIds: string[];
+}
+
+/** For the "elegir ejecutores de OT" picker: active people, grouped by nave. */
+export async function listActivePeopleForExecutorPicker(): Promise<ActivePersonOption[]> {
+  const people = await prisma.person.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      iniciales: true,
+      user: { select: { name: true } },
+      personNaves: { select: { naveId: true } },
+    },
+    orderBy: { iniciales: "asc" },
+  });
+  return people.map((p) => ({
+    id: p.id,
+    iniciales: p.iniciales,
+    label: p.user?.name ?? p.iniciales,
+    naveIds: p.personNaves.map((pn) => pn.naveId),
+  }));
+}
+
 export async function workOrdersHavePlanningAssignments(
   workOrderIds: string[],
 ): Promise<Set<string>> {

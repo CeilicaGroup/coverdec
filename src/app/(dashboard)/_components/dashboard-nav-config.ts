@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Gauge,
   FileSpreadsheet,
+  FileBarChart,
   LayoutGrid,
   LineChart,
   AlertTriangle,
@@ -79,6 +80,18 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/dashboard/stock", label: "Stock", icon: Warehouse, operarioHidden: true },
       { href: "/dashboard/catalogo", label: "Elementos", icon: Settings, operarioHidden: true },
       { href: "/dashboard/personal", label: "Personal", icon: Users, operarioHidden: true },
+    ],
+  },
+  {
+    label: "Informes",
+    naveScoped: false,
+    items: [
+      {
+        href: "/dashboard/informes/tiempos-procesos",
+        label: "Tiempos por proceso",
+        icon: FileBarChart,
+        operarioHidden: true,
+      },
     ],
   },
   {

@@ -61,6 +61,8 @@ import {
   updateWorkOrderAlertThresholds,
   updateWorkOrder,
 } from "@/features/work-orders/actions";
+import { setWorkOrderExecutors } from "@/features/work-orders/set-work-order-executors";
+import { reportMutationError } from "@/lib/mutation-error";
 import {
   buildWorkOrderAttentionMetrics,
   type WorkOrderAttentionStatus,
@@ -71,7 +73,7 @@ import {
   summarizeWorkOrderElementProcess,
 } from "@/features/work-orders/display-context";
 import { withWorkOrderHighlight } from "@/features/work-orders/highlight";
-import type { EligibleWorkOrderTask } from "@/features/work-orders/queries";
+import type { ActivePersonOption, EligibleWorkOrderTask } from "@/features/work-orders/queries";
 import {
   DEFAULT_WORK_ORDER_SORT,
   nextWorkOrderSortState,
@@ -250,14 +252,21 @@ function AssigneeCell({
   assigneeByTaskId,
 }: {
   taskIds: string[];
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>;
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>;
 }) {
   const summary = summarizeWorkOrderAssignee(taskIds, assigneeByTaskId);
   if (summary.kind === "none") {
     return <span className="text-muted-foreground">—</span>;
   }
   if (summary.kind === "multiple") {
-    return <span className="text-sm text-muted-foreground">Varios</span>;
+    return (
+      <span
+        className="text-sm font-medium"
+        title={summary.assignees.map((a) => a.label).join(", ")}
+      >
+        {summary.assignees.map((a) => a.iniciales).join(" · ")}
+      </span>
+    );
   }
   return (
     <span className="text-sm font-medium" title={summary.assignee.label}>
@@ -277,11 +286,13 @@ export function OrdenesTrabajoClient({
   initialAlertThresholds,
   typologyImages,
   elementTypeImages,
+  activePeople,
+  workOrderExecutorIds,
 }: {
   workOrders: WorkOrderRow[];
   eligibleTasks: EligibleWorkOrderTask[];
   statusFilter: WorkOrderStatusFilter;
-  assigneeByTaskId: Record<string, TaskAssigneeSummary>;
+  assigneeByTaskId: Record<string, TaskAssigneeSummary[]>;
   processStylesByCode: Record<string, ProcessBadgeStyle>;
   workOrderIdsWithTimeEntries: string[];
   workOrderIdsWithPlanningAssignments: string[];
@@ -291,6 +302,8 @@ export function OrdenesTrabajoClient({
   };
   typologyImages: TypologyImageAvailability;
   elementTypeImages: ElementTypeImageAvailability;
+  activePeople: ActivePersonOption[];
+  workOrderExecutorIds: Record<string, string[]>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -307,6 +320,8 @@ export function OrdenesTrabajoClient({
   );
   const [notes, setNotes] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editExecutorIds, setEditExecutorIds] = useState<string[]>([]);
+  const [savingExecutors, setSavingExecutors] = useState(false);
   const [splitNotes, setSplitNotes] = useState("");
   const [maxPendingHoursInput, setMaxPendingHoursInput] = useState(
     String(initialAlertThresholds.maxPendingHours),
@@ -357,6 +372,7 @@ export function OrdenesTrabajoClient({
     setEditTaskIds(order.tasks.map((t) => t.id));
     setEditTasksById(new Map(order.tasks.map((t) => [t.id, t])));
     setEditNotes(order.notes ?? "");
+    setEditExecutorIds(workOrderExecutorIds[order.id] ?? []);
   };
 
   const openSplit = (order: WorkOrderRow) => {
@@ -412,6 +428,18 @@ export function OrdenesTrabajoClient({
     setSplitTaskIds((prev) =>
       prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
     );
+  };
+
+  const toggleManySplitTasks = (taskIds: string[], selected: boolean) => {
+    setSplitTaskIds((prev) => {
+      if (selected) {
+        const next = new Set(prev);
+        for (const id of taskIds) next.add(id);
+        return [...next];
+      }
+      const remove = new Set(taskIds);
+      return prev.filter((id) => !remove.has(id));
+    });
   };
 
   const moveTask = (index: number, direction: -1 | 1) => {
@@ -485,6 +513,25 @@ export function OrdenesTrabajoClient({
       toast.success("OT actualizada");
       setEditOrder(null);
       router.refresh();
+    });
+  };
+
+  const onSetExecutors = () => {
+    if (!editOrder) return;
+    setSavingExecutors(true);
+    startTransition(async () => {
+      try {
+        await setWorkOrderExecutors({
+          workOrderId: editOrder.id,
+          personIds: editExecutorIds,
+        });
+        toast.success("Ejecutores actualizados");
+        router.refresh();
+      } catch (err) {
+        toast.error(reportMutationError("Error", err));
+      } finally {
+        setSavingExecutors(false);
+      }
     });
   };
 
@@ -863,13 +910,13 @@ export function OrdenesTrabajoClient({
               </DialogHeader>
               <WorkOrderTaskPicker
                 tasks={eligibleTasks}
-                selectedIds={[]}
-                onToggle={() => {}}
+                selectedIds={selectedTaskIds}
+                onToggle={toggleTask}
+                onToggleMany={toggleManyTasks}
                 processStylesByCode={processStylesByCode}
                 typologyImages={typologyImages}
                 elementTypeImages={elementTypeImages}
                 emptyMessage="No hay tareas pendientes sin OT"
-                readOnly
               />
             </div>
             <DialogFooter className="shrink-0">
@@ -879,6 +926,17 @@ export function OrdenesTrabajoClient({
                 onClick={() => setUnassignedDetailsOpen(false)}
               >
                 Cerrar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setUnassignedDetailsOpen(false);
+                  setNotes("");
+                  setCreateOpen(true);
+                }}
+                disabled={pending || selectedTaskIds.length < 1}
+              >
+                Crear OT
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -948,6 +1006,61 @@ export function OrdenesTrabajoClient({
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>Operarios de la OT (máx. 2)</Label>
+                    {(() => {
+                      const naveId = editOrder.tasks[0]?.nave.id;
+                      const options = activePeople.filter((p) =>
+                        naveId ? p.naveIds.includes(naveId) : false,
+                      );
+                      return (
+                        <>
+                          <div className="flex flex-wrap gap-3 rounded-md border p-2">
+                            {options.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No hay operarios activos en esta nave.
+                              </p>
+                            ) : (
+                              options.map((person) => {
+                                const checked = editExecutorIds.includes(person.id);
+                                return (
+                                  <label
+                                    key={person.id}
+                                    className="flex items-center gap-1.5 text-sm"
+                                  >
+                                    <Checkbox
+                                      checked={checked}
+                                      onCheckedChange={(value) => {
+                                        setEditExecutorIds((prev) => {
+                                          if (value) {
+                                            if (prev.includes(person.id)) return prev;
+                                            if (prev.length >= 2) return prev;
+                                            return [...prev, person.id];
+                                          }
+                                          return prev.filter((id) => id !== person.id);
+                                        });
+                                      }}
+                                      disabled={!checked && editExecutorIds.length >= 2}
+                                    />
+                                    {person.label}
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={savingExecutors || editExecutorIds.length === 0}
+                            onClick={onSetExecutors}
+                          >
+                            Guardar ejecutores
+                          </Button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <div className="space-y-2">
                     <Label>Orden de tareas ({editTaskIds.length})</Label>
                     <div className="border rounded-md divide-y">
                       {editTaskIds.length === 0 ? (
@@ -955,7 +1068,7 @@ export function OrdenesTrabajoClient({
                       ) : (
                         editTaskIds.map((taskId, index) => {
                           const task = editTasksById.get(taskId) ?? eligibleById.get(taskId);
-                          const assignee = assigneeByTaskId.get(taskId);
+                          const assignees = assigneeByTaskId.get(taskId) ?? [];
                           return (
                             <div
                               key={taskId}
@@ -971,9 +1084,10 @@ export function OrdenesTrabajoClient({
                                   typologyImages={typologyImages}
                                   elementTypeImages={elementTypeImages}
                                   secondaryLine={
-                                    assignee ? (
+                                    assignees.length > 0 ? (
                                       <div className="text-[10px] text-muted-foreground truncate">
-                                        Operario: {assignee.label}
+                                        Operario{assignees.length > 1 ? "s" : ""}:{" "}
+                                        {assignees.map((a) => a.label).join(", ")}
                                       </div>
                                     ) : null
                                   }
@@ -1078,27 +1192,16 @@ export function OrdenesTrabajoClient({
                   </div>
                   <div className="space-y-2">
                     <Label>Tareas a mover</Label>
-                    <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
-                      {splitOrder.tasks.map((task) => (
-                        <label
-                          key={task.id}
-                          className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={splitTaskIds.includes(task.id)}
-                            onCheckedChange={() => toggleSplitTask(task.id)}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <WorkOrderTaskDetails
-                              task={task}
-                              processStylesByCode={processStylesByCode}
-                              typologyImages={typologyImages}
-                              elementTypeImages={elementTypeImages}
-                            />
-                          </div>
-                        </label>
-                      ))}
-                    </div>
+                    <WorkOrderTaskPicker
+                      tasks={splitOrder.tasks}
+                      selectedIds={splitTaskIds}
+                      onToggle={toggleSplitTask}
+                      onToggleMany={toggleManySplitTasks}
+                      processStylesByCode={processStylesByCode}
+                      typologyImages={typologyImages}
+                      elementTypeImages={elementTypeImages}
+                      emptyMessage="No hay tareas en esta OT"
+                    />
                   </div>
                 </div>
               ) : null}

@@ -11,9 +11,11 @@ import { toast } from "sonner";
 export function DeleteLampButton({
   lampId,
   lampName,
+  disabledReason,
 }: {
   lampId: string;
   lampName: string;
+  disabledReason?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -23,8 +25,9 @@ export function DeleteLampButton({
       type="button"
       variant="ghost"
       size="icon"
-      className="size-8 text-destructive shrink-0"
-      disabled={pending}
+      className="size-8 text-destructive shrink-0 disabled:opacity-40"
+      disabled={pending || !!disabledReason}
+      title={disabledReason ?? undefined}
       aria-label={`Eliminar lámpara ${lampName}`}
       onClick={() => {
         if (

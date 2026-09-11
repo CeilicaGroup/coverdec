@@ -15,6 +15,7 @@ import { rangeLabel } from "@/features/planning/engine/slot-format";
 import { slotEndToHour, slotToHour } from "@/features/planning/engine/slot-format";
 import { planningRangeToDatetimeLocal } from "@/lib/datetime-local";
 import { workOrderGroupKey } from "@/features/work-orders/group-key";
+import { loadDoneHoursByTaskIds, resolveTaskDoneHours } from "@/features/time-tracking/task-hours-derived";
 import type { ManualBreakScheduleSnapshot } from "./task-queue-panel";
 
 function weekdayLabel(date: Date): string {
@@ -209,50 +210,72 @@ export default async function HorasPage() {
 
   const assignedTaskIds = [...taskRanges.keys()];
   const now = new Date();
-  const assignedTasks =
+  const taskSelect = {
+    id: true,
+    projectId: true,
+    process: true,
+    lampId: true,
+    order: true,
+    systemKind: true,
+    workOrderId: true,
+    estimatedHours: true,
+    project: { select: { id: true, name: true } },
+    lamp: {
+      select: {
+        id: true,
+        name: true,
+        surfaceM2: true,
+        units: true,
+        elementType: { select: { id: true } },
+      },
+    },
+    lampElement: {
+      select: {
+        label: true,
+        surfaceM2: true,
+        units: true,
+        elementType: { select: { id: true } },
+      },
+    },
+    workOrder: { select: { number: true, status: true } },
+  } as const;
+
+  const [assignedTasks, substituteTasks] = await Promise.all([
     assignedTaskIds.length === 0
-      ? []
-      : await prisma.task.findMany({
+      ? Promise.resolve([])
+      : prisma.task.findMany({
           where: {
             id: { in: assignedTaskIds },
             isCompleted: false,
             ...productiveTaskSystemKindWhere(),
+            participants: { none: {} },
             project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },
-          select: {
-            id: true,
-            projectId: true,
-            process: true,
-            lampId: true,
-            order: true,
-            systemKind: true,
-            workOrderId: true,
-            estimatedHours: true,
-            project: { select: { id: true, name: true } },
-            lamp: {
-              select: {
-                id: true,
-                name: true,
-                surfaceM2: true,
-                units: true,
-                elementType: { select: { id: true } },
-              },
-            },
-            lampElement: {
-              select: {
-                label: true,
-                surfaceM2: true,
-                units: true,
-                elementType: { select: { id: true } },
-              },
-            },
-            workOrder: { select: { number: true, status: true } },
+          select: taskSelect,
+        }),
+    ctx.personId
+      ? prisma.task.findMany({
+          where: {
+            id: { notIn: assignedTaskIds },
+            isCompleted: false,
+            ...productiveTaskSystemKindWhere(),
+            participants: { some: { personId: ctx.personId } },
+            project: { isActive: true },
+            ...(taskNaveFilter ?? {}),
           },
-        });
+          select: taskSelect,
+        })
+      : Promise.resolve([]),
+  ]);
+  const substituteTaskIds = new Set(substituteTasks.map((t) => t.id));
+  for (const task of substituteTasks) {
+    taskSortKey.set(task.id, orderCursor++);
+  }
+  const queueTasks = [...assignedTasks, ...substituteTasks];
 
   const workOrderIds = [
-    ...new Set(assignedTasks.map((t) => t.workOrderId).filter((id): id is string => Boolean(id))),
+    ...new Set(queueTasks.map((t) => t.workOrderId).filter((id): id is string => Boolean(id))),
   ];
   const [workOrderHoursRows, workOrderTasksForProgress] = await Promise.all([
     workOrderIds.length === 0
@@ -267,10 +290,12 @@ export default async function HorasPage() {
       : prisma.task.findMany({
           where: { workOrderId: { in: workOrderIds } },
           select: {
+            id: true,
             workOrderId: true,
             lampId: true,
             lampElementId: true,
             isCompleted: true,
+            estimatedHours: true,
           },
         }),
   ]);
@@ -278,6 +303,28 @@ export default async function HorasPage() {
     workOrderHoursRows
       .filter((row) => row.workOrderId != null)
       .map((row) => [row.workOrderId!, row._sum.estimatedHours ?? 0]),
+  );
+
+  const doneHoursByTaskId = await loadDoneHoursByTaskIds(
+    prisma,
+    workOrderTasksForProgress.map((t) => t.id),
+    now,
+  );
+  const workOrderDoneHours = new Map<string, number>();
+  for (const task of workOrderTasksForProgress) {
+    if (!task.workOrderId) continue;
+    const done = resolveTaskDoneHours({
+      estimatedHours: task.estimatedHours,
+      doneHours: doneHoursByTaskId.get(task.id) ?? 0,
+      isCompleted: task.isCompleted,
+    });
+    workOrderDoneHours.set(task.workOrderId, (workOrderDoneHours.get(task.workOrderId) ?? 0) + done);
+  }
+  const workOrderPendingHours = new Map(
+    [...workOrderEstimatedHours].map(([woId, estimated]) => [
+      woId,
+      Math.max(0, estimated - (workOrderDoneHours.get(woId) ?? 0)),
+    ]),
   );
 
   /** Por OT: elementos hechos / total (clave = lampElementId ?? lampId). */
@@ -313,7 +360,7 @@ export default async function HorasPage() {
   }
 
   const groupedPendingCount = new Map<string, number>();
-  for (const task of assignedTasks) {
+  for (const task of queueTasks) {
     if (!task.workOrderId) continue;
     groupedPendingCount.set(
       task.workOrderId,
@@ -321,7 +368,7 @@ export default async function HorasPage() {
     );
   }
 
-  const assignedLampIds = [...new Set(assignedTasks.map((t) => t.lampId))];
+  const assignedLampIds = [...new Set(queueTasks.map((t) => t.lampId))];
   const [lampTasks, processDefs, lastEndedByTaskRaw] = await Promise.all([
     assignedLampIds.length === 0
       ? []
@@ -358,7 +405,7 @@ export default async function HorasPage() {
     tasksByLamp.set(task.lampId, list);
   }
 
-  function blockedReasonForTask(task: (typeof assignedTasks)[number]): string | null {
+  function blockedReasonForTask(task: (typeof queueTasks)[number]): string | null {
     const lampList = (tasksByLamp.get(task.lampId) ?? []).sort((a, b) => a.order - b.order);
     const prev = [...lampList].reverse().find((x) => x.order < task.order);
     if (!prev) return null;
@@ -376,8 +423,9 @@ export default async function HorasPage() {
     return null;
   }
 
-  const workerQueue = assignedTasks
+  const workerQueue = queueTasks
     .map((t) => ({
+      isSubstitute: substituteTaskIds.has(t.id),
       workOrderId: t.workOrderId,
       groupKey: workOrderGroupKey(t),
       id: t.id,
@@ -392,6 +440,12 @@ export default async function HorasPage() {
       estimatedHours: t.estimatedHours,
       workOrderEstimatedHours: t.workOrderId
         ? (workOrderEstimatedHours.get(t.workOrderId) ?? null)
+        : null,
+      workOrderDoneHours: t.workOrderId
+        ? (workOrderDoneHours.get(t.workOrderId) ?? null)
+        : null,
+      workOrderPendingHours: t.workOrderId
+        ? (workOrderPendingHours.get(t.workOrderId) ?? null)
         : null,
       workOrderElementsDone: t.workOrderId
         ? (workOrderElementProgress.get(t.workOrderId)?.done ?? null)

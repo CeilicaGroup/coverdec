@@ -150,10 +150,12 @@ const ELEMENT_TYPES = [
     typology: ElementTypology.ILUMINACION,
     description: "Elemento Hair con pegado de espejo y perfiles",
     processes: [
-      { process: "ENSAMBLAJE",    sequence: 0, hoursPerUnit: 1.0, fixedHours: 0 },
-      { process: "PERFILES",      sequence: 1, hoursPerUnit: 0.5, fixedHours: 0 },
-      { process: "PEGADO_ESPEJO", sequence: 2, hoursPerUnit: 0.3, fixedHours: 0 },
-      { process: "EMBALAJE",      sequence: 3, hoursPerUnit: 0.2, fixedHours: 0 },
+      { process: "CNC",           sequence: 0, hoursPerUnit: 0.37, fixedHours: 0    },
+      { process: "ENSAMBLAJE",    sequence: 1, hoursPerUnit: 0,    fixedHours: 0.32 },
+      { process: "IMPRIMACION",   sequence: 2, hoursPerUnit: 0,    fixedHours: 0.1  },
+      { process: "PERFILES",      sequence: 3, hoursPerUnit: 0,    fixedHours: 0.15 },
+      { process: "PEGADO_ESPEJO", sequence: 4, hoursPerUnit: 0.52, fixedHours: 0    },
+      { process: "EMBALAJE",      sequence: 5, hoursPerUnit: 0.46, fixedHours: 0    },
     ],
   },
   {

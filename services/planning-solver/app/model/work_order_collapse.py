@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.model.candidates import pick_candidates
 from app.model.timeline import AFTERNOON_UI_OFFSET, DailyAssignmentSlice
-from app.schemas import EngineAssignment, EnginePerson, EngineTask
+from app.schemas import EngineAssignment, EngineProcessDef, EnginePerson, EngineTask
 
 WO_SYNTHETIC_PREFIX = "__wo__:"
 
@@ -67,11 +67,25 @@ def _build_synthetic_task(members: list[EngineTask], synthetic_id: str) -> Engin
     )
 
 
+def _has_dry_wait_between_members(
+    members: list[EngineTask],
+    process_by_code: dict[str, EngineProcessDef],
+) -> bool:
+    for pred, succ in zip(members, members[1:]):
+        if pred.process == succ.process:
+            continue
+        proc = process_by_code.get(pred.process)
+        if proc and proc.waitHours > 0:
+            return True
+    return False
+
+
 def collapse_work_order_tasks(
     tasks: list[EngineTask],
     people: list[EnginePerson],
     *,
     fixed_task_ids: set[str],
+    process_by_code: dict[str, EngineProcessDef] | None = None,
     skip_work_order_ids: set[str] | None = None,
 ) -> tuple[
     list[EngineTask],
@@ -96,6 +110,7 @@ def collapse_work_order_tasks(
     synthetics: dict[str, EngineTask] = {}
 
     skip = skip_work_order_ids or set()
+    process_lookup = process_by_code or {}
 
     for wo_id, members in by_wo.items():
         if len(members) < 2:
@@ -105,6 +120,17 @@ def collapse_work_order_tasks(
         members.sort(key=lambda task: task.workOrderSequence or 0)
 
         if any(member.id in fixed_task_ids for member in members):
+            continue
+
+        # Collapsing would merge the lamp-chain edge between these members
+        # into a self-loop, silently dropping its drying/wait constraint.
+        if _has_dry_wait_between_members(members, process_lookup):
+            continue
+
+        # A requiredWorkers>1 member (e.g. chapas) needs its own N-synchronized
+        # worker-count constraint per task; collapsing would hide that inside a
+        # single-assignee synthetic task and silently drop the requirement.
+        if any((member.requiredWorkers or 1) > 1 for member in members):
             continue
 
         owners = {member.ownerPersonId for member in members if member.ownerPersonId}

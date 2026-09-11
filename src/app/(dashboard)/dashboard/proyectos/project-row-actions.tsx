@@ -3,9 +3,13 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Archive, Trash2 } from "lucide-react";
+import { Archive, PackageCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { deleteProject, toggleProjectActive } from "@/features/projects/actions";
+import {
+  deleteProject,
+  toggleProjectActive,
+  toggleProjectWarehouse,
+} from "@/features/projects/actions";
 import { getErrorMessage } from "@/lib/error-message";
 import {
   EditProjectDialog,
@@ -23,12 +27,14 @@ export function ProjectRowActions({
   project,
   responsibleOptions = [],
   canHardDelete,
+  finished,
 }: {
-  project: EditableProject & { isActive: boolean };
+  project: EditableProject & { isActive: boolean; isInWarehouse: boolean };
   responsibleOptions?: Array<{ id: string; name: string; role: string }>;
   canHardDelete: boolean;
+  finished: boolean;
 }) {
-  const { id: projectId, name: projectName, isActive } = project;
+  const { id: projectId, name: projectName, isActive, isInWarehouse } = project;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -37,6 +43,20 @@ export function ProjectRowActions({
       try {
         await toggleProjectActive({ projectId, isActive: !isActive });
         toast.success(isActive ? "Proyecto archivado" : "Proyecto reactivado");
+        router.refresh();
+      } catch (e) {
+        toast.error(formatActionError(e));
+      }
+    });
+  }
+
+  function onWarehouseToggle() {
+    startTransition(async () => {
+      try {
+        await toggleProjectWarehouse({ projectId, isInWarehouse: !isInWarehouse });
+        toast.success(
+          isInWarehouse ? "Proyecto vuelto a producción" : "Proyecto movido a almacén",
+        );
         router.refresh();
       } catch (e) {
         toast.error(formatActionError(e));
@@ -72,6 +92,24 @@ export function ProjectRowActions({
   return (
     <div className="flex justify-end gap-1">
       <EditProjectDialog project={project} responsibleOptions={responsibleOptions} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={isInWarehouse ? "size-8 text-amber-700" : "size-8 text-muted-foreground disabled:opacity-40"}
+        disabled={pending || (!finished && !isInWarehouse)}
+        onClick={onWarehouseToggle}
+        title={
+          isInWarehouse
+            ? "Volver a producción"
+            : finished
+              ? "Mover a almacén"
+              : "Termina el proyecto para moverlo a almacén"
+        }
+        aria-label={isInWarehouse ? "Volver a producción" : "Mover a almacén"}
+      >
+        <PackageCheck className="size-3.5" />
+      </Button>
       <Button
         type="button"
         variant="ghost"

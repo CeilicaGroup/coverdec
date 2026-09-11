@@ -581,7 +581,12 @@ export function CatalogoCatalogClient({
                                 </span>
                               ) : null}
                               <span className="font-mono font-semibold">
-                                {formatHours(p.hoursPerUnit)}/m²
+                                {[
+                                  p.hoursPerUnit > 0 ? `${formatHours(p.hoursPerUnit)}/m²` : null,
+                                  p.fixedHours > 0 ? `${formatHours(p.fixedHours)}/Ud` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" + ")}
                               </span>
                             </span>
                             );
@@ -897,7 +902,7 @@ export function CatalogoCatalogClient({
                         />
                       </div>
                       <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground">Fijas</span>
+                        <span className="text-[10px] text-muted-foreground">h/Ud</span>
                         <Input
                           className="h-9 font-mono text-xs px-2"
                           inputMode="decimal"

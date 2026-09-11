@@ -41,7 +41,9 @@ export interface EngineTask {
   minWeekQuarter?: number;
   /** When false, task must be scheduled in a single calendar day. */
   canFragment?: boolean;
-  /** When set, only this worker may be assigned (task already started). */
+  /** Number of distinct workers that must be scheduled on this task simultaneously (default 1). */
+  requiredWorkers?: number;
+  /** When set, only this worker may be assigned (task already started). Ignored when requiredWorkers > 1. */
   ownerPersonId?: string | null;
   /** Open work-order grouping: same worker, sequential placement. */
   workOrderId?: string | null;

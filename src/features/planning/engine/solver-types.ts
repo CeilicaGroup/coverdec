@@ -65,6 +65,7 @@ export type SolveRequestPayload = {
     naveId: string;
     minWeekQuarter?: number;
     canFragment?: boolean;
+    requiredWorkers?: number;
     ownerPersonId?: string | null;
     workOrderId?: string | null;
     workOrderSequence?: number | null;
@@ -267,7 +268,14 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
           ? { minWeekQuarter: t.minWeekQuarter }
           : {}),
         ...(t.canFragment === false ? { canFragment: false } : {}),
-        ...(t.ownerPersonId ? { ownerPersonId: t.ownerPersonId } : {}),
+        ...(t.requiredWorkers && t.requiredWorkers > 1
+          ? { requiredWorkers: t.requiredWorkers }
+          : {}),
+        // Owner-pinning would collapse the candidate pool to 1 person, making
+        // a requiredWorkers>1 task infeasible — always re-offer the full pool.
+        ...(t.ownerPersonId && (t.requiredWorkers ?? 1) <= 1
+          ? { ownerPersonId: t.ownerPersonId }
+          : {}),
         ...(t.workOrderId ? { workOrderId: t.workOrderId } : {}),
         ...(t.workOrderSequence != null ? { workOrderSequence: t.workOrderSequence } : {}),
       };

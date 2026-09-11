@@ -7,8 +7,10 @@ import { loadTypologyImageAvailability } from "@/features/catalog/typology-image
 import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
 import { loadAssigneeByTaskIds } from "@/features/work-orders/display-context";
 import {
+  listActivePeopleForExecutorPicker,
   listEligibleTasksForWorkOrder,
   listWorkOrders,
+  loadWorkOrderExecutorIds,
   workOrdersHavePlanningAssignments,
   workOrdersHaveTimeEntries,
 } from "@/features/work-orders/queries";
@@ -30,13 +32,14 @@ export default async function OrdenesTrabajoPage({
         ? "CLOSED"
         : "OPEN";
 
-  const [workOrders, eligibleTasks, processStyles, typologyImages, elementTypeImages] =
+  const [workOrders, eligibleTasks, processStyles, typologyImages, elementTypeImages, activePeople] =
     await Promise.all([
     listWorkOrders(statusFilter),
     listEligibleTasksForWorkOrder(),
     getProcessBadgeStylesByCode(),
     loadTypologyImageAvailability(),
     loadElementTypeImageAvailability(),
+    listActivePeopleForExecutorPicker(),
   ]);
   const userThresholds = await prisma.user.findUnique({
     where: { id: ctx.userId },
@@ -49,11 +52,15 @@ export default async function OrdenesTrabajoPage({
   const taskIds = workOrders.flatMap((order) => order.tasks.map((t) => t.id));
   const assigneeByTaskId = await loadAssigneeByTaskIds(taskIds);
   const workOrderIds = workOrders.map((order) => order.id);
-  const [workOrderIdsWithTimeEntries, workOrderIdsWithPlanningAssignments] =
-    await Promise.all([
-      workOrdersHaveTimeEntries(workOrderIds),
-      workOrdersHavePlanningAssignments(workOrderIds),
-    ]);
+  const [
+    workOrderIdsWithTimeEntries,
+    workOrderIdsWithPlanningAssignments,
+    workOrderExecutorIds,
+  ] = await Promise.all([
+    workOrdersHaveTimeEntries(workOrderIds),
+    workOrdersHavePlanningAssignments(workOrderIds),
+    loadWorkOrderExecutorIds(workOrderIds),
+  ]);
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -77,6 +84,8 @@ export default async function OrdenesTrabajoPage({
         }}
         typologyImages={typologyImages}
         elementTypeImages={elementTypeImages}
+        activePeople={activePeople}
+        workOrderExecutorIds={Object.fromEntries(workOrderExecutorIds)}
       />
     </div>
   );

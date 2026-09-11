@@ -55,3 +55,7 @@ export function formatWeekRange(weekStart: Date): string {
 export function shiftWeek(weekStart: Date, deltaWeeks: number): Date {
   return new Date(getMondayOf(weekStart).getTime() + deltaWeeks * 7 * DAY_MS);
 }
+
+export function isCreatedThisWeek(date: Date, now: Date = new Date()): boolean {
+  return date >= getMondayOf(now);
+}

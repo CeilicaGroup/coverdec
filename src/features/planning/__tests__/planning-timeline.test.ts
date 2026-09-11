@@ -124,8 +124,8 @@ describe("buildPlanningTimeline", () => {
       processByCode,
     );
     const dry = items.find((i) => i.kind === "dry-wait");
-    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("15.25h →");
-    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("12/06/2026 3.25h");
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("15:15 →");
+    expect(dry?.kind === "dry-wait" && dry.scheduleLabel).toContain("12/06/2026 03:15");
     expect(dry?.kind === "dry-wait" && dry.scheduleLabel).not.toContain(
       "12/06/2026 15h",
     );

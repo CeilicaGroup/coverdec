@@ -5,7 +5,7 @@ import {
   slotToLabel,
 } from "@/features/planning/engine/slot-format";
 import { addWallClockWait } from "@/features/planning/gantt-timeline";
-import { formatHours, formatShortDate } from "@/lib/format";
+import { formatHoursAsHhMm, formatShortDate } from "@/lib/format";
 import { taskChainKey } from "@/features/planning/task-chain-key";
 import { toUtcDay } from "@/lib/week";
 
@@ -134,7 +134,7 @@ function toPlanningDayIso(d: Date): string {
 }
 
 function formatWallClockMinutes(minutes: number): string {
-  return formatHours(minutes / 60);
+  return formatHoursAsHhMm(minutes / 60);
 }
 
 function formatDryWaitWindow(

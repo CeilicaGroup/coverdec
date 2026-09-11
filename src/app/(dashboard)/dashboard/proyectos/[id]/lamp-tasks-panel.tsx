@@ -3,7 +3,7 @@
 import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, MapPin, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -68,7 +68,12 @@ import {
   isAutomaticTransportTask,
   TRANSPORT_PROCESS_CODE,
 } from "@/features/projects/transport-tasks";
-import { taskHasPlanningAssignments } from "@/features/projects/task-planning-lock";
+import {
+  taskBlocksDeletion,
+  taskHasPlanningAssignments,
+} from "@/features/projects/task-planning-lock";
+import { addTaskSubstitute, removeTaskSubstitute } from "@/features/projects/substitute-actions";
+import { isCreatedThisWeek } from "@/lib/week";
 import { toast } from "sonner";
 import type { ElementTypology } from "@/generated/prisma";
 
@@ -80,12 +85,14 @@ interface LampTaskRow {
   pendingHours: number;
   order: number;
   notes: string | null;
+  createdAt: string | Date;
   naveId: string;
   nave: NaveSummary | null;
   systemKind?: import("@/generated/prisma").TaskSystemKind | null;
   transportFromNave?: NaveSummary | null;
   transportToNave?: NaveSummary | null;
   _count?: { assignments: number };
+  substitutes?: { id: string; label: string }[];
   lampElement:
     | {
         id: string;
@@ -151,9 +158,13 @@ function transportRouteLabel(task: LampTaskRow): string | null {
   return `${from} → ${to}`;
 }
 
+function taskRowBlocksDeletion(task: LampTaskRow): boolean {
+  return taskBlocksDeletion({ ...task, createdAt: new Date(task.createdAt) });
+}
+
 function processDeleteBlockedReason(tasks: LampTaskRow[], pending: boolean): string | null {
   if (pending) return "Hay otra operación en curso.";
-  if (tasks.some((task) => taskHasPlanningAssignments(task))) {
+  if (tasks.some((task) => taskRowBlocksDeletion(task))) {
     return "No se puede eliminar: alguna tarea tiene planning asignado.";
   }
   if (tasks.some((task) => isAutomaticTransportTask(task))) {
@@ -166,7 +177,7 @@ function processDeleteBlockedReason(tasks: LampTaskRow[], pending: boolean): str
 }
 
 function taskDeleteBlockedReason(task: LampTaskRow): string | null {
-  if (taskHasPlanningAssignments(task)) {
+  if (taskRowBlocksDeletion(task)) {
     return "No se puede eliminar: la tarea tiene planning asignado.";
   }
   if (isAutomaticTransportTask(task)) {
@@ -558,8 +569,9 @@ function AggregatedTaskTable({
             catalogNaveId,
           });
           const canDelete =
-            !matching.some((task) => taskIsStructurallyLocked(task)) &&
-            matching.every((task) => task.doneHours <= 0);
+            !matching.some(
+              (task) => taskRowBlocksDeletion(task) || isAutomaticTransportTask(task),
+            ) && matching.every((task) => task.doneHours <= 0);
           const deleteReason = processDeleteBlockedReason(matching, pending);
 
           return (
@@ -736,6 +748,126 @@ function AggregatedTaskTable({
   );
 }
 
+function SubstituteDialog({
+  open,
+  onOpenChange,
+  task,
+  candidates,
+  onUpdated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  task: LampTaskRow | null;
+  candidates: { id: string; label: string }[];
+  onUpdated: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [selectedPersonId, setSelectedPersonId] = useState("");
+
+  useEffect(() => {
+    if (open) setSelectedPersonId("");
+  }, [open]);
+
+  if (!task) return null;
+
+  const currentSubstitutes = task.substitutes ?? [];
+  const availableCandidates = candidates.filter(
+    (c) => !currentSubstitutes.some((s) => s.id === c.id),
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Sustituto para esta tarea</DialogTitle>
+          <DialogDescription>
+            Permite a otra persona de la misma nave registrar horas en esta tarea sin cambiar
+            quién estaba planificado.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {currentSubstitutes.length > 0 ? (
+            <div className="space-y-1.5">
+              <Label>Sustitutos actuales</Label>
+              {currentSubstitutes.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between rounded-md border px-2 py-1.5 text-sm"
+                >
+                  <span>{s.label}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    disabled={pending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        try {
+                          await removeTaskSubstitute({ taskId: task.id, personId: s.id });
+                          toast.success("Sustituto eliminado");
+                          onUpdated();
+                        } catch (err) {
+                          toast.error(reportMutationError("Error", err));
+                        }
+                      });
+                    }}
+                    aria-label={`Quitar sustituto ${s.label}`}
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <Label>Añadir sustituto</Label>
+            <Select value={selectedPersonId} onValueChange={(v) => setSelectedPersonId(v ?? "")}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecciona operario" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableCandidates.length === 0 ? (
+                  <div className="px-2 py-3 text-xs text-muted-foreground">
+                    No hay operarios disponibles en esta nave.
+                  </div>
+                ) : (
+                  availableCandidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.label}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending || !selectedPersonId}
+            onClick={() => {
+              startTransition(async () => {
+                try {
+                  await addTaskSubstitute({ taskId: task.id, personId: selectedPersonId });
+                  toast.success("Sustituto añadido");
+                  setSelectedPersonId("");
+                  onUpdated();
+                } catch (err) {
+                  toast.error(reportMutationError("Error", err));
+                }
+              });
+            }}
+          >
+            Añadir
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function LampTasksPanel({
   lampId,
   tasks,
@@ -747,6 +879,7 @@ export function LampTasksPanel({
   catalogNaveByElementProcess = {},
   typologyImages,
   elementTypeImages,
+  substitutePeopleByNave = {},
 }: {
   lampId: string;
   tasks: LampTaskRow[];
@@ -758,12 +891,14 @@ export function LampTasksPanel({
   catalogNaveByElementProcess?: Record<string, Record<string, string>>;
   typologyImages?: TypologyImageAvailability;
   elementTypeImages?: ElementTypeImageAvailability;
+  substitutePeopleByNave?: Record<string, { id: string; label: string }[]>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [viewMode, setViewMode] = useState<TaskViewMode>("agrupada");
   const [naveDialogGroupKey, setNaveDialogGroupKey] = useState<string | null>(null);
   const [editTask, setEditTask] = useState<LampTaskRow | null>(null);
+  const [substituteTask, setSubstituteTask] = useState<LampTaskRow | null>(null);
   const [editHours, setEditHours] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -1139,6 +1274,22 @@ export function LampTasksPanel({
                                   >
                                     <Pencil className="size-3" />
                                   </Button>
+                                  {taskHasPlanningAssignments(t) ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className={cn(
+                                        "size-7",
+                                        (t.substitutes?.length ?? 0) > 0 &&
+                                          "text-sky-700 dark:text-sky-400",
+                                      )}
+                                      onClick={() => setSubstituteTask(t)}
+                                      aria-label="Gestionar sustituto"
+                                    >
+                                      <UserPlus className="size-3" />
+                                    </Button>
+                                  ) : null}
                                   {taskDeleteBlockedReason(t) ? (
                                     <TooltipProvider>
                                       <Tooltip>
@@ -1234,6 +1385,16 @@ export function LampTasksPanel({
         />
       ) : null}
 
+      <SubstituteDialog
+        open={substituteTask != null}
+        onOpenChange={(open) => {
+          if (!open) setSubstituteTask(null);
+        }}
+        task={substituteTask ? (sorted.find((t) => t.id === substituteTask.id) ?? substituteTask) : null}
+        candidates={substituteTask ? (substitutePeopleByNave[substituteTask.naveId] ?? []) : []}
+        onUpdated={() => router.refresh()}
+      />
+
       <Dialog open={editTask != null} onOpenChange={(o) => !o && setEditTask(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1245,19 +1406,22 @@ export function LampTasksPanel({
               onSubmit={(e) => {
                 e.preventDefault();
                 const planned = taskHasPlanningAssignments(editTask);
+                const createdThisWeek = isCreatedThisWeek(new Date(editTask.createdAt));
                 const h = Number(editHours);
-                if (!planned && (!h || h <= 0)) {
+                if (!h || h <= 0) {
                   toast.error("Horas inválidas");
+                  return;
+                }
+                if (planned && !createdThisWeek && h < editTask.estimatedHours) {
+                  toast.error("Con planning asignado, solo puedes aumentar las horas.");
                   return;
                 }
                 startTransition(async () => {
                   try {
-                    if (!planned) {
-                      await updateTaskHours({
-                        taskId: editTask.id,
-                        estimatedHours: h,
-                      });
-                    }
+                    await updateTaskHours({
+                      taskId: editTask.id,
+                      estimatedHours: h,
+                    });
                     await updateTaskNotes({
                       taskId: editTask.id,
                       notes: editNotes.trim() || null,
@@ -1292,14 +1456,14 @@ export function LampTasksPanel({
                   type="number"
                   step={0.25}
                   min={0.25}
-                  required={!taskHasPlanningAssignments(editTask)}
-                  disabled={taskHasPlanningAssignments(editTask)}
+                  required
                   value={editHours}
                   onChange={(e) => setEditHours(e.target.value)}
                 />
-                {taskHasPlanningAssignments(editTask) ? (
+                {taskHasPlanningAssignments(editTask) &&
+                !isCreatedThisWeek(new Date(editTask.createdAt)) ? (
                   <p className="text-[11px] text-muted-foreground">
-                    No se pueden cambiar las horas: la tarea tiene planning asignado.
+                    Con planning asignado, solo puedes aumentar las horas.
                   </p>
                 ) : null}
               </div>

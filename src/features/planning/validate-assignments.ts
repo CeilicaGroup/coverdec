@@ -61,21 +61,63 @@ export function findWorkOrdersWithMultipleWorkers(
   return conflicts;
 }
 
+/**
+ * Per-task worker cap: the task's own requiredWorkers (chapas-style, solver-driven)
+ * combined with however many distinct people already hold an isOverride assignment
+ * for it (manual "elegir ejecutores de OT" override) — whichever is higher.
+ */
+export function buildTaskWorkerLimitMap(
+  tasks: Array<{ id: string; requiredWorkers?: number }>,
+  overrideSlices: Array<{ taskId: string; personId: string }> = [],
+): Map<string, number> {
+  const overridePersonCountByTask = new Map<string, Set<string>>();
+  for (const slice of overrideSlices) {
+    const set = overridePersonCountByTask.get(slice.taskId) ?? new Set<string>();
+    set.add(slice.personId);
+    overridePersonCountByTask.set(slice.taskId, set);
+  }
+  const limitByTaskId = new Map<string, number>();
+  for (const task of tasks) {
+    const overrideCount = overridePersonCountByTask.get(task.id)?.size ?? 0;
+    limitByTaskId.set(task.id, Math.max(task.requiredWorkers ?? 1, overrideCount));
+  }
+  return limitByTaskId;
+}
+
+/** Per-work-order worker cap: the highest per-task cap among its tasks. */
+export function buildWorkOrderWorkerLimitMap(
+  limitByTaskId: Map<string, number>,
+  workOrderIdByTaskId: Map<string, string>,
+): Map<string, number> {
+  const limitByWorkOrderId = new Map<string, number>();
+  for (const [taskId, workOrderId] of workOrderIdByTaskId) {
+    const taskLimit = limitByTaskId.get(taskId) ?? 1;
+    limitByWorkOrderId.set(
+      workOrderId,
+      Math.max(limitByWorkOrderId.get(workOrderId) ?? 1, taskLimit),
+    );
+  }
+  return limitByWorkOrderId;
+}
+
 export function assertSingleWorkerPerTask(
   assignments: Pick<EngineAssignment, "taskId" | "personId">[],
-  options?: { exemptTaskIds?: Set<string> },
+  options?: { exemptTaskIds?: Set<string>; limitByTaskId?: Map<string, number> },
 ): void {
   const exempt = options?.exemptTaskIds ?? new Set<string>();
+  const limitByTaskId = options?.limitByTaskId;
   const filtered = assignments.filter(
     (assignment) => !exempt.has(assignment.taskId),
   );
-  const conflicts = findTasksWithMultipleWorkers(filtered);
+  const conflicts = findTasksWithMultipleWorkers(filtered).filter(
+    (c) => c.personIds.length > (limitByTaskId?.get(c.taskId) ?? 1),
+  );
   if (conflicts.length === 0) return;
   const detail = conflicts
     .map((c) => `${c.taskId} (${c.personIds.join(", ")})`)
     .join("; ");
   throw new Error(
-    `El planning asigna la misma tarea a más de un operario: ${detail}`,
+    `El planning asigna más operarios de los permitidos a una tarea: ${detail}`,
   );
 }
 
@@ -83,11 +125,15 @@ export function assertSingleWorkerPerWorkOrder(
   assignments: Pick<EngineAssignment, "taskId" | "personId">[],
   workOrderIdByTaskId: Map<string, string>,
   workOrderNumberById: Map<string, string> = new Map(),
+  options?: { limitByWorkOrderId?: Map<string, number> },
 ): void {
+  const limitByWorkOrderId = options?.limitByWorkOrderId;
   const conflicts = findWorkOrdersWithMultipleWorkers(
     assignments,
     workOrderIdByTaskId,
     workOrderNumberById,
+  ).filter(
+    (c) => c.personIds.length > (limitByWorkOrderId?.get(c.workOrderId) ?? 1),
   );
   if (conflicts.length === 0) return;
 
@@ -96,8 +142,7 @@ export function assertSingleWorkerPerWorkOrder(
   );
   throw new Error(
     [
-      "El planning asigna tareas de la misma OT a operarios distintos.",
-      "Todas las tareas de una OT deben ir al mismo operario:",
+      "El planning asigna tareas de la misma OT a más operarios de los permitidos.",
       ...lines,
     ].join("\n"),
   );
