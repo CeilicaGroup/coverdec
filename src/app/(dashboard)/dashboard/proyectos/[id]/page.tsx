@@ -43,12 +43,15 @@ import { ReturnToStockButton } from "./return-to-stock-button";
 import { AssignFromStockDialog } from "./assign-from-stock-dialog";
 import { ProjectDangerZone } from "./project-danger-zone";
 import { ProjectLampSection, ProjectLampsList } from "./project-lamps-list";
+import { ProjectNextProcessCell } from "../project-next-process-cell";
 import { LampApprovalToggle } from "./lamp-approval-toggle";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
 import { listStockLamps } from "@/features/stock/actions";
 import { canManagePlanning } from "@/features/planning/planning-visibility";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
+import { taskBlocksDeletion } from "@/features/projects/task-planning-lock";
+import { formatAdHocPersonLabel } from "@/features/ad-hoc/resolve-ad-hoc-nave";
 
 export default async function ProjectDetailPage({
   params,
@@ -89,6 +92,18 @@ export default async function ProjectDetailPage({
                 },
               },
               _count: { select: { assignments: true } },
+              participants: {
+                select: {
+                  personId: true,
+                  person: {
+                    select: {
+                      iniciales: true,
+                      alias: true,
+                      user: { select: { name: true } },
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -106,17 +121,29 @@ export default async function ProjectDetailPage({
   const canManagePlanningRole = canManagePlanning(ctx.role);
   const taskIds = project.lamps.flatMap((lamp) => lamp.tasks.map((task) => task.id));
   const doneByTaskId = await loadDoneHoursByTaskIds(prisma, taskIds);
-  const lamps = project.lamps.map((lamp) => ({
-    ...lamp,
-    tasks: lamp.tasks.map((task) => {
+  const lamps = project.lamps.map((lamp) => {
+    const tasks = lamp.tasks.map((task) => {
       const doneHours = doneByTaskId.get(task.id) ?? 0;
       return {
         ...task,
         doneHours,
         pendingHours: Math.max(0, task.estimatedHours - doneHours),
+        substitutes: task.participants.map(({ personId, person }) => ({
+          id: personId,
+          label: formatAdHocPersonLabel({
+            name: person.user?.name ?? person.alias ?? person.iniciales,
+            iniciales: person.iniciales,
+          }),
+        })),
       };
-    }),
-  }));
+    });
+    const deleteBlockedReason = tasks.some((t) => t.doneHours > 0)
+      ? "Hay horas registradas en las tareas de esta lámpara."
+      : tasks.some((t) => taskBlocksDeletion(t))
+        ? "Hay tareas planificadas en esta lámpara."
+        : null;
+    return { ...lamp, tasks, deleteBlockedReason };
+  });
 
   const [timeEntries, orders] = await Promise.all([
     prisma.timeEntry.count({ where: { projectId: id } }),
@@ -124,7 +151,7 @@ export default async function ProjectDetailPage({
   ]);
   const canHardDelete = timeEntries === 0 && orders === 0;
 
-  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps, typologyImages, elementTypeImages] =
+  const [elementTypes, processDefs, naves, typologyNaves, responsibleUsers, stockLamps, typologyImages, elementTypeImages, substitutablePeople] =
     await Promise.all([
     prisma.elementType.findMany({
       where: { isActive: true },
@@ -163,7 +190,33 @@ export default async function ProjectDetailPage({
     canManage ? listStockLamps() : Promise.resolve([]),
     loadTypologyImageAvailability(),
     loadElementTypeImageAvailability(),
+    canManage
+      ? prisma.person.findMany({
+          where: { isActive: true },
+          select: {
+            id: true,
+            iniciales: true,
+            alias: true,
+            user: { select: { name: true } },
+            personNaves: { select: { naveId: true } },
+          },
+          orderBy: { iniciales: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
+
+  const substitutePeopleByNave = new Map<string, { id: string; label: string }[]>();
+  for (const person of substitutablePeople) {
+    const label = formatAdHocPersonLabel({
+      name: person.user?.name ?? person.alias ?? person.iniciales,
+      iniciales: person.iniciales,
+    });
+    for (const { naveId } of person.personNaves) {
+      const list = substitutePeopleByNave.get(naveId) ?? [];
+      list.push({ id: person.id, label });
+      substitutePeopleByNave.set(naveId, list);
+    }
+  }
 
   const typologyDefaultNaveByTypology = Object.fromEntries(
     typologyNaves.map((row) => [row.typology, row.defaultNaveId]),
@@ -396,6 +449,9 @@ export default async function ProjectDetailPage({
                         />
                       )
                     : (l.elementType?.name ?? "—");
+                const lampPendingProcesses = l.tasks
+                  .filter((t) => !t.isCompleted)
+                  .map((t) => processStylesByCode[t.process]?.label ?? t.process);
                 const lampLevelUsed = new Set(
                   l.tasks
                     .filter((t) => t.lampElementId == null)
@@ -411,6 +467,13 @@ export default async function ProjectDetailPage({
                     key={l.id}
                     summary={elementSummary}
                     pendingHours={lampPending}
+                    nextProcess={
+                      <ProjectNextProcessCell
+                        processes={lampPendingProcesses}
+                        finished={l.tasks.length > 0 && lampPendingProcesses.length === 0}
+                        hasTasks={l.tasks.length > 0}
+                      />
+                    }
                     defaultExpanded={productionLamps.length <= 2}
                     header={
                       <>
@@ -458,7 +521,11 @@ export default async function ProjectDetailPage({
                         />
                       ) : null}
                       {canManage ? (
-                        <DeleteLampButton lampId={l.id} lampName={l.name} />
+                        <DeleteLampButton
+                          lampId={l.id}
+                          lampName={l.name}
+                          disabledReason={l.deleteBlockedReason}
+                        />
                       ) : null}
                       {showStockActions ? (
                         <ReturnToStockButton
@@ -494,6 +561,7 @@ export default async function ProjectDetailPage({
                       catalogNaveByElementProcess={catalogNaveByElementProcess}
                       typologyImages={typologyImages}
                       elementTypeImages={elementTypeImages}
+                      substitutePeopleByNave={Object.fromEntries(substitutePeopleByNave)}
                     />
                   </ProjectLampSection>
                 );

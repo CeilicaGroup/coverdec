@@ -55,6 +55,7 @@ export function ProjectLampSection({
   actions,
   summary,
   pendingHours,
+  nextProcess,
   defaultExpanded = false,
   children,
 }: {
@@ -62,6 +63,7 @@ export function ProjectLampSection({
   actions?: ReactNode;
   summary: ReactNode;
   pendingHours: number;
+  nextProcess?: ReactNode;
   defaultExpanded?: boolean;
   children: React.ReactNode;
 }) {
@@ -99,6 +101,11 @@ export function ProjectLampSection({
         ) : null}
         {actions ? (
           <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>
+        ) : null}
+        {nextProcess ? (
+          <div className="text-xs shrink-0">
+            Próximo: {nextProcess}
+          </div>
         ) : null}
         <div className="text-xs font-mono ml-auto shrink-0">
           Pendiente:{" "}

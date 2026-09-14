@@ -150,13 +150,14 @@ describe("approved tasks only in resumen summaries", () => {
         code: "NONE",
         name: "No approved",
         deliveryDate: null,
+        isInWarehouse: false,
         planningPreset: "EQUILIBRADO" as const,
         planningCostPriority: 50,
         planningStability: 50,
         planningDeadlineBoost: 50,
         tasks: [],
       },
-    ] as ProjectWithLoad[];
+    ] as unknown as ProjectWithLoad[];
 
     const rows = summarizeAllActiveProjects(noApprovedTasks, null, new Map());
 

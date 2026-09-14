@@ -51,10 +51,13 @@ export interface WorkerQueueTask {
   order: number;
   estimatedHours: number;
   workOrderEstimatedHours: number | null;
+  workOrderDoneHours: number | null;
+  workOrderPendingHours: number | null;
   workOrderElementsDone: number | null;
   workOrderElementsTotal: number | null;
   plannedRanges: string[];
   plannedDateRanges: { startedAt: string; endedAt: string }[];
+  isSubstitute: boolean;
   blockedReason: string | null;
   workOrderId: string | null;
   groupKey: string | null;
@@ -82,6 +85,16 @@ function taskTimeSummary(task: Pick<WorkerQueueTask, "estimatedHours" | "workOrd
   const taskLabel = `Tarea ${formatHoursAsHhMm(task.estimatedHours)}`;
   if (task.workOrderEstimatedHours == null) return taskLabel;
   return `${taskLabel} · OT ${formatHoursAsHhMm(task.workOrderEstimatedHours)}`;
+}
+
+function otTimeSummary(
+  task: Pick<
+    WorkerQueueTask,
+    "estimatedHours" | "workOrderEstimatedHours" | "workOrderPendingHours" | "workOrderDoneHours"
+  >,
+) {
+  if (task.workOrderEstimatedHours == null) return taskTimeSummary(task);
+  return `OT teórico ${formatHoursAsHhMm(task.workOrderEstimatedHours)} · pendiente ${formatHoursAsHhMm(task.workOrderPendingHours)} · registrado ${formatHoursAsHhMm(task.workOrderDoneHours)}`;
 }
 
 function workOrderElementsLabel(
@@ -222,11 +235,16 @@ export function TaskQueuePanel({
               status={t.workOrderStatus ?? undefined}
             />
             {elementsLabel ? <span>· {elementsLabel}</span> : null}
+            {t.isSubstitute ? (
+              <span className="font-medium text-sky-700 dark:text-sky-400">· Sustituto</span>
+            ) : null}
           </div>
           <div className="text-[11px] text-muted-foreground truncate">
-            {t.plannedRanges.length > 0
-              ? t.plannedRanges.join(" · ")
-              : "Sin franja planificada"}
+            {t.isSubstitute
+              ? "Cubriendo tarea planificada de otra persona"
+              : t.plannedRanges.length > 0
+                ? t.plannedRanges.join(" · ")
+                : "Sin franja planificada"}
           </div>
           {t.blockedReason ? (
             <div className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
@@ -258,8 +276,11 @@ export function TaskQueuePanel({
           ) : (
             <>
               <div {...withWorkOrderHighlight(activeTask.workOrderNumber, "space-y-1")}>
-                <div className="font-mono text-base tabular-nums font-semibold">
+                <div className="hidden md:block font-mono text-base tabular-nums font-semibold">
                   {taskTimeSummary(activeTask)}
+                </div>
+                <div className="md:hidden font-mono text-base tabular-nums font-semibold">
+                  {otTimeSummary(activeTask)}
                 </div>
                 {isTimerOnActiveTask && timerText ? (
                   <div className="font-mono text-2xl tabular-nums font-semibold tracking-tight">
@@ -272,7 +293,9 @@ export function TaskQueuePanel({
                   Elemento: {activeTask.elementLabel} · Medida: {activeTask.measureLabel}
                 </div>
                 <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span>{processLabels[activeTask.process] ?? activeTask.process} · No completada</span>
+                  <span className="text-base font-semibold text-foreground md:text-sm md:font-normal md:text-muted-foreground">
+                    {processLabels[activeTask.process] ?? activeTask.process} · No completada
+                  </span>
                   <WorkOrderBadge
                     number={activeTask.workOrderNumber}
                     status={activeTask.workOrderStatus ?? undefined}
@@ -299,11 +322,14 @@ export function TaskQueuePanel({
                     timer en esta tarea o usa registro manual.
                   </div>
                 ) : null}
-                <div className="text-xs text-muted-foreground">
-                  Horario planificado:{" "}
-                  {activeTask.plannedRanges.length > 0
-                    ? activeTask.plannedRanges.join(" · ")
-                    : "Sin franja planificada"}
+                <div className="hidden md:block text-xs text-muted-foreground">
+                  {activeTask.isSubstitute
+                    ? "Cubriendo tarea planificada de otra persona"
+                    : `Horario planificado: ${
+                        activeTask.plannedRanges.length > 0
+                          ? activeTask.plannedRanges.join(" · ")
+                          : "Sin franja planificada"
+                      }`}
                 </div>
               </div>
 

@@ -65,8 +65,8 @@ describe("summarizeWorkOrderElementProcess", () => {
 describe("summarizeWorkOrderAssignee", () => {
   it("returns single assignee when all tasks share the same person", () => {
     const map = new Map([
-      ["t1", { personId: "p1", label: "Ana", iniciales: "AB" }],
-      ["t2", { personId: "p1", label: "Ana", iniciales: "AB" }],
+      ["t1", [{ personId: "p1", label: "Ana", iniciales: "AB" }]],
+      ["t2", [{ personId: "p1", label: "Ana", iniciales: "AB" }]],
     ]);
     expect(summarizeWorkOrderAssignee(["t1", "t2"], map)).toEqual({
       kind: "single",
@@ -76,11 +76,15 @@ describe("summarizeWorkOrderAssignee", () => {
 
   it("returns multiple when assignees differ", () => {
     const map = new Map([
-      ["t1", { personId: "p1", label: "Ana", iniciales: "AB" }],
-      ["t2", { personId: "p2", label: "Bob", iniciales: "CD" }],
+      ["t1", [{ personId: "p1", label: "Ana", iniciales: "AB" }]],
+      ["t2", [{ personId: "p2", label: "Bob", iniciales: "CD" }]],
     ]);
     expect(summarizeWorkOrderAssignee(["t1", "t2"], map)).toEqual({
       kind: "multiple",
+      assignees: [
+        { personId: "p1", label: "Ana", iniciales: "AB" },
+        { personId: "p2", label: "Bob", iniciales: "CD" },
+      ],
     });
   });
 });

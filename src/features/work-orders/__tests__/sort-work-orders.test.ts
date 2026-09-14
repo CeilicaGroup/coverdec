@@ -125,9 +125,9 @@ describe("sortWorkOrders", () => {
   });
 
   it("sorts assignee by label", () => {
-    const assigneeByTaskId = new Map<string, TaskAssigneeSummary>([
-      ["t1", { personId: "p1", label: "Ana", iniciales: "A" }],
-      ["t2", { personId: "p2", label: "Bruno", iniciales: "B" }],
+    const assigneeByTaskId = new Map<string, TaskAssigneeSummary[]>([
+      ["t1", [{ personId: "p1", label: "Ana", iniciales: "A" }]],
+      ["t2", [{ personId: "p2", label: "Bruno", iniciales: "B" }]],
     ]);
     const rows = [
       row({

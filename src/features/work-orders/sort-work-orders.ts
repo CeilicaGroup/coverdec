@@ -72,11 +72,13 @@ function elementProcessSortKey(tasks: WorkOrderTaskFilterable[]): string {
 
 function assigneeSortKey(
   taskIds: string[],
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>,
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>,
 ): string {
   const summary = summarizeWorkOrderAssignee(taskIds, assigneeByTaskId);
   if (summary.kind === "none") return "";
-  if (summary.kind === "multiple") return "Varios";
+  if (summary.kind === "multiple") {
+    return summary.assignees.map((a) => a.label).join(", ");
+  }
   return summary.assignee.label;
 }
 
@@ -85,7 +87,7 @@ function compareByColumn(
   b: WorkOrderSortableRow,
   column: WorkOrderSortColumn,
   direction: WorkOrderSortDirection,
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>,
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>,
 ): number {
   let delta = 0;
 
@@ -135,7 +137,7 @@ export function compareWorkOrdersForSort(
   a: WorkOrderSortableRow,
   b: WorkOrderSortableRow,
   sort: WorkOrderSortState,
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>,
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>,
 ): number {
   if (sort.column == null) {
     return compareWorkOrdersByAttention(a, b);
@@ -148,7 +150,7 @@ export function compareWorkOrdersForSort(
 export function sortWorkOrders<T extends WorkOrderSortableRow>(
   rows: T[],
   sort: WorkOrderSortState,
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>,
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>,
 ): T[] {
   return [...rows].sort((a, b) =>
     compareWorkOrdersForSort(a, b, sort, assigneeByTaskId),

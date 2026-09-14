@@ -37,6 +37,15 @@ import { getErrorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 import { MANUAL_ESTIMATION_PROCESS } from "@/lib/manual-lamp";
 
+const NOTES_MAX_LENGTH = 50;
+
+function truncateNotes(notes: string | null | undefined): string {
+  if (!notes) return "";
+  return notes.length > NOTES_MAX_LENGTH
+    ? `${notes.slice(0, NOTES_MAX_LENGTH).trimEnd()}…`
+    : notes;
+}
+
 interface ProcessDefOption {
   code: ProcessCode;
   label: string;
@@ -145,14 +154,17 @@ export function PersonalTeamClient({
   });
 
   const [filterNave, setFilterNave] = useState<string>("all");
+  const [showInactive, setShowInactive] = useState(false);
 
   const activeCount = useMemo(() => people.filter((p) => p.isActive).length, [people]);
   const displayedPeople = useMemo(
     () =>
-      filterNave === "all"
-        ? people
-        : people.filter((p) => p.naveId === filterNave),
-    [people, filterNave],
+      people.filter(
+        (p) =>
+          (showInactive || p.isActive) &&
+          (filterNave === "all" || p.naveId === filterNave),
+      ),
+    [people, filterNave, showInactive],
   );
 
   function openCreate() {
@@ -265,22 +277,34 @@ export function PersonalTeamClient({
         }
       />
 
-      {naves.length > 1 && (
-        <div className="flex items-center gap-2 pb-1">
-          <span className="text-xs text-muted-foreground shrink-0">Nave:</span>
-          <Select value={filterNave} onValueChange={(v) => setFilterNave(v ?? "all")}>
-            <SelectTrigger className="h-8 w-52 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas las naves</SelectItem>
-              {naves.map((n) => (
-                <SelectItem key={n.id} value={n.id}>{n.codigo} · {n.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex items-center gap-4 flex-wrap pb-1">
+        {naves.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground shrink-0">Nave:</span>
+            <Select value={filterNave} onValueChange={(v) => setFilterNave(v ?? "all")}>
+              <SelectTrigger className="h-8 w-52 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las naves</SelectItem>
+                {naves.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>{n.codigo} · {n.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="show-inactive"
+            checked={showInactive}
+            onCheckedChange={(v) => setShowInactive(v === true)}
+          />
+          <Label htmlFor="show-inactive" className="text-xs font-normal cursor-pointer">
+            Mostrar inactivos
+          </Label>
         </div>
-      )}
+      </div>
 
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17.5rem),1fr))]">
         {displayedPeople.map((p) => {
@@ -301,8 +325,8 @@ export function PersonalTeamClient({
                   borderColor: `${p.color}40`,
                 }}
               >
-                <div className="flex flex-col gap-3 @[22rem]/person-card:flex-row @[22rem]/person-card:items-center @[22rem]/person-card:justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <PersonAvatar iniciales={p.iniciales} color={p.color} size={42} />
                     <div className="min-w-0">
                       <CardTitle className="text-base truncate">{p.displayName}</CardTitle>
@@ -313,13 +337,16 @@ export function PersonalTeamClient({
                           </Badge>
                         ) : null}
                       </div>
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {p.notes ?? ""}
+                      <div
+                        className="text-[10px] text-muted-foreground truncate"
+                        title={p.notes ?? undefined}
+                      >
+                        {truncateNotes(p.notes)}
                       </div>
                     </div>
                   </div>
                   {canManage ? (
-                    <div className="flex flex-wrap items-center gap-1 @[22rem]/person-card:justify-end @[22rem]/person-card:shrink-0">
+                    <div className="flex flex-wrap items-center gap-1 justify-end shrink-0">
                       <PersonScheduleDialog
                         personId={p.id}
                         personName={p.displayName}

@@ -104,6 +104,7 @@ class TaskBlock:
     urgency: int
     can_fragment: bool
     min_week_quarter: int
+    required_workers: int = 1
 
 
 @dataclass
@@ -384,6 +385,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
             tasks,
             request.people,
             fixed_task_ids=fixed_task_ids,
+            process_by_code=process_by_code,
             skip_work_order_ids=pipeline_wo_ids,
         )
     )
@@ -656,6 +658,7 @@ def _build_block_variables(
                 urgency=_urgency(task, data.week_start),
                 can_fragment=task.canFragment,
                 min_week_quarter=task.minWeekQuarter or 0,
+                required_workers=task.requiredWorkers or 1,
             )
             bv = BlockVars(
                 block=block,
@@ -672,7 +675,12 @@ def _build_block_variables(
             mv.all_blocks.append(bv)
             mv.by_task.setdefault(task.id, []).append(bv)
             mv.worker_ivs.setdefault(person.id, []).append(worker_iv)
-            mv.chain_ivs.setdefault(_task_chain_key(task), []).append(chain_iv)
+            # requiredWorkers>1 tasks get ONE canonical chain interval instead
+            # (added in _add_worker_count_per_task) — per-block chain_ivs here
+            # would wrongly NoOverlap this task's own synchronized blocks
+            # against each other, since they share the same chain key.
+            if (task.requiredWorkers or 1) <= 1:
+                mv.chain_ivs.setdefault(_task_chain_key(task), []).append(chain_iv)
             for day_idx, dv in day_load.items():
                 mv.load_by_person_day.setdefault((person.id, day_idx), []).append(dv)
 
@@ -818,13 +826,18 @@ def _add_constraints(
 ) -> dict[str, cp_model.IntVar]:
     unscheduled: dict[str, cp_model.IntVar] = {}
 
+    # Must run before anything that sums a task's assigned_q, so requiredWorkers>1
+    # tasks have their canonical progress var ready (avoids double-counting).
+    task_assigned_q_by_task = _add_worker_count_per_task(model, data, mv)
+
     for task in data.tasks:
         pq = data.demand_q[task.id]
         u = model.NewIntVar(0, pq, f"u_{task.id}")
         unscheduled[task.id] = u
         blocks = mv.by_task.get(task.id, [])
         if blocks:
-            model.Add(sum(bv.assigned_q for bv in blocks) + u == pq)
+            progress = _task_progress_expr(task, blocks, task_assigned_q_by_task)
+            model.Add(progress + u == pq)
         else:
             model.Add(u == pq)
 
@@ -837,14 +850,13 @@ def _add_constraints(
             model.AddNoOverlap(ivs)
 
     by_wo = _tasks_by_work_order(data.tasks)
-    _add_lamp_ordering(model, data, mv)
-    _add_work_order_constraints(model, data, mv, by_wo)
+    _add_lamp_ordering(model, data, mv, task_assigned_q_by_task)
+    _add_work_order_constraints(model, data, mv, by_wo, task_assigned_q_by_task)
     _add_work_order_pipeline_constraints(model, data, mv)
     if _no_interleave_mode() == NO_INTERLEAVE_MODE_COMPACT:
         _add_work_order_no_interleave_compact(model, mv, by_wo)
     else:
         _add_work_order_no_interleave(model, mv, by_wo)
-    _add_max_one_worker_per_task(model, data, mv)
 
     return unscheduled
 
@@ -864,20 +876,27 @@ def _add_work_order_constraints(
     data: ProblemData,
     mv: ModelVars,
     by_wo: dict[str, list[EngineTask]] | None = None,
+    task_assigned_q_by_task: dict[str, cp_model.IntVar] | None = None,
 ) -> None:
     if by_wo is None:
         by_wo = _tasks_by_work_order(data.tasks)
+    task_assigned_q_by_task = task_assigned_q_by_task or {}
     for wo_id, wo_tasks in by_wo.items():
         if len(wo_tasks) < 2:
             continue
+
+        # Same worker SET for the whole OT (size 1 normally; up to N when a
+        # member task requires N simultaneous workers, e.g. chapas).
+        wo_worker_limit = max((t.requiredWorkers or 1) for t in wo_tasks)
 
         blocks_by_person: dict[str, list[BlockVars]] = defaultdict(list)
         for task in wo_tasks:
             for bv in mv.by_task.get(task.id, []):
                 blocks_by_person[bv.block.person_id].append(bv)
 
-        # Un operario por OT, pero presence independiente por tarea: permite cortar
-        # la OT al final de la ventana y continuar la semana siguiente.
+        # Un operario (o set fijo de N) por OT, pero presence independiente por
+        # tarea: permite cortar la OT al final de la ventana y continuar la
+        # semana siguiente.
         person_active: list[cp_model.BoolVar] = []
         for person_id, person_blocks in blocks_by_person.items():
             if not person_blocks:
@@ -892,8 +911,8 @@ def _add_work_order_constraints(
             ).OnlyEnforceIf(active.Not())
             person_active.append(active)
 
-        if len(person_active) > 1:
-            model.Add(sum(person_active) <= 1)
+        if len(person_active) > wo_worker_limit:
+            model.Add(sum(person_active) <= wo_worker_limit)
 
         for pred, succ in zip(wo_tasks, wo_tasks[1:]):
             pred_demand = data.demand_q.get(pred.id, 0)
@@ -907,7 +926,10 @@ def _add_work_order_constraints(
 
             pred_done = model.NewBoolVar(f"wo_done_{pred.id}")
             total_pred = model.NewIntVar(0, pred_demand, f"wo_tp_{pred.id}")
-            model.Add(total_pred == sum(bv.assigned_q for bv in pred_blocks))
+            model.Add(
+                total_pred
+                == _task_progress_expr(pred, pred_blocks, task_assigned_q_by_task)
+            )
             model.Add(total_pred == pred_demand).OnlyEnforceIf(pred_done)
             model.Add(total_pred < pred_demand).OnlyEnforceIf(pred_done.Not())
 
@@ -1087,23 +1109,103 @@ def _add_work_order_no_interleave_compact(
     _add_work_order_no_interleave(model, mv, by_wo)
 
 
-def _add_max_one_worker_per_task(
+def _add_worker_count_per_task(
     model: cp_model.CpModel,
     data: ProblemData,
     mv: ModelVars,
-) -> None:
-    """At most one worker may be assigned to each task."""
+) -> dict[str, cp_model.IntVar]:
+    """Caps how many distinct workers may be active on each task.
+
+    Tasks with requiredWorkers<=1 (the vast majority) keep the original "at
+    most one worker" cap. Tasks with requiredWorkers>1 (e.g. chapas: needs 2
+    people at once, standard hours already account for both) must instead
+    have EXACTLY that many distinct workers active together, perfectly
+    synchronized (same start/end quarter) — never partially staffed with
+    fewer. Distinctness is automatic: mv.by_task has at most one block per
+    distinct person_id.
+
+    Returns the per-task canonical `assigned_q` var for requiredWorkers>1
+    tasks only, so callers that need "how much of this task is done" avoid
+    double-counting the N synchronized-and-equal blocks by summing them.
+    """
+    task_assigned_q_by_task: dict[str, cp_model.IntVar] = {}
     for task in data.tasks:
         blocks = mv.by_task.get(task.id, [])
-        if len(blocks) > 1:
-            model.Add(sum(bv.presence for bv in blocks) <= 1)
+        if not blocks:
+            continue
+        required = task.requiredWorkers or 1
+        if required <= 1:
+            if len(blocks) > 1:
+                model.Add(sum(bv.presence for bv in blocks) <= 1)
+            continue
+
+        demand_q = data.demand_q.get(task.id, 0)
+        task_scheduled = model.NewBoolVar(f"tsc_{task.id}")
+        task_start_wq = model.NewIntVar(0, HORIZON_Q, f"tsw_{task.id}")
+        task_end_wq = model.NewIntVar(0, HORIZON_Q + 1, f"tew_{task.id}")
+        task_dur_wq = model.NewIntVar(0, HORIZON_Q + 1, f"tdw_{task.id}")
+        task_assigned_q = model.NewIntVar(0, demand_q, f"taq_{task.id}")
+
+        for bv in blocks:
+            model.Add(bv.start_wq == task_start_wq).OnlyEnforceIf(bv.presence)
+            model.Add(bv.end_wq == task_end_wq).OnlyEnforceIf(bv.presence)
+            model.Add(bv.assigned_q == task_assigned_q).OnlyEnforceIf(bv.presence)
+
+        n_active = model.NewIntVar(0, len(blocks), f"wc_n_{task.id}")
+        model.Add(n_active == sum(bv.presence for bv in blocks))
+        model.Add(n_active == required).OnlyEnforceIf(task_scheduled)
+        model.Add(n_active == 0).OnlyEnforceIf(task_scheduled.Not())
+        # Unlike per-block assigned_q (already pinned to 0 by presence.Not() in
+        # _build_block_variables), this canonical var is only linked to blocks
+        # via reification on their presence — pin it too, or the solver can
+        # claim progress on an unscheduled task for free.
+        model.Add(task_assigned_q == 0).OnlyEnforceIf(task_scheduled.Not())
+
+        # One chain interval representing the whole synchronized placement,
+        # tied to task_scheduled (not any single worker's presence) so the
+        # lamp-chain NoOverlap set blocks the slot regardless of which N of
+        # the candidate workers end up active — see _build_block_variables,
+        # which skips adding per-block chain_ivs for these tasks.
+        model.Add(task_dur_wq == task_end_wq - task_start_wq).OnlyEnforceIf(
+            task_scheduled
+        )
+        task_chain_iv = model.NewOptionalIntervalVar(
+            task_start_wq, task_dur_wq, task_end_wq, task_scheduled, f"tci_{task.id}"
+        )
+        mv.chain_ivs.setdefault(_task_chain_key(task), []).append(task_chain_iv)
+
+        task_assigned_q_by_task[task.id] = task_assigned_q
+
+    return task_assigned_q_by_task
+
+
+def _task_progress_expr(
+    task: EngineTask,
+    blocks: list[BlockVars],
+    task_assigned_q_by_task: dict[str, cp_model.IntVar],
+):
+    """Total assigned_q across a task's blocks, usable in a linear constraint.
+
+    For requiredWorkers<=1 tasks this is the normal sum (at most one block is
+    ever nonzero). For requiredWorkers>1 tasks, summing would double-count
+    since all active blocks are forced equal (synchronized) — use the single
+    canonical var instead.
+    """
+    if (task.requiredWorkers or 1) > 1:
+        canonical = task_assigned_q_by_task.get(task.id)
+        if canonical is not None:
+            return canonical
+    return sum(bv.assigned_q for bv in blocks)
 
 
 def _add_lamp_ordering(
     model: cp_model.CpModel,
     data: ProblemData,
     mv: ModelVars,
+    task_assigned_q_by_task: dict[str, cp_model.IntVar] | None = None,
 ) -> None:
+    task_assigned_q_by_task = task_assigned_q_by_task or {}
+    tasks_by_id = {task.id: task for task in data.tasks}
     for edge in data.lamp_edges:
         pred_demand = data.demand_q.get(edge.predecessor_id, 0)
         if pred_demand <= 0:
@@ -1114,9 +1216,16 @@ def _add_lamp_ordering(
         if not pred_blocks or not succ_blocks:
             continue
 
+        pred_task = tasks_by_id.get(edge.predecessor_id)
         pred_done = model.NewBoolVar(f"done_{edge.predecessor_id}")
         total_pred = model.NewIntVar(0, pred_demand, f"tp_{edge.predecessor_id}")
-        model.Add(total_pred == sum(bv.assigned_q for bv in pred_blocks))
+        if pred_task is not None:
+            model.Add(
+                total_pred
+                == _task_progress_expr(pred_task, pred_blocks, task_assigned_q_by_task)
+            )
+        else:
+            model.Add(total_pred == sum(bv.assigned_q for bv in pred_blocks))
         model.Add(total_pred == pred_demand).OnlyEnforceIf(pred_done)
         model.Add(total_pred < pred_demand).OnlyEnforceIf(pred_done.Not())
 
@@ -1415,6 +1524,10 @@ def _add_split_terms(
     for task in data.tasks:
         # canFragment=false already caps active blocks to one via hard constraint.
         if not task.canFragment:
+            continue
+        # requiredWorkers>1 tasks always have N blocks active together by design
+        # (synchronized, not fragmented) — nothing to penalize here.
+        if (task.requiredWorkers or 1) > 1:
             continue
         blocks = mv.by_task.get(task.id, [])
         if len(blocks) < 2:

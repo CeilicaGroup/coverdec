@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
+import { isCreatedThisWeek } from "@/lib/week";
 
 export async function assertWorkOrderDeletable(
   tx: Prisma.TransactionClient,
@@ -23,8 +24,14 @@ export async function assertWorkOrderDeletable(
   }
 
   if (planningAssignmentCount > 0) {
-    throw new Error(
-      "No se puede eliminar: hay tareas planificadas en esta OT.",
-    );
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      select: { createdAt: true },
+    });
+    if (!workOrder || !isCreatedThisWeek(workOrder.createdAt)) {
+      throw new Error(
+        "No se puede eliminar: hay tareas planificadas en esta OT.",
+      );
+    }
   }
 }

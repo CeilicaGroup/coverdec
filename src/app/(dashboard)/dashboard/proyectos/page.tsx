@@ -37,7 +37,12 @@ import {
   isLampEligibleForPlanning,
 } from "@/lib/project-approval";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
-import { ProjectNextProcessCell } from "./project-next-process-cell";
+import {
+  PROJECT_LIFECYCLE_STATUS_BADGE_CLASS,
+  PROJECT_LIFECYCLE_STATUS_LABELS,
+  deriveProjectLifecycleStatus,
+  isProjectFinished,
+} from "@/lib/project-status";
 
 interface HoursTotals {
   estimated: number;
@@ -69,10 +74,6 @@ function buildHoursTotals(
     assigned,
     pendingToPlan: Math.max(0, estimated - done - assigned),
   };
-}
-
-function isProjectFinished(tasks: { isCompleted: boolean }[]): boolean {
-  return tasks.length > 0 && tasks.every((task) => task.isCompleted);
 }
 
 function filterTasksForPlanningKpis<
@@ -197,9 +198,6 @@ export default async function ProyectosPage({
     const planningHours = hoursFromTasks(planningTasks, doneByTaskId, assignedByTaskId);
     const pending = Math.max(0, hours.estimated - hours.done);
     const pct = hours.estimated > 0 ? Math.round((hours.done / hours.estimated) * 100) : 0;
-    const pendingProcesses = p.tasks
-      .filter((task) => !task.isCompleted)
-      .map((task) => task.processDefinition.label);
     const finished = isProjectFinished(p.tasks);
     return {
       project: p,
@@ -207,7 +205,6 @@ export default async function ProyectosPage({
       planningHours,
       pending,
       pct,
-      pendingProcesses,
       finished,
       canHardDelete: !blocksProject.has(p.id),
       projectNaves: navesByProjectId.get(p.id),
@@ -319,8 +316,8 @@ export default async function ProyectosPage({
               <TableRow>
                 <TableHead>Proyecto</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead>Estado</TableHead>
                 <TableHead>Aprobación</TableHead>
-                <TableHead>Próximo proceso</TableHead>
                 <TableHead>Cliente / Obra</TableHead>
                 <TableHead>Riesgo</TableHead>
                 <TableHead>Entrega</TableHead>
@@ -339,8 +336,9 @@ export default async function ProyectosPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleRows.map(({ project: p, hours, pct, pendingProcesses, finished, canHardDelete, projectNaves }) => {
+              {visibleRows.map(({ project: p, hours, pct, finished, canHardDelete, projectNaves }) => {
                 const navesLabel = formatProjectNavesColumn(projectNaves);
+                const lifecycleStatus = deriveProjectLifecycleStatus(p.isInWarehouse);
                 return (
                   <TableRow key={p.id} className={p.isActive ? "" : "opacity-50"}>
                     <TableCell>
@@ -361,6 +359,14 @@ export default async function ProyectosPage({
                       </Badge>
                     </TableCell>
                     <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={PROJECT_LIFECYCLE_STATUS_BADGE_CLASS[lifecycleStatus]}
+                      >
+                        {PROJECT_LIFECYCLE_STATUS_LABELS[lifecycleStatus]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="secondary" className="text-[10px]">
                         {
                           PROJECT_APPROVAL_STATUS_LABELS[
@@ -370,13 +376,6 @@ export default async function ProyectosPage({
                           ]
                         }
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <ProjectNextProcessCell
-                        processes={pendingProcesses}
-                        finished={finished}
-                        hasTasks={p.tasks.length > 0}
-                      />
                     </TableCell>
                     <TableCell className="text-xs">
                       {p.client ?? p.obra ?? "—"}
@@ -458,9 +457,11 @@ export default async function ProyectosPage({
                             notes: p.notes,
                             responsibleUserId: p.responsibleUserId,
                             isActive: p.isActive,
+                            isInWarehouse: p.isInWarehouse,
                           }}
                           responsibleOptions={responsibleUsers}
                           canHardDelete={canHardDelete}
+                          finished={finished}
                         />
                       </TableCell>
                     ) : null}

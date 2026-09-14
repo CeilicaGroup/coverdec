@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import { runAuditedMutation } from "@/lib/server-action";
+import { isProjectFinished } from "@/lib/project-status";
 import {
   ElementTypology,
   ProjectApprovalStatus,
@@ -54,8 +55,11 @@ import {
 import {
   assertTasksNotPlanned,
   assertTasksNotPlannedFromRows,
+  TASK_PLANNED_ERROR,
+  taskBlocksDeletion,
   taskHasPlanningAssignments,
 } from "@/features/projects/task-planning-lock";
+import { isCreatedThisWeek } from "@/lib/week";
 import {
   blueprintToTaskCreateData,
   isAutomaticTransportTask,
@@ -597,12 +601,15 @@ export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchem
   
     const task = await prisma.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, lampId: true, projectId: true },
+      select: { id: true, lampId: true, projectId: true, estimatedHours: true, createdAt: true },
     });
     if (!task) throw new Error("Tarea no encontrada");
 
-    await assertTasksNotPlanned([task.id]);
-  
+    const isIncrease = data.estimatedHours >= task.estimatedHours;
+    if (!isIncrease && !isCreatedThisWeek(task.createdAt)) {
+      await assertTasksNotPlanned([task.id]);
+    }
+
     await prisma.task.update({
       where: { id: task.id },
       data: { estimatedHours: data.estimatedHours },
@@ -671,7 +678,19 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         fallbackNaveId,
       );
     }
-  
+
+    async function resolveExtraTaskRequiredWorkers(
+      elementTypeId: string | null,
+      process: string,
+    ) {
+      if (!elementTypeId) return 1;
+      const catalogProcess = await prisma.elementTypeProcess.findUnique({
+        where: { elementTypeId_process: { elementTypeId, process } },
+        select: { requiredWorkers: true },
+      });
+      return catalogProcess?.requiredWorkers ?? 1;
+    }
+
     if (data.elementGroupKey) {
       const elementTypeId = elementTypeIdFromGroupKey(data.elementGroupKey);
       if (!isExtraTransport) {
@@ -715,7 +734,11 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
         if (lampElements.length === 0) {
           throw new Error("No hay unidades en este elemento.");
         }
-  
+
+        const requiredWorkers = await resolveExtraTaskRequiredWorkers(
+          elementTypeId,
+          data.process,
+        );
         for (const lampElement of lampElements) {
           const order = await getNextOrderInChain(tx, lamp.id, lampElement.id);
           await tx.task.create({
@@ -725,6 +748,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
               lampElementId: lampElement.id,
               process: data.process,
               estimatedHours: data.estimatedHours,
+              requiredWorkers,
               order,
               naveId,
             },
@@ -745,7 +769,11 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     }
   
     const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId, data.process);
-  
+    const requiredWorkers = await resolveExtraTaskRequiredWorkers(
+      lamp.elementTypeId,
+      data.process,
+    );
+
     await prisma.$transaction(async (tx) => {
       const order = await getNextOrderInChain(tx, lamp.id, null);
       await tx.task.create({
@@ -755,6 +783,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
           lampElementId: null,
           process: data.process,
           estimatedHours: data.estimatedHours,
+          requiredWorkers,
           order,
           naveId,
         },
@@ -1041,7 +1070,9 @@ export async function deleteProcessTasks(
     if (deletableTasks.some((task) => task._count.timeEntries > 0)) {
       throw new Error("No se puede eliminar: alguna tarea tiene horas registradas.");
     }
-    assertTasksNotPlannedFromRows(deletableTasks);
+    if (deletableTasks.some((task) => taskBlocksDeletion(task))) {
+      throw new Error("No se puede eliminar: alguna tarea tiene planning asignado.");
+    }
   
     const workOrderIds = [
       ...new Set(
@@ -1086,7 +1117,9 @@ export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
     if (task._count.timeEntries > 0) {
       throw new Error("No se puede eliminar: la tarea tiene horas registradas.");
     }
-    assertTasksNotPlannedFromRows([task]);
+    if (taskBlocksDeletion(task)) {
+      throw new Error(TASK_PLANNED_ERROR);
+    }
   
     const workOrderId = task.workOrderId;
 
@@ -1224,14 +1257,16 @@ export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
     });
     if (!lamp) throw new Error("Lámpara no encontrada");
   
-    const hasWork = lamp.tasks.some(
-      (t) =>
-        t._count.assignments > 0 ||
-        t._count.timeEntries > 0,
-    );
-    if (hasWork) {
+    const hasTimeEntries = lamp.tasks.some((t) => t._count.timeEntries > 0);
+    if (hasTimeEntries) {
       throw new Error(
-        "No se puede eliminar: hay horas o referencias en las tareas de esta lámpara.",
+        "No se puede eliminar: hay horas registradas en las tareas de esta lámpara.",
+      );
+    }
+    const hasLockedAssignments = lamp.tasks.some((t) => taskBlocksDeletion(t));
+    if (hasLockedAssignments) {
+      throw new Error(
+        "No se puede eliminar: hay tareas planificadas en esta lámpara.",
       );
     }
   
@@ -1260,6 +1295,46 @@ export async function toggleProjectActive(input: z.infer<typeof toggleSchema>) {
     revalidatePath("/dashboard/proyectos");
     },
     (result) => ({ summary: "Activar/desactivar proyecto", entityType: "Project", entityId: input.projectId }),
+  );
+}
+
+const toggleWarehouseSchema = z.object({
+  projectId: z.string().min(1),
+  isInWarehouse: z.boolean(),
+});
+
+export async function toggleProjectWarehouse(
+  input: z.infer<typeof toggleWarehouseSchema>,
+) {
+  return runAuditedMutation(
+    "projects.toggleProjectWarehouse",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+      const data = toggleWarehouseSchema.parse(input);
+      if (data.isInWarehouse) {
+        const tasks = await prisma.task.findMany({
+          where: { projectId: data.projectId },
+          select: { isCompleted: true },
+        });
+        if (!isProjectFinished(tasks)) {
+          throw new Error(
+            "Solo se puede mover a almacén un proyecto con todas sus tareas completadas.",
+          );
+        }
+      }
+      await prisma.project.update({
+        where: { id: data.projectId },
+        data: { isInWarehouse: data.isInWarehouse },
+      });
+      revalidatePath("/dashboard/proyectos");
+      revalidatePath(`/dashboard/proyectos/${data.projectId}`);
+    },
+    (result) => ({
+      summary: "Mover proyecto a almacén/producción",
+      entityType: "Project",
+      entityId: input.projectId,
+    }),
   );
 }
 

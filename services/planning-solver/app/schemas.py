@@ -69,6 +69,7 @@ class EngineTask(BaseModel):
     naveId: str = "default-nave"
     canFragment: bool = True
     minWeekQuarter: int = 0
+    requiredWorkers: int = 1
     ownerPersonId: str | None = None
     workOrderId: str | None = None
     workOrderSequence: int | None = None

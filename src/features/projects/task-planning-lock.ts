@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
+import { isCreatedThisWeek } from "@/lib/week";
 
 export const TASK_PLANNED_ERROR =
   "La tarea tiene asignaciones de planning; no se puede modificar.";
@@ -31,6 +32,13 @@ export async function assertTasksNotPlanned(
   });
 
   assertTasksNotPlannedFromRows(tasks);
+}
+
+export function taskBlocksDeletion(
+  task: { createdAt: Date; _count?: { assignments: number } },
+  now: Date = new Date(),
+): boolean {
+  return taskHasPlanningAssignments(task) && !isCreatedThisWeek(task.createdAt, now);
 }
 
 export async function lampChainHasPlanningAssignments(

@@ -19,7 +19,7 @@ export type WorkOrderElementProcessSummary =
 
 export type WorkOrderAssigneeSummary =
   | { kind: "single"; assignee: TaskAssigneeSummary }
-  | { kind: "multiple" }
+  | { kind: "multiple"; assignees: TaskAssigneeSummary[] }
   | { kind: "none" };
 
 function elementTypeName(task: WorkOrderTaskFilterable): string {
@@ -72,28 +72,31 @@ export function summarizeWorkOrderElementProcess(
 
 export function summarizeWorkOrderAssignee(
   taskIds: string[],
-  assigneeByTaskId: Map<string, TaskAssigneeSummary>,
+  assigneeByTaskId: Map<string, TaskAssigneeSummary[]>,
 ): WorkOrderAssigneeSummary {
-  const personIds = new Set<string>();
+  const byPersonId = new Map<string, TaskAssigneeSummary>();
   for (const taskId of taskIds) {
-    const assignee = assigneeByTaskId.get(taskId);
-    if (assignee) personIds.add(assignee.personId);
+    for (const assignee of assigneeByTaskId.get(taskId) ?? []) {
+      byPersonId.set(assignee.personId, assignee);
+    }
   }
 
-  if (personIds.size === 0) return { kind: "none" };
-  if (personIds.size > 1) return { kind: "multiple" };
+  if (byPersonId.size === 0) return { kind: "none" };
+  if (byPersonId.size > 1) {
+    return {
+      kind: "multiple",
+      assignees: [...byPersonId.values()].sort((a, b) =>
+        a.iniciales.localeCompare(b.iniciales, "es"),
+      ),
+    };
+  }
 
-  const personId = [...personIds][0]!;
-  const assignee = [...assigneeByTaskId.values()].find(
-    (a) => a.personId === personId,
-  );
-  if (!assignee) return { kind: "none" };
-  return { kind: "single", assignee };
+  return { kind: "single", assignee: [...byPersonId.values()][0]! };
 }
 
 export async function loadAssigneeByTaskIds(
   taskIds: string[],
-): Promise<Map<string, TaskAssigneeSummary>> {
+): Promise<Map<string, TaskAssigneeSummary[]>> {
   if (taskIds.length === 0) return new Map();
 
   const publishedAssignments = await prisma.planningAssignment.findMany({
@@ -117,14 +120,19 @@ export async function loadAssigneeByTaskIds(
     orderBy: [{ date: "desc" }, { endSlot: "desc" }],
   });
 
-  const assigneeByTaskId = new Map<string, TaskAssigneeSummary>();
+  // A task may have several distinct people (e.g. requiredWorkers>1, or a
+  // manually chosen 2nd executor) — keep every distinct person seen, not
+  // just the first row.
+  const assigneeByTaskId = new Map<string, TaskAssigneeSummary[]>();
   for (const row of publishedAssignments) {
-    if (assigneeByTaskId.has(row.taskId)) continue;
-    assigneeByTaskId.set(row.taskId, {
+    const list = assigneeByTaskId.get(row.taskId) ?? [];
+    if (list.some((a) => a.personId === row.personId)) continue;
+    list.push({
       personId: row.personId,
       label: row.person.user?.name ?? row.person.iniciales,
       iniciales: row.person.iniciales,
     });
+    assigneeByTaskId.set(row.taskId, list);
   }
 
   const missingTaskIds = taskIds.filter((id) => !assigneeByTaskId.has(id));
@@ -152,11 +160,13 @@ export async function loadAssigneeByTaskIds(
     if (!personId) continue;
     const person = personById.get(personId);
     if (!person) continue;
-    assigneeByTaskId.set(taskId, {
-      personId: person.id,
-      label: person.user?.name ?? person.iniciales,
-      iniciales: person.iniciales,
-    });
+    assigneeByTaskId.set(taskId, [
+      {
+        personId: person.id,
+        label: person.user?.name ?? person.iniciales,
+        iniciales: person.iniciales,
+      },
+    ]);
   }
 
   const tasks = await prisma.task.findMany({
@@ -169,20 +179,25 @@ export async function loadAssigneeByTaskIds(
     },
   });
 
-  const ownerIds = propagateWorkOrderOwnerByTaskId(tasks, new Map(
-    [...assigneeByTaskId.entries()].map(([id, a]) => [id, a.personId]),
-  ));
+  const ownerIds = propagateWorkOrderOwnerByTaskId(
+    tasks,
+    new Map(
+      [...assigneeByTaskId.entries()].map(([id, list]) => [id, list[0]!.personId]),
+    ),
+  );
 
   for (const task of tasks) {
     const personId = ownerIds.get(task.id);
     if (!personId) continue;
     const existing = assigneeByTaskId.get(task.id);
-    if (existing?.personId === personId) continue;
+    if (existing?.some((a) => a.personId === personId)) continue;
     const source =
-      existing ??
-      [...assigneeByTaskId.values()].find((a) => a.personId === personId);
+      existing?.[0] ??
+      [...assigneeByTaskId.values()]
+        .flat()
+        .find((a) => a.personId === personId);
     if (!source) continue;
-    assigneeByTaskId.set(task.id, source);
+    assigneeByTaskId.set(task.id, [source]);
   }
 
   return assigneeByTaskId;
