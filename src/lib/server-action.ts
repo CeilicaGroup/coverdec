@@ -4,6 +4,7 @@ import { AuditOutcome } from "@/generated/prisma";
 import { actionFail, actionOk, type ActionResult } from "@/lib/action-result";
 import { formatAuditActionLabel } from "@/lib/audit/categories";
 import { recordAuditEvent } from "@/lib/audit/record-audit-event";
+import { runWithAuditScope } from "@/lib/audit/request-context";
 import type { AuditEventBuilder } from "@/lib/audit/types";
 import { getErrorMessage } from "@/lib/error-message";
 import { childLogger } from "@/lib/logger";
@@ -59,6 +60,14 @@ export async function runAuditedMutation<T>(
   handler: () => Promise<T>,
   audit?: AuditEventBuilder<T>,
 ): Promise<T> {
+  return runWithAuditScope(() => auditedMutation(scope, handler, audit));
+}
+
+async function auditedMutation<T>(
+  scope: string,
+  handler: () => Promise<T>,
+  audit?: AuditEventBuilder<T>,
+): Promise<T> {
   try {
     const data = await handler();
     void writeAuditSuccess(scope, data, audit);
@@ -80,6 +89,14 @@ export async function runAuditedMutation<T>(
  * Full errors are logged server-side; production never relies on Next.js masked messages.
  */
 export async function runServerAction<T>(
+  scope: string,
+  handler: () => Promise<T>,
+  audit?: AuditEventBuilder<T>,
+): Promise<ActionResult<T>> {
+  return runWithAuditScope(() => serverAction(scope, handler, audit));
+}
+
+async function serverAction<T>(
   scope: string,
   handler: () => Promise<T>,
   audit?: AuditEventBuilder<T>,

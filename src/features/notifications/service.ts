@@ -28,6 +28,8 @@ interface EmitContext<K extends NotificationType> {
   planningId?: string;
   naveId?: string;
   responsibleUserId?: string | null;
+  /** Si se indica, solo estos usuarios reciben el aviso (en lugar de gestores + responsable). */
+  recipientUserIds?: string[];
   scopeKey?: string;
 }
 
@@ -37,14 +39,23 @@ function defaultChannels(): RecipientChannels {
 
 async function resolveRecipients(
   tx: Prisma.TransactionClient,
-  args: { type: NotificationType; responsibleUserId?: string | null },
+  args: {
+    type: NotificationType;
+    responsibleUserId?: string | null;
+    recipientUserIds?: string[];
+  },
 ): Promise<Map<string, RecipientChannels>> {
-  const managers = await tx.user.findMany({
-    where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
-    select: { id: true },
-  });
-  const users = new Set(managers.map((u) => u.id));
-  if (args.responsibleUserId) users.add(args.responsibleUserId);
+  const users = new Set<string>();
+  if (args.recipientUserIds) {
+    for (const id of args.recipientUserIds) users.add(id);
+  } else {
+    const managers = await tx.user.findMany({
+      where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
+      select: { id: true },
+    });
+    for (const u of managers) users.add(u.id);
+    if (args.responsibleUserId) users.add(args.responsibleUserId);
+  }
   if (users.size === 0) return new Map();
 
   if (args.type === NotificationType.DELIVERY_FAILED) {
@@ -73,12 +84,21 @@ async function resolveRecipients(
   return byUser;
 }
 
+interface ActivationResult {
+  emit: boolean;
+  /**
+   * Marca de una nueva ocurrencia tras haberse resuelto la anterior: se añade al
+   * eventKey para que el aviso y su envío no se deduplican contra los de la ocurrencia previa.
+   */
+  occurrence: string | null;
+}
+
 async function activateNotificationState(
   tx: Prisma.TransactionClient,
   args: { userId: string; type: NotificationType; scopeKey?: string },
-): Promise<boolean> {
+): Promise<ActivationResult> {
   const scopeKey = args.scopeKey?.trim();
-  if (!scopeKey) return true;
+  if (!scopeKey) return { emit: true, occurrence: null };
 
   const existing = await tx.notificationState.findUnique({
     where: {
@@ -92,8 +112,9 @@ async function activateNotificationState(
   });
 
   if (existing?.isActive) {
-    return false;
+    return { emit: false, occurrence: null };
   }
+  const now = new Date();
 
   await tx.notificationState.upsert({
     where: {
@@ -112,11 +133,11 @@ async function activateNotificationState(
     update: {
       isActive: true,
       resolvedAt: null,
-      lastNotifiedAt: new Date(),
+      lastNotifiedAt: now,
     },
   });
 
-  return true;
+  return { emit: true, occurrence: existing ? String(now.getTime()) : null };
 }
 
 export async function emitNotificationTx(
@@ -124,21 +145,25 @@ export async function emitNotificationTx(
   input: EmitContext<NotificationType>,
 ): Promise<void> {
   const payloadSchema = notificationPayloadSchema[input.type];
-  const payload = payloadSchema.parse(input.payload);
-  const scopeKey = input.scopeKey ?? payload.eventKey;
+  const basePayload = payloadSchema.parse(input.payload);
+  const scopeKey = input.scopeKey ?? basePayload.eventKey;
   const recipients = await resolveRecipients(tx, {
     type: input.type,
     responsibleUserId: input.responsibleUserId,
+    recipientUserIds: input.recipientUserIds,
   });
   if (recipients.size === 0) return;
 
   for (const [userId, channels] of recipients) {
-    const shouldEmit = await activateNotificationState(tx, {
+    const activation = await activateNotificationState(tx, {
       userId,
       type: input.type,
       scopeKey,
     });
-    if (!shouldEmit) continue;
+    if (!activation.emit) continue;
+    const payload = activation.occurrence
+      ? { ...basePayload, eventKey: `${basePayload.eventKey}#${activation.occurrence}` }
+      : basePayload;
 
     let notificationId: string | null = null;
     if (channels.inApp) {

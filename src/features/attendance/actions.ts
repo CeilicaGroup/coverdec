@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { AttendanceSource, NotificationType, Role } from "@/generated/prisma";
+import { AttendanceSource, NotificationType, Role, type Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
@@ -38,6 +38,13 @@ import { loadBreakScheduleForRanges } from "@/features/time-tracking/load-break-
 import type { BreakHandling } from "@/features/time-tracking/break-handling";
 import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
+import {
+  madridDateIso,
+  madridDayBounds,
+  madridIsoWeekday,
+  madridMinutesOfDay,
+  madridWallTimeToInstant,
+} from "./madrid-time";
 
 const log = childLogger({ module: "attendance.actions" });
 const OPEN_TOO_LONG_MINUTES = 12 * 60;
@@ -47,16 +54,15 @@ function revalidateAttendancePaths() {
   revalidatePath("/dashboard", "layout");
 }
 
-function toUtcDateTime(dateIso: string, time: string): Date {
-  return new Date(`${dateIso}T${time}:00.000Z`);
-}
+// Fecha + hora tecleadas son hora de Madrid; en BD van como instante real (ver madrid-time.ts).
+const toUtcDateTime = madridWallTimeToInstant;
+const isoDay = madridDateIso;
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function utcMinutes(date: Date): number {
-  return date.getUTCHours() * 60 + date.getUTCMinutes();
+/** Presencia de días futuros no tiene sentido (igual que «Mis horas»). Horas posteriores de hoy sí. */
+function assertNotFutureDay(dateIso: string) {
+  if (dateIso > madridDateIso(new Date())) {
+    throw new Error("No se puede registrar presencia en días futuros. Usa la fecha de hoy o anterior.");
+  }
 }
 
 async function emitOutsideWindowAlert(input: {
@@ -64,9 +70,9 @@ async function emitOutsideWindowAlert(input: {
   personId: string;
   timestamp: Date;
 }) {
-  const day = input.timestamp.getUTCDay();
-  const weekday = day === 0 ? 7 : day;
-  const minutes = utcMinutes(input.timestamp);
+  // Las ventanas laborales son minutos de hora mural de Madrid.
+  const weekday = madridIsoWeekday(input.timestamp);
+  const minutes = madridMinutesOfDay(input.timestamp);
   const windows = await prisma.personWorkWindow.findMany({
     where: { personId: input.personId, dayOfWeek: weekday },
     select: { startMinutes: true, endMinutes: true },
@@ -89,6 +95,14 @@ async function emitOutsideWindowAlert(input: {
     },
     scopeKey: `attendance-outside-window:${input.userId}:${eventDay}`,
   });
+}
+
+/**
+ * Serializa por usuario «¿ya hay una sesión/pausa abierta?» + alta. Sin esto, una doble
+ * pulsación (o dos pestañas) pasan ambas la comprobación y crean varias abiertas.
+ */
+async function lockUserAttendance(tx: Prisma.TransactionClient, userId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${userId}`}))`;
 }
 
 async function requireOwnClosedAttendanceSession(userId: string, sessionId: string) {
@@ -146,23 +160,34 @@ export async function startAttendance(
   if (!ctx.personId) {
     throw new Error("Tu usuario no tiene persona vinculada.");
   }
-  const open = await prisma.attendanceSession.findFirst({
-    where: { userId: ctx.userId, endedAt: null },
-    select: { id: true },
-  });
-  if (open) {
-    throw new Error("Ya tienes un fichaje diario activo.");
-  }
-
+  const personId = ctx.personId;
   const startedAt = new Date();
-  await prisma.attendanceSession.create({
-    data: {
-      userId: ctx.userId,
-      personId: ctx.personId,
-      source: AttendanceSource.BUTTON,
-      startedAt,
-      notes: data.notes,
-    },
+  await prisma.$transaction(async (tx) => {
+    await lockUserAttendance(tx, ctx.userId);
+    const open = await tx.attendanceSession.findFirst({
+      where: { userId: ctx.userId, endedAt: null },
+      select: { id: true },
+    });
+    if (open) {
+      throw new Error("Ya tienes un fichaje diario activo.");
+    }
+    // La sesión en vivo va de ahora en adelante: choca con cualquier franja cerrada que acabe después.
+    const covering = await tx.attendanceSession.findFirst({
+      where: { userId: ctx.userId, endedAt: { gt: startedAt } },
+      select: { id: true },
+    });
+    if (covering) {
+      throw new Error("Ya tienes una franja de fichaje registrada que cubre esta hora.");
+    }
+    await tx.attendanceSession.create({
+      data: {
+        userId: ctx.userId,
+        personId,
+        source: AttendanceSource.BUTTON,
+        startedAt,
+        notes: data.notes,
+      },
+    });
   });
 
   await emitOutsideWindowAlert({
@@ -260,32 +285,36 @@ export async function startBreak(
   return runServerAction("attendance.startBreak", async () => {
     const ctx = await requireDashboardContext();
     const data = startBreakSchema.parse(input ?? {});
-    const session = await prisma.attendanceSession.findFirst({
-      where: {
-        userId: ctx.userId,
-        endedAt: null,
-        ...(data.sessionId ? { id: data.sessionId } : {}),
-      },
-      select: { id: true, startedAt: true },
-    });
-    if (!session) throw new Error("No hay fichaje diario activo.");
-    await assertNoOpenBreak(session.id);
+    const session = await prisma.$transaction(async (tx) => {
+      await lockUserAttendance(tx, ctx.userId);
+      const open = await tx.attendanceSession.findFirst({
+        where: {
+          userId: ctx.userId,
+          endedAt: null,
+          ...(data.sessionId ? { id: data.sessionId } : {}),
+        },
+        select: { id: true, startedAt: true },
+      });
+      if (!open) throw new Error("No hay fichaje diario activo.");
+      await assertNoOpenBreak(open.id, tx);
 
-    const startedAt = new Date();
-    assertBreakStartWithinSession({
-      sessionStartedAt: session.startedAt,
-      sessionEndedAt: null,
-      breakStartedAt: startedAt,
-      at: startedAt,
-    });
+      const startedAt = new Date();
+      assertBreakStartWithinSession({
+        sessionStartedAt: open.startedAt,
+        sessionEndedAt: null,
+        breakStartedAt: startedAt,
+        at: startedAt,
+      });
 
-    await prisma.attendanceBreak.create({
-      data: {
-        sessionId: session.id,
-        source: AttendanceSource.BUTTON,
-        startedAt,
-        notes: data.notes,
-      },
+      await tx.attendanceBreak.create({
+        data: {
+          sessionId: open.id,
+          source: AttendanceSource.BUTTON,
+          startedAt,
+          notes: data.notes,
+        },
+      });
+      return open;
     });
 
     log.info({ userId: ctx.userId, sessionId: session.id }, "attendance break started");
@@ -349,21 +378,21 @@ export async function getAttendanceRange(input: {
 }) {
   const ctx = await requireDashboardContext();
   const data = attendanceRangeSchema.parse(input);
-  const start = new Date(`${data.startDate}T00:00:00.000Z`);
-  const end = new Date(`${data.endDate}T23:59:59.999Z`);
+  const start = madridDayBounds(data.startDate).start;
+  const end = madridDayBounds(data.endDate).end;
   const include = {
     breaks: { orderBy: { startedAt: "asc" as const } },
   };
   if (ctx.role === Role.OPERARIO) {
     return prisma.attendanceSession.findMany({
-      where: { userId: ctx.userId, startedAt: { gte: start, lte: end } },
+      where: { userId: ctx.userId, startedAt: { gte: start, lt: end } },
       orderBy: { startedAt: "asc" },
       include,
     });
   }
   return prisma.attendanceSession.findMany({
     where: {
-      startedAt: { gte: start, lte: end },
+      startedAt: { gte: start, lt: end },
       ...(data.personId ? { personId: data.personId } : {}),
     },
     orderBy: { startedAt: "asc" },
@@ -387,6 +416,7 @@ export async function createManualAttendanceSession(input: {
       throw new Error("Tu usuario no tiene persona vinculada.");
     }
     const data = manualUpsertAttendanceSchema.parse(input);
+    assertNotFutureDay(data.date);
 
     const open = await findOpenAttendanceSession(ctx.userId);
     if (open) {
@@ -469,6 +499,7 @@ export async function updateOwnAttendanceSession(input: {
       throw new Error("Solo los operarios pueden editar sus propios fichajes.");
     }
     const data = updateOwnAttendanceSchema.parse(input);
+    assertNotFutureDay(data.date);
 
     const session = await prisma.attendanceSession.findUnique({
       where: { id: data.sessionId },
@@ -704,6 +735,7 @@ export async function adminUpsertAttendanceSession(input: {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = adminUpsertAttendanceSchema.parse(input);
+  assertNotFutureDay(data.date);
 
   const person = await prisma.person.findUnique({
     where: { id: data.personId },

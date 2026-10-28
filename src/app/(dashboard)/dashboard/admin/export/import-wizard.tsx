@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { handleActionResult, reportMutationError } from "@/lib/mutation-error";
 import {
   applyImportPreview,
   buildImportPreview,
@@ -120,7 +121,15 @@ export function ImportWizard() {
         const fd = new FormData();
         fd.set("file", file);
         fd.set("importKind", kind);
-        const inspected = await inspectImportFile(fd);
+        const inspectedResult = handleActionResult(
+          "imports.inspect",
+          await inspectImportFile(fd),
+        );
+        if (!inspectedResult.success) {
+          toast.error(inspectedResult.message);
+          return;
+        }
+        const inspected = inspectedResult.data;
         setSessionId(inspected.sessionId);
         setSheetNames(inspected.sheetNames);
         setAvailableKinds(inspected.availableKinds);
@@ -130,13 +139,20 @@ export function ImportWizard() {
         setStep(inspected.importKind === "produccion_completa" ? "review" : "mapping");
 
         if (inspected.importKind === "produccion_completa") {
-          const preview = await buildImportPreview({
-            sessionId: inspected.sessionId,
-            importKind: "bastidores",
-            mapping: inspected.suggestedMapping,
-          });
-          setRows(preview.rows);
-          setSummary(preview.summary);
+          const preview = handleActionResult(
+            "imports.preview",
+            await buildImportPreview({
+              sessionId: inspected.sessionId,
+              importKind: "bastidores",
+              mapping: inspected.suggestedMapping,
+            }),
+          );
+          if (!preview.success) {
+            toast.error(preview.message);
+            return;
+          }
+          setRows(preview.data.rows);
+          setSummary(preview.data.summary);
           toast.success("Archivo listo para migración completa");
         } else {
           toast.success(
@@ -144,7 +160,7 @@ export function ImportWizard() {
           );
         }
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error al leer el archivo");
+        toast.error(reportMutationError("imports.inspect", e, "Error al leer el archivo"));
       }
     });
   }
@@ -153,17 +169,24 @@ export function ImportWizard() {
     if (!sessionId || !mapping) return;
     startTransition(async () => {
       try {
-        const preview = await buildImportPreview({
-          sessionId,
-          importKind,
-          mapping,
-          rowEdits: rowEdits.length ? rowEdits : undefined,
-        });
-        setRows(preview.rows);
-        setSummary(preview.summary);
+        const preview = handleActionResult(
+          "imports.preview",
+          await buildImportPreview({
+            sessionId,
+            importKind,
+            mapping,
+            rowEdits: rowEdits.length ? rowEdits : undefined,
+          }),
+        );
+        if (!preview.success) {
+          toast.error(preview.message);
+          return;
+        }
+        setRows(preview.data.rows);
+        setSummary(preview.data.summary);
         setStep("review");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error al generar vista previa");
+        toast.error(reportMutationError("imports.preview", e, "Error al generar vista previa"));
       }
     });
   }
@@ -229,24 +252,38 @@ export function ImportWizard() {
       try {
         let rowsToApply = rows;
         if (importKind !== "produccion_completa" && mapping) {
-          const preview = await buildImportPreview({
+          const preview = handleActionResult(
+            "imports.preview",
+            await buildImportPreview({
+              sessionId,
+              importKind,
+              mapping,
+              rowEdits: rowEdits.length ? rowEdits : undefined,
+            }),
+          );
+          if (!preview.success) {
+            toast.error(preview.message);
+            return;
+          }
+          rowsToApply = preview.data.rows;
+        }
+        const result = handleActionResult(
+          "imports.apply",
+          await applyImportPreview({
             sessionId,
             importKind,
-            mapping,
-            rowEdits: rowEdits.length ? rowEdits : undefined,
-          });
-          rowsToApply = preview.rows;
+            rows: rowsToApply as BastidorRowDraft[],
+          }),
+        );
+        if (!result.success) {
+          toast.error(result.message);
+          return;
         }
-        const result = await applyImportPreview({
-          sessionId,
-          importKind,
-          rows: rowsToApply as BastidorRowDraft[],
-        });
-        setApplyResult(result);
+        setApplyResult(result.data);
         setStep("done");
         toast.success("Importación completada");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Error al importar");
+        toast.error(reportMutationError("imports.apply", e, "Error al importar"));
       }
     });
   }

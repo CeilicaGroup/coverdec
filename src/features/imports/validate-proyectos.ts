@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
+import { loadLegacyEntityIndex } from "./load-entity-index";
+import type { ImportDb } from "./transaction";
 import {
-  buildLegacyEntityIndex,
   matchElementTypeByBastidorName,
   matchLampByName,
   matchProjectByName,
@@ -29,58 +30,11 @@ function buildSummary(rows: ProyectoRowDraft[]): ImportPreviewSummary {
   };
 }
 
-async function loadEntityIndex() {
-  const [elementTypes, projects, tasks, users] = await Promise.all([
-    prisma.elementType.findMany({
-      select: { id: true, name: true, code: true },
-    }),
-    prisma.project.findMany({
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        isActive: true,
-        lamps: { select: { id: true, name: true, nameKey: true, projectId: true } },
-      },
-    }),
-    prisma.task.findMany({
-      select: {
-        id: true,
-        projectId: true,
-        lampId: true,
-        process: true,
-        lampElementId: true,
-        lampElement: {
-          select: {
-            elementType: { select: { name: true } },
-          },
-        },
-      },
-    }),
-    prisma.user.findMany({
-      select: { id: true, name: true },
-    }),
-  ]);
-
-  return buildLegacyEntityIndex({
-    elementTypes,
-    projects,
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      projectId: t.projectId,
-      lampId: t.lampId,
-      process: t.process,
-      lampElementId: t.lampElementId,
-      areaLabel: t.lampElement?.elementType.name ?? null,
-    })),
-    users,
-  });
-}
-
 export async function enrichProyectoPreview(
   rows: ProyectoRowDraft[],
+  db: ImportDb = prisma,
 ): Promise<ImportPreview<ProyectoRowDraft>> {
-  const index = await loadEntityIndex();
+  const index = await loadLegacyEntityIndex(db);
   const seenTaskKeys = new Set<string>();
 
   const enriched = rows.map((row) => {
@@ -174,7 +128,8 @@ export async function enrichProyectoPreview(
         ? "warning"
         : "ok";
 
-    if (hasError) action = "skip";
+    // «Omitir» elegido en la revisión se respeta aunque la fila sea válida.
+    if (hasError || row.action === "skip") action = "skip";
 
     return {
       ...row,

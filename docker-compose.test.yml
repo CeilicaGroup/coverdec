@@ -1,0 +1,36 @@
+# Stack para tests de integración (npm run test:int:up).
+# Postgres en tmpfs (se borra al bajar) + solver real. Puertos distintos al dev para no pisarlo.
+name: coverdec-test
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coverdec
+      POSTGRES_PASSWORD: coverdec
+      POSTGRES_DB: coverdec_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coverdec -d coverdec_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  planning-solver:
+    build:
+      context: ./services/planning-solver
+      dockerfile: Dockerfile
+    environment:
+      # Con 20s no encuentra solución para la 2ª semana de una lámpara grande (ver planning.int.test).
+      SOLVER_MAX_SECONDS: ${SOLVER_MAX_SECONDS:-60}
+      SOLVER_NUM_WORKERS: 4
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -1756,6 +1756,11 @@ def _dynamic_max_seconds(
     return base
 
 
+def _should_retry_with_full_budget(status: int, effective_max: int, configured_max: int) -> bool:
+    """La pasada recortada acabó sin ninguna solución y aún queda presupuesto configurado."""
+    return status == cp_model.UNKNOWN and effective_max < configured_max
+
+
 def _dynamic_gap_limit(task_count: int, block_count: int) -> float:
     """Loosen the gap tolerance for small problems to exit faster."""
     if task_count <= 10 and block_count <= 50:
@@ -1769,7 +1774,7 @@ def _infeasible_response(
     tasks: list[EngineTask],
     status: int,
     solver: cp_model.CpSolver,
-    max_solve_seconds: int,
+    spent_seconds: int,
     wo_collapse: dict[str, WoCollapseGroup] | None = None,
 ) -> SolveResponse:
     status_name = solver.StatusName(status)
@@ -1782,7 +1787,7 @@ def _infeasible_response(
     else:
         reason = (
             f"El optimizador no encontró solución a tiempo "
-            f"(presupuesto {max_solve_seconds}s, estado {status_name}). "
+            f"(presupuesto {spent_seconds}s, estado {status_name}). "
             "Regenera el planning o aumenta SOLVER_MAX_SECONDS."
         )
     first_task_id = display_task_id(
@@ -2022,12 +2027,18 @@ def _solve_single(
 
     solve_started_cp = time.perf_counter()
     status = solver.Solve(model, early_cb)
+    retried = _should_retry_with_full_budget(status, effective_max, config.max_solve_seconds)
+    if retried:
+        # El recorte para problemas pequeños se quedó corto (pocas tareas pero muchas horas):
+        # en vez de fallar, gastar el resto del presupuesto configurado.
+        solver.parameters.max_time_in_seconds = config.max_solve_seconds - effective_max
+        status = solver.Solve(model, early_cb)
     solve_ms = int((time.perf_counter() - solve_started_cp) * 1000)
     status_name = solver.StatusName(status)
 
     logger.info(
         "solver metrics: taskCount=%d blockCount=%d placementRows=%d woCollapsed=%d "
-        "prepareMs=%d modelBuildMs=%d solveMs=%d status=%s",
+        "prepareMs=%d modelBuildMs=%d solveMs=%d status=%s budgetS=%d retried=%s",
         len(data.tasks),
         block_count,
         placement_rows_total,
@@ -2036,11 +2047,13 @@ def _solve_single(
         model_build_ms,
         solve_ms,
         status_name,
+        effective_max,
+        retried,
     )
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return _infeasible_response(
-            data.tasks, status, solver, config.max_solve_seconds, data.wo_collapse
+            data.tasks, status, solver, max(1, round(solve_ms / 1000)), data.wo_collapse
         )
 
     return _extract_solution(

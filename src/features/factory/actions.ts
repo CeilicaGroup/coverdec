@@ -10,6 +10,19 @@ import { FactoryStatus, Role } from "@/generated/prisma";
 
 const log = childLogger({ module: "factory.actions" });
 
+/**
+ * La fecha de envío existe solo mientras el ítem está ENVIADO: se fija al entrar
+ * (sin moverla si ya lo estaba) y se borra al salir. Sin cambio de estado, se conserva.
+ */
+function nextShippedAt(
+  item: { status: FactoryStatus; shippedAt: Date | null },
+  status: FactoryStatus | undefined,
+): Date | null {
+  if (status === undefined) return item.shippedAt;
+  if (status !== FactoryStatus.ENVIADO) return null;
+  return item.status === FactoryStatus.ENVIADO && item.shippedAt ? item.shippedAt : new Date();
+}
+
 const updateSchema = z.object({
   id: z.string().min(1),
   status: z.nativeEnum(FactoryStatus).optional(),
@@ -35,8 +48,7 @@ export async function updateFactoryItem(input: z.infer<typeof updateSchema>) {
           nave: data.nave,
           notes: data.notes,
           scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
-          shippedAt:
-            data.status === FactoryStatus.ENVIADO ? new Date() : item.shippedAt,
+          shippedAt: nextShippedAt(item, data.status),
         },
       });
       log.info({ id: item.id, status: data.status }, "factory item updated");
@@ -59,7 +71,7 @@ const createSchema = z.object({
   status: z.nativeEnum(FactoryStatus).default(FactoryStatus.DOSSIER),
 });
 
-export async function createFactoryItem(input: z.infer<typeof createSchema>) {
+export async function createFactoryItem(input: z.input<typeof createSchema>) {
   return runAuditedMutation(
     "factory.createFactoryItem",
     async () => {
@@ -73,6 +85,7 @@ export async function createFactoryItem(input: z.infer<typeof createSchema>) {
           nave: data.nave,
           code: data.code,
           status: data.status,
+          shippedAt: data.status === FactoryStatus.ENVIADO ? new Date() : null,
         },
       });
       revalidatePath("/dashboard/fabrica");

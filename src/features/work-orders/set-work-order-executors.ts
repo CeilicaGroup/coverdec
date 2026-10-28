@@ -6,11 +6,48 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import { runAuditedMutation } from "@/lib/server-action";
-import { Role } from "@/generated/prisma";
+import { Role, type Prisma } from "@/generated/prisma";
 import { assertPlanningAssignmentsWorkOrderWorkers } from "./validate-planning-assignments";
 import { planExecutorChanges } from "./plan-executor-changes";
 
 const log = childLogger({ module: "work-orders.set-work-order-executors" });
+
+async function assertExecutorsNotDoubleBooked(
+  tx: Prisma.TransactionClient,
+  personIds: string[],
+  tasks: { assignments: { date: Date }[] }[],
+): Promise<void> {
+  const dates = [
+    ...new Set(tasks.flatMap((t) => t.assignments.map((a) => a.date.getTime()))),
+  ].map((ms) => new Date(ms));
+  if (dates.length === 0) return;
+  const rows = await tx.planningAssignment.findMany({
+    where: { personId: { in: personIds }, date: { in: dates } },
+    select: {
+      personId: true,
+      date: true,
+      startSlot: true,
+      endSlot: true,
+      person: { select: { iniciales: true } },
+    },
+    orderBy: [{ personId: "asc" }, { date: "asc" }, { startSlot: "asc" }],
+  });
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1]!;
+    const row = rows[i]!;
+    if (
+      prev.personId === row.personId &&
+      prev.date.getTime() === row.date.getTime() &&
+      row.startSlot < prev.endSlot
+    ) {
+      throw new Error(
+        `${row.person.iniciales} ya tiene otra tarea planificada a esa hora el ${row.date
+          .toISOString()
+          .slice(0, 10)}.`,
+      );
+    }
+  }
+}
 
 /** UI/business convention (not a hard schema constraint): a task can be
  * manually reinforced to at most 2 people at once. */
@@ -44,6 +81,7 @@ export async function setWorkOrderExecutors(
         select: {
           id: true,
           naveId: true,
+          process: true,
           assignments: {
             select: {
               id: true,
@@ -67,7 +105,12 @@ export async function setWorkOrderExecutors(
 
       const people = await prisma.person.findMany({
         where: { id: { in: personIds }, isActive: true },
-        select: { id: true, personNaves: { select: { naveId: true } } },
+        select: {
+          id: true,
+          iniciales: true,
+          personNaves: { select: { naveId: true } },
+          specialties: { select: { process: true } },
+        },
       });
       if (people.length !== personIds.length) {
         throw new Error("Alguna persona seleccionada no existe o está inactiva.");
@@ -75,6 +118,14 @@ export async function setWorkOrderExecutors(
       for (const person of people) {
         if (!person.personNaves.some((pn) => pn.naveId === naveId)) {
           throw new Error("Todos los operarios deben pertenecer a la nave de la OT.");
+        }
+        // Responsable o apoyo: cualquier especialidad registrada del proceso vale.
+        const skills = new Set(person.specialties.map((s) => s.process));
+        const missing = [...new Set(openTasks.map((t) => t.process))].filter((p) => !skills.has(p));
+        if (missing.length > 0) {
+          throw new Error(
+            `${person.iniciales} no tiene la especialidad ${missing.join(", ")} de esta OT.`,
+          );
         }
       }
 
@@ -123,11 +174,22 @@ export async function setWorkOrderExecutors(
               })),
             });
           }
+
+          // Kept people's rows (usually the solver's) must be overrides too: the
+          // worker cap counts only override people, and regenerating the week
+          // keeps only override rows for this task — otherwise person 1 is lost.
+          await tx.planningAssignment.updateMany({
+            where: { taskId: task.id, personId: { in: personIds }, isOverride: false },
+            data: { isOverride: true },
+          });
         }
 
         for (const planningId of affectedPlanningIds) {
           await assertPlanningAssignmentsWorkOrderWorkers(tx, planningId);
         }
+
+        // Duplicar franjas no puede poner a nadie en dos tareas a la vez.
+        await assertExecutorsNotDoubleBooked(tx, personIds, openTasks);
       });
 
       log.info(

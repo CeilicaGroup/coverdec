@@ -223,6 +223,8 @@ export function CatalogoCatalogClient({
   const [rows, setRows] = useState<ProcessFormRow[]>([]);
   const [typology, setTypology] = useState<ElementTypology>(ElementTypology.BASTIDOR);
   const [defaultNaveId, setDefaultNaveId] = useState("");
+  // Editar un elemento archivado no debe reactivarlo: se guarda su estado real.
+  const [isActive, setIsActive] = useState(true);
 
   const elementProcessDefs = useMemo(
     () => processDefs.filter((d) => d.code !== TRANSPORT_PROCESS_CODE),
@@ -231,6 +233,7 @@ export function CatalogoCatalogClient({
 
   function openCreate() {
     setMode("create");
+    setIsActive(true);
     setDuplicateSourceId(null);
     setCode("");
     setCodeLocked(false);
@@ -255,6 +258,7 @@ export function CatalogoCatalogClient({
 
   function openEdit(frame: FrameRow) {
     setMode("edit");
+    setIsActive(frame.isActive);
     setDuplicateSourceId(null);
     setCode(frame.code);
     setCodeLocked(true);
@@ -355,9 +359,10 @@ export function CatalogoCatalogClient({
           name: name.trim(),
           description: description.trim() || undefined,
           typology,
-          isActive: true,
+          isActive,
           defaultNaveId: defaultNaveId || null,
           processes,
+          isNew: mode === "create",
         });
       const outcome = handleActionResult("catalog.element.upsert", result);
       if (!outcome.success) {

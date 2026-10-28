@@ -6,17 +6,19 @@ import {
   type BreakScheduleContext,
   type TimeRangeSlice,
 } from "@/features/time-tracking/break-handling";
+import { madridWallTimeToInstant } from "./madrid-time";
 import { workedSessionMinutes } from "./worked-minutes";
 
 /**
- * Attendance stores wall-clock times as UTC (`YYYY-MM-DDTHH:mm:00.000Z`).
- * Break gaps from the person schedule use the same encoding so 08–17 vs 14–15 align.
+ * Attendance stores real instants (UTC). Schedule break gaps are Madrid wall-clock minutes,
+ * so they are converted to instants of that Madrid civil day before intersecting.
  */
 function atWallClockUtc(dayIso: string, minutes: number): Date {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return new Date(
-    `${dayIso}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`,
+  return madridWallTimeToInstant(
+    dayIso,
+    `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
   );
 }
 

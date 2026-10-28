@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { WorkOrderStatus } from "@/generated/prisma";
+import { ProjectApprovalStatus, WorkOrderStatus } from "@/generated/prisma";
 import {
   buildPriorPlannedHoursByTaskId,
   getPriorPlanningAssignments,
@@ -95,10 +95,16 @@ export async function assertNaveSchedulableTasksHaveOpenWorkOrder(args: {
   priorWeekAssignments?: PriorPlanningAssignment[];
 }): Promise<void> {
   const planFromAt = args.planFromAt ?? new Date();
+  // Mismo filtro de aprobación que load-engine-input: lo no aprobado no se planifica,
+  // así que tampoco puede bloquear el planning por no tener OT.
   const tasksRaw = await prisma.task.findMany({
     where: {
       naveId: args.naveId,
-      project: { isActive: true },
+      project: {
+        isActive: true,
+        approvalStatus: { not: ProjectApprovalStatus.PENDING_APPROVAL },
+      },
+      lamp: { isApprovedForPlanning: true },
     },
     select: schedulableTaskSelect,
   });

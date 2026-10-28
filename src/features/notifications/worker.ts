@@ -3,6 +3,14 @@ import { prisma } from "@/lib/db";
 import { childLogger } from "@/lib/logger";
 import { NotificationChannel, NotificationDeliveryStatus, NotificationType } from "@/generated/prisma";
 import { riskFromPlannedEnd } from "@/lib/format";
+import { isFullDayAbsenceBlock } from "@/features/people/absence-model";
+import { buildWeeklyScheduleFromWorkWindows } from "@/features/planning/person-day-capacity";
+import {
+  madridDateIso,
+  madridDayBounds,
+  madridIsoWeekday,
+  madridMinutesOfDay,
+} from "@/features/attendance/madrid-time";
 import { emitNotification, notificationLogError, resolveNotificationStates } from "./service";
 
 const log = childLogger({ module: "notifications.worker" });
@@ -343,12 +351,14 @@ export async function scanAssignedTasksNotLogged(): Promise<void> {
 }
 
 export async function scanAttendanceIncidents(): Promise<void> {
+  // Convención del fichaje: instantes reales en BD, día y horario en hora de Madrid.
   const now = new Date();
-  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-  const dayIso = dayStart.toISOString().slice(0, 10);
+  const dayIso = madridDateIso(now);
+  const { start: dayStart, end: dayEnd } = madridDayBounds(dayIso);
+  // Festivos y ausencias se guardan como fecha civil (medianoche UTC del día).
+  const civilDay = new Date(`${dayIso}T00:00:00.000Z`);
 
-  const [sessions, people] = await Promise.all([
+  const [sessions, people, holidayToday, absencesToday] = await Promise.all([
     prisma.attendanceSession.findMany({
       where: { startedAt: { gte: dayStart, lt: dayEnd } },
       select: { id: true, userId: true, personId: true, startedAt: true, endedAt: true, minutes: true },
@@ -358,7 +368,31 @@ export async function scanAttendanceIncidents(): Promise<void> {
       where: { isActive: true, user: { isNot: null } },
       select: { id: true, user: { select: { id: true } }, workWindows: true },
     }),
+    prisma.holiday.findFirst({
+      where: { startDate: { lte: civilDay }, endDate: { gte: civilDay } },
+      select: { id: true },
+    }),
+    prisma.absence.findMany({
+      where: { date: { lte: civilDay }, endDate: { gte: civilDay } },
+      select: { personId: true, blockStartMinutes: true, blockEndMinutes: true },
+    }),
   ]);
+
+  // "Día laborable sin fichaje" solo si hoy le toca trabajar y su jornada ya ha empezado:
+  // no en fin de semana, festivo ni ausencia de día completo (franjas en minutos de Madrid).
+  const weekday = madridIsoWeekday(now);
+  const nowMinutes = madridMinutesOfDay(now);
+  const fullDayAbsent = new Set(
+    absencesToday.filter((a) => isFullDayAbsenceBlock(a)).map((a) => a.personId),
+  );
+  const workdayStarted = (person: (typeof people)[number]): boolean => {
+    if (holidayToday || weekday >= 6 || fullDayAbsent.has(person.id)) return false;
+    const today = buildWeeklyScheduleFromWorkWindows(person.workWindows).find(
+      (d) => d.dayOfWeek === weekday,
+    );
+    if (!today || today.windows.length === 0) return false;
+    return nowMinutes >= Math.min(...today.windows.map((w) => w.startMinutes));
+  };
 
   const sessionsByUser = new Map<string, typeof sessions>();
   for (const session of sessions) {
@@ -372,6 +406,7 @@ export async function scanAttendanceIncidents(): Promise<void> {
     if (!userId) continue;
     const userSessions = sessionsByUser.get(userId) ?? [];
     if (userSessions.length === 0) {
+      if (!workdayStarted(person)) continue;
       await emitNotification({
         type: NotificationType.ATTENDANCE_MISSING_WORKDAY,
         title: "Día laborable sin fichaje",

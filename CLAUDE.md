@@ -17,9 +17,14 @@ npm run dev:seed         # seed inside the dev container
 
 npm run build            # prisma generate && next build
 npm run typecheck        # tsc --noEmit
-npm run test             # vitest run (Node engine / greedy scheduler tests)
+npm run test             # unit tests only (vitest project "unit")
 npx vitest run path/to/file.test.ts        # single test file
 npx vitest run -t "test name"              # single test by name
+
+npm run test:int:up      # Postgres (tmpfs, :5434, db coverdec_test) + real solver (:8001)
+npm run test:int         # integration tests: *.int.test.ts, real DB + real solver + real better-auth sessions
+npm run test:int:down
+npm run test:all
 npm run test:solver      # runs pytest for the OR-Tools microservice inside its container
 
 npm run db:migrate       # prisma migrate dev
@@ -36,6 +41,14 @@ cd services/planning-solver && python -m pytest tests/test_solve_week.py -q -k s
 ```
 
 There's no `lint` script — rely on `typecheck` and `test`.
+
+### Integration tests (`*.int.test.ts`)
+
+- Only `next/headers` (fake cookie header) and `next/cache` are mocked (`src/test/integration/setup.ts`). Server actions run for real: better-auth session, `requireRole`, Prisma transactions, the Python solver.
+- Every test starts from an empty DB (TRUNCATE in `beforeEach`) and builds its world with `buildWorld()` / `createPlannableLamp()` from `src/test/integration/world.ts`; log in with `loginAs(email)`.
+- Create test data through the real actions whenever one exists (absences via `setAbsence`, holidays via `createHoliday`, OTs via `autoGroupIdenticalTasks`…). Hand-written rows can hold shapes the app never produces and lead to false bugs.
+- Setup refuses any `DATABASE_URL` whose DB name doesn't end in `_test`.
+- To run several suites in parallel (e.g. multiple agents), give each its own DB: `TEST_DATABASE_URL=postgresql://coverdec:coverdec@localhost:5434/coverdec_<x>_test?schema=public`, which global-setup migrates on first use.
 
 ## Architecture
 

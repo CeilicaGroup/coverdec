@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 
 export async function assertNoAttendanceOverlap(args: {
@@ -6,16 +7,19 @@ export async function assertNoAttendanceOverlap(args: {
   endedAt: Date;
   excludeSessionId?: string;
 }) {
+  // Una sesión en vivo abierta ocupa desde su inicio en adelante.
   const overlap = await prisma.attendanceSession.findFirst({
     where: {
       userId: args.userId,
-      endedAt: { not: null },
       ...(args.excludeSessionId ? { id: { not: args.excludeSessionId } } : {}),
       startedAt: { lt: args.endedAt },
-      AND: [{ endedAt: { gt: args.startedAt } }],
+      OR: [{ endedAt: null }, { endedAt: { gt: args.startedAt } }],
     },
-    select: { id: true },
+    select: { id: true, endedAt: true },
   });
+  if (overlap && !overlap.endedAt) {
+    throw new Error("Hay un fichaje en vivo abierto que se solapa con esta franja. Ciérralo antes.");
+  }
   if (overlap) {
     throw new Error("La franja de fichaje se solapa con otra existente.");
   }
@@ -76,8 +80,11 @@ export async function assertNoBreakOverlap(args: {
   }
 }
 
-export async function assertNoOpenBreak(sessionId: string) {
-  const open = await prisma.attendanceBreak.findFirst({
+export async function assertNoOpenBreak(
+  sessionId: string,
+  db: Pick<Prisma.TransactionClient, "attendanceBreak"> = prisma,
+) {
+  const open = await db.attendanceBreak.findFirst({
     where: { sessionId, endedAt: null },
     select: { id: true },
   });

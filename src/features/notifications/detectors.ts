@@ -3,7 +3,16 @@ import { scheduledHoursForPersonDay } from "@/features/people/absence-schedule";
 import { riskFromPlannedEnd } from "@/lib/format";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
 import { weekDays } from "@/lib/week";
-import { NotificationType, type Prisma } from "@/generated/prisma";
+import { NotificationType, Role, type Prisma } from "@/generated/prisma";
+
+export interface PlanningPublishAlert {
+  type: NotificationType;
+  title: string;
+  body: string;
+  payload: Record<string, unknown>;
+  /** Solo estos usuarios (aviso personal del responsable); si falta, gestores. */
+  recipientUserIds?: string[];
+}
 
 function computeCapacityForWeek(args: {
   days: Date[];
@@ -42,16 +51,7 @@ function computeCapacityForWeek(args: {
 export async function detectPlanningPublishNotifications(
   tx: Prisma.TransactionClient,
   planningId: string,
-): Promise<
-  Array<{
-    type: NotificationType;
-    title: string;
-    body: string;
-    payload: Record<string, unknown>;
-    projectId?: string;
-    responsibleUserId?: string | null;
-  }>
-> {
+): Promise<PlanningPublishAlert[]> {
   const planning = await tx.planning.findUnique({
     where: { id: planningId },
     include: {
@@ -121,12 +121,7 @@ export async function detectPlanningPublishNotifications(
   const assignedHours = planning.assignments.reduce((acc, a) => acc + a.hours, 0);
   const occupationPct = capacityHours > 0 ? Math.round((assignedHours / capacityHours) * 100) : 0;
 
-  const notifications: Array<{
-    type: NotificationType;
-    title: string;
-    body: string;
-    payload: Record<string, unknown>;
-  }> = [];
+  const notifications: PlanningPublishAlert[] = [];
 
   if (occupationPct < 100) {
     notifications.push({
@@ -179,6 +174,37 @@ export async function detectPlanningPublishNotifications(
         projectCodes: riskyProjects.map(([projectId]) => projectMeta.get(projectId)?.code ?? projectId),
       },
     });
+
+    // Cada responsable recibe un aviso solo con sus proyectos; admin y jefe ya tienen el global.
+    const managers = await tx.user.findMany({
+      where: { role: { in: [Role.ADMIN, Role.JEFE_PRODUCCION] } },
+      select: { id: true },
+    });
+    const managerIds = new Set(managers.map((u) => u.id));
+    const projectIdsByResponsible = new Map<string, string[]>();
+    for (const [projectId] of riskyProjects) {
+      const responsible = projectMeta.get(projectId)?.responsibleUserId;
+      if (!responsible || managerIds.has(responsible)) continue;
+      const list = projectIdsByResponsible.get(responsible) ?? [];
+      list.push(projectId);
+      projectIdsByResponsible.set(responsible, list);
+    }
+    for (const [userId, projectIds] of projectIdsByResponsible) {
+      const codes = projectIds.map((id) => projectMeta.get(id)?.code ?? id);
+      notifications.push({
+        type: NotificationType.PLAN_PUBLISHED_PROJECTS_OVER_DEADLINE,
+        title: "Plan publicado: tus proyectos salen fuera de plazo",
+        body: `El planning publicado termina después de la entrega en: ${codes.join(", ")}.`,
+        payload: {
+          eventKey: `plan-published-over-deadline:${planning.id}:${userId}`,
+          planningId: planning.id,
+          naveId: planning.naveId,
+          projectIds,
+          projectCodes: codes,
+        },
+        recipientUserIds: [userId],
+      });
+    }
   }
 
   return notifications;

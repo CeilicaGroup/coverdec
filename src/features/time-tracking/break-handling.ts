@@ -59,6 +59,13 @@ function intersectRange(a: TimeRangeSlice, b: TimeRangeSlice): TimeRangeSlice | 
 function breakWindowsForDate(dayIso: string, schedule: BreakScheduleContext): WorkWindowMinutes[] {
   const day = utcMidnightFromIso(dayIso);
   const override = schedule.overrides.find((item) => dateIso(item.date) === dayIso);
+  // Fin de semana sin horario propio: no hay jornada ni comida. No se hereda el viernes
+  // (isoWeekdayForSchedule lo hace para la capacidad de planning; aquí no aplica).
+  const utcDow = day.getUTCDay();
+  const isoDow = utcDow === 0 ? 7 : utcDow;
+  if (!override && isoDow >= 6 && !schedule.weekly.some((d) => d.dayOfWeek === isoDow)) {
+    return [];
+  }
   const windows = getWindowsForDate(
     isoWeekdayForSchedule(day),
     schedule.weekly,

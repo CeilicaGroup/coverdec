@@ -52,6 +52,11 @@ import {
   summarizeAttendanceBreakOverlap,
 } from "@/features/attendance/apply-attendance-break-handling";
 import {
+  madridDateIso,
+  madridHhmm,
+  madridWallTimeToInstant,
+} from "@/features/attendance/madrid-time";
+import {
   formatAttendanceSource,
   operarioCanDeleteSession,
   operarioCanEditSession,
@@ -131,8 +136,13 @@ function dayTooltipText(modifiers: Record<string, boolean>): string {
   return labels.join(" · ");
 }
 
+/** Los fichajes son instantes reales; se muestran en hora de Madrid. */
 function toTimeValue(dateIso: string): string {
-  return new Date(dateIso).toISOString().slice(11, 16);
+  return madridHhmm(new Date(dateIso));
+}
+
+function sessionDayIso(session: { startedAt: string }): string {
+  return madridDateIso(new Date(session.startedAt));
 }
 
 function formatHms(totalSeconds: number): string {
@@ -218,7 +228,7 @@ export function DailyAttendanceClient(props: {
 
   const sessionsForDay = useMemo(() => {
     return props.sessions
-      .filter((s) => s.personId === visiblePersonId && s.startedAt.slice(0, 10) === selectedIso)
+      .filter((s) => s.personId === visiblePersonId && sessionDayIso(s) === selectedIso)
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }, [props.sessions, selectedIso, visiblePersonId]);
 
@@ -364,8 +374,8 @@ export function DailyAttendanceClient(props: {
       toast.error("La hora fin debe ser posterior a la hora inicio.");
       return;
     }
-    const startedAt = new Date(`${selectedIso}T${startTime}:00.000Z`);
-    const endedAt = new Date(`${selectedIso}T${endTime}:00.000Z`);
+    const startedAt = madridWallTimeToInstant(selectedIso, startTime);
+    const endedAt = madridWallTimeToInstant(selectedIso, endTime);
     const overlap = summarizeAttendanceBreakOverlap(
       { startedAt, endedAt },
       selectedIso,
@@ -448,7 +458,7 @@ export function DailyAttendanceClient(props: {
     if (!visiblePerson) return 0;
     const at = new Date(nowMs);
     return props.sessions
-      .filter((s) => s.personId === visiblePerson.id && s.startedAt.slice(0, 10) === todayIso)
+      .filter((s) => s.personId === visiblePerson.id && sessionDayIso(s) === todayIso)
       .reduce((acc, s) => {
         const input = sessionWorkedInput(s);
         const isLiveOpenSession = props.openSession?.id === s.id && s.endedAt == null;

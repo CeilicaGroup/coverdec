@@ -1,3 +1,4 @@
+import { parseDecimalText } from "@/lib/excel/cell";
 import { resolveImportProcessCode } from "./resolve-import-process";
 import type { RawMappedRow } from "./excel-workbook";
 import type { HorasRowDraft, ImportIssue } from "./types";
@@ -12,9 +13,7 @@ function asNumber(value: string | number | Date | null | undefined): number | nu
   if (value == null || value === "") return null;
   if (value instanceof Date) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const cleaned = String(value).replace(/\./g, "").replace(",", ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  return parseDecimalText(String(value));
 }
 
 function asDate(value: string | number | Date | null | undefined): Date | null {

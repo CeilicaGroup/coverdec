@@ -24,9 +24,12 @@ const elementUpsertSchema = z
     name: z.string().min(1),
     description: z.string().optional(),
     typology: z.nativeEnum(ElementTypology),
-    isActive: z.boolean().default(true),
+    /** Sin valor: al crear queda activo y al editar conserva su estado. */
+    isActive: z.boolean().optional(),
     defaultNaveId: z.string().min(1).nullable().optional(),
     processes: z.array(processRowSchema).default([]),
+    /** Alta desde «Nuevo elemento»: si el código ya existe se rechaza en vez de sobrescribirlo. */
+    isNew: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     const seen = new Set<string>();
@@ -65,6 +68,16 @@ export async function upsertElementType(
     }
   }
 
+  if (data.isNew) {
+    const existing = await prisma.elementType.findUnique({
+      where: { code: data.code },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new Error(`Ya existe un elemento con el código «${data.code}».`);
+    }
+  }
+
   if (data.defaultNaveId) {
     const nave = await prisma.nave.findFirst({
       where: { id: data.defaultNaveId, isActive: true },
@@ -95,7 +108,7 @@ export async function upsertElementType(
       name: data.name,
       description: data.description ?? null,
       typology: data.typology,
-      isActive: data.isActive,
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       ...(data.defaultNaveId !== undefined
         ? { defaultNaveId: data.defaultNaveId }
         : {}),
@@ -105,7 +118,7 @@ export async function upsertElementType(
       name: data.name,
       description: data.description ?? null,
       typology: data.typology,
-      isActive: data.isActive,
+      isActive: data.isActive ?? true,
       defaultNaveId: data.defaultNaveId ?? null,
     },
   });
@@ -283,6 +296,8 @@ export async function duplicateElementType(
             sequence: process.sequence,
             hoursPerUnit: process.hoursPerUnit,
             fixedHours: process.fixedHours,
+            requiredWorkers: process.requiredWorkers,
+            notes: process.notes,
             naveId: process.naveId,
           },
         });
@@ -496,6 +511,14 @@ export async function createProcessDefinition(
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = createProcessSchema.parse(input);
+
+  const existing = await prisma.processDefinition.findUnique({
+    where: { code: data.code },
+    select: { code: true },
+  });
+  if (existing) {
+    throw new Error(`Ya existe un proceso con el código «${data.code}».`);
+  }
 
   await prisma.processDefinition.create({
     data: {

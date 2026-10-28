@@ -3,17 +3,27 @@ import {
   buildWeeklyScheduleFromWorkWindows,
   isoWeekdayForSchedule,
 } from "@/features/planning/person-day-capacity";
-import { allocateSequentialTimeSlots } from "./allocate-sequential-time-slots";
 import {
-  buildLegacyEntityIndex,
+  allocateSequentialTimeSlots,
+  type BusyInterval,
+} from "./allocate-sequential-time-slots";
+import {
+  createAlreadyImportedChecker,
+  horasContentFingerprints,
+  loadImportedHorasIndex,
+} from "./horas-fingerprint";
+import { loadLegacyEntityIndex } from "./load-entity-index";
+import {
   matchLampByName,
   matchProjectByName,
   matchTask,
   matchUserByOperatorName,
 } from "./match-legacy-entities";
+import type { ImportDb } from "./transaction";
 import type {
   HorasRowDraft,
   ImportAction,
+  ImportIssue,
   ImportPreview,
   ImportPreviewSummary,
   ImportRowStatus,
@@ -32,56 +42,10 @@ function buildSummary(rows: HorasRowDraft[]): ImportPreviewSummary {
   };
 }
 
-async function loadEntityIndex() {
-  const [elementTypes, projects, tasks, users] = await Promise.all([
-    prisma.elementType.findMany({
-      select: { id: true, name: true, code: true },
-    }),
-    prisma.project.findMany({
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        isActive: true,
-        lamps: { select: { id: true, name: true, nameKey: true, projectId: true } },
-      },
-    }),
-    prisma.task.findMany({
-      select: {
-        id: true,
-        projectId: true,
-        lampId: true,
-        process: true,
-        lampElementId: true,
-        lampElement: {
-          select: { elementType: { select: { name: true } } },
-        },
-      },
-    }),
-    prisma.user.findMany({
-      select: { id: true, name: true },
-    }),
-  ]);
+type WeeklyWindows = { dayOfWeek: number; startMinutes: number; endMinutes: number }[];
 
-  return buildLegacyEntityIndex({
-    elementTypes,
-    projects,
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      projectId: t.projectId,
-      lampId: t.lampId,
-      process: t.process,
-      lampElementId: t.lampElementId,
-      areaLabel: t.lampElement?.elementType.name ?? null,
-    })),
-    users,
-  });
-}
-
-async function loadPersonWindowsByUserId(): Promise<
-  Map<string, { dayOfWeek: number; startMinutes: number; endMinutes: number }[]>
-> {
-  const users = await prisma.user.findMany({
+async function loadPersonWindowsByUserId(db: ImportDb): Promise<Map<string, WeeklyWindows>> {
+  const users = await db.user.findMany({
     where: { personId: { not: null } },
     select: {
       id: true,
@@ -94,10 +58,7 @@ async function loadPersonWindowsByUserId(): Promise<
       },
     },
   });
-  const map = new Map<
-    string,
-    { dayOfWeek: number; startMinutes: number; endMinutes: number }[]
-  >();
+  const map = new Map<string, WeeklyWindows>();
   for (const user of users) {
     if (user.person) map.set(user.id, user.person.workWindows);
   }
@@ -107,10 +68,7 @@ async function loadPersonWindowsByUserId(): Promise<
 function windowsForUserOnDate(
   userId: string,
   workDate: Date,
-  personWindows: Map<
-    string,
-    { dayOfWeek: number; startMinutes: number; endMinutes: number }[]
-  >,
+  personWindows: Map<string, WeeklyWindows>,
 ) {
   const weekly = buildWeeklyScheduleFromWorkWindows(
     personWindows.get(userId) ?? [],
@@ -120,65 +78,64 @@ function windowsForUserOnDate(
   return day?.windows;
 }
 
+const DAY_MS = 86_400_000;
+
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Tramos ya ocupados (fichajes, partes manuales, importaciones previas) por usuario y día. */
+async function loadBusyByUserDay(
+  db: ImportDb,
+  wanted: Array<{ userId: string; workDate: Date }>,
+): Promise<Map<string, BusyInterval[]>> {
+  const busy = new Map<string, BusyInterval[]>();
+  if (wanted.length === 0) return busy;
+  const days = wanted.map((w) =>
+    Date.UTC(w.workDate.getUTCFullYear(), w.workDate.getUTCMonth(), w.workDate.getUTCDate()),
+  );
+  const from = new Date(Math.min(...days));
+  const to = new Date(Math.max(...days) + DAY_MS);
+  const entries = await db.timeEntry.findMany({
+    where: {
+      userId: { in: [...new Set(wanted.map((w) => w.userId))] },
+      startedAt: { lt: to },
+      OR: [{ endedAt: null }, { endedAt: { gt: from } }],
+    },
+    select: { userId: true, startedAt: true, endedAt: true, hours: true },
+  });
+  for (const e of entries) {
+    const start = e.startedAt.getTime();
+    // Cronómetro en marcha: ocupa hasta ahora (o sus horas, si es mayor).
+    const end = e.endedAt?.getTime() ?? Math.max(start + (e.hours ?? 0) * 3_600_000, Date.now());
+    for (let day = Math.floor(start / DAY_MS) * DAY_MS; day < end; day += DAY_MS) {
+      const key = `${e.userId}::${dayKey(new Date(day))}`;
+      const list = busy.get(key) ?? [];
+      list.push({
+        startMinutes: Math.max(0, (start - day) / 60_000),
+        endMinutes: Math.min(24 * 60, (end - day) / 60_000),
+      });
+      busy.set(key, list);
+    }
+  }
+  return busy;
+}
+
 export async function enrichHorasPreview(
   rows: HorasRowDraft[],
+  db: ImportDb = prisma,
 ): Promise<ImportPreview<HorasRowDraft>> {
-  const [index, personWindows, existingNotes] = await Promise.all([
-    loadEntityIndex(),
-    loadPersonWindowsByUserId(),
-    prisma.timeEntry.findMany({
-      where: { notes: { startsWith: "legacy-import:horas:row:" } },
-      select: { notes: true },
-    }),
+  const [index, personWindows, imported] = await Promise.all([
+    loadLegacyEntityIndex(db),
+    loadPersonWindowsByUserId(db),
+    loadImportedHorasIndex(db),
   ]);
-  const existingFingerprints = new Set(
-    existingNotes.map((e) => e.notes).filter(Boolean) as string[],
-  );
+  const fingerprints = horasContentFingerprints(rows);
+  const isAlreadyImported = createAlreadyImportedChecker(imported);
 
-  const groups = new Map<string, HorasRowDraft[]>();
-  for (const row of rows) {
-    if (row.status === "skipped" || !row.workDate || !row.operatorName) continue;
-    const key = `${row.workDate.toISOString().slice(0, 10)}::${row.operatorName}`;
-    const list = groups.get(key) ?? [];
-    list.push(row);
-    groups.set(key, list);
-  }
-
-  const slotByRowIndex = new Map<
-    number,
-    { startedAt: Date; endedAt: Date; overflow: boolean }
-  >();
-  const slotWarnings = new Map<number, string[]>();
-
-  for (const [, groupRows] of groups) {
-    const sample = groupRows[0]!;
-    const user = matchUserByOperatorName(index, sample.operatorName);
-    const result = allocateSequentialTimeSlots({
-      workDate: sample.workDate!,
-      weeklyWindows: user
-        ? windowsForUserOnDate(user.id, sample.workDate!, personWindows)
-        : undefined,
-      entries: groupRows
-        .filter((r) => r.totalHours != null && r.totalHours > 0)
-        .map((r) => ({
-          rowIndex: r.rowIndex,
-          hours: r.totalHours!,
-          startTimeMinutes: r.startTimeMinutes,
-          endTimeMinutes: r.endTimeMinutes,
-        })),
-    });
-    for (const slot of result.slots) {
-      slotByRowIndex.set(slot.rowIndex, slot);
+  // 1) Emparejar cada fila con operario, proyecto, lámpara y tarea.
+  const matched = rows.map((row) => {
+    if (row.status === "skipped") {
+      return { row, issues: row.issues, alreadyImported: false };
     }
-    for (const w of result.warnings) {
-      const list = slotWarnings.get(w.rowIndex) ?? [];
-      list.push(w.message);
-      slotWarnings.set(w.rowIndex, list);
-    }
-  }
-
-  const enriched = rows.map((row) => {
-    if (row.status === "skipped") return row;
 
     const issues = [...row.issues];
     let userId: string | null = null;
@@ -186,7 +143,6 @@ export async function enrichHorasPreview(
     let projectId: string | null = null;
     let lampId: string | null = null;
     let taskId: string | null = null;
-    let action: ImportAction = row.action;
 
     const user = matchUserByOperatorName(index, row.operatorName);
     if (!user) {
@@ -249,25 +205,72 @@ export async function enrichHorasPreview(
       }
     }
 
-    const fingerprint = `legacy-import:horas:row:${row.rowIndex}`;
-    if (existingFingerprints.has(fingerprint)) {
+    const resolved = { ...row, userId, operatorLabel, projectId, lampId, taskId };
+    const alreadyImported = isAlreadyImported(resolved, fingerprints.get(row.rowIndex) ?? "");
+    if (alreadyImported) {
       issues.push({
         code: "ALREADY_IMPORTED",
         message: "Esta fila ya fue importada anteriormente",
         severity: "warning",
       });
-      action = "skip";
     }
+    return { row: resolved, issues, alreadyImported };
+  });
 
-    const slot = slotByRowIndex.get(row.rowIndex);
-    const warnMessages = slotWarnings.get(row.rowIndex) ?? [];
-    for (const msg of warnMessages) {
-      issues.push({
-        code: "SCHEDULE_WARNING",
-        message: msg,
-        severity: "warning",
-      });
+  // 2) Colocar en la jornada solo lo que se va a importar, sin pisar horas ya registradas.
+  const groups = new Map<string, HorasRowDraft[]>();
+  for (const { row, issues, alreadyImported } of matched) {
+    if (row.status === "skipped" || row.action === "skip" || alreadyImported) continue;
+    if (!row.workDate || !row.userId) continue;
+    if (issues.some((i) => i.severity === "error")) continue;
+    const key = `${row.userId}::${dayKey(row.workDate)}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+
+  const busyByUserDay = await loadBusyByUserDay(
+    db,
+    [...groups.values()].map((g) => ({ userId: g[0]!.userId!, workDate: g[0]!.workDate! })),
+  );
+
+  const slotByRowIndex = new Map<number, { startedAt: Date; endedAt: Date }>();
+  const slotIssues = new Map<number, ImportIssue[]>();
+  const pushSlotIssue = (rowIndex: number, issue: ImportIssue) => {
+    const list = slotIssues.get(rowIndex) ?? [];
+    list.push(issue);
+    slotIssues.set(rowIndex, list);
+  };
+
+  for (const [key, groupRows] of groups) {
+    const sample = groupRows[0]!;
+    const result = allocateSequentialTimeSlots({
+      workDate: sample.workDate!,
+      weeklyWindows: windowsForUserOnDate(sample.userId!, sample.workDate!, personWindows),
+      busy: busyByUserDay.get(key) ?? [],
+      entries: groupRows
+        .filter((r) => r.totalHours != null && r.totalHours > 0)
+        .map((r) => ({
+          rowIndex: r.rowIndex,
+          hours: r.totalHours!,
+          startTimeMinutes: r.startTimeMinutes,
+          endTimeMinutes: r.endTimeMinutes,
+        })),
+    });
+    for (const slot of result.slots) slotByRowIndex.set(slot.rowIndex, slot);
+    for (const w of result.warnings) {
+      pushSlotIssue(w.rowIndex, { code: "SCHEDULE_WARNING", message: w.message, severity: "warning" });
     }
+    for (const e of result.errors) {
+      pushSlotIssue(e.rowIndex, { code: e.code, field: "normalHours", message: e.message, severity: "error" });
+    }
+  }
+
+  // 3) Estado y acción final.
+  const enriched = matched.map(({ row, issues: baseIssues, alreadyImported }) => {
+    if (row.status === "skipped") return row;
+    const issues = [...baseIssues, ...(slotIssues.get(row.rowIndex) ?? [])];
+    const slot = slotByRowIndex.get(row.rowIndex);
 
     const hasError = issues.some((i) => i.severity === "error");
     const hasWarning = issues.some((i) => i.severity === "warning");
@@ -277,16 +280,12 @@ export async function enrichHorasPreview(
         ? "warning"
         : "ok";
 
-    if (hasError) action = "skip";
+    let action: ImportAction = row.action;
+    if (hasError || alreadyImported) action = "skip";
     else if (action !== "skip") action = "create";
 
     return {
       ...row,
-      userId,
-      operatorLabel,
-      projectId,
-      lampId,
-      taskId,
       startedAt: slot?.startedAt ?? null,
       endedAt: slot?.endedAt ?? null,
       issues,

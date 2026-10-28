@@ -36,6 +36,7 @@ import { getStockPoolProjectId } from "./stock-pool";
 import {
   clearPendingTaskWorkOrders,
   deletePlanningAssignmentsForLamp,
+  freeLampName,
   lampAssignFromStockFields,
   lampReturnToStockFields,
   moveLampToProject,
@@ -304,6 +305,7 @@ async function returnWholeLampToStock(
     lamp: {
       id: string;
       projectId: string;
+      name: string;
     };
     stockPoolProjectId: string;
     reason?: string;
@@ -332,12 +334,23 @@ async function returnWholeLampToStock(
     },
   });
 
+  const poolName = await freeLampName(tx, {
+    projectIds: [args.lamp.projectId, args.stockPoolProjectId],
+    name: args.lamp.name,
+    excludeLampId: args.lamp.id,
+  });
   await tx.lamp.update({
     where: { id: args.lamp.id },
-    data: lampReturnToStockFields({
-      previousProjectId: args.previousProjectId,
-      reason: args.reason,
-    }),
+    data: {
+      ...poolName,
+      ...lampReturnToStockFields({
+        previousProjectId: args.previousProjectId,
+        reason: args.reason,
+      }),
+      // Como los lotes y las unidades sueltas devueltas: en stock no se planifica
+      // (sus tareas ya no tienen OT y bloquearían el planning de la nave).
+      isApprovedForPlanning: false,
+    },
   });
 
   await moveLampToProject(tx, {
@@ -436,14 +449,16 @@ export async function returnLampToStock(
           );
         }
 
-        const stockName = `${lamp.name} (stock ×${elementsToStock.length})`;
-        const stockFields = lampNameFields(stockName);
+        const stockFields = await freeLampName(tx, {
+          projectIds: [lamp.projectId, stockPoolProjectId],
+          name: `${lamp.name} (stock ×${elementsToStock.length})`,
+        });
         const stockLamp = await tx.lamp.create({
           data: {
             projectId: lamp.projectId,
             elementTypeId: elementsToStock[0]!.elementTypeId,
             code: lamp.code,
-            name: stockName,
+            name: stockFields.name,
             nameKey: stockFields.nameKey,
             width: lamp.width,
             height: lamp.height,
@@ -467,6 +482,11 @@ export async function returnLampToStock(
           where: {
             lampElementId: { in: elementsToStock.map((element) => element.id) },
           },
+          data: { lampId: stockLamp.id },
+        });
+        // Los fichajes de las unidades devueltas pasan con sus tareas a la lámpara de stock.
+        await tx.timeEntry.updateMany({
+          where: { task: { lampId: stockLamp.id } },
           data: { lampId: stockLamp.id },
         });
 

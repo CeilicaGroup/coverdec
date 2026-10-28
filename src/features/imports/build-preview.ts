@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/db";
+import type { ImportDb } from "./transaction";
 import type { ImportKind, ImportMapping } from "./types";
 import {
   extractMappedRows,
@@ -12,14 +14,18 @@ import { enrichProyectoPreview } from "./validate-proyectos";
 import { enrichHorasPreview } from "./validate-horas";
 import { getImportSessionBuffer } from "./session-store";
 
+export const IMPORT_SESSION_EXPIRED_MESSAGE =
+  "La sesión de importación ha caducado (30 min). Vuelve a subir el archivo.";
+
 export async function buildPreviewFromSession(
   sessionId: string,
   mapping: ImportMapping,
   kind: ImportKind = "bastidores",
+  db: ImportDb = prisma,
 ) {
   const buffer = getImportSessionBuffer(sessionId);
   if (!buffer) {
-    throw new Error("SESSION_EXPIRED");
+    throw new Error(IMPORT_SESSION_EXPIRED_MESSAGE);
   }
   const wb = await loadWorkbookFromBuffer(buffer);
   const sheet = getWorksheet(wb, mapping.sheetName);
@@ -30,13 +36,13 @@ export async function buildPreviewFromSession(
 
   if (kind === "proyectos") {
     const parsed = parseProyectoRows(rawRows);
-    return enrichProyectoPreview(parsed);
+    return enrichProyectoPreview(parsed, db);
   }
   if (kind === "horas") {
     const parsed = parseHorasRows(rawRows);
-    return enrichHorasPreview(parsed);
+    return enrichHorasPreview(parsed, db);
   }
 
   const parsed = parseBastidorRows(rawRows);
-  return enrichBastidorPreview(parsed);
+  return enrichBastidorPreview(parsed, db);
 }

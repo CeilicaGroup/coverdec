@@ -4,6 +4,7 @@ import {
   summarizeAttendanceBreakOverlap,
 } from "../apply-attendance-break-handling";
 import type { BreakScheduleContext } from "@/features/time-tracking/break-handling";
+import { madridWallTimeToInstant } from "../madrid-time";
 
 const schedule: BreakScheduleContext = {
   weekly: [
@@ -20,11 +21,36 @@ const schedule: BreakScheduleContext = {
 
 const dayIso = "2026-07-20"; // Monday
 
-function wall(time: string): Date {
-  return new Date(`${dayIso}T${time}:00.000Z`);
+/** Hora mural de Madrid → instante real (convención de fichaje). */
+function wall(time: string, day = dayIso): Date {
+  return madridWallTimeToInstant(day, time);
 }
 
 describe("attendance break handling", () => {
+  it("la comida 14–15 de Madrid es 12–13 UTC en verano", () => {
+    const result = applyAttendanceBreakHandling({
+      startedAt: wall("08:00"),
+      endedAt: wall("17:00"),
+      dayIso,
+      schedule,
+      breakHandling: "took_break",
+    });
+    expect(result.breaks[0]?.startedAt.toISOString()).toBe("2026-07-20T12:00:00.000Z");
+    expect(result.breaks[0]?.endedAt.toISOString()).toBe("2026-07-20T13:00:00.000Z");
+  });
+
+  it("en fin de semana sin horario propio no hay comida que preguntar", () => {
+    const saturday = "2026-07-25";
+    const result = applyAttendanceBreakHandling({
+      startedAt: wall("08:00", saturday),
+      endedAt: wall("17:00", saturday),
+      dayIso: saturday,
+      schedule,
+    });
+    expect(result.breaks).toHaveLength(0);
+    expect(result.minutes).toBe(9 * 60);
+  });
+
   it("detects full-day range that spans lunch", () => {
     const summary = summarizeAttendanceBreakOverlap(
       { startedAt: wall("08:00"), endedAt: wall("17:00") },

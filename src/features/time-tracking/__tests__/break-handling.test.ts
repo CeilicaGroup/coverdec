@@ -81,6 +81,20 @@ describe("break handling for manual ranges", () => {
     expect(result.ranges[1]?.endedAt.toISOString()).toBe(madrid("15:30").toISOString());
   });
 
+  it("en fin de semana sin horario propio no pregunta por la comida (no hereda el viernes)", () => {
+    const saturday = (time: string) => new Date(fromDatetimeLocalInputValue(`2026-07-25T${time}`));
+    const fridaySchedule: BreakScheduleContext = {
+      weekly: [{ dayOfWeek: 5, windows: schedule.weekly[0]!.windows }],
+      overrides: [],
+    };
+    const result = applyBreakHandling(
+      [{ startedAt: saturday("08:00"), endedAt: saturday("17:00") }],
+      fridaySchedule,
+    );
+    expect(result.overlap.hasOverlap).toBe(false);
+    expect(result.ranges).toHaveLength(1);
+  });
+
   it("throws when overlap exists and no decision is provided", () => {
     expect(() =>
       applyBreakHandling(

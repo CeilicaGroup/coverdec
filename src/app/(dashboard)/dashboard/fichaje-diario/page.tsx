@@ -1,6 +1,7 @@
 import { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
+import { madridDayBounds } from "@/features/attendance/madrid-time";
 import { PageHeader } from "../../_components/page-header";
 import { DailyAttendanceClient } from "./daily-attendance-client";
 
@@ -15,6 +16,9 @@ export default async function FichajeDiarioPage() {
   const canManage = ctx.role === Role.ADMIN || ctx.role === Role.JEFE_PRODUCCION;
   const now = new Date();
   const { start, end } = attendanceRange(now);
+  // Los fichajes son instantes reales: el mes se corta en medianoche de Madrid.
+  const sessionsFrom = madridDayBounds(start.toISOString().slice(0, 10)).start;
+  const sessionsTo = madridDayBounds(end.toISOString().slice(0, 10)).end;
 
   const peopleWhere =
     canManage && ctx.naveIds.length > 0
@@ -45,7 +49,7 @@ export default async function FichajeDiarioPage() {
     }),
     prisma.attendanceSession.findMany({
       where: {
-        startedAt: { gte: start, lte: end },
+        startedAt: { gte: sessionsFrom, lt: sessionsTo },
         ...(canManage ? {} : { userId: ctx.userId }),
       },
       orderBy: { startedAt: "asc" },

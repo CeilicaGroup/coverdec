@@ -325,7 +325,7 @@ export function PersonalTeamClient({
                   borderColor: `${p.color}40`,
                 }}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <PersonAvatar iniciales={p.iniciales} color={p.color} size={42} />
                     <div className="min-w-0">

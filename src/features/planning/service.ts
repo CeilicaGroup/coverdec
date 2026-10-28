@@ -46,6 +46,8 @@ import {
   buildAdHocPlanningAssignmentsForNaves,
   countSchedulableAdHocTasksForNaves,
   loadAdHocNaveIdByTaskId,
+  adHocUnplacedWarnings,
+  type UnplacedAdHocHours,
 } from "@/features/ad-hoc/schedule-ad-hoc-tasks";
 
 export { hasRegistrosFromWeek } from "@/features/planning/planning-registros";
@@ -116,6 +118,7 @@ async function mergeSolverWithOverridesAndAdHoc(args: {
   adHocTaskIds: Set<string>;
   overrideSlices: OverrideAssignmentSlice[];
   adHocSlices: OverrideAssignmentSlice[];
+  adHocUnplaced: UnplacedAdHocHours[];
 }> {
   const overrideSlices = args.overrideAssignments.map(toOverrideSlice);
   const alreadyPlannedTaskIds = new Set(
@@ -126,7 +129,7 @@ async function mergeSolverWithOverridesAndAdHoc(args: {
     ...overrideSlices,
   ];
 
-  const adHocSlices = args.naveIds
+  const { slices: adHocSlices, unplaced: adHocUnplaced } = args.naveIds
     ? await buildAdHocPlanningAssignmentsForNaves({
         naveIds: args.naveIds,
         weekStart: args.weekStart,
@@ -160,7 +163,7 @@ async function mergeSolverWithOverridesAndAdHoc(args: {
     limitByTaskId,
   });
 
-  return { mergedAssignments, adHocTaskIds, overrideSlices, adHocSlices };
+  return { mergedAssignments, adHocTaskIds, overrideSlices, adHocSlices, adHocUnplaced };
 }
 
 export interface GeneratePlanningArgs {
@@ -299,9 +302,10 @@ export async function generatePlanning(
     0,
   );
 
-  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves([
-    args.naveId,
-  ]);
+  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves(
+    [args.naveId],
+    weekStart,
+  );
 
   if (engineInput.tasks.length === 0 && schedulableAdHocCount === 0) {
     const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
@@ -355,7 +359,7 @@ export async function generatePlanning(
     );
   }
 
-  const { mergedAssignments, adHocTaskIds, overrideSlices } =
+  const { mergedAssignments, adHocTaskIds, overrideSlices, adHocUnplaced } =
     await mergeSolverWithOverridesAndAdHoc({
       naveId: args.naveId,
       weekStart,
@@ -453,6 +457,7 @@ export async function generatePlanning(
       taskId: t.taskId,
       reason: `${t.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado o cadena de procesos)`,
     })),
+    ...adHocUnplacedWarnings(adHocUnplaced),
     ...result.warnings.map((w) => ({
       taskId: w.taskId,
       reason: w.reason,
@@ -464,7 +469,7 @@ export async function generatePlanning(
   return {
     planningId: planning.id,
     warnings,
-    unscheduledHours: result.unscheduledHours + deferredHours,
+    unscheduledHours: result.unscheduledHours + deferredHours + adHocUnplaced.reduce((a, u) => a + u.hours, 0),
     assignmentsCount: mergedAssignments.length,
   };
 }
@@ -533,7 +538,7 @@ export async function generateGlobalPlanning(args: {
     0,
   );
 
-  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves(naveIds);
+  const schedulableAdHocCount = await countSchedulableAdHocTasksForNaves(naveIds, weekStart);
 
   if (engineInput.tasks.length === 0 && schedulableAdHocCount === 0) {
     const priorHours = priorWeekAssignments.reduce((a, x) => a + x.hours, 0);
@@ -590,7 +595,7 @@ export async function generateGlobalPlanning(args: {
     );
   }
 
-  const { mergedAssignments, adHocTaskIds, overrideSlices } =
+  const { mergedAssignments, adHocTaskIds, overrideSlices, adHocUnplaced } =
     await mergeSolverWithOverridesAndAdHoc({
       naveIds,
       weekStart,
@@ -709,6 +714,7 @@ export async function generateGlobalPlanning(args: {
       taskId: task.taskId,
       reason: `${task.hours.toFixed(1)}h aplazadas (no caben en esta semana por secado o cadena de procesos)`,
     })),
+    ...adHocUnplacedWarnings(adHocUnplaced),
     ...result.warnings.map((warning) => ({
       taskId: warning.taskId,
       reason: warning.reason,
@@ -728,7 +734,7 @@ export async function generateGlobalPlanning(args: {
   return {
     perNave,
     warnings,
-    unscheduledHours: result.unscheduledHours + deferredHours,
+    unscheduledHours: result.unscheduledHours + deferredHours + adHocUnplaced.reduce((a, u) => a + u.hours, 0),
     assignmentsCount: mergedAssignments.length,
     planningIds: perNave.map((row) => row.planningId),
   };
@@ -751,6 +757,7 @@ export async function publishPlanning(planningId: string): Promise<void> {
         payload: alert.payload as never,
         planningId: planning.id,
         naveId: planning.naveId,
+        recipientUserIds: alert.recipientUserIds,
         scopeKey: (alert.payload as { eventKey?: string }).eventKey,
       });
     }

@@ -3,6 +3,7 @@ import { LampElementStockStatus } from "@/generated/prisma";
 import { PRODUCTIVE_SLOTS_PER_DAY } from "@/features/planning/engine/slot-format";
 import { syncProjectApprovalStatus } from "@/features/projects/sync-project-approval";
 import { deleteEmptyOpenWorkOrders } from "@/features/work-orders/cleanup-empty";
+import { lampNameFields } from "@/features/projects/lamp-name-validation";
 
 export function formatStockBatchCode(year: number, serial: number): string {
   return `SB-${String(serial).padStart(4, "0")}-${year}`;
@@ -87,6 +88,12 @@ export async function moveLampToProject(
     data: { projectId: args.targetProjectId },
   });
 
+  // Los fichajes siguen a su tarea/lámpara: las horas viajan con la lámpara.
+  await tx.timeEntry.updateMany({
+    where: { OR: [{ lampId: args.lampId }, { task: { lampId: args.lampId } }] },
+    data: { projectId: args.targetProjectId, lampId: args.lampId },
+  });
+
   if (sourceProjectId && sourceProjectId !== args.targetProjectId) {
     await syncProjectApprovalStatus(sourceProjectId, tx);
   }
@@ -125,6 +132,31 @@ export async function deletePlanningAssignmentsForLamp(
     where: { task: { lampId } },
   });
   return result.count;
+}
+
+/**
+ * Nombre libre en los proyectos indicados: «Nombre», «Nombre (2)», «Nombre (3)»…
+ * Al devolver a stock no se pregunta nombre, así que dos lámparas homónimas
+ * (de proyectos distintos o unidades devueltas en dos veces) no pueden chocar en el pool.
+ */
+export async function freeLampName(
+  tx: Prisma.TransactionClient,
+  args: { projectIds: string[]; name: string; excludeLampId?: string },
+): Promise<{ name: string; nameKey: string }> {
+  const rows = await tx.lamp.findMany({
+    where: {
+      projectId: { in: args.projectIds },
+      ...(args.excludeLampId ? { id: { not: args.excludeLampId } } : {}),
+    },
+    select: { nameKey: true },
+  });
+  const taken = new Set(rows.map((row) => row.nameKey));
+  const base = lampNameFields(args.name);
+  if (!taken.has(base.nameKey)) return base;
+  for (let suffix = 2; ; suffix++) {
+    const candidate = lampNameFields(`${base.name} (${suffix})`);
+    if (!taken.has(candidate.nameKey)) return candidate;
+  }
 }
 
 export async function nextStockBatchCode(

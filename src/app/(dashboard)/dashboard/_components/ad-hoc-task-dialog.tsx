@@ -64,6 +64,11 @@ export function AdHocTaskDialog({
             ? "Imprevista creada. Aparecerá al regenerar el planning."
             : `Imprevista creada para ${values.personIds.length} operarios. Aparecerá al regenerar el planning.`,
       );
+      if (outcome.data.scheduledInPlanning && outcome.data.unplacedHours > 0) {
+        toast.warning(
+          `${outcome.data.unplacedHours.toFixed(2)}h no caben esta semana; se colocarán al generar la siguiente.`,
+        );
+      }
       setOpen(false);
       router.refresh();
     });

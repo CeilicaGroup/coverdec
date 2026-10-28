@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { TimeEntrySource } from "@/generated/prisma";
+import { TimeEntrySource, type Prisma } from "@/generated/prisma";
 import { isTaskUnlocked } from "@/features/projects/lamp-tasks";
 import { assertNoTimeOverlap } from "@/features/time-tracking/overlap";
 import { Role } from "@/generated/prisma";
@@ -33,6 +33,7 @@ import {
   type TimeRangeSlice,
 } from "@/features/time-tracking/break-handling";
 import { loadBreakScheduleForRanges } from "@/features/time-tracking/load-break-schedule";
+import { assertCanWorkOnAdHocTask } from "@/features/ad-hoc/assert-ad-hoc-participant";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -77,6 +78,7 @@ async function assertTaskAccessible(
   if (!ctx.naveIds.includes(task.naveId)) {
     throw new Error("No tienes acceso a tareas de esa nave.");
   }
+  await assertCanWorkOnAdHocTask(ctx, taskId);
 }
 
 async function assertTaskMatchesSelection(params: {
@@ -624,36 +626,29 @@ export async function deleteEntry(
   assertCanEditEntry(ctx, entry.userId);
   await prisma.$transaction(async (tx) => {
     await tx.timeEntry.delete({ where: { id: entry.id } });
-    if (entry.taskId) {
-      const task = await tx.task.findFirst({
-        where: { id: entry.taskId },
-        select: {
-          id: true,
-          isCompleted: true,
-          estimatedHours: true,
-          timeEntries: {
-            select: { startedAt: true, endedAt: true, hours: true },
-          },
-        },
-      });
-      const doneHours = (task?.timeEntries ?? []).reduce(
-        (sum, item) =>
-          sum + resolveTimeEntryHours(item),
-        0,
-      );
-      const totals = task
-        ? computeTaskHourTotals(task.estimatedHours, doneHours)
-        : null;
-      if (task?.isCompleted && (totals?.remainingWorkHours ?? 0) > 0.01) {
-        await tx.task.update({
-          where: { id: task.id },
-          data: { isCompleted: false },
-        });
-      }
-    }
+    if (entry.taskId) await reopenTaskIfHoursFallShort(tx, entry.taskId);
   });
   revalidateHorasAndLoad();
   });
+}
+
+/** Si una tarea completada se queda corta de horas, vuelve a pendiente y su OT se reabre. */
+async function reopenTaskIfHoursFallShort(tx: Prisma.TransactionClient, taskId: string) {
+  const task = await tx.task.findFirst({
+    where: { id: taskId },
+    select: {
+      id: true,
+      isCompleted: true,
+      estimatedHours: true,
+      workOrderId: true,
+      timeEntries: { select: { startedAt: true, endedAt: true, hours: true } },
+    },
+  });
+  if (!task?.isCompleted) return;
+  const doneHours = task.timeEntries.reduce((sum, item) => sum + resolveTimeEntryHours(item), 0);
+  if (computeTaskHourTotals(task.estimatedHours, doneHours).remainingWorkHours <= 0.01) return;
+  await tx.task.update({ where: { id: task.id }, data: { isCompleted: false } });
+  if (task.workOrderId) await reopenWorkOrderIfClosed(tx, task.workOrderId);
 }
 
 const updateEntrySchema = z.object({
@@ -705,33 +700,7 @@ export async function updateEntry(
         notes: data.notes,
       },
     });
-    if (entry.taskId) {
-      const task = await tx.task.findFirst({
-        where: { id: entry.taskId },
-        select: {
-          id: true,
-          isCompleted: true,
-          estimatedHours: true,
-          timeEntries: {
-            select: { startedAt: true, endedAt: true, hours: true },
-          },
-        },
-      });
-      const doneHours = (task?.timeEntries ?? []).reduce(
-        (sum, item) =>
-          sum + resolveTimeEntryHours(item),
-        0,
-      );
-      const totals = task
-        ? computeTaskHourTotals(task.estimatedHours, doneHours)
-        : null;
-      if (task?.isCompleted && (totals?.remainingWorkHours ?? 0) > 0.01) {
-        await tx.task.update({
-          where: { id: task.id },
-          data: { isCompleted: false },
-        });
-      }
-    }
+    if (entry.taskId) await reopenTaskIfHoursFallShort(tx, entry.taskId);
   });
   revalidateHorasAndLoad();
   });

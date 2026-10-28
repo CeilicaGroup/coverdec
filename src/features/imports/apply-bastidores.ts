@@ -2,12 +2,16 @@ import type { ProcessCode } from "@/types/process";
 import { isIsoTimestampString } from "./excel-cell-values";
 import { ensureProcessDefinitions } from "./ensure-process-definitions";
 import { importSlug } from "./slug";
-import { runImportTransaction } from "./transaction";
+import { runImportTransaction, type ImportDb } from "./transaction";
 import type { BastidorApplySummary, BastidorRowDraft } from "./types";
 
+/** Sin `tx` abre su propia transacción; con `tx` se integra en una mayor (migración completa). */
 export async function applyBastidorRows(
   rows: BastidorRowDraft[],
+  tx?: ImportDb,
 ): Promise<BastidorApplySummary> {
+  if (!tx) return runImportTransaction((t) => applyBastidorRows(rows, t));
+
   const summary: BastidorApplySummary = {
     created: 0,
     updated: 0,
@@ -48,46 +52,44 @@ export async function applyBastidorRows(
     }
   }
 
-  await runImportTransaction(async (tx) => {
-    const processResult = await ensureProcessDefinitions(
-      tx,
-      [...processDefs.entries()].map(([code, label]) => ({ code, label })),
-    );
-    summary.processesCreated = processResult.created;
+  const processResult = await ensureProcessDefinitions(
+    tx,
+    [...processDefs.entries()].map(([code, label]) => ({ code, label })),
+  );
+  summary.processesCreated = processResult.created;
 
-    for (const entry of grouped.values()) {
-      const existing = await tx.elementType.findUnique({
-        where: { code: entry.code },
-        select: { id: true },
+  for (const entry of grouped.values()) {
+    const existing = await tx.elementType.findUnique({
+      where: { code: entry.code },
+      select: { id: true },
+    });
+
+    const elementType = await tx.elementType.upsert({
+      where: { code: entry.code },
+      update: { name: entry.name },
+      create: { code: entry.code, name: entry.name },
+    });
+
+    if (existing) summary.updated += 1;
+    else summary.created += 1;
+
+    let sequence = 0;
+    for (const [proc, hoursPerUnit] of entry.processes) {
+      await tx.elementTypeProcess.upsert({
+        where: {
+          elementTypeId_process: { elementTypeId: elementType.id, process: proc },
+        },
+        update: { sequence, hoursPerUnit },
+        create: {
+          elementTypeId: elementType.id,
+          process: proc,
+          sequence,
+          hoursPerUnit,
+        },
       });
-
-      const elementType = await tx.elementType.upsert({
-        where: { code: entry.code },
-        update: { name: entry.name },
-        create: { code: entry.code, name: entry.name },
-      });
-
-      if (existing) summary.updated += 1;
-      else summary.created += 1;
-
-      let sequence = 0;
-      for (const [proc, hoursPerUnit] of entry.processes) {
-        await tx.elementTypeProcess.upsert({
-          where: {
-            elementTypeId_process: { elementTypeId: elementType.id, process: proc },
-          },
-          update: { sequence, hoursPerUnit },
-          create: {
-            elementTypeId: elementType.id,
-            process: proc,
-            sequence,
-            hoursPerUnit,
-          },
-        });
-        sequence += 1;
-      }
+      sequence += 1;
     }
-  });
+  }
 
   return summary;
 }

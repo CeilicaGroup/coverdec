@@ -1,11 +1,15 @@
 import type { Prisma } from "@/generated/prisma";
 import { deleteEmptyOpenWorkOrders } from "./cleanup-empty";
+import { closeWorkOrderIfAllTasksComplete } from "./close";
 import { sortTaskIdsForWorkOrderSequence } from "./order-ot-tasks";
+import { isWorkOrderExemptTask } from "./task-ot-exemptions";
 
 const taskSelectForValidation = {
   id: true,
   isCompleted: true,
   workOrderId: true,
+  process: true,
+  systemKind: true,
 } as const;
 
 export async function assertTasksEligibleForWorkOrder(
@@ -27,8 +31,16 @@ export async function assertTasksEligibleForWorkOrder(
     throw new Error("Alguna tarea seleccionada no existe.");
   }
 
+  if (tasks.some((task) => isWorkOrderExemptTask(task))) {
+    throw new Error(
+      "Las tareas imprevistas y de transporte no van en OT: quítalas de la selección.",
+    );
+  }
+
   for (const task of tasks) {
-    if (task.isCompleted) {
+    // Una tarea completada que ya está en esta OT se conserva (editar notas/orden,
+    // dividir); lo que no se puede es meter una tarea completada en otra OT abierta.
+    if (task.isCompleted && task.workOrderId !== options.workOrderId) {
       throw new Error("No se pueden incluir tareas ya completadas en una OT abierta.");
     }
     if (task.workOrderId && task.workOrderId !== options.workOrderId) {
@@ -78,5 +90,8 @@ export async function assignTasksToWorkOrder(
     });
   }
 
-  await deleteEmptyOpenWorkOrders(tx, [workOrderId]);
+  const deleted = await deleteEmptyOpenWorkOrders(tx, [workOrderId]);
+  // Si tras el cambio solo quedan tareas completadas, la OT queda cerrada (mismo
+  // invariante que al completar la última tarea desde horas).
+  if (deleted === 0) await closeWorkOrderIfAllTasksComplete(tx, workOrderId);
 }

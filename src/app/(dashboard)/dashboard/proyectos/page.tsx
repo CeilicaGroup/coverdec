@@ -271,6 +271,17 @@ export default async function ProyectosPage({
                 >
                   Terminados
                 </Link>
+                {canManage ? (
+                  <>
+                    <span className="text-muted-foreground">·</span>
+                    <Link
+                      href="/dashboard/proyectos/general"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      General
+                    </Link>
+                  </>
+                ) : null}
               </div>
             ) : null}
             <Link

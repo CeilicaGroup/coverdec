@@ -71,7 +71,11 @@ export function totalScheduledHoursForAbsence(
 ): number {
   let total = 0;
   for (const iso of civilIsoDaysCoveredByAbsence(absence)) {
-    total += scheduledHoursForPersonDay(parseUtcDateIso(iso), workWindows);
+    const day = parseUtcDateIso(iso);
+    // Sábado y domingo no son laborables (las franjas solo existen de lunes a viernes).
+    const weekday = day.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    total += scheduledHoursForPersonDay(day, workWindows);
   }
   return Math.round(total * 100) / 100;
 }

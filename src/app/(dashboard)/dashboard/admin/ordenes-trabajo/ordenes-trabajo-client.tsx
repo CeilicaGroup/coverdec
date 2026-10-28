@@ -321,7 +321,6 @@ export function OrdenesTrabajoClient({
   const [notes, setNotes] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editExecutorIds, setEditExecutorIds] = useState<string[]>([]);
-  const [savingExecutors, setSavingExecutors] = useState(false);
   const [splitNotes, setSplitNotes] = useState("");
   const [maxPendingHoursInput, setMaxPendingHoursInput] = useState(
     String(initialAlertThresholds.maxPendingHours),
@@ -500,6 +499,11 @@ export function OrdenesTrabajoClient({
 
   const onUpdate = () => {
     if (!editOrder) return;
+    const initialExecutorIds = workOrderExecutorIds[editOrder.id] ?? [];
+    const executorsChanged =
+      editExecutorIds.length > 0 &&
+      (editExecutorIds.length !== initialExecutorIds.length ||
+        editExecutorIds.some((id) => !initialExecutorIds.includes(id)));
     startTransition(async () => {
       const result = await updateWorkOrder({
         id: editOrder.id,
@@ -510,28 +514,21 @@ export function OrdenesTrabajoClient({
         toast.error(result.error);
         return;
       }
+      if (executorsChanged) {
+        try {
+          await setWorkOrderExecutors({
+            workOrderId: editOrder.id,
+            personIds: editExecutorIds,
+          });
+        } catch (err) {
+          toast.error(reportMutationError("No se guardaron los operarios", err));
+          router.refresh();
+          return;
+        }
+      }
       toast.success("OT actualizada");
       setEditOrder(null);
       router.refresh();
-    });
-  };
-
-  const onSetExecutors = () => {
-    if (!editOrder) return;
-    setSavingExecutors(true);
-    startTransition(async () => {
-      try {
-        await setWorkOrderExecutors({
-          workOrderId: editOrder.id,
-          personIds: editExecutorIds,
-        });
-        toast.success("Ejecutores actualizados");
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
-      } finally {
-        setSavingExecutors(false);
-      }
     });
   };
 
@@ -1047,15 +1044,6 @@ export function OrdenesTrabajoClient({
                               })
                             )}
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={savingExecutors || editExecutorIds.length === 0}
-                            onClick={onSetExecutors}
-                          >
-                            Guardar ejecutores
-                          </Button>
                         </>
                       );
                     })()}

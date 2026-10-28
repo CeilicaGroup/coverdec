@@ -45,7 +45,9 @@ function revalidateAdHocPaths() {
 
 export async function createAdHocTask(
   input: z.infer<typeof createAdHocTaskSchema>,
-): Promise<ActionResult<{ taskId: string; scheduledInPlanning: boolean }>> {
+): Promise<
+  ActionResult<{ taskId: string; scheduledInPlanning: boolean; unplacedHours: number }>
+> {
   return runServerAction(
     "ad-hoc.createAdHocTask",
     async () => {
@@ -121,6 +123,8 @@ export async function createAdHocTask(
       return {
         taskId: result.taskId,
         scheduledInPlanning: injected.scheduledCount > 0,
+        // Horas que no caben en el borrador de esta semana (se colocan al generar la siguiente).
+        unplacedHours: injected.unplacedHours,
       };
     },
     (result) => ({

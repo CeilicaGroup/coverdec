@@ -46,7 +46,8 @@ describe("isDevUserSwitcherEnabled", () => {
   });
 });
 
-describe("switchDevUser guard", () => {
+// Importa en frío better-auth + Prisma: con la suite en paralelo supera los 5s por defecto.
+describe("switchDevUser guard", { timeout: 30_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -61,7 +62,7 @@ describe("switchDevUser guard", () => {
   });
 });
 
-describe("listDevSwitcherUsers guard", () => {
+describe("listDevSwitcherUsers guard", { timeout: 30_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();

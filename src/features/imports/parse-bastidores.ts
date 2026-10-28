@@ -1,3 +1,4 @@
+import { parseDecimalText } from "@/lib/excel/cell";
 import { isIsoTimestampString } from "./excel-cell-values";
 import { resolveImportProcessCode } from "./resolve-import-process";
 import type { RawMappedRow } from "./excel-workbook";
@@ -13,9 +14,7 @@ function asNumber(value: string | number | Date | null | undefined): number | nu
   if (value == null || value === "") return null;
   if (value instanceof Date) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const cleaned = String(value).replace(/\./g, "").replace(",", ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  return parseDecimalText(String(value));
 }
 
 export function parseBastidorRows(rawRows: RawMappedRow[]): BastidorRowDraft[] {

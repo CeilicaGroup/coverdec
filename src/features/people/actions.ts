@@ -398,6 +398,18 @@ export async function savePerson(
     isFallback: s.mode === "apoyo",
   }));
 
+  // Un usuario solo puede estar vinculado a una persona: no se le quita a otra en silencio.
+  const targetUser = await prisma.user.findUnique({
+    where: { id: data.userId },
+    select: { personId: true, person: { select: { iniciales: true } } },
+  });
+  if (!targetUser) throw new Error("Usuario no encontrado.");
+  if (targetUser.personId && targetUser.personId !== data.id) {
+    throw new Error(
+      `Ese usuario ya está vinculado a ${targetUser.person?.iniciales ?? "otra persona"}. Desvincúlalo primero.`,
+    );
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       let personId: string;
@@ -511,6 +523,17 @@ export async function savePersonWorkWindows(
   for (const w of data.windows) {
     if (w.endMinutes <= w.startMinutes) {
       throw new Error("Cada franja debe tener fin posterior al inicio.");
+    }
+  }
+  // Franjas solapadas el mismo día contarían dos veces las mismas horas de capacidad.
+  const sorted = [...data.windows].sort(
+    (a, b) => a.dayOfWeek - b.dayOfWeek || a.startMinutes - b.startMinutes,
+  );
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]!;
+    const cur = sorted[i]!;
+    if (prev.dayOfWeek === cur.dayOfWeek && cur.startMinutes < prev.endMinutes) {
+      throw new Error("Las franjas de un mismo día se solapan.");
     }
   }
 

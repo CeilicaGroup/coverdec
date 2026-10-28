@@ -356,14 +356,20 @@ export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
     const elementTypeIds = [...new Set(elements.map((e) => e.elementTypeId))];
     const elementTypes = await prisma.elementType.findMany({
       where: { id: { in: elementTypeIds } },
-      select: { id: true, name: true, typology: true },
+      select: { id: true, name: true, typology: true, isActive: true },
     });
     const elementNameById = new Map(elementTypes.map((e) => [e.id, e.name]));
     const typologyById = new Map(elementTypes.map((e) => [e.id, e.typology]));
     if (elementTypes.length !== elementTypeIds.length) {
       throw new Error("Alguno de los elementos seleccionados no existe.");
     }
-  
+    const archived = elementTypes.filter((e) => !e.isActive);
+    if (archived.length > 0) {
+      throw new Error(
+        `«${archived.map((e) => e.name).join("», «")}» está archivado en el catálogo. Reactívalo o elige otro elemento.`,
+      );
+    }
+
     for (const row of elements) {
       if (typologyById.get(row.elementTypeId) !== row.typology) {
         throw new Error("La tipología no coincide con el tipo de elemento elegido.");

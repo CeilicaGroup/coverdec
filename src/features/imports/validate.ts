@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { ImportDb } from "./transaction";
 import { isIsoTimestampString } from "./excel-cell-values";
 import { resolveImportProcessCode } from "./resolve-import-process";
 import { importSlug } from "./slug";
@@ -27,6 +28,7 @@ function buildSummary<T extends { status: string; action: string }>(
 
 export async function enrichBastidorPreview(
   rows: BastidorRowDraft[],
+  db: ImportDb = prisma,
 ): Promise<ImportPreview<BastidorRowDraft>> {
   const codes = new Set<string>();
   for (const row of rows) {
@@ -38,7 +40,7 @@ export async function enrichBastidorPreview(
     codes.add(code);
   }
 
-  const existing = await prisma.elementType.findMany({
+  const existing = await db.elementType.findMany({
     where: { code: { in: [...codes] } },
     select: { code: true },
   });
@@ -55,7 +57,9 @@ export async function enrichBastidorPreview(
     const proc = row.processCode;
     const dupKey = proc ? `${code}::${proc}` : code;
 
-    const issues = [...row.issues].filter((i) => i.code !== "UNKNOWN_PROCESS");
+    // UNKNOWN_PROCESS se mantiene: sin código de proceso la fila no se puede importar
+    // (applyBastidorRows la descartaría) y la revisión ofrece elegir el proceso.
+    const issues = [...row.issues];
     if (row.status === "ok" && proc && seenKeys.has(dupKey)) {
       issues.push({
         code: "DUPLICATE_IN_FILE",
@@ -73,7 +77,12 @@ export async function enrichBastidorPreview(
       ...row,
       issues,
       status: (hasError ? "error" : hasWarning ? "warning" : "ok") as ImportRowStatus,
-      action: (hasError ? "skip" : willUpdate ? "update" : "create") as ImportAction,
+      // «Omitir» elegido en la revisión se respeta aunque la fila sea válida.
+      action: (hasError || row.action === "skip"
+        ? "skip"
+        : willUpdate
+          ? "update"
+          : "create") as ImportAction,
     };
   });
 
@@ -144,13 +153,21 @@ export function mergeBastidorRowEdits(
         message: "Faltan las horas por unidad",
         severity: "error",
       });
+    } else if (merged.hoursPerUnit < 0) {
+      merged.issues.push({
+        code: "INVALID_HOURS",
+        field: "hoursPerUnit",
+        message: "Las horas deben ser >= 0",
+        severity: "error",
+      });
     }
     const hasError = merged.issues.some((i) => i.severity === "error");
     merged.status = hasError ? "error" : merged.issues.length ? "warning" : "ok";
     if (patch.action !== undefined) {
       merged.action = patch.action;
-    } else if (hasError) {
-      merged.action = "skip";
+    } else {
+      // Una fila corregida deja de estar omitida (enrich decide create/update).
+      merged.action = hasError ? "skip" : "create";
     }
     return merged;
   });
