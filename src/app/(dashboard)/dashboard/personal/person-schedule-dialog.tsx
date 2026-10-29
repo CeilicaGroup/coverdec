@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
@@ -127,14 +126,14 @@ export function PersonScheduleDialog({
       return entries;
     });
     startTransition(async () => {
-      try {
-        await savePersonWorkWindows({ personId, windows });
-        toast.success("Horario guardado");
-        setOpen(false);
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const result = await savePersonWorkWindows({ personId, windows });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Horario guardado");
+      setOpen(false);
+      router.refresh();
     });
   }
 

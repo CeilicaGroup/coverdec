@@ -5,7 +5,7 @@ import { PageHeader } from "../../_components/page-header";
 import { StockClient } from "./stock-client";
 import { loadTypologyImageAvailability } from "@/features/catalog/typology-images";
 import { loadElementTypeImageAvailability } from "@/features/catalog/element-type-images";
-import { listStockLamps } from "@/features/stock/actions";
+import { listStockLamps } from "@/features/stock/queries";
 import { getStockPoolProjectId } from "@/features/stock/stock-pool";
 
 export default async function StockPage() {

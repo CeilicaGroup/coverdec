@@ -6,7 +6,6 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deleteStockLamp } from "@/features/stock/actions";
 import { isHardDeleteEnabled } from "@/lib/hard-delete";
-import { getErrorMessage } from "@/lib/error-message";
 import { toast } from "sonner";
 
 export function DeleteStockLampButton({
@@ -49,16 +48,16 @@ export function DeleteStockLampButton({
       return;
     }
     startTransition(async () => {
-      try {
-        await deleteStockLamp({ lampId });
-        toast.success("Lámpara eliminada del stock");
-        if (redirectToList) {
-          router.push("/dashboard/stock");
-        }
-        router.refresh();
-      } catch (err) {
-        toast.error(getErrorMessage(err));
+      const result = await deleteStockLamp({ lampId });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Lámpara eliminada del stock");
+      if (redirectToList) {
+        router.push("/dashboard/stock");
+      }
+      router.refresh();
     });
   }
 

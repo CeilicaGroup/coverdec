@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,15 +116,15 @@ export function FactoryBoard({ items }: { items: FactoryItemRow[] }) {
                     value={item.status}
                     onValueChange={(value) => {
                       startTransition(async () => {
-                        try {
-                          await updateFactoryItem({
-                            id: item.id,
-                            status: value as FactoryStatus,
-                          });
-                          toast.success("Estado actualizado");
-                        } catch (err) {
-                          toast.error(reportMutationError("Error", err));
+                        const result = await updateFactoryItem({
+                          id: item.id,
+                          status: value as FactoryStatus,
+                        });
+                        if (!result.ok) {
+                          toast.error(result.error);
+                          return;
                         }
+                        toast.success("Estado actualizado");
                       });
                     }}
                   >

@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, MapPin, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
@@ -76,6 +75,7 @@ import { addTaskSubstitute, removeTaskSubstitute } from "@/features/projects/sub
 import { isCreatedThisWeek } from "@/lib/week";
 import { toast } from "sonner";
 import type { ElementTypology } from "@/generated/prisma";
+import type { ActionResult } from "@/lib/action-result";
 
 interface LampTaskRow {
   id: string;
@@ -418,16 +418,16 @@ function ElementNaveDialog({
     if (open) setSelectedNaveId("");
   }, [open]);
 
-  const run = (action: () => Promise<void>, successMessage: string) => {
+  const run = (action: () => Promise<ActionResult<void>>, successMessage: string) => {
     startTransition(async () => {
-      try {
-        await action();
-        toast.success(successMessage);
-        onOpenChange(false);
-        onUpdated();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const r = await action();
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
       }
+      toast.success(successMessage);
+      onOpenChange(false);
+      onUpdated();
     });
   };
 
@@ -617,23 +617,17 @@ function AggregatedTaskTable({
                     onChange={(naveId) => {
                       if (!naveId || naveId === displayNaveId) return;
                       startTransition(async () => {
-                        try {
-                          await assignProcessTasksNave({
-                            lampId,
-                            elementGroupKey: groupKey,
-                            process: row.process,
-                            naveId,
-                          });
-                          onUpdated();
-                        } catch (err) {
-                          toast.error(
-                            reportMutationError(
-                              "projects.assignProcessTasksNave",
-                              err,
-                              "No se pudo cambiar la nave del proceso.",
-                            ),
-                          );
+                        const r = await assignProcessTasksNave({
+                          lampId,
+                          elementGroupKey: groupKey,
+                          process: row.process,
+                          naveId,
+                        });
+                        if (!r.ok) {
+                          toast.error(r.error);
+                          return;
                         }
+                        onUpdated();
                       });
                     }}
                   />
@@ -714,23 +708,17 @@ function AggregatedTaskTable({
                           return;
                         }
                         startTransition(async () => {
-                          try {
-                            await deleteProcessTasks({
-                              lampId,
-                              elementGroupKey: groupKey,
-                              process: row.process,
-                            });
-                            toast.success("Proceso eliminado");
-                            onUpdated();
-                          } catch (err) {
-                            toast.error(
-                              reportMutationError(
-                                "projects.deleteProcessTasks",
-                                err,
-                                "No se pudo eliminar el proceso.",
-                              ),
-                            );
+                          const r = await deleteProcessTasks({
+                            lampId,
+                            elementGroupKey: groupKey,
+                            process: row.process,
+                          });
+                          if (!r.ok) {
+                            toast.error(r.error);
+                            return;
                           }
+                          toast.success("Proceso eliminado");
+                          onUpdated();
                         });
                       }}
                       aria-label={`Eliminar proceso ${row.process}`}
@@ -803,13 +791,13 @@ function SubstituteDialog({
                     disabled={pending}
                     onClick={() => {
                       startTransition(async () => {
-                        try {
-                          await removeTaskSubstitute({ taskId: task.id, personId: s.id });
-                          toast.success("Sustituto eliminado");
-                          onUpdated();
-                        } catch (err) {
-                          toast.error(reportMutationError("Error", err));
+                        const r = await removeTaskSubstitute({ taskId: task.id, personId: s.id });
+                        if (!r.ok) {
+                          toast.error(r.error);
+                          return;
                         }
+                        toast.success("Sustituto eliminado");
+                        onUpdated();
                       });
                     }}
                     aria-label={`Quitar sustituto ${s.label}`}
@@ -849,14 +837,14 @@ function SubstituteDialog({
             disabled={pending || !selectedPersonId}
             onClick={() => {
               startTransition(async () => {
-                try {
-                  await addTaskSubstitute({ taskId: task.id, personId: selectedPersonId });
-                  toast.success("Sustituto añadido");
-                  setSelectedPersonId("");
-                  onUpdated();
-                } catch (err) {
-                  toast.error(reportMutationError("Error", err));
+                const r = await addTaskSubstitute({ taskId: task.id, personId: selectedPersonId });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return;
                 }
+                toast.success("Sustituto añadido");
+                setSelectedPersonId("");
+                onUpdated();
               });
             }}
           >
@@ -1153,21 +1141,15 @@ export function LampTasksPanel({
                                   onChange={(naveId) => {
                                     if (naveId === t.naveId) return;
                                     startTransition(async () => {
-                                      try {
-                                        await updateTaskNave({
-                                          taskId: t.id,
-                                          naveId,
-                                        });
-                                        router.refresh();
-                                      } catch (err) {
-                                        toast.error(
-                                          reportMutationError(
-                                            "projects.updateTaskNave",
-                                            err,
-                                            "No se pudo cambiar la nave de la tarea.",
-                                          ),
-                                        );
+                                      const r = await updateTaskNave({
+                                        taskId: t.id,
+                                        naveId,
+                                      });
+                                      if (!r.ok) {
+                                        toast.error(r.error);
+                                        return;
                                       }
+                                      router.refresh();
                                     });
                                   }}
                                 />
@@ -1210,21 +1192,15 @@ export function LampTasksPanel({
                                     disabled={!canMoveUp || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
-                                        try {
-                                          await reorderTask({
-                                            taskId: t.id,
-                                            direction: "up",
-                                          });
-                                          router.refresh();
-                                        } catch (err) {
-                                          toast.error(
-                                            reportMutationError(
-                                              "projects.reorderTask",
-                                              err,
-                                              "No se pudo reordenar la tarea.",
-                                            ),
-                                          );
+                                        const r = await reorderTask({
+                                          taskId: t.id,
+                                          direction: "up",
+                                        });
+                                        if (!r.ok) {
+                                          toast.error(r.error);
+                                          return;
                                         }
+                                        router.refresh();
                                       });
                                     }}
                                     aria-label="Subir tarea"
@@ -1239,21 +1215,15 @@ export function LampTasksPanel({
                                     disabled={!canMoveDown || taskIsStructurallyLocked(t)}
                                     onClick={() => {
                                       startTransition(async () => {
-                                        try {
-                                          await reorderTask({
-                                            taskId: t.id,
-                                            direction: "down",
-                                          });
-                                          router.refresh();
-                                        } catch (err) {
-                                          toast.error(
-                                            reportMutationError(
-                                              "projects.reorderTask",
-                                              err,
-                                              "No se pudo reordenar la tarea.",
-                                            ),
-                                          );
+                                        const r = await reorderTask({
+                                          taskId: t.id,
+                                          direction: "down",
+                                        });
+                                        if (!r.ok) {
+                                          toast.error(r.error);
+                                          return;
                                         }
+                                        router.refresh();
                                       });
                                     }}
                                     aria-label="Bajar tarea"
@@ -1332,19 +1302,13 @@ export function LampTasksPanel({
                                           return;
                                         }
                                         startTransition(async () => {
-                                          try {
-                                            await deleteTask({ taskId: t.id });
-                                            toast.success("Tarea eliminada");
-                                            router.refresh();
-                                          } catch (err) {
-                                            toast.error(
-                                              reportMutationError(
-                                                "projects.deleteTask",
-                                                err,
-                                                "No se pudo eliminar la tarea.",
-                                              ),
-                                            );
+                                          const r = await deleteTask({ taskId: t.id });
+                                          if (!r.ok) {
+                                            toast.error(r.error);
+                                            return;
                                           }
+                                          toast.success("Tarea eliminada");
+                                          router.refresh();
                                         });
                                       }}
                                       aria-label="Eliminar tarea"
@@ -1417,21 +1381,25 @@ export function LampTasksPanel({
                   return;
                 }
                 startTransition(async () => {
-                  try {
-                    await updateTaskHours({
-                      taskId: editTask.id,
-                      estimatedHours: h,
-                    });
-                    await updateTaskNotes({
-                      taskId: editTask.id,
-                      notes: editNotes.trim() || null,
-                    });
-                    toast.success("Tarea actualizada");
-                    setEditTask(null);
-                    router.refresh();
-                  } catch (err) {
-                    toast.error(reportMutationError("Error", err));
+                  const hoursResult = await updateTaskHours({
+                    taskId: editTask.id,
+                    estimatedHours: h,
+                  });
+                  if (!hoursResult.ok) {
+                    toast.error(hoursResult.error);
+                    return;
                   }
+                  const notesResult = await updateTaskNotes({
+                    taskId: editTask.id,
+                    notes: editNotes.trim() || null,
+                  });
+                  if (!notesResult.ok) {
+                    toast.error(notesResult.error);
+                    return;
+                  }
+                  toast.success("Tarea actualizada");
+                  setEditTask(null);
+                  router.refresh();
                 });
               }}
             >
@@ -1514,20 +1482,20 @@ export function LampTasksPanel({
                 return;
               }
               startTransition(async () => {
-                try {
-                  await addExtraTask({
-                    lampId,
-                    process: addProcess,
-                    estimatedHours: h,
-                    elementGroupKey: addGroupKey,
-                    ...(addNaveId ? { naveId: addNaveId } : {}),
-                  });
-                  toast.success("Proceso añadido");
-                  setAddOpen(false);
-                  router.refresh();
-                } catch (err) {
-                  toast.error(reportMutationError("Error", err));
+                const r = await addExtraTask({
+                  lampId,
+                  process: addProcess,
+                  estimatedHours: h,
+                  elementGroupKey: addGroupKey,
+                  ...(addNaveId ? { naveId: addNaveId } : {}),
+                });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return;
                 }
+                toast.success("Proceso añadido");
+                setAddOpen(false);
+                router.refresh();
               });
             }}
           >

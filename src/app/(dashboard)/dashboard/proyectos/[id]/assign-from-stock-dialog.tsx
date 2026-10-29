@@ -105,14 +105,17 @@ export function AssignFromStockDialog({
             if (!lampId) return;
             startTransition(async () => {
               try {
-                await withSimilarLampNameConfirmation("create", async (confirmSimilarName) =>
-                  assignLampFromStockToProject({
+                await withSimilarLampNameConfirmation("create", async (confirmSimilarName) => {
+                  const result = await assignLampFromStockToProject({
                     lampId,
                     targetProjectId: projectId,
                     newName: newName.trim() || undefined,
                     confirmSimilarName,
-                  }),
-                );
+                  });
+                  // El helper detecta el aviso de nombre similar en el mensaje lanzado.
+                  if (!result.ok) throw new Error(result.error);
+                  return result.data;
+                });
                 toast.success("Lámpara asignada desde stock");
                 setOpen(false);
                 router.refresh();

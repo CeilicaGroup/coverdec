@@ -47,7 +47,7 @@ import { ProjectNextProcessCell } from "../project-next-process-cell";
 import { LampApprovalToggle } from "./lamp-approval-toggle";
 import { EditProjectDialog } from "../edit-project-dialog";
 import { Role } from "@/generated/prisma";
-import { listStockLamps } from "@/features/stock/actions";
+import { listStockLamps } from "@/features/stock/queries";
 import { canManagePlanning } from "@/features/planning/planning-visibility";
 import { loadDoneHoursByTaskIds } from "@/features/time-tracking/task-hours-derived";
 import { taskBlocksDeletion } from "@/features/projects/task-planning-lock";

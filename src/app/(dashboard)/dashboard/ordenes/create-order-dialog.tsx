@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -66,22 +65,22 @@ export function CreateOrderDialog({
               return;
             }
             startTransition(async () => {
-              try {
-                const result = await createProductionOrder({
-                  projectId,
-                  lampLabel: lampLabel || undefined,
-                  process: process || undefined,
-                  hours: hours ? Number(hours) : undefined,
-                  scheduledAt: scheduledAt || undefined,
-                  notes: notes || undefined,
-                });
-                toast.success(`Creada ${result.number}`);
-                setOpen(false);
-                router.refresh();
-                router.push(`/dashboard/ordenes/${result.id}`);
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const result = await createProductionOrder({
+                projectId,
+                lampLabel: lampLabel || undefined,
+                process: process || undefined,
+                hours: hours ? Number(hours) : undefined,
+                scheduledAt: scheduledAt || undefined,
+                notes: notes || undefined,
+              });
+              if (!result.ok) {
+                toast.error(result.error);
+                return;
               }
+              toast.success(`Creada ${result.data.number}`);
+              setOpen(false);
+              router.refresh();
+              router.push(`/dashboard/ordenes/${result.data.id}`);
             });
           }}
         >

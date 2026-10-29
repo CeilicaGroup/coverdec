@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -59,25 +58,25 @@ export function CreateProjectDialog({
           onSubmit={(e) => {
             e.preventDefault();
             startTransition(async () => {
-              try {
-                const r = await createProject({
-                  name,
-                  client: client || undefined,
-                  obra: obra || undefined,
-                  deliveryDate: deliveryDate
-                    ? fromDatetimeLocalInputValue(deliveryDate)
-                    : undefined,
-                  isBillable,
-                  kind,
-                  responsibleUserId: responsibleUserId ?? undefined,
-                });
-                toast.success("Proyecto creado");
-                setOpen(false);
-                router.refresh();
-                router.push(`/dashboard/proyectos/${r.id}`);
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const r = await createProject({
+                name,
+                client: client || undefined,
+                obra: obra || undefined,
+                deliveryDate: deliveryDate
+                  ? fromDatetimeLocalInputValue(deliveryDate)
+                  : undefined,
+                isBillable,
+                kind,
+                responsibleUserId: responsibleUserId ?? undefined,
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return;
               }
+              toast.success("Proyecto creado");
+              setOpen(false);
+              router.refresh();
+              router.push(`/dashboard/proyectos/${r.data.id}`);
             });
           }}
         >

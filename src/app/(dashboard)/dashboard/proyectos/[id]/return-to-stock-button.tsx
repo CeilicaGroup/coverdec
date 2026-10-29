@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PackageMinus } from "lucide-react";
@@ -106,26 +105,26 @@ export function ReturnToStockButton({
               return;
             }
             startTransition(async () => {
-              try {
-                await returnLampToStock({
-                  lampId,
-                  reason: reason || undefined,
-                  lampElementIds: showUnitPicker ? selectedUnitIds : undefined,
-                  confirmClearPlanning: selectedHasPlanning
-                    ? confirmClearPlanning
-                    : undefined,
-                });
-                toast.success(
-                  showUnitPicker && selectedUnitIds.length < selectableUnits.length
-                    ? `${selectedUnitIds.length} lámpara(s) enviada(s) a stock`
-                    : "Lámpara devuelta a stock",
-                );
-                setOpen(false);
-                resetForm();
-                router.refresh();
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const result = await returnLampToStock({
+                lampId,
+                reason: reason || undefined,
+                lampElementIds: showUnitPicker ? selectedUnitIds : undefined,
+                confirmClearPlanning: selectedHasPlanning
+                  ? confirmClearPlanning
+                  : undefined,
+              });
+              if (!result.ok) {
+                toast.error(result.error);
+                return;
               }
+              toast.success(
+                showUnitPicker && selectedUnitIds.length < selectableUnits.length
+                  ? `${selectedUnitIds.length} lámpara(s) enviada(s) a stock`
+                  : "Lámpara devuelta a stock",
+              );
+              setOpen(false);
+              resetForm();
+              router.refresh();
             });
           }}
         >

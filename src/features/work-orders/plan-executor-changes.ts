@@ -1,3 +1,5 @@
+import { madridDateIso } from "@/features/attendance/madrid-time";
+
 export interface ExecutorAssignmentRow {
   id: string;
   personId: string;
@@ -45,4 +47,12 @@ export function planExecutorChanges(
   const personIdsToAdd = personIds.filter((id) => !rowsByPerson.has(id));
 
   return { rowIdsToDelete, personIdsToAdd, templateRowIds };
+}
+
+/**
+ * Día de planning (medianoche UTC, como PlanningAssignment.date) de hoy en
+ * Madrid. Elegir ejecutores solo toca franjas desde hoy: lo pasado es historia.
+ */
+export function todayPlanningDate(now: Date = new Date()): Date {
+  return new Date(`${madridDateIso(now)}T00:00:00.000Z`);
 }

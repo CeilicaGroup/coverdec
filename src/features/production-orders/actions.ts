@@ -4,7 +4,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import { runServerAction } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
 import { childLogger } from "@/lib/logger";
 import { Role } from "@/generated/prisma";
 
@@ -19,8 +20,10 @@ const createSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createProductionOrder(input: z.infer<typeof createSchema>) {
-  return runAuditedMutation(
+export async function createProductionOrder(
+  input: z.infer<typeof createSchema>,
+): Promise<ActionResult<{ id: string; number: string }>> {
+  return runServerAction(
     "production-orders.createProductionOrder",
     async () => {
       const ctx = await requireDashboardContext();

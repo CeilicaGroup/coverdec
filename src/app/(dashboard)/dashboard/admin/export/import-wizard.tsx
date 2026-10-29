@@ -97,7 +97,9 @@ export function ImportWizard() {
 
   useEffect(() => {
     getImportCatalogOptions(importKind)
-      .then(setCatalog)
+      .then((result) => {
+        if (result.ok) setCatalog(result.data);
+      })
       .catch(() => undefined);
   }, [importKind]);
 
@@ -105,14 +107,17 @@ export function ImportWizard() {
     sid: string,
     map: ImportMapping,
     kind: ImportKind,
-  ): Promise<SheetColumnOption[]> {
-    const options = await getSheetColumnsForMapping({
+  ): Promise<void> {
+    const result = await getSheetColumnsForMapping({
       sessionId: sid,
       sheetName: map.sheetName,
       importKind: kind,
     });
-    setColumnOptions(options);
-    return options;
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    setColumnOptions(result.data);
   }
 
   function handleUpload(file: File, kind: ImportKind) {
@@ -197,11 +202,7 @@ export function ImportWizard() {
     const nextMapping = suggestMappingForKind(sheetNames, kind);
     setMapping(nextMapping);
     startTransition(async () => {
-      try {
-        await refreshColumnOptions(sessionId, nextMapping, kind);
-      } catch {
-        /* ignore */
-      }
+      await refreshColumnOptions(sessionId, nextMapping, kind);
     });
   }
 
@@ -210,11 +211,7 @@ export function ImportWizard() {
     setMapping(next);
     if (sessionId && sheetChanged) {
       startTransition(async () => {
-        try {
-          await refreshColumnOptions(sessionId, next, importKind);
-        } catch {
-          /* ignore */
-        }
+        await refreshColumnOptions(sessionId, next, importKind);
       });
     }
   }

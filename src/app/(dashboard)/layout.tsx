@@ -13,7 +13,7 @@ import { cookies } from "next/headers";
 import { DashboardShell } from "./_components/dashboard-shell";
 import { PushRegistration } from "./_components/push-registration";
 import { isDevUserSwitcherEnabled } from "@/lib/dev-user-switcher";
-import { listDevSwitcherUsers } from "@/features/dev/user-switcher-actions";
+import { listDevSwitcherUsers } from "@/features/dev/user-switcher-queries";
 
 export const maxDuration = 900;
 

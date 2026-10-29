@@ -62,7 +62,6 @@ import {
   updateWorkOrder,
 } from "@/features/work-orders/actions";
 import { setWorkOrderExecutors } from "@/features/work-orders/set-work-order-executors";
-import { reportMutationError } from "@/lib/mutation-error";
 import {
   buildWorkOrderAttentionMetrics,
   type WorkOrderAttentionStatus,
@@ -288,6 +287,7 @@ export function OrdenesTrabajoClient({
   elementTypeImages,
   activePeople,
   workOrderExecutorIds,
+  workOrderIdsReadyForExecutors,
 }: {
   workOrders: WorkOrderRow[];
   eligibleTasks: EligibleWorkOrderTask[];
@@ -304,6 +304,7 @@ export function OrdenesTrabajoClient({
   elementTypeImages: ElementTypeImageAvailability;
   activePeople: ActivePersonOption[];
   workOrderExecutorIds: Record<string, string[]>;
+  workOrderIdsReadyForExecutors: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -515,13 +516,12 @@ export function OrdenesTrabajoClient({
         return;
       }
       if (executorsChanged) {
-        try {
-          await setWorkOrderExecutors({
-            workOrderId: editOrder.id,
-            personIds: editExecutorIds,
-          });
-        } catch (err) {
-          toast.error(reportMutationError("No se guardaron los operarios", err));
+        const executors = await setWorkOrderExecutors({
+          workOrderId: editOrder.id,
+          personIds: editExecutorIds,
+        });
+        if (!executors.ok) {
+          toast.error(`No se guardaron los operarios: ${executors.error}`);
           router.refresh();
           return;
         }
@@ -1009,8 +1009,18 @@ export function OrdenesTrabajoClient({
                       const options = activePeople.filter((p) =>
                         naveId ? p.naveIds.includes(naveId) : false,
                       );
+                      // Los operarios se copian de las franjas del planning de hoy en adelante:
+                      // sin ellas no hay qué copiar.
+                      const planned = workOrderIdsReadyForExecutors.includes(editOrder.id);
                       return (
                         <>
+                          {!planned ? (
+                            <p className="text-xs text-muted-foreground">
+                              {planningBlocked.has(editOrder.id)
+                                ? "Alguna tarea de esta OT no tiene planning de hoy en adelante. Regenera el planning de la semana y luego elige aquí los operarios."
+                                : "Esta OT aún no está en ningún planning. Genera el planning de la semana y luego elige aquí los operarios."}
+                            </p>
+                          ) : null}
                           <div className="flex flex-wrap gap-3 rounded-md border p-2">
                             {options.length === 0 ? (
                               <p className="text-sm text-muted-foreground">
@@ -1036,7 +1046,7 @@ export function OrdenesTrabajoClient({
                                           return prev.filter((id) => id !== person.id);
                                         });
                                       }}
-                                      disabled={!checked && editExecutorIds.length >= 2}
+                                      disabled={!planned || (!checked && editExecutorIds.length >= 2)}
                                     />
                                     {person.label}
                                   </label>

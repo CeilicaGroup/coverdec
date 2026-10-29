@@ -69,11 +69,13 @@ export function RenameLampButton({
           startTransition(async () => {
             try {
               await withSimilarLampNameConfirmation("rename", async (confirmSimilarName) => {
-                await renameLamp({
+                const r = await renameLamp({
                   lampId,
                   name: name.trim(),
                   confirmSimilarName,
                 });
+                // Client-side throw: drives the similar-name confirm/retry flow.
+                if (!r.ok) throw new Error(r.error);
               });
               setEditing(false);
               router.refresh();

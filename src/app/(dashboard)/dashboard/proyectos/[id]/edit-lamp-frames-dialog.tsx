@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
@@ -177,21 +176,21 @@ export function EditLampFramesDialog({
               return;
             }
             startTransition(async () => {
-              try {
-                await updateLampFrames({
-                  lampId,
-                  frames: parsedFrames.map(({ row, medida, units }) => ({
-                    elementTypeId: row.frameTypeId,
-                    surfaceM2: medida,
-                    units,
-                  })),
-                });
-                toast.success("Bastidores y tareas actualizados");
-                setOpen(false);
-                router.refresh();
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const r = await updateLampFrames({
+                lampId,
+                frames: parsedFrames.map(({ row, medida, units }) => ({
+                  elementTypeId: row.frameTypeId,
+                  surfaceM2: medida,
+                  units,
+                })),
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return;
               }
+              toast.success("Bastidores y tareas actualizados");
+              setOpen(false);
+              router.refresh();
             });
           }}
         >

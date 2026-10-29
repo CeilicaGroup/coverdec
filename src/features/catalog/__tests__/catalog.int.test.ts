@@ -48,12 +48,14 @@ async function catalogSnapshot() {
 async function lampWithTela(name: string, surfaceM2 = 2, projectName = "Hotel Test") {
   const project =
     (await prisma.project.findFirst({ where: { name: projectName } })) ??
-    (await createProject({ name: projectName, kind: ProjectKind.PRODUCCION, isBillable: true }));
-  const lamp = await createLamp({
-    projectId: project.id,
-    name,
-    elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2, units: 1 }],
-  });
+    unwrap(await createProject({ name: projectName, kind: ProjectKind.PRODUCCION, isBillable: true }));
+  const lamp = unwrap(
+    await createLamp({
+      projectId: project.id,
+      name,
+      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2, units: 1 }],
+    }),
+  );
   return prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { order: "asc" } });
 }
 
@@ -197,7 +199,7 @@ describe("tipos de elemento", () => {
 
     // Las listas de alta (p. ej. el selector de bastidores del importador) ya no lo ofrecen.
     await loginAs(world.users.admin.email);
-    expect((await getImportCatalogOptions()).frames.map((f) => f.code)).not.toContain("TELA");
+    expect(unwrap(await getImportCatalogOptions()).frames.map((f) => f.code)).not.toContain("TELA");
 
     // Tampoco se pueden dar de alta lámparas nuevas con él (las existentes siguen intactas).
     await expect(lampWithTela("Nueva")).rejects.toThrow(
@@ -206,7 +208,7 @@ describe("tipos de elemento", () => {
     expect(await prisma.lamp.count()).toBe(1);
 
     unwrap(await setElementTypeActive({ elementTypeId: world.tela.id, isActive: true }));
-    expect((await getImportCatalogOptions()).frames.map((f) => f.code)).toContain("TELA");
+    expect(unwrap(await getImportCatalogOptions()).frames.map((f) => f.code)).toContain("TELA");
     expect(await lampWithTela("Nueva")).toHaveLength(3);
   });
 
@@ -343,8 +345,8 @@ describe("definiciones de proceso", () => {
       "PROCESS_IN_USE:No se puede eliminar: el proceso está en uso.",
     );
     // ESTIMACION_MANUAL no la usa nadie... hasta que una lámpara manual crea una tarea con ella.
-    const project = await createProject({ name: "Manual", kind: ProjectKind.PROTOTIPO, isBillable: false });
-    await createLamp({ projectId: project.id, name: "A ojo", estimatedHours: 5 });
+    const project = unwrap(await createProject({ name: "Manual", kind: ProjectKind.PROTOTIPO, isBillable: false }));
+    unwrap(await createLamp({ projectId: project.id, name: "A ojo", estimatedHours: 5 }));
     expect(await prisma.task.count({ where: { process: "ESTIMACION_MANUAL" } })).toBe(1);
     expectFail(await deleteProcessDefinition({ code: "ESTIMACION_MANUAL" }));
     expect(await prisma.processDefinition.findUnique({ where: { code: "ESTIMACION_MANUAL" } })).not.toBeNull();

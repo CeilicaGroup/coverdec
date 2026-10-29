@@ -15,14 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-queries";
 import { switchDevUser } from "@/features/dev/user-switcher-actions";
 import {
   DEV_SWITCHER_ROLE_LABELS,
   formatDevSwitcherUserLabel,
   groupDevSwitcherUsersByRole,
 } from "@/features/dev/dev-switcher-labels";
-import { getErrorMessage } from "@/lib/error-message";
 
 interface DevUserSwitcherProps {
   users: DevSwitcherUserRow[];
@@ -42,14 +41,14 @@ export function DevUserSwitcher({
     if (userId === currentUserId) return;
 
     startTransition(async () => {
-      try {
-        const { path } = await switchDevUser({ userId });
-        toast.success("Usuario cambiado (dev)");
-        router.push(path);
-        router.refresh();
-      } catch (error) {
-        toast.error(getErrorMessage(error));
+      const result = await switchDevUser({ userId });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Usuario cambiado (dev)");
+      router.push(result.data.path);
+      router.refresh();
     });
   };
 

@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { AuditOutcome } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
-import { buildWorld, loginAs } from "@/test/integration/world";
+import { buildWorld, expectFail, loginAs, unwrap } from "@/test/integration/world";
 import { createFactoryItem, updateFactoryItem } from "@/features/factory/actions";
 
 /** La auditoría se escribe con `void`: espera a que aparezcan las filas. */
@@ -21,10 +21,10 @@ it("cada acción auditada guarda quién la hizo, también al fallar, sin arrastr
   const world = await buildWorld();
 
   await loginAs(world.users.admin.email);
-  const item = await createFactoryItem({ product: "Lámpara hotel" });
+  const item = unwrap(await createFactoryItem({ product: "Lámpara hotel" }));
 
   await loginAs(world.users.jefe.email);
-  await expect(updateFactoryItem({ id: "no-existe" })).rejects.toThrow();
+  expectFail(await updateFactoryItem({ id: "no-existe" }));
 
   const rows = await auditRows(2);
   expect(rows.map((r) => [r.action, r.outcome, r.actorUserId, r.actorRole])).toEqual([

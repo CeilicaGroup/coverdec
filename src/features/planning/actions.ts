@@ -5,13 +5,12 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import type { ActionResult } from "@/lib/action-result";
-import { runServerAction } from "@/lib/server-action";
-import { getMondayOf, isoWeek } from "@/lib/week";
+import { runServerAction, runServerQuery } from "@/lib/server-action";
+import { getMondayOf } from "@/lib/week";
 import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import {
   publishAllPlanningsForWeek,
   undoPlanningAllNaves,
-  listFuturePlannings,
 } from "@/features/planning/service";
 import {
   clearFutureDraftPlanningsAll,
@@ -19,9 +18,7 @@ import {
   isMultiWeekMode,
 } from "@/features/planning/planning-horizon";
 import { planningHorizonModeSchema } from "@/features/planning/planning-horizon-schema";
-import { hasRegistrosFromWeekAll } from "@/features/planning/planning-registros";
-import { prisma } from "@/lib/db";
-import { Role, PlanningStatus } from "@/generated/prisma";
+import { Role } from "@/generated/prisma";
 import {
   startPlanningJob,
   executePlanningJob,
@@ -99,65 +96,6 @@ export async function undoPlanningAction(input: {
   );
 }
 
-export async function getPlanningUndoState(weekStartIso: string): Promise<{
-  canUndo: boolean;
-  hasFuturePlannings: boolean;
-  futurePlanningWeeks: string[];
-  hasPublishedFuture: boolean;
-  hasRegistros: boolean;
-  isPublished: boolean;
-  hasPlanning: boolean;
-  anyDraft: boolean;
-}> {
-  await requireDashboardContext();
-  const weekStart = getMondayOf(new Date(weekStartIso));
-  const naveIds = await loadActiveNaveIdsOrdered();
-  const { year, week } = isoWeek(weekStart);
-
-  const plannings = await prisma.planning.findMany({
-    where: { year, week, naveId: { in: naveIds } },
-    select: { id: true, status: true },
-  });
-
-  const hasPlanning = plannings.length > 0;
-  if (!hasPlanning) {
-    return {
-      canUndo: false,
-      hasFuturePlannings: false,
-      futurePlanningWeeks: [],
-      hasPublishedFuture: false,
-      hasRegistros: false,
-      isPublished: false,
-      hasPlanning: false,
-      anyDraft: false,
-    };
-  }
-
-  const futureByNave = await Promise.all(
-    naveIds.map((naveId) => listFuturePlannings(naveId, weekStart)),
-  );
-  const futurePlannings = futureByNave.flat();
-  const futureWeekSet = new Set(
-    futurePlannings.map((p) => p.weekStart.toISOString()),
-  );
-  const futurePlanningWeeks = [...futureWeekSet].sort();
-
-  const hasRegistros = await hasRegistrosFromWeekAll(naveIds, weekStart);
-
-  return {
-    canUndo: !hasRegistros,
-    hasFuturePlannings: futurePlannings.length > 0,
-    futurePlanningWeeks,
-    hasPublishedFuture: futurePlannings.some(
-      (p) => p.status === PlanningStatus.PUBLISHED,
-    ),
-    hasRegistros,
-    isPublished: plannings.every((p) => p.status === PlanningStatus.PUBLISHED),
-    hasPlanning: true,
-    anyDraft: plannings.some((p) => p.status === PlanningStatus.DRAFT),
-  };
-}
-
 // --------------- Async planning job actions ---------------
 
 const startJobSchema = z.object({
@@ -233,30 +171,39 @@ export interface PlanningJobStatusResponse {
 
 export async function getPlanningJobStatusAction(
   jobId: string,
-): Promise<PlanningJobStatusResponse | null> {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  const job = await getPlanningJobById(jobId);
-  if (!job) return null;
-  return {
-    jobId: job.id,
-    status: job.status,
-    progress: job.progress as PlanningJobProgress | null,
-    result: job.result as PlanningJobResult | null,
-    error: job.error,
-  };
+): Promise<ActionResult<PlanningJobStatusResponse | null>> {
+  return runServerQuery(
+    "planning.getPlanningJobStatus",
+    async () => {
+      const ctx = await requireDashboardContext();
+      requireRole(ctx, [Role.ADMIN]);
+      const job = await getPlanningJobById(jobId);
+      if (!job) return null;
+      return {
+        jobId: job.id,
+        status: job.status,
+        progress: job.progress as PlanningJobProgress | null,
+        result: job.result as PlanningJobResult | null,
+        error: job.error,
+      };
+    },
+  );
 }
 
-export async function getActivePlanningJobAction(): Promise<PlanningJobStatusResponse | null> {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN]);
-  const job = await getActivePlanningJob();
-  if (!job) return null;
-  return {
-    jobId: job.id,
-    status: job.status,
-    progress: job.progress as PlanningJobProgress | null,
-    result: job.result as PlanningJobResult | null,
-    error: job.error,
-  };
+export async function getActivePlanningJobAction(): Promise<
+  ActionResult<PlanningJobStatusResponse | null>
+> {
+  return runServerQuery("planning.getActivePlanningJob", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN]);
+    const job = await getActivePlanningJob();
+    if (!job) return null;
+    return {
+      jobId: job.id,
+      status: job.status,
+      progress: job.progress as PlanningJobProgress | null,
+      result: job.result as PlanningJobResult | null,
+      error: job.error,
+    };
+  });
 }

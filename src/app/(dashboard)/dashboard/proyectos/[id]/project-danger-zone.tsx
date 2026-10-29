@@ -6,13 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Archive, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProject, toggleProjectActive } from "@/features/projects/actions";
-import { getErrorMessage } from "@/lib/error-message";
-
-function formatActionError(err: unknown): string {
-  if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
-    return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
+function formatActionError(message: string): string {
+  if (message.startsWith("ARCHIVE_ONLY:")) {
+    return message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
   }
-  return getErrorMessage(err);
+  return message;
 }
 
 export function ProjectDangerZone({
@@ -31,13 +29,13 @@ export function ProjectDangerZone({
 
   function onArchiveToggle() {
     startTransition(async () => {
-      try {
-        await toggleProjectActive({ projectId, isActive: !isActive });
-        toast.success(isActive ? "Proyecto archivado" : "Proyecto reactivado");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const r = await toggleProjectActive({ projectId, isActive: !isActive });
+      if (!r.ok) {
+        toast.error(formatActionError(r.error));
+        return;
       }
+      toast.success(isActive ? "Proyecto archivado" : "Proyecto reactivado");
+      router.refresh();
     });
   }
 
@@ -61,14 +59,14 @@ export function ProjectDangerZone({
       return;
     }
     startTransition(async () => {
-      try {
-        await deleteProject({ projectId });
-        toast.success("Proyecto eliminado");
-        router.push("/dashboard/proyectos");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const r = await deleteProject({ projectId });
+      if (!r.ok) {
+        toast.error(formatActionError(r.error));
+        return;
       }
+      toast.success("Proyecto eliminado");
+      router.push("/dashboard/proyectos");
+      router.refresh();
     });
   }
 

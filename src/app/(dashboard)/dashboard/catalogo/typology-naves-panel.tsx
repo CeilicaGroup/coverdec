@@ -35,7 +35,6 @@ import {
   ELEMENT_TYPOLOGY_LABELS,
 } from "@/lib/element-typology";
 import { toast } from "sonner";
-import { getErrorMessage } from "@/lib/error-message";
 import { TypologyLabel, TypologySymbol } from "@/components/typology-symbol";
 import { handleActionResult } from "@/lib/mutation-error";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
@@ -93,17 +92,17 @@ export function TypologyNavesPanel({
   function submitEdit() {
     if (!editing) return;
     startTransition(async () => {
-      try {
-        await updateTypologyDefaultNave({
-          typology: editing.typology,
-          defaultNaveId: selectedNaveId || null,
-        });
-        toast.success("Nave de tipología actualizada");
-        setEditing(null);
-        router.refresh();
-      } catch (err) {
-        toast.error(getErrorMessage(err));
+      const result = await updateTypologyDefaultNave({
+        typology: editing.typology,
+        defaultNaveId: selectedNaveId || null,
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Nave de tipología actualizada");
+      setEditing(null);
+      router.refresh();
     });
   }
 

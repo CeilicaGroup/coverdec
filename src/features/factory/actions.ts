@@ -4,9 +4,10 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import { runServerAction } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
 import { childLogger } from "@/lib/logger";
-import { FactoryStatus, Role } from "@/generated/prisma";
+import { FactoryStatus, Role, type FactoryItem } from "@/generated/prisma";
 
 const log = childLogger({ module: "factory.actions" });
 
@@ -31,8 +32,10 @@ const updateSchema = z.object({
   scheduledAt: z.string().optional(),
 });
 
-export async function updateFactoryItem(input: z.infer<typeof updateSchema>) {
-  return runAuditedMutation(
+export async function updateFactoryItem(
+  input: z.infer<typeof updateSchema>,
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "factory.updateFactoryItem",
     async () => {
       const ctx = await requireDashboardContext();
@@ -71,8 +74,10 @@ const createSchema = z.object({
   status: z.nativeEnum(FactoryStatus).default(FactoryStatus.DOSSIER),
 });
 
-export async function createFactoryItem(input: z.input<typeof createSchema>) {
-  return runAuditedMutation(
+export async function createFactoryItem(
+  input: z.input<typeof createSchema>,
+): Promise<ActionResult<FactoryItem>> {
+  return runServerAction(
     "factory.createFactoryItem",
     async () => {
       const ctx = await requireDashboardContext();

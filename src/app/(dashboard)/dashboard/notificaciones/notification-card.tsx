@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { ArrowRight } from "lucide-react";
+import { toast } from "sonner";
 import type { NotificationType } from "@/generated/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,11 +45,10 @@ export function NotificationCard({
 
   const toggleRead = () => {
     startTransition(async () => {
-      if (readAt) {
-        await markNotificationUnread({ notificationId: id });
-      } else {
-        await markNotificationRead({ notificationId: id });
-      }
+      const result = readAt
+        ? await markNotificationUnread({ notificationId: id })
+        : await markNotificationRead({ notificationId: id });
+      if (!result.ok) toast.error(result.error);
     });
   };
 
@@ -82,7 +82,9 @@ export function NotificationCard({
             className="inline-flex max-w-full flex-nowrap items-center gap-1.5 whitespace-nowrap rounded-md bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-secondary/80"
             onClick={() => {
               if (!readAt) {
-                void markNotificationRead({ notificationId: id });
+                void markNotificationRead({ notificationId: id }).then((result) => {
+                  if (!result.ok) toast.error(result.error);
+                });
               }
             }}
           >

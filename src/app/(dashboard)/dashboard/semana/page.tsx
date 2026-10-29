@@ -28,7 +28,7 @@ import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibil
 import { actualRecordsUserIdForContext } from "@/features/planning/record-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { Role } from "@/generated/prisma";
-import { listAdHocFormOptions, listPendingAdHocTasks } from "@/features/ad-hoc/actions";
+import { listAdHocFormOptions, listPendingAdHocTasks } from "@/features/ad-hoc/queries";
 import { AdHocTaskDialog } from "../_components/ad-hoc-task-dialog";
 import { PendingAdHocTasksPanel } from "../_components/pending-ad-hoc-tasks-panel";
 import {

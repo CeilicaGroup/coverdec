@@ -10,7 +10,7 @@ import { deleteEmptyOpenWorkOrders } from "@/features/work-orders/cleanup-empty"
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { runAuditedMutation } from "@/lib/server-action";
+import { runServerAction } from "@/lib/server-action";
 import { isProjectFinished } from "@/lib/project-status";
 import {
   ElementTypology,
@@ -159,7 +159,7 @@ const projectSchema = z.object({
 });
 
 export async function createProject(input: z.infer<typeof projectSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.createProject",
     async () => {
   const ctx = await requireDashboardContext();
@@ -206,7 +206,7 @@ const updateProjectSchema = projectSchema.extend({
 });
 
 export async function updateProject(input: z.infer<typeof updateProjectSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateProject",
     async () => {
   const ctx = await requireDashboardContext();
@@ -283,7 +283,7 @@ function assertUniqueElementTypes(elements: { elementTypeId: string }[]) {
 }
 
 export async function createLamp(input: z.infer<typeof createLampInputSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.createLamp",
     async () => {
   const ctx = await requireDashboardContext();
@@ -489,7 +489,7 @@ const updateLampElementsSchema = z.object({
 export async function updateLampElements(
   input: z.infer<typeof updateLampElementsSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateLampElements",
     async () => {
   const ctx = await requireDashboardContext();
@@ -533,7 +533,7 @@ export async function updateLampFrames(input: {
     typology?: ElementTypology;
   }>;
 }) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateLampFrames",
     async () => {
   const elementTypes = await prisma.elementType.findMany({
@@ -558,7 +558,7 @@ export async function updateLampFrames(input: {
 }
 
 export async function renameLamp(input: z.infer<typeof renameLampSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.renameLamp",
     async () => {
   const ctx = await requireDashboardContext();
@@ -598,7 +598,7 @@ const updateTaskHoursSchema = z.object({
 });
 
 export async function updateTaskHours(input: z.infer<typeof updateTaskHoursSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateTaskHours",
     async () => {
   const ctx = await requireDashboardContext();
@@ -636,7 +636,7 @@ const addExtraTaskSchema = z.object({
 });
 
 export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.addExtraTask",
     async () => {
   const ctx = await requireDashboardContext();
@@ -813,7 +813,7 @@ const addExtraProjectTaskSchema = z.object({
 export async function addExtraProjectTask(
   input: z.infer<typeof addExtraProjectTaskSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.addExtraProjectTask",
     async () => {
       const ctx = await requireDashboardContext();
@@ -873,7 +873,7 @@ const updateTaskNaveSchema = z.object({
 });
 
 export async function updateTaskNave(input: z.infer<typeof updateTaskNaveSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateTaskNave",
     async () => {
   const ctx = await requireDashboardContext();
@@ -893,7 +893,7 @@ const bulkAssignTasksNaveSchema = z.object({
 export async function bulkAssignTasksNave(
   input: z.infer<typeof bulkAssignTasksNaveSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.bulkAssignTasksNave",
     async () => {
   const ctx = await requireDashboardContext();
@@ -914,7 +914,7 @@ const assignElementTasksNaveSchema = z.object({
 export async function assignElementTasksNave(
   input: z.infer<typeof assignElementTasksNaveSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.assignElementTasksNave",
     async () => {
   const ctx = await requireDashboardContext();
@@ -941,7 +941,7 @@ const assignProcessTasksNaveSchema = z.object({
 export async function assignProcessTasksNave(
   input: z.infer<typeof assignProcessTasksNaveSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.assignProcessTasksNave",
     async () => {
   const ctx = await requireDashboardContext();
@@ -966,7 +966,7 @@ const applyDefaultNavesSchema = z.object({
 export async function applyDefaultNavesToElement(
   input: z.infer<typeof applyDefaultNavesSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.applyDefaultNavesToElement",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1052,7 +1052,7 @@ const deleteProcessTasksSchema = z.object({
 export async function deleteProcessTasks(
   input: z.infer<typeof deleteProcessTasksSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.deleteProcessTasks",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1103,7 +1103,7 @@ export async function deleteProcessTasks(
 const deleteTaskSchema = z.object({ taskId: z.string().min(1) });
 
 export async function deleteTask(input: z.infer<typeof deleteTaskSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.deleteTask",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1147,7 +1147,7 @@ const updateTaskNotesSchema = z.object({
 });
 
 export async function updateTaskNotes(input: z.infer<typeof updateTaskNotesSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateTaskNotes",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1177,7 +1177,7 @@ const reorderTaskSchema = z.object({
 });
 
 export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.reorderTask",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1244,7 +1244,7 @@ export async function reorderTask(input: z.infer<typeof reorderTaskSchema>) {
 const deleteLampSchema = z.object({ lampId: z.string().min(1) });
 
 export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.deleteLamp",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1288,7 +1288,7 @@ export async function deleteLamp(input: z.infer<typeof deleteLampSchema>) {
 const toggleSchema = z.object({ projectId: z.string().min(1), isActive: z.boolean() });
 
 export async function toggleProjectActive(input: z.infer<typeof toggleSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.toggleProjectActive",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1312,7 +1312,7 @@ const toggleWarehouseSchema = z.object({
 export async function toggleProjectWarehouse(
   input: z.infer<typeof toggleWarehouseSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.toggleProjectWarehouse",
     async () => {
       const ctx = await requireDashboardContext();
@@ -1347,7 +1347,7 @@ export async function toggleProjectWarehouse(
 const deleteProjectSchema = z.object({ projectId: z.string().min(1) });
 
 export async function deleteProject(input: z.infer<typeof deleteProjectSchema>) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.deleteProject",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1385,7 +1385,7 @@ const updateProjectStrategySchema = z.object({
 export async function updateProjectPlanningStrategy(
   input: z.infer<typeof updateProjectStrategySchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.updateProjectPlanningStrategy",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1418,7 +1418,7 @@ const applyProjectPresetSchema = z.object({
 export async function applyProjectPlanningPreset(
   input: z.infer<typeof applyProjectPresetSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.applyProjectPlanningPreset",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1451,7 +1451,7 @@ const applyGlobalPresetSchema = z.object({
 export async function applyGlobalPlanningPresetToActiveProjects(
   input: z.infer<typeof applyGlobalPresetSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.applyGlobalPlanningPreset",
     async () => {
   const ctx = await requireDashboardContext();
@@ -1490,7 +1490,7 @@ const setLampApprovedSchema = z.object({
 export async function setLampApprovedForPlanning(
   input: z.infer<typeof setLampApprovedSchema>,
 ) {
-  return runAuditedMutation(
+  return runServerAction(
     "projects.setLampApprovedForPlanning",
     async () => {
       const ctx = await requireDashboardContext();

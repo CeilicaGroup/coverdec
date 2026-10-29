@@ -15,13 +15,13 @@ import {
   deleteOwnAttendanceBreak,
   deleteOwnAttendanceSession,
   endBreak,
-  getAttendanceRange,
   startAttendance,
   startBreak,
   stopAttendance,
   updateOwnAttendanceBreak,
   updateOwnAttendanceSession,
 } from "@/features/attendance/actions";
+import { getAttendanceRange } from "@/features/attendance/queries";
 import { savePersonWorkWindows } from "@/features/people/actions";
 import { createManualEntriesFromRanges } from "@/features/time-tracking/actions";
 import {
@@ -349,10 +349,10 @@ describe("franja manual del operario y la pausa de comida", () => {
 
   it("con jornada continua (sin hueco de comida) 8–17 no pregunta y cuenta 9h", async () => {
     await loginAs(world.users.jefe.email);
-    await savePersonWorkWindows({
+    unwrap(await savePersonWorkWindows({
       personId: world.people.ana.id,
       windows: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startMinutes: 7 * 60, endMinutes: 15 * 60 })),
-    });
+    }));
 
     await loginAs(world.users.ana.email);
     unwrap(await manual("08:00", "17:00"));
@@ -363,13 +363,13 @@ describe("franja manual del operario y la pausa de comida", () => {
 
   it("el horario de cada persona decide la comida: un hueco 13–14 pregunta por 13–14, no por 14–15", async () => {
     await loginAs(world.users.jefe.email);
-    await savePersonWorkWindows({
+    unwrap(await savePersonWorkWindows({
       personId: world.people.bea.id,
       windows: [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
         { dayOfWeek, startMinutes: 7 * 60, endMinutes: 13 * 60 },
         { dayOfWeek, startMinutes: 14 * 60, endMinutes: 16 * 60 },
       ]),
-    });
+    }));
 
     await loginAs(world.users.bea.email);
     // 14:00–15:30 no cruza su comida (13–14) aunque sí la del horario por defecto.

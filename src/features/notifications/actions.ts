@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { NotificationType, Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 import { upsertNotificationSubscription } from "./service";
 
 const updateSubscriptionSchema = z.object({
@@ -16,8 +17,8 @@ const updateSubscriptionSchema = z.object({
   push: z.boolean(),
 });
 
-export async function updateNotificationSubscription(input: z.infer<typeof updateSubscriptionSchema>) {
-  return runAuditedMutation(
+export async function updateNotificationSubscription(input: z.infer<typeof updateSubscriptionSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.updateSubscription",
     async () => {
       const ctx = await requireDashboardContext();
@@ -45,8 +46,8 @@ export async function updateNotificationSubscription(input: z.infer<typeof updat
 
 const markReadSchema = z.object({ notificationId: z.string().min(1) });
 
-export async function markNotificationRead(input: z.infer<typeof markReadSchema>) {
-  return runAuditedMutation(
+export async function markNotificationRead(input: z.infer<typeof markReadSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.markRead",
     async () => {
       const ctx = await requireDashboardContext();
@@ -69,8 +70,8 @@ export async function markNotificationRead(input: z.infer<typeof markReadSchema>
   );
 }
 
-export async function markNotificationUnread(input: z.infer<typeof markReadSchema>) {
-  return runAuditedMutation(
+export async function markNotificationUnread(input: z.infer<typeof markReadSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.markUnread",
     async () => {
       const ctx = await requireDashboardContext();
@@ -92,8 +93,8 @@ export async function markNotificationUnread(input: z.infer<typeof markReadSchem
   );
 }
 
-export async function markAllNotificationsRead() {
-  return runAuditedMutation(
+export async function markAllNotificationsRead(): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.markAllRead",
     async () => {
       const ctx = await requireDashboardContext();
@@ -111,8 +112,8 @@ const massMarkSchema = z.object({
   filter: z.enum(["all", "read", "unread"]).default("all"),
 });
 
-export async function markAllNotificationsUnread(input?: z.infer<typeof massMarkSchema>) {
-  return runAuditedMutation(
+export async function markAllNotificationsUnread(input?: z.infer<typeof massMarkSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.markAllUnread",
     async () => {
       const ctx = await requireDashboardContext();
@@ -134,8 +135,8 @@ export async function markAllNotificationsUnread(input?: z.infer<typeof massMark
   );
 }
 
-export async function markAllNotificationsReadFiltered(input?: z.infer<typeof massMarkSchema>) {
-  return runAuditedMutation(
+export async function markAllNotificationsReadFiltered(input?: z.infer<typeof massMarkSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "notifications.markAllReadFiltered",
     async () => {
       const ctx = await requireDashboardContext();

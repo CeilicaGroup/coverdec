@@ -133,7 +133,17 @@ function usePlanningJobPolling(enabled: boolean) {
       stopPolling();
       pollRef.current = setInterval(async () => {
         try {
-          const jobStatus = await getPlanningJobStatusAction(jobId);
+          const statusResult = await getPlanningJobStatusAction(jobId);
+          if (!statusResult.ok) {
+            stopPolling();
+            setActiveJobId(null);
+            setProgressLabel(null);
+            setProgress(null);
+            setStatus(null);
+            toast.error(statusResult.error);
+            return;
+          }
+          const jobStatus = statusResult.data;
           if (!jobStatus) {
             stopPolling();
             setActiveJobId(null);
@@ -178,8 +188,14 @@ function usePlanningJobPolling(enabled: boolean) {
     if (!enabled) return;
 
     let cancelled = false;
-    getActivePlanningJobAction().then((job) => {
-      if (cancelled || !job) return;
+    getActivePlanningJobAction().then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      const job = result.data;
+      if (!job) return;
       if (job.status === "PENDING" || job.status === "RUNNING") {
         setActiveJobId(job.jobId);
         setStatus(job.status);

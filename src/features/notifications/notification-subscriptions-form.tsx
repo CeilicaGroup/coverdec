@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { NotificationType } from "@/generated/prisma";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,17 +43,16 @@ export function NotificationSubscriptionsForm({ userId, subscriptions }: Props) 
     const next = { ...current, [channel]: value };
     setLocal((prev) => new Map(prev).set(type, next));
     startTransition(async () => {
-      try {
-        await updateNotificationSubscription({
-          userId,
-          type,
-          inApp: next.inApp,
-          email: next.email,
-          push: next.push,
-        });
-      } catch (err) {
+      const result = await updateNotificationSubscription({
+        userId,
+        type,
+        inApp: next.inApp,
+        email: next.email,
+        push: next.push,
+      });
+      if (!result.ok) {
         setLocal((prev) => new Map(prev).set(type, current));
-        toast.error(reportMutationError("No se pudo guardar", err));
+        toast.error(`No se pudo guardar: ${result.error}`);
       }
     });
   }

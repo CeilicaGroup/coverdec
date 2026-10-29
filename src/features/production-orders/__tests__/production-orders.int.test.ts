@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { createLamp, createProject, toggleProjectActive } from "@/features/projects/actions";
 import { createWorkOrder } from "@/features/work-orders/actions";
 import { createProductionOrder } from "@/features/production-orders/actions";
-import { buildWorld, loginAs, resetSession, unwrap, type World } from "@/test/integration/world";
+import { buildWorld, expectFail, loginAs, resetSession, unwrap, type World } from "@/test/integration/world";
 
 const YEAR = new Date().getUTCFullYear();
 
@@ -14,7 +14,7 @@ let projectId: string;
 beforeEach(async () => {
   world = await buildWorld();
   await loginAs(world.users.jefe.email);
-  projectId = (await createProject({ name: "Hotel Test", kind: ProjectKind.PRODUCCION, isBillable: true })).id;
+  projectId = unwrap(await createProject({ name: "Hotel Test", kind: ProjectKind.PRODUCCION, isBillable: true })).id;
 });
 
 /** La auditoría se escribe sin await (fire-and-forget): se espera a que aparezca. */
@@ -29,15 +29,17 @@ async function waitForAudit(action: string, outcome: AuditOutcome, entityId?: st
 
 describe("órdenes de producción", () => {
   it("crea la OP con número correlativo del año y guarda todos los datos", async () => {
-    const first = await createProductionOrder({
-      projectId,
-      lampLabel: "Lámpara Hall",
-      process: "PINTURA",
-      hours: 3.5,
-      scheduledAt: "2026-11-02",
-      notes: "Color RAL 9010",
-    });
-    const second = await createProductionOrder({ projectId });
+    const first = unwrap(
+      await createProductionOrder({
+        projectId,
+        lampLabel: "Lámpara Hall",
+        process: "PINTURA",
+        hours: 3.5,
+        scheduledAt: "2026-11-02",
+        notes: "Color RAL 9010",
+      }),
+    );
+    const second = unwrap(await createProductionOrder({ projectId }));
 
     expect(first.number).toBe(`OP0001-${YEAR}`);
     expect(second.number).toBe(`OP0002-${YEAR}`);
@@ -67,32 +69,32 @@ describe("órdenes de producción", () => {
   });
 
   it("la numeración continúa desde la mayor del año aunque se borren las intermedias", async () => {
-    const a = await createProductionOrder({ projectId });
-    await createProductionOrder({ projectId });
-    const c = await createProductionOrder({ projectId });
+    const a = unwrap(await createProductionOrder({ projectId }));
+    unwrap(await createProductionOrder({ projectId }));
+    const c = unwrap(await createProductionOrder({ projectId }));
     await prisma.productionOrder.delete({ where: { id: a.id } });
 
-    const d = await createProductionOrder({ projectId });
+    const d = unwrap(await createProductionOrder({ projectId }));
     expect(c.number).toBe(`OP0003-${YEAR}`);
     expect(d.number).toBe(`OP0004-${YEAR}`);
     expect(await prisma.productionOrder.count()).toBe(3);
   });
 
   it("rechaza horas no positivas, proyecto inexistente y proceso desconocido sin consumir número", async () => {
-    await expect(createProductionOrder({ projectId, hours: 0 })).rejects.toThrow();
-    await expect(createProductionOrder({ projectId, hours: -2 })).rejects.toThrow();
-    await expect(createProductionOrder({ projectId: "no-existe" })).rejects.toThrow(/no encontrado/);
-    await expect(createProductionOrder({ projectId, process: "SOLDADURA" })).rejects.toThrow();
+    expectFail(await createProductionOrder({ projectId, hours: 0 }));
+    expectFail(await createProductionOrder({ projectId, hours: -2 }));
+    expect(expectFail(await createProductionOrder({ projectId: "no-existe" }))).toMatch(/no encontrado/);
+    expectFail(await createProductionOrder({ projectId, process: "SOLDADURA" }));
     expect(await prisma.productionOrder.count()).toBe(0);
 
     // Tras los rechazos, la siguiente sigue siendo la 1.
-    expect((await createProductionOrder({ projectId })).number).toBe(`OP0001-${YEAR}`);
+    expect(unwrap(await createProductionOrder({ projectId })).number).toBe(`OP0001-${YEAR}`);
     await waitForAudit("production-orders.createProductionOrder", AuditOutcome.FAILURE);
   });
 
   it("solo admin y jefe de producción pueden crear OP", async () => {
     await loginAs(world.users.admin.email);
-    await createProductionOrder({ projectId });
+    unwrap(await createProductionOrder({ projectId }));
 
     await loginAs(world.users.ana.email);
     await expect(createProductionOrder({ projectId })).rejects.toThrow(/NEXT_REDIRECT/);
@@ -107,8 +109,8 @@ describe("órdenes de producción", () => {
   });
 
   it("rechaza proyectos inactivos", async () => {
-    await toggleProjectActive({ projectId, isActive: false });
-    await expect(createProductionOrder({ projectId })).rejects.toThrow(/inactivo/);
+    unwrap(await toggleProjectActive({ projectId, isActive: false }));
+    expect(expectFail(await createProductionOrder({ projectId }))).toMatch(/inactivo/);
     expect(await prisma.productionOrder.count()).toBe(0);
   });
 });
@@ -117,18 +119,20 @@ describe("numeración concurrente", () => {
   it("cinco OP creadas a la vez reciben números distintos y correlativos", async () => {
     const created = await Promise.all(Array.from({ length: 5 }, () => createProductionOrder({ projectId })));
 
-    expect(created.map((o) => o.number).sort()).toEqual([1, 2, 3, 4, 5].map((n) => `OP000${n}-${YEAR}`));
+    expect(created.map((o) => unwrap(o).number).sort()).toEqual([1, 2, 3, 4, 5].map((n) => `OP000${n}-${YEAR}`));
     const rows = await prisma.productionOrder.findMany({ orderBy: { serial: "asc" } });
     expect(rows.map((r) => r.serial)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("cinco OT creadas a la vez reciben números distintos y correlativos", async () => {
     await loginAs(world.users.admin.email);
-    const lamp = await createLamp({
-      projectId,
-      name: "Araña",
-      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 1, units: 2 }],
-    });
+    const lamp = unwrap(
+      await createLamp({
+        projectId,
+        name: "Araña",
+        elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 1, units: 2 }],
+      }),
+    );
     const tasks = await prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { id: "asc" } });
     expect(tasks.length).toBeGreaterThanOrEqual(5);
 

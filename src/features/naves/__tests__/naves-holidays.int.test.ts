@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
 import { requireDashboardContext } from "@/lib/context";
 import { POST as switchNave } from "@/app/api/nave/switch/route";
-import { assignLampToNave, createNave, getNaves, toggleNaveActive, updateNave } from "@/features/naves/actions";
+import { assignLampToNave, createNave, toggleNaveActive, updateNave } from "@/features/naves/actions";
+import { getNaves } from "@/features/naves/queries";
 import { createHoliday, deleteHoliday, updateHoliday } from "@/features/holidays/actions";
 import { generatePlanning } from "@/features/planning/service";
 import { publishPlanningAction } from "@/features/planning/actions";
@@ -37,13 +38,13 @@ describe("naves: alta, edición y activación", () => {
     expect(await prisma.nave.count()).toBe(2);
 
     await loginAs(world.users.admin.email);
-    const { id } = await createNave({ codigo: "N3", nombre: "Nave 3" });
-    await expect(createNave({ codigo: "N3", nombre: "Duplicada" })).rejects.toThrow();
+    const { id } = unwrap(await createNave({ codigo: "N3", nombre: "Nave 3" }));
+    expectFail(await createNave({ codigo: "N3", nombre: "Duplicada" }));
     expect(await prisma.nave.count({ where: { codigo: "N3" } })).toBe(1);
 
-    await updateNave({ naveId: id, codigo: "N3", nombre: "Nave tres" });
+    unwrap(await updateNave({ naveId: id, codigo: "N3", nombre: "Nave tres" }));
     expect((await prisma.nave.findUniqueOrThrow({ where: { id } })).nombre).toBe("Nave tres");
-    await expect(updateNave({ naveId: id, codigo: "", nombre: "x" })).rejects.toThrow();
+    expectFail(await updateNave({ naveId: id, codigo: "", nombre: "x" }));
   });
 
   it("desactivar una nave la saca de las naves visibles de admin y jefe, y el jefe cae en otra activa", async () => {
@@ -52,7 +53,7 @@ describe("naves: alta, edición y activación", () => {
     expect((await requireDashboardContext()).naveId).toBe(world.naves.n2.id);
 
     await loginAs(world.users.admin.email);
-    await toggleNaveActive(world.naves.n2.id, false);
+    unwrap(await toggleNaveActive(world.naves.n2.id, false));
     expect((await getNaves()).map((n) => n.codigo)).toEqual(["N1"]);
     expect((await requireDashboardContext()).naveIds).toEqual([world.naves.n1.id]);
 
@@ -124,7 +125,7 @@ describe("asignar una lámpara a otra nave", () => {
     await expect(assignLampToNave(lamp.lampId, world.naves.n2.id)).rejects.toThrow(/NEXT_REDIRECT/);
 
     await loginAs(world.users.jefe.email);
-    await assignLampToNave(lamp.lampId, world.naves.n2.id);
+    unwrap(await assignLampToNave(lamp.lampId, world.naves.n2.id));
     const naves = await prisma.task.findMany({ where: { lampId: lamp.lampId }, select: { naveId: true } });
     expect(naves.length).toBe(3);
     expect(new Set(naves.map((t) => t.naveId))).toEqual(new Set([world.naves.n2.id]));

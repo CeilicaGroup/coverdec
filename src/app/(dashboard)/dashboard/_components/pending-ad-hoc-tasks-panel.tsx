@@ -2,7 +2,7 @@
 
 import { CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { PendingAdHocTaskRow } from "@/features/ad-hoc/actions";
+import type { PendingAdHocTaskRow } from "@/features/ad-hoc/queries";
 import { EditAdHocTaskDialog } from "@/features/ad-hoc/edit-ad-hoc-task-dialog";
 import { formatHours } from "@/lib/format";
 import type { AdHocFormOptions } from "@/app/(dashboard)/dashboard/_components/ad-hoc-task-form";

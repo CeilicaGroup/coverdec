@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ElementTypology, ProjectApprovalStatus, ProjectKind, TaskSystemKind } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { createLamp, createProject, setLampApprovedForPlanning } from "@/features/projects/actions";
-import { buildWorld, loginAs, TELA_PROCESSES, type World } from "@/test/integration/world";
+import { buildWorld, expectFail, loginAs, TELA_PROCESSES, unwrap, type World } from "@/test/integration/world";
 
 let world: World;
 
@@ -11,7 +11,7 @@ beforeEach(async () => {
 });
 
 async function newProject(name = "Hotel Test") {
-  return createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true });
+  return unwrap(await createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true }));
 }
 
 function telaElement(surfaceM2: number, units: number) {
@@ -23,7 +23,7 @@ describe("crear lámpara de catálogo", () => {
     await loginAs(world.users.jefe.email);
     const project = await newProject();
 
-    const lamp = await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(2.5, 2) });
+    const lamp = unwrap(await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(2.5, 2) }));
 
     const elements = await prisma.lampElement.findMany({
       where: { lampId: lamp.id },
@@ -55,7 +55,7 @@ describe("crear lámpara de catálogo", () => {
     await loginAs(world.users.jefe.email);
     const project = await newProject();
 
-    const lamp = await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(1, 1) });
+    const lamp = unwrap(await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(1, 1) }));
 
     const tasks = await prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { order: "asc" } });
     expect(tasks.map((t) => t.process)).toEqual(["CNC", "ENSAMBLAJE", "TRANSPORTE", "PINTURA"]);
@@ -69,11 +69,11 @@ describe("crear lámpara de catálogo", () => {
   it("rechaza un nombre de lámpara repetido en el mismo proyecto (sin crear duplicados)", async () => {
     await loginAs(world.users.jefe.email);
     const project = await newProject();
-    await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(1, 1) });
+    unwrap(await createLamp({ projectId: project.id, name: "Araña", elements: telaElement(1, 1) }));
 
-    await expect(
-      createLamp({ projectId: project.id, name: "araña", elements: telaElement(1, 1) }),
-    ).rejects.toThrow(/Ya existe una lámpara/);
+    expect(
+      expectFail(await createLamp({ projectId: project.id, name: "araña", elements: telaElement(1, 1) })),
+    ).toMatch(/Ya existe una lámpara/);
     expect(await prisma.lamp.count({ where: { projectId: project.id } })).toBe(1);
   });
 
@@ -93,25 +93,25 @@ describe("aprobación para planning", () => {
   it("el proyecto queda aprobado solo cuando todas sus lámparas lo están", async () => {
     await loginAs(world.users.admin.email);
     const project = await newProject();
-    const a = await createLamp({ projectId: project.id, name: "A", elements: telaElement(1, 1) });
-    const b = await createLamp({ projectId: project.id, name: "B", elements: telaElement(1, 1) });
+    const a = unwrap(await createLamp({ projectId: project.id, name: "A", elements: telaElement(1, 1) }));
+    const b = unwrap(await createLamp({ projectId: project.id, name: "B", elements: telaElement(1, 1) }));
     const status = async () =>
       (await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).approvalStatus;
 
     expect(await status()).toBe(ProjectApprovalStatus.PENDING_APPROVAL);
-    await setLampApprovedForPlanning({ lampId: a.id, isApprovedForPlanning: true });
+    unwrap(await setLampApprovedForPlanning({ lampId: a.id, isApprovedForPlanning: true }));
     expect(await status()).toBe(ProjectApprovalStatus.PARTIAL_APPROVAL);
-    await setLampApprovedForPlanning({ lampId: b.id, isApprovedForPlanning: true });
+    unwrap(await setLampApprovedForPlanning({ lampId: b.id, isApprovedForPlanning: true }));
     expect(await status()).toBe(ProjectApprovalStatus.IN_PRODUCTION);
     // Desaprobar una vuelve a parcial.
-    await setLampApprovedForPlanning({ lampId: a.id, isApprovedForPlanning: false });
+    unwrap(await setLampApprovedForPlanning({ lampId: a.id, isApprovedForPlanning: false }));
     expect(await status()).toBe(ProjectApprovalStatus.PARTIAL_APPROVAL);
   });
 
   it("solo un admin puede aprobar lámparas", async () => {
     await loginAs(world.users.jefe.email);
     const project = await newProject();
-    const lamp = await createLamp({ projectId: project.id, name: "A", elements: telaElement(1, 1) });
+    const lamp = unwrap(await createLamp({ projectId: project.id, name: "A", elements: telaElement(1, 1) }));
 
     await expect(
       setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true }),

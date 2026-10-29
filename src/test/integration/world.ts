@@ -135,25 +135,29 @@ export async function createPlannableLamp(
   opts: { name?: string; surfaceM2?: number; units?: number; deliveryDate?: string } = {},
 ) {
   await loginAs(world.users.admin.email);
-  const project = await createProject({
-    name: opts.name ?? "Hotel Test",
-    kind: ProjectKind.PRODUCCION,
-    isBillable: true,
-    deliveryDate: opts.deliveryDate,
-  });
-  const lamp = await createLamp({
-    projectId: project.id,
-    name: "Lámpara A",
-    elements: [
-      {
-        typology: ElementTypology.TELA,
-        elementTypeId: world.tela.id,
-        surfaceM2: opts.surfaceM2 ?? 2,
-        units: opts.units ?? 1,
-      },
-    ],
-  });
-  await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true });
+  const project = unwrap(
+    await createProject({
+      name: opts.name ?? "Hotel Test",
+      kind: ProjectKind.PRODUCCION,
+      isBillable: true,
+      deliveryDate: opts.deliveryDate,
+    }),
+  );
+  const lamp = unwrap(
+    await createLamp({
+      projectId: project.id,
+      name: "Lámpara A",
+      elements: [
+        {
+          typology: ElementTypology.TELA,
+          elementTypeId: world.tela.id,
+          surfaceM2: opts.surfaceM2 ?? 2,
+          units: opts.units ?? 1,
+        },
+      ],
+    }),
+  );
+  unwrap(await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true }));
   unwrap(await autoGroupIdenticalTasks());
   const tasks = await prisma.task.findMany({
     where: { lampId: lamp.id },

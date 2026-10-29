@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import type { ActionResult } from "@/lib/action-result";
-import { runServerAction } from "@/lib/server-action";
+import { runServerAction, runServerQuery } from "@/lib/server-action";
 import { applyBastidorRows } from "./apply-bastidores";
 import { applyProyectoRows } from "./apply-proyectos";
 import { applyHorasRows } from "./apply-horas";
@@ -403,70 +403,42 @@ async function applyProduccionCompleta(sessionId: string): Promise<ImportApplyRe
 }
 
 export async function getImportCatalogOptions(importKind: ImportKind = "bastidores") {
-  await requireAdmin();
-  const [processes, frames, users] = await Promise.all([
-    prisma.processDefinition.findMany({
-      orderBy: { label: "asc" },
-      select: { code: true, label: true },
-    }),
-    prisma.elementType.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, code: true },
-    }),
-    importKind === "horas"
-      ? prisma.user.findMany({
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
-  ]);
-  return { processes, frames, users };
+  return runServerQuery("imports.getImportCatalogOptions", async () => {
+    await requireAdmin();
+    const [processes, frames, users] = await Promise.all([
+      prisma.processDefinition.findMany({
+        orderBy: { label: "asc" },
+        select: { code: true, label: true },
+      }),
+      prisma.elementType.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, code: true },
+      }),
+      importKind === "horas"
+        ? prisma.user.findMany({
+            orderBy: { name: "asc" },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    return { processes, frames, users };
+  });
 }
 
 export async function getSheetColumnsForMapping(input: {
   sessionId: string;
   sheetName: string;
   importKind?: ImportKind;
-}): Promise<SheetColumnOption[]> {
-  await requireAdmin();
-  const buffer = getImportSessionBuffer(input.sessionId);
-  if (!buffer) throw new Error(IMPORT_SESSION_EXPIRED_MESSAGE);
-  const wb = await loadWorkbookFromBuffer(buffer);
-  const sheet = getWorksheet(wb, input.sheetName);
-  if (!sheet) return [];
-  const kind = input.importKind ?? "bastidores";
-  return buildSheetColumnOptions(sheet, 1, columnHintsForKind(kind));
-}
-
-export async function parseImportRows(input: {
-  sessionId: string;
-  mapping: ImportMapping;
-  importKind?: ImportKind;
-}) {
-  await requireAdmin();
-  const buffer = getImportSessionBuffer(input.sessionId);
-  if (!buffer) throw new Error(IMPORT_SESSION_EXPIRED_MESSAGE);
-  const wb = await loadWorkbookFromBuffer(buffer);
-  const sheet = getWorksheet(wb, input.mapping.sheetName);
-  if (!sheet) throw new Error(`Hoja no encontrada: ${input.mapping.sheetName}`);
-  const raw = extractMappedRows(sheet, input.mapping);
-  const kind = input.importKind ?? "bastidores";
-  if (kind === "proyectos") {
-    const { parseProyectoRows } = await import("./parse-proyectos");
-    return parseProyectoRows(raw);
-  }
-  if (kind === "horas") {
-    const { parseHorasRows } = await import("./parse-horas");
-    return parseHorasRows(raw);
-  }
-  return parseBastidorRows(raw);
-}
-
-export async function getProduccionMappings(sheetNames: string[]) {
-  return {
-    bastidores: suggestMappingForKind(sheetNames, "bastidores"),
-    proyectos: suggestMappingForKind(sheetNames, "proyectos"),
-    horas: suggestMappingForKind(sheetNames, "horas"),
-  };
+}): Promise<ActionResult<SheetColumnOption[]>> {
+  return runServerQuery("imports.getSheetColumnsForMapping", async () => {
+    await requireAdmin();
+    const buffer = getImportSessionBuffer(input.sessionId);
+    if (!buffer) throw new Error(IMPORT_SESSION_EXPIRED_MESSAGE);
+    const wb = await loadWorkbookFromBuffer(buffer);
+    const sheet = getWorksheet(wb, input.sheetName);
+    if (!sheet) return [];
+    const kind = input.importKind ?? "bastidores";
+    return buildSheetColumnOptions(sheet, 1, columnHintsForKind(kind));
+  });
 }

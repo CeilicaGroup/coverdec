@@ -1,5 +1,5 @@
 import { isDevUserSwitcherEnabled } from "@/lib/dev-user-switcher";
-import { listDevSwitcherUsers } from "@/features/dev/user-switcher-actions";
+import { listDevSwitcherUsers } from "@/features/dev/user-switcher-queries";
 import { DevUserSwitcher } from "@/features/dev/dev-user-switcher";
 
 export async function LoginDevSwitcher() {

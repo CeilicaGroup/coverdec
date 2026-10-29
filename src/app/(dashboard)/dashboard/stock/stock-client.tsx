@@ -140,8 +140,8 @@ export function StockClient({
                   e.preventDefault();
                   startTransition(async () => {
                     try {
-                      await withSimilarLampNameConfirmation("create", async (confirmSimilarName) =>
-                        createStockBatch({
+                      await withSimilarLampNameConfirmation("create", async (confirmSimilarName) => {
+                        const result = await createStockBatch({
                           name,
                           confirmSimilarName,
                           elements: parsed.map(({ row, medida, units }) => ({
@@ -150,8 +150,11 @@ export function StockClient({
                             surfaceM2: medida,
                             units,
                           })),
-                        }),
-                      );
+                        });
+                        // El helper detecta el aviso de nombre similar en el mensaje lanzado.
+                        if (!result.ok) throw new Error(result.error);
+                        return result.data;
+                      });
                       toast.success("Lote de stock creado");
                       setCreateOpen(false);
                       setName("");
@@ -332,14 +335,17 @@ export function StockClient({
                                   try {
                                     await withSimilarLampNameConfirmation(
                                       "create",
-                                      async (confirmSimilarName) =>
-                                        assignLampFromStockToProject({
+                                      async (confirmSimilarName) => {
+                                        const result = await assignLampFromStockToProject({
                                           lampId: lamp.id,
                                           targetProjectId: assignProjectId,
                                           newName:
                                             assignName.trim() || undefined,
                                           confirmSimilarName,
-                                        }),
+                                        });
+                                        if (!result.ok) throw new Error(result.error);
+                                        return result.data;
+                                      },
                                     );
                                     toast.success("Lámpara asignada");
                                     setAssignLampId(null);

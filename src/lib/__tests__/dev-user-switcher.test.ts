@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Sin base de datos en los unitarios: la auditoría de la acción no debe tocar Prisma.
+vi.mock("@/lib/audit/record-audit-event", () => ({ recordAuditEvent: vi.fn() }));
+
 describe("isDevUserSwitcherEnabled", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -47,7 +50,7 @@ describe("isDevUserSwitcherEnabled", () => {
 });
 
 // Importa en frío better-auth + Prisma: con la suite en paralelo supera los 5s por defecto.
-describe("switchDevUser guard", { timeout: 30_000 }, () => {
+describe("switchDevUser guard", { timeout: 60_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -56,13 +59,14 @@ describe("switchDevUser guard", { timeout: 30_000 }, () => {
   it("rejects when switcher is disabled", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const { switchDevUser } = await import("@/features/dev/user-switcher-actions");
-    await expect(switchDevUser({ userId: "user-1" })).rejects.toThrow(
-      "El conmutador de usuario no está disponible.",
-    );
+    expect(await switchDevUser({ userId: "user-1" })).toEqual({
+      ok: false,
+      error: "El conmutador de usuario no está disponible.",
+    });
   });
 });
 
-describe("listDevSwitcherUsers guard", { timeout: 30_000 }, () => {
+describe("listDevSwitcherUsers guard", { timeout: 60_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -70,7 +74,7 @@ describe("listDevSwitcherUsers guard", { timeout: 30_000 }, () => {
 
   it("rejects when switcher is disabled", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const { listDevSwitcherUsers } = await import("@/features/dev/user-switcher-actions");
+    const { listDevSwitcherUsers } = await import("@/features/dev/user-switcher-queries");
     await expect(listDevSwitcherUsers()).rejects.toThrow(
       "El conmutador de usuario no está disponible.",
     );

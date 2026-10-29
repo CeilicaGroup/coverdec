@@ -5,10 +5,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { runAuditedMutation } from "@/lib/server-action";
+import { runServerAction } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
 import {
   LampElementStockStatus,
-  ProjectKind,
   Role,
   type Prisma,
 } from "@/generated/prisma";
@@ -30,8 +30,8 @@ import {
   syncTransportTasksForLamp,
 } from "@/features/projects/transport-tasks";
 import { isStockProjectKind } from "@/lib/project-kind";
-import { IMPREVISTAS_LAMP_NAME_KEY } from "@/features/ad-hoc/constants";
 import { isStockLampAssignable } from "./stock-assignable";
+import { stockLampCanHardDelete } from "./queries";
 import { getStockPoolProjectId } from "./stock-pool";
 import {
   clearPendingTaskWorkOrders,
@@ -49,12 +49,6 @@ import { tryAttachLampTasksToOpenWorkOrder } from "./attach-work-order";
 
 const log = childLogger({ module: "stock.actions" });
 
-function stockLampCanHardDelete(
-  tasks: Array<{ _count: { timeEntries: number } }>,
-): boolean {
-  return !tasks.some((task) => task._count.timeEntries > 0);
-}
-
 function assertUniqueElementTypes(elements: { elementTypeId: string }[]) {
   const ids = elements.map((element) => element.elementTypeId);
   if (new Set(ids).size !== ids.length) {
@@ -70,8 +64,8 @@ const createStockBatchSchema = createLampInputSchema
 
 export async function createStockBatch(
   input: z.infer<typeof createStockBatchSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<{ id: string }>> {
+  return runServerAction(
     "stock.createStockBatch",
     async () => {
       const ctx = await requireDashboardContext();
@@ -205,87 +199,6 @@ export async function createStockBatch(
   );
 }
 
-export async function listStockLamps() {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-
-  const stockPoolProjectId = await getStockPoolProjectId();
-  const lamps = await prisma.lamp.findMany({
-    where: {
-      projectId: stockPoolProjectId,
-      nameKey: { not: IMPREVISTAS_LAMP_NAME_KEY },
-      elements: {
-        some: {
-          stockStatus: {
-            in: [
-              LampElementStockStatus.IN_PRODUCTION,
-              LampElementStockStatus.AVAILABLE,
-            ],
-          },
-        },
-      },
-    },
-    include: {
-      elementType: { select: { id: true, name: true, typology: true } },
-      elements: {
-        select: {
-          id: true,
-          label: true,
-          stockStatus: true,
-          stockBatchCode: true,
-          elementTypeId: true,
-          elementType: { select: { id: true, name: true, typology: true } },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-      tasks: {
-        select: {
-          id: true,
-          estimatedHours: true,
-          isCompleted: true,
-          _count: { select: { timeEntries: true } },
-        },
-      },
-      previousProject: { select: { id: true, name: true, code: true } },
-    },
-    orderBy: [{ returnedToStockAt: "desc" }, { name: "asc" }],
-  });
-
-  return lamps.map((lamp) => {
-    const pendingHours = lamp.tasks
-      .filter((task) => !task.isCompleted)
-      .reduce((sum, task) => sum + task.estimatedHours, 0);
-    const batchCodes = [
-      ...new Set(
-        lamp.elements
-          .map((element) => element.stockBatchCode)
-          .filter((code): code is string => Boolean(code)),
-      ),
-    ];
-    const stockStatus =
-      lamp.elements.find((element) => element.stockStatus)?.stockStatus ?? null;
-    const primaryElementType =
-      lamp.elementType ??
-      lamp.elements.find((element) => element.elementType)?.elementType ??
-      null;
-    return {
-      id: lamp.id,
-      name: lamp.name,
-      elementTypeName: primaryElementType?.name ?? null,
-      elementTypeId: primaryElementType?.id ?? null,
-      elementTypology: primaryElementType?.typology ?? null,
-      stockStatus,
-      batchCodes,
-      pendingHours,
-      returnedToStockAt: lamp.returnedToStockAt,
-      returnedToStockReason: lamp.returnedToStockReason,
-      previousProject: lamp.previousProject,
-      elements: lamp.elements,
-      canHardDelete: stockLampCanHardDelete(lamp.tasks),
-    };
-  });
-}
-
 const returnLampToStockSchema = z.object({
   lampId: z.string().min(1),
   reason: z.string().max(500).optional(),
@@ -361,8 +274,8 @@ async function returnWholeLampToStock(
 
 export async function returnLampToStock(
   input: z.infer<typeof returnLampToStockSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<{ id: string }>> {
+  return runServerAction(
     "stock.returnLampToStock",
     async () => {
       const ctx = await requireDashboardContext();
@@ -547,8 +460,8 @@ const assignLampFromStockSchema = z.object({
 
 export async function assignLampFromStockToProject(
   input: z.infer<typeof assignLampFromStockSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<{ id: string; projectId: string }>> {
+  return runServerAction(
     "stock.assignLampFromStockToProject",
     async () => {
       const ctx = await requireDashboardContext();
@@ -652,18 +565,12 @@ export async function assignLampFromStockToProject(
   );
 }
 
-
-export async function listAssignableStockLamps() {
-  const lamps = await listStockLamps();
-  return lamps.filter((lamp) => isStockLampAssignable(lamp.stockStatus));
-}
-
 const deleteStockLampSchema = z.object({ lampId: z.string().min(1) });
 
 export async function deleteStockLamp(
   input: z.infer<typeof deleteStockLampSchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "stock.deleteStockLamp",
     async () => {
       const ctx = await requireDashboardContext();

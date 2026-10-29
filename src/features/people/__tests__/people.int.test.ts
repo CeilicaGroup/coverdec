@@ -216,30 +216,34 @@ describe("horario laboral", () => {
   it("reemplaza las franjas y rechaza franjas invertidas o solapadas", async () => {
     await loginAs(world.users.jefe.email);
     const id = world.people.bea.id;
-    await savePersonWorkWindows({
+    unwrap(await savePersonWorkWindows({
       personId: id,
       windows: [
         { dayOfWeek: 1, startMinutes: 7 * 60, endMinutes: 15 * 60 },
         { dayOfWeek: 2, startMinutes: 7 * 60, endMinutes: 13 * 60 },
       ],
-    });
+    }));
     expect(await prisma.personWorkWindow.count({ where: { personId: id } })).toBe(2);
     expect(await dayHours(id, 1)).toBe(8);
     expect(await dayHours(id, 2)).toBe(6);
 
-    await expect(
-      savePersonWorkWindows({ personId: id, windows: [{ dayOfWeek: 3, startMinutes: 600, endMinutes: 600 }] }),
-    ).rejects.toThrow(/fin posterior/);
+    expect(
+      expectFail(
+        await savePersonWorkWindows({ personId: id, windows: [{ dayOfWeek: 3, startMinutes: 600, endMinutes: 600 }] }),
+      ),
+    ).toMatch(/fin posterior/);
     // Dos franjas que se pisan el mismo día inflarían la capacidad (8–14 + 10–16 ≠ 14h).
-    await expect(
-      savePersonWorkWindows({
-        personId: id,
-        windows: [
-          { dayOfWeek: 3, startMinutes: 8 * 60, endMinutes: 14 * 60 },
-          { dayOfWeek: 3, startMinutes: 10 * 60, endMinutes: 16 * 60 },
-        ],
-      }),
-    ).rejects.toThrow(/solapan/);
+    expect(
+      expectFail(
+        await savePersonWorkWindows({
+          personId: id,
+          windows: [
+            { dayOfWeek: 3, startMinutes: 8 * 60, endMinutes: 14 * 60 },
+            { dayOfWeek: 3, startMinutes: 10 * 60, endMinutes: 16 * 60 },
+          ],
+        }),
+      ),
+    ).toMatch(/solapan/);
     // Ninguno de los intentos fallidos borró el horario anterior.
     expect(await dayHours(id, 1)).toBe(8);
 
@@ -360,15 +364,15 @@ describe("sustitutos en tareas planificadas", () => {
     const cnc = lamp.tasks.find((t) => t.process === "CNC")!;
     await loginAs(world.users.jefe.email);
 
-    await expect(addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id })).rejects.toThrow(/ya planificada/);
+    expect(expectFail(await addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id }))).toMatch(/ya planificada/);
 
     const week = getMondayOf(new Date(Date.now() + 14 * 86_400_000));
     await generatePlanning({ naveId: world.naves.n1.id, weekStart: week, planFrom: "WEEK_START" });
     await loginAs(world.users.jefe.email);
 
-    await expect(addTaskSubstitute({ taskId: cnc.id, personId: world.people.carl.id })).rejects.toThrow(/misma nave/);
-    await addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id });
-    await addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id });
+    expect(expectFail(await addTaskSubstitute({ taskId: cnc.id, personId: world.people.carl.id }))).toMatch(/misma nave/);
+    unwrap(await addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id }));
+    unwrap(await addTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id }));
     expect(await prisma.taskParticipant.findMany({ where: { taskId: cnc.id }, select: { personId: true } })).toEqual([
       { personId: world.people.bea.id },
     ]);
@@ -378,7 +382,7 @@ describe("sustitutos en tareas planificadas", () => {
     expect(await prisma.taskParticipant.count()).toBe(1);
 
     await loginAs(world.users.admin.email);
-    await removeTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id });
+    unwrap(await removeTaskSubstitute({ taskId: cnc.id, personId: world.people.bea.id }));
     expect(await prisma.taskParticipant.count()).toBe(0);
   }, 120_000);
 });

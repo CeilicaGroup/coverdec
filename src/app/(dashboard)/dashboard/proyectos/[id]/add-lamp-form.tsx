@@ -126,26 +126,27 @@ export function AddLampForm({
             startTransition(async () => {
               try {
                 await withSimilarLampNameConfirmation("create", async (confirmSimilarName) => {
-                  if (flexibleMode && lampMode === "hours") {
-                    await createLamp({
-                      projectId,
-                      name,
-                      estimatedHours: hoursValue,
-                      confirmSimilarName,
-                    });
-                  } else {
-                    await createLamp({
-                      projectId,
-                      name,
-                      elements: parsed.map(({ row, medida, units }) => ({
-                        typology: row.typology as ElementTypology,
-                        elementTypeId: row.elementTypeId,
-                        surfaceM2: medida,
-                        units,
-                      })),
-                      confirmSimilarName,
-                    });
-                  }
+                  const r =
+                    flexibleMode && lampMode === "hours"
+                      ? await createLamp({
+                          projectId,
+                          name,
+                          estimatedHours: hoursValue,
+                          confirmSimilarName,
+                        })
+                      : await createLamp({
+                          projectId,
+                          name,
+                          elements: parsed.map(({ row, medida, units }) => ({
+                            typology: row.typology as ElementTypology,
+                            elementTypeId: row.elementTypeId,
+                            surfaceM2: medida,
+                            units,
+                          })),
+                          confirmSimilarName,
+                        });
+                  // Client-side throw: drives the similar-name confirm/retry flow.
+                  if (!r.ok) throw new Error(r.error);
                 });
                 toast.success(
                   flexibleMode && lampMode === "hours"

@@ -96,6 +96,28 @@ export async function runServerAction<T>(
   return runWithAuditScope(() => serverAction(scope, handler, audit));
 }
 
+/**
+ * Igual que runServerAction pero para lecturas: devuelve ActionResult y registra
+ * el error en el log, sin escribir en AuditLog (algunas se consultan cada pocos
+ * segundos, p. ej. el estado de la generación del planning).
+ */
+export async function runServerQuery<T>(
+  scope: string,
+  handler: () => Promise<T>,
+): Promise<ActionResult<T>> {
+  try {
+    return actionOk(await handler());
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    log.error({ err: error, scope }, "server query failed");
+    return actionFail(
+      error instanceof ZodError
+        ? (error.issues[0]?.message ?? "Datos inválidos.")
+        : getErrorMessage(error, "No se pudieron cargar los datos."),
+    );
+  }
+}
+
 async function serverAction<T>(
   scope: string,
   handler: () => Promise<T>,

@@ -10,7 +10,7 @@ import {
   listActivePeopleForExecutorPicker,
   listEligibleTasksForWorkOrder,
   listWorkOrders,
-  loadWorkOrderExecutorIds,
+  loadWorkOrderExecutors,
   workOrdersHavePlanningAssignments,
   workOrdersHaveTimeEntries,
 } from "@/features/work-orders/queries";
@@ -55,11 +55,11 @@ export default async function OrdenesTrabajoPage({
   const [
     workOrderIdsWithTimeEntries,
     workOrderIdsWithPlanningAssignments,
-    workOrderExecutorIds,
+    workOrderExecutors,
   ] = await Promise.all([
     workOrdersHaveTimeEntries(workOrderIds),
     workOrdersHavePlanningAssignments(workOrderIds),
-    loadWorkOrderExecutorIds(workOrderIds),
+    loadWorkOrderExecutors(workOrderIds),
   ]);
 
   return (
@@ -85,7 +85,8 @@ export default async function OrdenesTrabajoPage({
         typologyImages={typologyImages}
         elementTypeImages={elementTypeImages}
         activePeople={activePeople}
-        workOrderExecutorIds={Object.fromEntries(workOrderExecutorIds)}
+        workOrderExecutorIds={Object.fromEntries(workOrderExecutors.executorIds)}
+        workOrderIdsReadyForExecutors={[...workOrderExecutors.readyIds]}
       />
     </div>
   );

@@ -20,7 +20,6 @@ import {
   adminDeleteAttendanceSchema,
   adminUpdateAttendanceBreakSchema,
   adminUpsertAttendanceSchema,
-  attendanceRangeSchema,
   deleteOwnAttendanceSchema,
   endBreakSchema,
   manualUpsertAttendanceSchema,
@@ -40,7 +39,6 @@ import type { ActionResult } from "@/lib/action-result";
 import { runServerAction } from "@/lib/server-action";
 import {
   madridDateIso,
-  madridDayBounds,
   madridIsoWeekday,
   madridMinutesOfDay,
   madridWallTimeToInstant,
@@ -368,35 +366,6 @@ export async function endBreak(
 
     log.info({ userId: ctx.userId, breakId: openBreak.id, minutes }, "attendance break ended");
     revalidateAttendancePaths();
-  });
-}
-
-export async function getAttendanceRange(input: {
-  startDate: string;
-  endDate: string;
-  personId?: string;
-}) {
-  const ctx = await requireDashboardContext();
-  const data = attendanceRangeSchema.parse(input);
-  const start = madridDayBounds(data.startDate).start;
-  const end = madridDayBounds(data.endDate).end;
-  const include = {
-    breaks: { orderBy: { startedAt: "asc" as const } },
-  };
-  if (ctx.role === Role.OPERARIO) {
-    return prisma.attendanceSession.findMany({
-      where: { userId: ctx.userId, startedAt: { gte: start, lt: end } },
-      orderBy: { startedAt: "asc" },
-      include,
-    });
-  }
-  return prisma.attendanceSession.findMany({
-    where: {
-      startedAt: { gte: start, lt: end },
-      ...(data.personId ? { personId: data.personId } : {}),
-    },
-    orderBy: { startedAt: "asc" },
-    include,
   });
 }
 

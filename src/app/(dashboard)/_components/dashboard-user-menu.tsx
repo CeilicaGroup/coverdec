@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-queries";
 import { DevUserSwitcher } from "@/features/dev/dev-user-switcher";
 
 interface DashboardUserMenuProps {

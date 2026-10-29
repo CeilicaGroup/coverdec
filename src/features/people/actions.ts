@@ -515,7 +515,8 @@ const saveWorkWindowsSchema = z.object({
 
 export async function savePersonWorkWindows(
   input: z.infer<typeof saveWorkWindowsSchema>,
-) {
+): Promise<ActionResult<void>> {
+  return runServerAction("people.savePersonWorkWindows", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
   const data = saveWorkWindowsSchema.parse(input);
@@ -554,12 +555,14 @@ export async function savePersonWorkWindows(
   revalidatePath("/dashboard/personal");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/disponibilidad");
+  });
 }
 
 export async function linkPersonToUser(
   personId: string,
   userId: string | null,
-): Promise<void> {
+): Promise<ActionResult<void>> {
+  return runServerAction("people.linkPersonToUser", async () => {
   const ctx = await requireDashboardContext();
   requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
 
@@ -577,4 +580,5 @@ export async function linkPersonToUser(
 
   log.info({ personId, userId }, "person-user link updated");
   revalidatePath("/dashboard/personal");
+  });
 }

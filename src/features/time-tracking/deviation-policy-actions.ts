@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 
 const updatePolicySchema = z.object({
   deviationThresholdPct: z.number().min(1).max(200),
@@ -16,8 +17,8 @@ const POLICY_ID = "singleton";
 
 export async function updateTimeDeviationPolicy(
   input: z.infer<typeof updatePolicySchema>,
-) {
-  return runAuditedMutation(
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "time-tracking.updateDeviationPolicy",
     async () => {
       const ctx = await requireDashboardContext();

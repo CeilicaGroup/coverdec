@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { WorkOrderStatus } from "@/generated/prisma";
 import { workOrderGroupKey } from "./group-key";
+import { todayPlanningDate } from "./plan-executor-changes";
 import { excludeWorkOrderExemptTasksWhere } from "./task-ot-exemptions";
 
 const eligibleTaskInclude = {
@@ -133,28 +134,41 @@ export async function workOrdersHaveTimeEntries(
  * loadAssigneeByTaskIds (display-context.ts) which only shows published
  * assignments. A draft-only plan must still prefill the picker correctly.
  */
-export async function loadWorkOrderExecutorIds(
+/**
+ * Ejecutores actuales de cada OT (quién tiene franjas de hoy en adelante) y qué
+ * OT admiten elegirlos: todas sus tareas abiertas tienen planning desde hoy,
+ * lo mismo que exige setWorkOrderExecutors.
+ */
+export async function loadWorkOrderExecutors(
   workOrderIds: string[],
-): Promise<Map<string, string[]>> {
-  if (workOrderIds.length === 0) return new Map();
+): Promise<{ executorIds: Map<string, string[]>; readyIds: Set<string> }> {
+  if (workOrderIds.length === 0) return { executorIds: new Map(), readyIds: new Set() };
 
   const rows = await prisma.task.findMany({
     where: { workOrderId: { in: workOrderIds }, isCompleted: false },
     select: {
       workOrderId: true,
-      assignments: { select: { personId: true } },
+      assignments: {
+        where: { date: { gte: todayPlanningDate() } },
+        select: { personId: true },
+      },
     },
   });
 
   const byWorkOrder = new Map<string, Set<string>>();
+  const notReady = new Set<string>();
   for (const row of rows) {
     if (!row.workOrderId) continue;
     const set = byWorkOrder.get(row.workOrderId) ?? new Set<string>();
     for (const a of row.assignments) set.add(a.personId);
     byWorkOrder.set(row.workOrderId, set);
+    if (row.assignments.length === 0) notReady.add(row.workOrderId);
   }
 
-  return new Map([...byWorkOrder.entries()].map(([id, set]) => [id, [...set]]));
+  return {
+    executorIds: new Map([...byWorkOrder.entries()].map(([id, set]) => [id, [...set]])),
+    readyIds: new Set([...byWorkOrder.keys()].filter((id) => !notReady.has(id))),
+  };
 }
 
 export interface ActivePersonOption {

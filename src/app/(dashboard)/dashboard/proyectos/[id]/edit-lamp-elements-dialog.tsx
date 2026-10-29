@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus } from "lucide-react";
@@ -125,22 +124,22 @@ export function EditLampElementsDialog({
               return;
             }
             startTransition(async () => {
-              try {
-                await updateLampElements({
-                  lampId,
-                  elements: parsed.map(({ row, medida, units }) => ({
-                    typology: row.typology as ElementTypology,
-                    elementTypeId: row.elementTypeId,
-                    surfaceM2: medida,
-                    units,
-                  })),
-                });
-                toast.success("Elementos y tareas actualizados");
-                setOpen(false);
-                router.refresh();
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const r = await updateLampElements({
+                lampId,
+                elements: parsed.map(({ row, medida, units }) => ({
+                  typology: row.typology as ElementTypology,
+                  elementTypeId: row.elementTypeId,
+                  surfaceM2: medida,
+                  units,
+                })),
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return;
               }
+              toast.success("Elementos y tareas actualizados");
+              setOpen(false);
+              router.refresh();
             });
           }}
         >

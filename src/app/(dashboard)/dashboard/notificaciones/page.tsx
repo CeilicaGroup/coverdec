@@ -3,13 +3,9 @@ import { prisma } from "@/lib/db";
 import { requireDashboardContext } from "@/lib/context";
 import { getMondayOf } from "@/lib/week";
 import { PageHeader } from "../../_components/page-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  markAllNotificationsReadFiltered,
-  markAllNotificationsUnread,
-} from "@/features/notifications/actions";
 import { NotificationCard } from "./notification-card";
+import { MarkAllButtons } from "./mark-all-buttons";
 
 type FilterMode = "all" | "read" | "unread";
 
@@ -75,26 +71,7 @@ export default async function NotificacionesPage({
         description={`${unread} sin leer · ${total} totales`}
         actions={
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <form
-              action={async () => {
-                "use server";
-                await markAllNotificationsReadFiltered({ filter });
-              }}
-            >
-              <Button type="submit" variant="outline" size="sm" disabled={unread === 0}>
-                Marcar visibles como leídas
-              </Button>
-            </form>
-            <form
-              action={async () => {
-                "use server";
-                await markAllNotificationsUnread({ filter });
-              }}
-            >
-              <Button type="submit" variant="outline" size="sm" disabled={read === 0}>
-                Marcar visibles como no leídas
-              </Button>
-            </form>
+            <MarkAllButtons filter={filter} unread={unread} read={read} />
           </div>
         }
       />

@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Warehouse } from "lucide-react";
@@ -51,15 +50,15 @@ export function NavesAdminClient({
   const onCreateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     startTransition(async () => {
-      try {
-        await createNave(form);
-        toast.success("Nave creada");
-        setCreateOpen(false);
-        setForm({ codigo: "", nombre: "" });
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const result = await createNave(form);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Nave creada");
+      setCreateOpen(false);
+      setForm({ codigo: "", nombre: "" });
+      router.refresh();
     });
   };
 
@@ -67,25 +66,25 @@ export function NavesAdminClient({
     e.preventDefault();
     if (!editNave) return;
     startTransition(async () => {
-      try {
-        await updateNave({ naveId: editNave.id, ...form });
-        toast.success("Nave actualizada");
-        setEditNave(null);
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const result = await updateNave({ naveId: editNave.id, ...form });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Nave actualizada");
+      setEditNave(null);
+      router.refresh();
     });
   };
 
   const onToggle = (naveId: string, isActive: boolean) => {
     startTransition(async () => {
-      try {
-        await toggleNaveActive(naveId, isActive);
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const result = await toggleNaveActive(naveId, isActive);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      router.refresh();
     });
   };
 

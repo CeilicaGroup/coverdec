@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
@@ -123,26 +122,26 @@ export function EditProjectDialog({
           onSubmit={(e) => {
             e.preventDefault();
             startTransition(async () => {
-              try {
-                await updateProject({
-                  projectId: project.id,
-                  name,
-                  client: client || undefined,
-                  obra: obra || undefined,
-                  deliveryDate: deliveryDate
-                    ? fromDatetimeLocalInputValue(deliveryDate)
-                    : undefined,
-                  isBillable,
-                  kind,
-                  responsibleUserId: responsibleUserId ?? undefined,
-                  notes: notes || undefined,
-                });
-                toast.success("Proyecto actualizado");
-                setOpen(false);
-                router.refresh();
-              } catch (err) {
-                toast.error(reportMutationError("Error", err));
+              const r = await updateProject({
+                projectId: project.id,
+                name,
+                client: client || undefined,
+                obra: obra || undefined,
+                deliveryDate: deliveryDate
+                  ? fromDatetimeLocalInputValue(deliveryDate)
+                  : undefined,
+                isBillable,
+                kind,
+                responsibleUserId: responsibleUserId ?? undefined,
+                notes: notes || undefined,
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return;
               }
+              toast.success("Proyecto actualizado");
+              setOpen(false);
+              router.refresh();
             });
           }}
         >

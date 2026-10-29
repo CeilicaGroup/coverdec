@@ -10,9 +10,9 @@ import { getMondayOf } from "@/lib/week";
 import {
   createAdHocTask,
   deleteAdHocTask,
-  listPendingAdHocTasks,
   updateAdHocTask,
 } from "@/features/ad-hoc/actions";
+import { listPendingAdHocTasks } from "@/features/ad-hoc/queries";
 import { IMPREVISTAS_POOL_PROJECT_CODE } from "@/features/ad-hoc/imprevistas-pool";
 import { generatePlanning } from "@/features/planning/service";
 import { publishPlanningAction, undoPlanningAction } from "@/features/planning/actions";
@@ -65,7 +65,7 @@ beforeEach(async () => {
 /** Proyecto sin lámparas, como los de mantenimiento/oficina que la UI ofrece en el selector. */
 async function projectWithoutLamps(name = "Mantenimiento") {
   await loginAs(world.users.admin.email);
-  return createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: false });
+  return unwrap(await createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: false }));
 }
 
 /** El jefe de producción crea la imprevista desde el diálogo de la semana. */
@@ -272,12 +272,12 @@ describe("crear imprevista", () => {
     expect(expectFail(await newAdHoc({ projectId: project.id, personIds: [carl.id] }))).toMatch(/Persona no encontrada/);
 
     await loginAs(world.users.admin.email);
-    await toggleProjectActive({ projectId: project.id, isActive: false });
+    unwrap(await toggleProjectActive({ projectId: project.id, isActive: false }));
     expect(expectFail(await newAdHoc({ projectId: project.id }))).toMatch(/Proyecto no encontrado/);
 
     // Observación vacía (solo espacios) tampoco vale.
     await loginAs(world.users.admin.email);
-    await toggleProjectActive({ projectId: project.id, isActive: true });
+    unwrap(await toggleProjectActive({ projectId: project.id, isActive: true }));
     expect(expectFail(await newAdHoc({ projectId: project.id, notes: "   " }))).toMatch(/observación/);
 
     expect(await prisma.task.count({ where: { systemKind: TaskSystemKind.AD_HOC } })).toBe(0);
@@ -690,10 +690,10 @@ describe("imprevistas largas, horarios y semanas", () => {
   it("usa el horario real de cada participante: la franja común es la intersección (jornada reducida)", async () => {
     // Bea solo trabaja de 8:00 a 12:00.
     await loginAs(world.users.admin.email);
-    await savePersonWorkWindows({
+    unwrap(await savePersonWorkWindows({
       personId: world.people.bea.id,
       windows: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startMinutes: 8 * 60, endMinutes: 12 * 60 })),
-    });
+    }));
     const project = await projectWithoutLamps();
     const both = [world.people.ana.id, world.people.bea.id];
     const shared = unwrap(await newAdHoc({ projectId: project.id, personIds: both, estimatedHours: 6 }));

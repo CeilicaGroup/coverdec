@@ -4,7 +4,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 import { childLogger } from "@/lib/logger";
 import { Role } from "@/generated/prisma";
 import {
@@ -16,43 +17,44 @@ import {
 
 const log = childLogger({ module: "planning.policy-actions" });
 
+async function persistPlanningWeights(input: unknown): Promise<void> {
+  const ctx = await requireDashboardContext();
+  requireRole(ctx, [Role.ADMIN]);
+  const data = planningWeightsSchema.parse(input);
+
+  if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
+
+  await prisma.planningPolicy.upsert({
+    where: { naveId: ctx.naveId },
+    create: {
+      naveId: ctx.naveId,
+      wLate: data.wLate,
+      wUnscheduled: data.wUnscheduled,
+      wLoadBalance: data.wLoadBalance,
+      wMove: data.wMove,
+      wLaborCost: data.wLaborCost,
+      wPriority: data.wPriority,
+    },
+    update: {
+      wLate: data.wLate,
+      wUnscheduled: data.wUnscheduled,
+      wLoadBalance: data.wLoadBalance,
+      wMove: data.wMove,
+      wLaborCost: data.wLaborCost,
+      wPriority: data.wPriority,
+    },
+  });
+
+  log.info({ naveId: ctx.naveId }, "planning weights saved");
+  revalidatePath("/dashboard", "layout");
+}
+
 export async function savePlanningWeightsAction(
   input: unknown,
-): Promise<{ ok: true }> {
-  return runAuditedMutation(
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "planning.savePlanningWeights",
-    async () => {
-      const ctx = await requireDashboardContext();
-      requireRole(ctx, [Role.ADMIN]);
-      const data = planningWeightsSchema.parse(input);
-
-      if (!ctx.naveId) throw new Error("Selecciona una nave antes de configurar el planning");
-
-      await prisma.planningPolicy.upsert({
-        where: { naveId: ctx.naveId },
-        create: {
-          naveId: ctx.naveId,
-          wLate: data.wLate,
-          wUnscheduled: data.wUnscheduled,
-          wLoadBalance: data.wLoadBalance,
-          wMove: data.wMove,
-          wLaborCost: data.wLaborCost,
-          wPriority: data.wPriority,
-        },
-        update: {
-          wLate: data.wLate,
-          wUnscheduled: data.wUnscheduled,
-          wLoadBalance: data.wLoadBalance,
-          wMove: data.wMove,
-          wLaborCost: data.wLaborCost,
-          wPriority: data.wPriority,
-        },
-      });
-
-      log.info({ naveId: ctx.naveId }, "planning weights saved");
-      revalidatePath("/dashboard", "layout");
-      return { ok: true as const };
-    },
+    () => persistPlanningWeights(input),
     { summary: "Guardar pesos de planning" },
   );
 }
@@ -60,10 +62,15 @@ export async function savePlanningWeightsAction(
 /** Guarda estrategia (0–100) mapeada a pesos del solver en servidor. */
 export async function savePlanningStrategyAction(
   input: unknown,
-): Promise<{ ok: true }> {
-  const strategy = planningStrategySchema.parse(input);
-  const weights = strategyToWeights(strategy);
-  return savePlanningWeightsAction(weights);
+): Promise<ActionResult<void>> {
+  return runServerAction(
+    "planning.savePlanningWeights",
+    async () => {
+      const strategy = planningStrategySchema.parse(input);
+      await persistPlanningWeights(strategyToWeights(strategy));
+    },
+    { summary: "Guardar pesos de planning" },
+  );
 }
 
 const nonlinearDeadlineSettingsSchema = z.object({
@@ -74,8 +81,8 @@ const nonlinearDeadlineSettingsSchema = z.object({
 
 export async function saveNonlinearDeadlineSettingsAction(
   input: unknown,
-): Promise<{ ok: true }> {
-  return runAuditedMutation(
+): Promise<ActionResult<void>> {
+  return runServerAction(
     "planning.saveNonlinearDeadlineSettings",
     async () => {
       const ctx = await requireDashboardContext();
@@ -120,7 +127,6 @@ export async function saveNonlinearDeadlineSettingsAction(
         "planning nonlinear deadline settings saved",
       );
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const };
     },
     { summary: "Guardar ajustes de plazos no lineales" },
   );

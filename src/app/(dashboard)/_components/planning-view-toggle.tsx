@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setPlanningViewModeAction } from "@/features/planning/planning-view-actions";
 import type { PlanningViewMode } from "@/features/planning/planning-visibility";
@@ -17,7 +18,8 @@ export function PlanningViewToggle({ mode }: PlanningViewToggleProps) {
   const setMode = (next: PlanningViewMode) => {
     if (next === mode || pending) return;
     startTransition(async () => {
-      await setPlanningViewModeAction(next);
+      const result = await setPlanningViewModeAction(next);
+      if (!result.ok) toast.error(result.error);
     });
   };
 

@@ -356,9 +356,9 @@ describe("importar bastidores (catálogo desde la hoja BBDD)", () => {
     // El bastidor importado es usable para dar de alta lámparas (tipología por defecto BASTIDOR).
     expect(oval.typology).toBe(ElementTypology.BASTIDOR);
 
-    const project = await createProject({ name: "Hotel Import", kind: ProjectKind.PRODUCCION, isBillable: true });
+    const project = unwrap(await createProject({ name: "Hotel Import", kind: ProjectKind.PRODUCCION, isBillable: true }));
     const elements = [{ typology: ElementTypology.BASTIDOR, elementTypeId: oval.id, surfaceM2: 2, units: 1 }];
-    const oldLamp = await createLamp({ projectId: project.id, name: "Vieja", elements });
+    const oldLamp = unwrap(await createLamp({ projectId: project.id, name: "Vieja", elements }));
     const hoursOf = async (lampId: string) =>
       (await prisma.task.findMany({ where: { lampId }, orderBy: { order: "asc" } })).map((t) => [
         t.process,
@@ -369,7 +369,7 @@ describe("importar bastidores (catálogo desde la hoja BBDD)", () => {
     await importSheets({ [BBDD]: [bbdd("Pantalla Oval", "CNC", 1.5), bbdd("Pantalla Oval", "Pintura", 1)] }, "bastidores");
 
     expect(await hoursOf(oldLamp.id)).toEqual([["CNC", 1], ["PINTURA", 2]]);
-    const newLamp = await createLamp({ projectId: project.id, name: "Nueva", elements });
+    const newLamp = unwrap(await createLamp({ projectId: project.id, name: "Nueva", elements }));
     expect(await hoursOf(newLamp.id)).toEqual([["CNC", 3], ["PINTURA", 2]]);
   });
 });
@@ -522,12 +522,14 @@ describe("importar horas (hoja horas)", () => {
 
   /** Proyecto real creado desde la web: Hotel Test / Lámpara A / TELA 2 m² (CNC → ENSAMBLAJE → PINTURA). */
   async function createRealLamp() {
-    const project = await createProject({ name: "Hotel Test", kind: ProjectKind.PRODUCCION, isBillable: true });
-    const lamp = await createLamp({
-      projectId: project.id,
-      name: "Lámpara A",
-      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 2, units: 1 }],
-    });
+    const project = unwrap(await createProject({ name: "Hotel Test", kind: ProjectKind.PRODUCCION, isBillable: true }));
+    const lamp = unwrap(
+      await createLamp({
+        projectId: project.id,
+        name: "Lámpara A",
+        elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 2, units: 1 }],
+      }),
+    );
     const tasks = await prisma.task.findMany({ where: { lampId: lamp.id } });
     const taskId = (process: string) => tasks.find((t) => t.process === process)!.id;
     return { projectId: project.id, lampId: lamp.id, taskId };

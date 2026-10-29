@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Warehouse } from "lucide-react";
@@ -42,14 +41,14 @@ export function LampNaveAssign({
   const onAssign = (value: string | null) => {
     if (!value || value === "none") return;
     startTransition(async () => {
-      try {
-        await assignLampToNave(lampId, value);
-        toast.success(`Tareas asignadas a ${naves.find((n) => n.id === value)?.nombre}`);
-        setOpen(false);
-        router.refresh();
-      } catch (err) {
-        toast.error(reportMutationError("Error", err));
+      const result = await assignLampToNave(lampId, value);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(`Tareas asignadas a ${naves.find((n) => n.id === value)?.nombre}`);
+      setOpen(false);
+      router.refresh();
     });
   };
 

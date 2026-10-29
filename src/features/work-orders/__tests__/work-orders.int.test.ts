@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ElementTypology, ProjectKind, WorkOrderStatus, type PlanningAssignment } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { getMondayOf } from "@/lib/week";
@@ -13,6 +13,7 @@ import {
   updateWorkOrder,
 } from "@/features/work-orders/actions";
 import { setWorkOrderExecutors } from "@/features/work-orders/set-work-order-executors";
+import { loadWorkOrderExecutors } from "@/features/work-orders/queries";
 import { savePerson } from "@/features/people/actions";
 import { createAdHocTask } from "@/features/ad-hoc/actions";
 import { buildWorld, expectFail, loginAs, unwrap, type World } from "@/test/integration/world";
@@ -32,13 +33,15 @@ beforeEach(async () => {
 /** Proyecto + lámpara TELA aprobada, SIN agrupar en OT (para poder agrupar varias a la vez). */
 async function approvedLamp(name: string, surfaceM2 = 2) {
   await loginAs(world.users.admin.email);
-  const project = await createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true });
-  const lamp = await createLamp({
-    projectId: project.id,
-    name: "Lámpara",
-    elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2, units: 1 }],
-  });
-  await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true });
+  const project = unwrap(await createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true }));
+  const lamp = unwrap(
+    await createLamp({
+      projectId: project.id,
+      name: "Lámpara",
+      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2, units: 1 }],
+    }),
+  );
+  unwrap(await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true }));
   const tasks = await prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { order: "asc" } });
   const byProcess = (p: string) => tasks.find((t) => t.process === p)!;
   return { projectId: project.id, lampId: lamp.id, tasks, byProcess };
@@ -316,29 +319,19 @@ describe("elegir ejecutores de una OT planificada", () => {
     const cnc = await otOf("CNC");
     await loginAs(world.users.jefe.email);
 
-    await expect(setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id] })).rejects.toThrow(
-      /ya planificadas/,
-    );
+    expect(expectFail(await setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id] }))).toMatch(/ningún planning/);
 
     await planWeek();
     await loginAs(world.users.jefe.email);
-    await expect(
-      setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.carl.id] }),
-    ).rejects.toThrow(/nave de la OT/);
+    expect(expectFail(await setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.carl.id] }))).toMatch(/nave de la OT/);
     // Bea no sabe hacer CNC (ni como responsable ni de apoyo).
-    await expect(
-      setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] }),
-    ).rejects.toThrow(/BEA no tiene la especialidad CNC/);
+    expect(expectFail(await setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] }))).toMatch(/BEA no tiene la especialidad CNC/);
     await prisma.person.update({ where: { id: world.people.bea.id }, data: { isActive: false } });
-    await expect(
-      setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] }),
-    ).rejects.toThrow(/inactiva/);
-    await expect(
-      setWorkOrderExecutors({
+    expect(expectFail(await setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] }))).toMatch(/inactiva/);
+    expectFail(await setWorkOrderExecutors({
         workOrderId: cnc.id,
         personIds: [world.people.ana.id, world.people.bea.id, world.people.carl.id],
-      }),
-    ).rejects.toThrow();
+      }));
 
     // Nada de lo anterior ha tocado el planning: CNC sigue solo en Ana.
     const rows = await rowsOf(cnc.tasks.map((t) => t.id));
@@ -393,7 +386,7 @@ describe("elegir ejecutores de una OT planificada", () => {
     await giveBeaCncSupport();
 
     await loginAs(world.users.admin.email);
-    await setWorkOrderExecutors({ workOrderId: cncTask.workOrderId!, personIds: [world.people.ana.id, world.people.bea.id] });
+    unwrap(await setWorkOrderExecutors({ workOrderId: cncTask.workOrderId!, personIds: [world.people.ana.id, world.people.bea.id] }));
 
     const after = await rowsOf([cncTask.id]);
     const slots = (rows: PlanningAssignment[], personId: string) =>
@@ -407,6 +400,92 @@ describe("elegir ejecutores de una OT planificada", () => {
     assertNoPersonOverlap(await prisma.planningAssignment.findMany());
   }, 120_000);
 
+  it("con la tarea ya fichada: sin planning devuelve el motivo (no lanza) y planificada se le añade operario", async () => {
+    const a = await approvedLamp("Hotel A");
+    await loginAs(world.users.admin.email);
+    unwrap(await autoGroupIdenticalTasks());
+    const cncTask = await prisma.task.findUniqueOrThrow({ where: { id: a.byProcess("CNC").id } });
+    await loginAs(world.users.ana.email);
+    unwrap(
+      await createManualEntry({
+        projectId: a.projectId,
+        lampId: a.lampId,
+        taskId: cncTask.id,
+        process: "CNC",
+        startedAt: `${PAST_DAY}T07:00:00.000Z`,
+        hours: 1,
+      }),
+    );
+    await giveBeaCncSupport();
+
+    // Antes Next tapaba el motivo con «No se pudo refrescar la pantalla…».
+    await loginAs(world.users.admin.email);
+    const unplanned = await setWorkOrderExecutors({ workOrderId: cncTask.workOrderId!, personIds: [world.people.bea.id] });
+    expect(expectFail(unplanned)).toMatch(/ningún planning/);
+    expect(await rowsOf([cncTask.id])).toHaveLength(0);
+
+    await planWeek();
+    await loginAs(world.users.admin.email);
+    unwrap(await setWorkOrderExecutors({ workOrderId: cncTask.workOrderId!, personIds: [world.people.ana.id, world.people.bea.id] }));
+    const after = await rowsOf([cncTask.id]);
+    expect(new Set(after.map((r) => r.personId))).toEqual(new Set([world.people.ana.id, world.people.bea.id]));
+    expect(await prisma.timeEntry.count({ where: { taskId: cncTask.id } })).toBe(1);
+    assertNoPersonOverlap(await prisma.planningAssignment.findMany());
+  }, 120_000);
+
+  it("con la tarea a medias, cambiar el ejecutor solo toca de hoy en adelante: lo pasado queda como historia", async () => {
+    // 16 m² → 16 h de ensamblaje: más de un día.
+    const a = await approvedLamp("Hotel A", 16);
+    await loginAs(world.users.admin.email);
+    unwrap(await autoGroupIdenticalTasks());
+    const ens = await prisma.task.findUniqueOrThrow({ where: { id: a.byProcess("ENSAMBLAJE").id } });
+    await planWeek();
+    const before = await rowsOf([ens.id]);
+    const days = [...new Set(before.map((r) => r.date.getTime()))].sort((x, y) => x - y);
+    expect(days.length, "el ensamblaje debe repartirse en varios días").toBeGreaterThan(1);
+    const current = before[0]!.personId;
+    const other = current === world.people.ana.id ? world.people.bea.id : world.people.ana.id;
+    const lastDay = days.at(-1)!;
+
+    // «Hoy» es el último día del ensamblaje: los anteriores ya pasaron.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(lastDay + 6 * 3_600_000));
+      await loginAs(world.users.admin.email);
+      unwrap(await setWorkOrderExecutors({ workOrderId: ens.workOrderId!, personIds: [other] }));
+      // El diálogo muestra solo al ejecutor actual, no al de días pasados.
+      const shown = await loadWorkOrderExecutors([ens.workOrderId!]);
+      expect(shown.executorIds.get(ens.workOrderId!)).toEqual([other]);
+      expect(shown.readyIds.has(ens.workOrderId!)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const after = await rowsOf([ens.id]);
+    const past = (rows: PlanningAssignment[]) => rows.filter((r) => r.date.getTime() < lastDay);
+    const fromToday = (rows: PlanningAssignment[]) => rows.filter((r) => r.date.getTime() >= lastDay);
+    // Lo pasado sigue igual (mismas filas, misma persona) y el nuevo no recibe días pasados.
+    expect(past(after).map((r) => [r.id, r.personId])).toEqual(past(before).map((r) => [r.id, r.personId]));
+    expect(past(after).every((r) => r.isOverride)).toBe(true);
+    // De hoy en adelante, mismas franjas pero del nuevo ejecutor.
+    const slots = (rows: PlanningAssignment[]) => rows.map((r) => `${r.date.toISOString()}|${r.startSlot}-${r.endSlot}`).sort();
+    expect(fromToday(after).every((r) => r.personId === other)).toBe(true);
+    expect(slots(fromToday(after))).toEqual(slots(fromToday(before)));
+    assertNoPersonOverlap(await prisma.planningAssignment.findMany());
+
+    // Si «hoy» es después de todo su planning, se pide regenerar en vez de copiar días pasados.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(lastDay + 30 * 3_600_000));
+      await loginAs(world.users.admin.email);
+      const late = await setWorkOrderExecutors({ workOrderId: ens.workOrderId!, personIds: [current] });
+      expect(expectFail(late)).toMatch(/no tiene planning de hoy en adelante/);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await rowsOf([ens.id])).toEqual(after);
+  }, 120_000);
+
   it("si el segundo ejecutor ya está ocupado a esas horas, se rechaza y el planning no cambia", async () => {
     const { otOf } = await twoLampsGrouped();
     const cnc = await otOf("CNC");
@@ -418,12 +497,12 @@ describe("elegir ejecutores de una OT planificada", () => {
     await giveBeaCncSupport();
 
     await loginAs(world.users.admin.email);
-    const attempt = setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] });
+    const attempt = await setWorkOrderExecutors({ workOrderId: cnc.id, personIds: [world.people.ana.id, world.people.bea.id] });
     if (beaBusy) {
-      await expect(attempt).rejects.toThrow(/BEA ya tiene otra tarea planificada/);
+      expect(expectFail(attempt)).toMatch(/BEA ya tiene otra tarea planificada/);
       expect(await prisma.planningAssignment.findMany({ orderBy: { id: "asc" } })).toEqual(all);
     } else {
-      await attempt;
+      unwrap(attempt);
     }
     assertNoPersonOverlap(await prisma.planningAssignment.findMany());
   }, 120_000);
@@ -442,12 +521,12 @@ describe("elegir ejecutores de una OT planificada", () => {
     const otherBusy = clashes(all, other, before, taskIds);
 
     await loginAs(world.users.admin.email);
-    const attempt = setWorkOrderExecutors({ workOrderId: ens.id, personIds: [other] });
+    const attempt = await setWorkOrderExecutors({ workOrderId: ens.id, personIds: [other] });
     if (otherBusy) {
-      await expect(attempt).rejects.toThrow(/ya tiene otra tarea planificada/);
+      expect(expectFail(attempt)).toMatch(/ya tiene otra tarea planificada/);
       expect(await prisma.planningAssignment.findMany({ orderBy: { id: "asc" } })).toEqual(all);
     } else {
-      await attempt;
+      unwrap(attempt);
       const after = await rowsOf(taskIds);
       expect(new Set(after.map((r) => r.personId))).toEqual(new Set([other]));
       expect(after.reduce((s, r) => s + r.hours, 0)).toBeCloseTo(plannedHours);

@@ -19,7 +19,7 @@
     "db:backfill-lamp-name-keys": "tsx prisma/backfill-lamp-name-keys.ts",
     "db:backfill-person-single-nave": "tsx prisma/backfill-person-single-nave.ts",
     "db:reset": "prisma migrate reset --skip-seed",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && node scripts/check-action-results.cjs",
     "test": "vitest run --project unit",
     "test:int": "vitest run --project integration",
     "test:int:up": "docker compose -f docker-compose.test.yml up -d --build --wait",

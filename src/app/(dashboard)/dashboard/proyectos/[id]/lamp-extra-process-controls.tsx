@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -129,19 +128,19 @@ export function LampExtraProcessControls({
                 return;
               }
               startTransition(async () => {
-                try {
-                  await addExtraTask({
-                    lampId,
-                    process,
-                    estimatedHours: h,
-                    ...(naveId ? { naveId } : {}),
-                  });
-                  toast.success("Proceso añadido");
-                  setOpen(false);
-                  router.refresh();
-                } catch (err) {
-                  toast.error(reportMutationError("Error", err));
+                const r = await addExtraTask({
+                  lampId,
+                  process,
+                  estimatedHours: h,
+                  ...(naveId ? { naveId } : {}),
+                });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return;
                 }
+                toast.success("Proceso añadido");
+                setOpen(false);
+                router.refresh();
               });
             }}
           >

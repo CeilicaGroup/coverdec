@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { requireDashboardContext, requireRole } from "@/lib/context";
-import { runAuditedMutation } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
+import { runServerAction } from "@/lib/server-action";
 import { Role } from "@/generated/prisma";
 import {
   PLANNING_VIEW_MODE_COOKIE,
@@ -15,8 +16,8 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export async function setPlanningViewModeAction(
   mode: PlanningViewMode,
-): Promise<{ ok: true; mode: PlanningViewMode }> {
-  return runAuditedMutation(
+): Promise<ActionResult<{ mode: PlanningViewMode }>> {
+  return runServerAction(
     "planning.setPlanningViewMode",
     async () => {
       const ctx = await requireDashboardContext();
@@ -34,7 +35,7 @@ export async function setPlanningViewModeAction(
       });
 
       revalidatePath("/dashboard", "layout");
-      return { ok: true as const, mode };
+      return { mode };
     },
     {
       summary: `Cambiar modo de vista planning a ${mode}`,

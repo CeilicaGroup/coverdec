@@ -11,7 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { updateAdHocTask, type PendingAdHocTaskRow } from "@/features/ad-hoc/actions";
+import { updateAdHocTask } from "@/features/ad-hoc/actions";
+import type { PendingAdHocTaskRow } from "@/features/ad-hoc/queries";
 import { IMPREVISTA_PROCESS_CODE } from "@/features/ad-hoc/constants";
 import { handleActionResult } from "@/lib/mutation-error";
 import { toast } from "sonner";

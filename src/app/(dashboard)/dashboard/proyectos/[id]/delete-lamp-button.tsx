@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -38,13 +37,13 @@ export function DeleteLampButton({
           return;
         }
         startTransition(async () => {
-          try {
-            await deleteLamp({ lampId });
-            toast.success("Lámpara eliminada");
-            router.refresh();
-          } catch (err) {
-            toast.error(reportMutationError("Error", err));
+          const r = await deleteLamp({ lampId });
+          if (!r.ok) {
+            toast.error(r.error);
+            return;
           }
+          toast.success("Lámpara eliminada");
+          router.refresh();
         });
       }}
     >

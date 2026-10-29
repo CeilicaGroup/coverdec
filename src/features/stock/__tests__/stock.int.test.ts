@@ -21,12 +21,13 @@ import {
   assignLampFromStockToProject,
   createStockBatch,
   deleteStockLamp,
-  listStockLamps,
   returnLampToStock,
 } from "@/features/stock/actions";
+import { listStockLamps } from "@/features/stock/queries";
 import {
   buildWorld,
   createPlannableLamp,
+  expectFail,
   loginAs,
   TELA_PROCESSES,
   unwrap,
@@ -66,7 +67,7 @@ function telaElements(units = 1, surfaceM2 = 2) {
 }
 
 async function newProject(name: string) {
-  return createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true });
+  return unwrap(await createProject({ name, kind: ProjectKind.PRODUCCION, isBillable: true }));
 }
 
 async function lampState(lampId: string) {
@@ -90,7 +91,7 @@ async function expectTasksFollowLamp(lampId: string) {
 describe("crear lote de stock", () => {
   it("crea la lámpara en el pool con una unidad física por elemento, en producción y con código de lote", async () => {
     await loginAs(world.users.jefe.email);
-    const { id } = await createStockBatch({ name: "Panel stock", elements: telaElements(2) });
+    const { id } = unwrap(await createStockBatch({ name: "Panel stock", elements: telaElements(2) }));
 
     const lamp = await expectTasksFollowLamp(id);
     expect(lamp.projectId).toBe(poolId);
@@ -118,8 +119,8 @@ describe("crear lote de stock", () => {
 
   it("numera los lotes de forma correlativa y comparte el código entre las unidades del mismo lote", async () => {
     await loginAs(world.users.admin.email);
-    const a = await createStockBatch({ name: "Lote A", elements: telaElements(2) });
-    const b = await createStockBatch({ name: "Lote B", elements: telaElements(1) });
+    const a = unwrap(await createStockBatch({ name: "Lote A", elements: telaElements(2) }));
+    const b = unwrap(await createStockBatch({ name: "Lote B", elements: telaElements(1) }));
 
     const codesA = (await lampState(a.id)).elements.map((e) => e.stockBatchCode);
     const codesB = (await lampState(b.id)).elements.map((e) => e.stockBatchCode);
@@ -129,9 +130,9 @@ describe("crear lote de stock", () => {
 
   it("rechaza un nombre repetido en el pool sin crear nada", async () => {
     await loginAs(world.users.jefe.email);
-    await createStockBatch({ name: "Panel stock", elements: telaElements() });
+    unwrap(await createStockBatch({ name: "Panel stock", elements: telaElements() }));
 
-    await expect(createStockBatch({ name: "panel STOCK", elements: telaElements() })).rejects.toThrow(
+    expect(expectFail(await createStockBatch({ name: "panel STOCK", elements: telaElements() }))).toMatch(
       /Ya existe una lámpara/,
     );
     expect(await prisma.lamp.count({ where: { projectId: poolId } })).toBe(1);
@@ -140,22 +141,24 @@ describe("crear lote de stock", () => {
 
   it("rechaza tipología incoherente o el mismo tipo de elemento repetido", async () => {
     await loginAs(world.users.jefe.email);
-    await expect(
-      createStockBatch({
-        name: "Mal",
-        elements: [{ typology: ElementTypology.BASTIDOR, elementTypeId: world.tela.id, surfaceM2: 1, units: 1 }],
-      }),
-    ).rejects.toThrow(/tipología no coincide/);
-    await expect(
-      createStockBatch({ name: "Doble", elements: [...telaElements(), ...telaElements()] }),
-    ).rejects.toThrow(/repetir el mismo tipo/);
+    expect(
+      expectFail(
+        await createStockBatch({
+          name: "Mal",
+          elements: [{ typology: ElementTypology.BASTIDOR, elementTypeId: world.tela.id, surfaceM2: 1, units: 1 }],
+        }),
+      ),
+    ).toMatch(/tipología no coincide/);
+    expect(
+      expectFail(await createStockBatch({ name: "Doble", elements: [...telaElements(), ...telaElements()] })),
+    ).toMatch(/repetir el mismo tipo/);
     expect(await prisma.lamp.count()).toBe(0);
   });
 
   it("falla con un mensaje claro si no existe el pool de stock", async () => {
     await prisma.project.delete({ where: { id: poolId } });
     await loginAs(world.users.jefe.email);
-    await expect(createStockBatch({ name: "X", elements: telaElements() })).rejects.toThrow(/STOCK-POOL/);
+    expect(expectFail(await createStockBatch({ name: "X", elements: telaElements() }))).toMatch(/STOCK-POOL/);
     expect(await prisma.lamp.count()).toBe(0);
   });
 
@@ -173,7 +176,7 @@ describe("devolver una lámpara a stock", () => {
     expect(Object.keys(source.workOrderIdByProcess)).toHaveLength(3);
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: source.lampId, reason: "  cliente canceló  " });
+    unwrap(await returnLampToStock({ lampId: source.lampId, reason: "  cliente canceló  " }));
 
     const lamp = await expectTasksFollowLamp(source.lampId);
     expect(lamp.projectId).toBe(poolId);
@@ -203,7 +206,7 @@ describe("devolver una lámpara a stock", () => {
     // Segunda lámpara en otro proyecto; «Agrupar» la mete en OT nuevas (las existentes ya no se tocan).
     await loginAs(world.users.admin.email);
     const other = await newProject("Hotel B");
-    const otherLamp = await createLamp({ projectId: other.id, name: "Otra", elements: telaElements() });
+    const otherLamp = unwrap(await createLamp({ projectId: other.id, name: "Otra", elements: telaElements() }));
     const otherTasks = await prisma.task.findMany({ where: { lampId: otherLamp.id } });
     const cnc = otherTasks.find((t) => t.process === "CNC")!;
     // El admin añade desde «Órdenes de trabajo» la CNC de la otra lámpara a la OT de CNC de la primera.
@@ -212,7 +215,7 @@ describe("devolver una lámpara a stock", () => {
     unwrap(await updateWorkOrder({ id: wo, taskIds: [...current.map((t) => t.id), cnc.id] }));
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: first.lampId });
+    unwrap(await returnLampToStock({ lampId: first.lampId }));
 
     const sharedWo = await prisma.workOrder.findUnique({
       where: { id: first.workOrderIdByProcess.CNC! },
@@ -231,7 +234,7 @@ describe("devolver una lámpara a stock", () => {
     const before = await prisma.planningAssignment.count();
     await loginAs(world.users.jefe.email);
 
-    await expect(returnLampToStock({ lampId: source.lampId })).rejects.toThrow(/Confirma/);
+    expect(expectFail(await returnLampToStock({ lampId: source.lampId }))).toMatch(/Confirma/);
     // Rechazo atómico: nada se ha movido.
     const untouched = await lampState(source.lampId);
     expect(untouched.projectId).toBe(source.projectId);
@@ -239,7 +242,7 @@ describe("devolver una lámpara a stock", () => {
     expect(await prisma.planningAssignment.count()).toBe(before);
     expect(await prisma.workOrder.count()).toBe(3);
 
-    await returnLampToStock({ lampId: source.lampId, confirmClearPlanning: true });
+    unwrap(await returnLampToStock({ lampId: source.lampId, confirmClearPlanning: true }));
     expect(await prisma.planningAssignment.count({ where: { task: { lampId: source.lampId } } })).toBe(0);
     expect((await lampState(source.lampId)).projectId).toBe(poolId);
   });
@@ -252,12 +255,12 @@ describe("devolver una lámpara a stock", () => {
     const totalTasks = await prisma.task.count();
     await loginAs(world.users.jefe.email);
 
-    await expect(returnLampToStock({ lampId: source.lampId })).rejects.toThrow(/Selecciona al menos/);
-    await expect(returnLampToStock({ lampId: source.lampId, lampElementIds: ["ajeno"] })).rejects.toThrow(
+    expect(expectFail(await returnLampToStock({ lampId: source.lampId }))).toMatch(/Selecciona al menos/);
+    expect(expectFail(await returnLampToStock({ lampId: source.lampId, lampElementIds: ["ajeno"] }))).toMatch(
       /no pertenece al grupo/,
     );
 
-    await returnLampToStock({ lampId: source.lampId, lampElementIds: [send.id], reason: "sobra" });
+    unwrap(await returnLampToStock({ lampId: source.lampId, lampElementIds: [send.id], reason: "sobra" }));
 
     // La original se queda con la unidad no elegida, intacta y en sus OT.
     const original = await expectTasksFollowLamp(source.lampId);
@@ -289,8 +292,8 @@ describe("devolver una lámpara a stock", () => {
     const b = await createPlannableLamp(world, { name: "Hotel B" }); // ambas se llaman «Lámpara A»
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: a.lampId });
-    await returnLampToStock({ lampId: b.lampId });
+    unwrap(await returnLampToStock({ lampId: a.lampId }));
+    unwrap(await returnLampToStock({ lampId: b.lampId }));
 
     const inPool = await prisma.lamp.findMany({ where: { projectId: poolId }, orderBy: { name: "asc" } });
     expect(inPool.map((l) => [l.id, l.name])).toEqual([
@@ -305,8 +308,8 @@ describe("devolver una lámpara a stock", () => {
     const elements = await prisma.lampElement.findMany({ where: { lampId: source.lampId }, orderBy: { label: "asc" } });
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[0]!.id] });
-    await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[1]!.id] });
+    unwrap(await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[0]!.id] }));
+    unwrap(await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[1]!.id] }));
 
     const inPool = await prisma.lamp.findMany({ where: { projectId: poolId }, include: { elements: true } });
     expect(inPool.map((l) => l.name).sort()).toEqual(["Lámpara A (stock ×1)", "Lámpara A (stock ×1) (2)"]);
@@ -323,8 +326,8 @@ describe("devolver una lámpara a stock", () => {
     expect((await lampState(source.lampId)).projectId).toBe(source.projectId);
 
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: source.lampId });
-    await expect(returnLampToStock({ lampId: source.lampId })).rejects.toThrow(/ya está en el pool/);
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
+    expect(expectFail(await returnLampToStock({ lampId: source.lampId }))).toMatch(/ya está en el pool/);
   });
 });
 
@@ -332,7 +335,7 @@ describe("asignar una lámpara de stock a un proyecto", () => {
   async function returnedLamp() {
     const source = await createPlannableLamp(world, { name: "Hotel Origen" });
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: source.lampId });
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
     return source;
   }
 
@@ -340,11 +343,13 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     const source = await returnedLamp();
     const target = await newProject("Hotel Destino");
 
-    const result = await assignLampFromStockToProject({
-      lampId: source.lampId,
-      targetProjectId: target.id,
-      newName: "  Lámpara Hall  ",
-    });
+    const result = unwrap(
+      await assignLampFromStockToProject({
+        lampId: source.lampId,
+        targetProjectId: target.id,
+        newName: "  Lámpara Hall  ",
+      }),
+    );
     expect(result).toEqual({ id: source.lampId, projectId: target.id });
 
     const lamp = await expectTasksFollowLamp(source.lampId);
@@ -366,10 +371,10 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     const source = await createPlannableLamp(world, { name: "Hotel Origen" });
     expect((await lampState(source.lampId)).isApprovedForPlanning).toBe(true);
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: source.lampId });
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
     const target = await newProject("Hotel Destino");
 
-    await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.id });
+    unwrap(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.id }));
 
     expect((await lampState(source.lampId)).isApprovedForPlanning).toBe(false);
     const project = await prisma.project.findUniqueOrThrow({ where: { id: target.id } });
@@ -381,9 +386,9 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     const target = await createPlannableLamp(world, { name: "Hotel Destino" });
     const source = await createPlannableLamp(world, { name: "Hotel Origen" });
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: source.lampId });
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
 
-    await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId, newName: "Otra" });
+    unwrap(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId, newName: "Otra" }));
 
     // El destino estaba en producción; la lámpara recibida (sin aprobar) lo deja en aprobación parcial.
     const project = await prisma.project.findUniqueOrThrow({ where: { id: target.projectId } });
@@ -407,7 +412,7 @@ describe("asignar una lámpara de stock a un proyecto", () => {
 
     // Ciclo completo: el admin la aprueba en el destino y el planning la incluye sin pedir OT nuevas.
     await loginAs(world.users.admin.email);
-    await setLampApprovedForPlanning({ lampId: source.lampId, isApprovedForPlanning: true });
+    unwrap(await setLampApprovedForPlanning({ lampId: source.lampId, isApprovedForPlanning: true }));
     const result = await generatePlanning({ naveId: world.naves.n1.id, weekStart: WEEK, planFrom: "WEEK_START" });
     expect(result.unscheduledHours).toBe(0);
     const plannedTaskIds = new Set((await prisma.planningAssignment.findMany()).map((a) => a.taskId));
@@ -420,9 +425,9 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     // El admin borra la OT de pintura del destino: solo quedan las de CNC y ensamblaje.
     unwrap(await deleteWorkOrder({ id: target.workOrderIdByProcess.PINTURA! }));
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: source.lampId });
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
 
-    await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId, newName: "Otra" });
+    unwrap(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId, newName: "Otra" }));
 
     const tasks = await prisma.task.findMany({ where: { lampId: source.lampId } });
     const byProcess = Object.fromEntries(tasks.map((t) => [t.process, t.workOrderId]));
@@ -446,15 +451,15 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     const target = await createPlannableLamp(world, { name: "Hotel Destino" }); // ya tiene «Lámpara A»
     await loginAs(world.users.jefe.email);
     const inactive = await newProject("Cerrado");
-    await toggleProjectActive({ projectId: inactive.id, isActive: false });
+    unwrap(await toggleProjectActive({ projectId: inactive.id, isActive: false }));
 
-    await expect(
-      assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId }),
-    ).rejects.toThrow(/Ya existe una lámpara/);
-    await expect(
-      assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: inactive.id }),
-    ).rejects.toThrow(/Proyecto destino no encontrado/);
-    await expect(assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: poolId })).rejects.toThrow(
+    expect(
+      expectFail(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.projectId })),
+    ).toMatch(/Ya existe una lámpara/);
+    expect(
+      expectFail(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: inactive.id })),
+    ).toMatch(/Proyecto destino no encontrado/);
+    expect(expectFail(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: poolId }))).toMatch(
       /pool interno/,
     );
 
@@ -468,20 +473,20 @@ describe("asignar una lámpara de stock a un proyecto", () => {
     const inProject = await createPlannableLamp(world, { name: "Hotel X" });
     await loginAs(world.users.jefe.email);
     const target = await newProject("Hotel Destino");
-    await expect(
-      assignLampFromStockToProject({ lampId: inProject.lampId, targetProjectId: target.id }),
-    ).rejects.toThrow(/no pertenece al pool/);
+    expect(
+      expectFail(await assignLampFromStockToProject({ lampId: inProject.lampId, targetProjectId: target.id })),
+    ).toMatch(/no pertenece al pool/);
 
-    const { id } = await createStockBatch({ name: "Lote", elements: telaElements() });
-    await assignLampFromStockToProject({ lampId: id, targetProjectId: target.id });
-    await expect(assignLampFromStockToProject({ lampId: id, targetProjectId: target.id })).rejects.toThrow(
+    const { id } = unwrap(await createStockBatch({ name: "Lote", elements: telaElements() }));
+    unwrap(await assignLampFromStockToProject({ lampId: id, targetProjectId: target.id }));
+    expect(expectFail(await assignLampFromStockToProject({ lampId: id, targetProjectId: target.id }))).toMatch(
       /no pertenece al pool/,
     );
   });
 
   it("un operario no puede asignar stock", async () => {
     await loginAs(world.users.jefe.email);
-    const { id } = await createStockBatch({ name: "Lote", elements: telaElements() });
+    const { id } = unwrap(await createStockBatch({ name: "Lote", elements: telaElements() }));
     const target = await newProject("Hotel Destino");
     await loginAs(world.users.ana.email);
     await expect(assignLampFromStockToProject({ lampId: id, targetProjectId: target.id })).rejects.toThrow(
@@ -494,12 +499,12 @@ describe("asignar una lámpara de stock a un proyecto", () => {
 describe("eliminar una lámpara de stock", () => {
   it("borra lámpara, unidades y tareas, y las OT que solo tenían esas tareas", async () => {
     await loginAs(world.users.admin.email);
-    const { id } = await createStockBatch({ name: "Lote", elements: telaElements(2) });
+    const { id } = unwrap(await createStockBatch({ name: "Lote", elements: telaElements(2) }));
     // Las tareas del pool también se agrupan en OT (el pool es un proyecto activo).
     unwrap(await autoGroupIdenticalTasks());
     expect(await prisma.workOrder.count()).toBe(3);
 
-    await deleteStockLamp({ lampId: id });
+    unwrap(await deleteStockLamp({ lampId: id }));
 
     expect(await prisma.lamp.count({ where: { id } })).toBe(0);
     expect(await prisma.lampElement.count()).toBe(0);
@@ -509,7 +514,7 @@ describe("eliminar una lámpara de stock", () => {
 
   it("no deja borrar si hay horas fichadas en sus tareas", async () => {
     await loginAs(world.users.admin.email);
-    const { id } = await createStockBatch({ name: "Lote", elements: telaElements() });
+    const { id } = unwrap(await createStockBatch({ name: "Lote", elements: telaElements() }));
     unwrap(await autoGroupIdenticalTasks());
     const cnc = await prisma.task.findFirstOrThrow({ where: { lampId: id, process: "CNC" } });
 
@@ -528,7 +533,7 @@ describe("eliminar una lámpara de stock", () => {
     await loginAs(world.users.jefe.email);
     const [listed] = await listStockLamps();
     expect(listed!.canHardDelete).toBe(false);
-    await expect(deleteStockLamp({ lampId: id })).rejects.toThrow(/horas registradas/);
+    expect(expectFail(await deleteStockLamp({ lampId: id }))).toMatch(/horas registradas/);
     expect(await prisma.task.count({ where: { lampId: id } })).toBe(3);
     expect(await prisma.timeEntry.count()).toBe(1);
   });
@@ -536,10 +541,10 @@ describe("eliminar una lámpara de stock", () => {
   it("solo borra lámparas del pool", async () => {
     const inProject = await createPlannableLamp(world);
     await loginAs(world.users.jefe.email);
-    await expect(deleteStockLamp({ lampId: inProject.lampId })).rejects.toThrow(/no pertenece al pool/);
+    expect(expectFail(await deleteStockLamp({ lampId: inProject.lampId }))).toMatch(/no pertenece al pool/);
     expect(await prisma.lamp.count({ where: { id: inProject.lampId } })).toBe(1);
 
-    const { id } = await createStockBatch({ name: "Lote", elements: telaElements() });
+    const { id } = unwrap(await createStockBatch({ name: "Lote", elements: telaElements() }));
     await loginAs(world.users.ana.email);
     await expect(deleteStockLamp({ lampId: id })).rejects.toThrow(/NEXT_REDIRECT/);
     expect(await prisma.lamp.count({ where: { id } })).toBe(1);
@@ -551,7 +556,7 @@ describe("stock y planning", () => {
     const kept = await createPlannableLamp(world, { name: "Hotel A" });
     const returned = await createPlannableLamp(world, { name: "Hotel B" });
     await loginAs(world.users.jefe.email);
-    await returnLampToStock({ lampId: returned.lampId, confirmClearPlanning: true });
+    unwrap(await returnLampToStock({ lampId: returned.lampId, confirmClearPlanning: true }));
 
     const result = await generatePlanning({ naveId: world.naves.n1.id, weekStart: WEEK, planFrom: "WEEK_START" });
 
@@ -593,12 +598,12 @@ describe("los fichajes siguen a sus tareas al mover lámparas", () => {
     await logHours(source.tasks.find((t) => t.process === "CNC")!, 2);
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: source.lampId });
+    unwrap(await returnLampToStock({ lampId: source.lampId }));
     const [inStock] = await expectEntriesMatchTasks();
     expect(inStock!.projectId).toBe(poolId);
 
     const target = await newProject("Hotel Destino");
-    await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.id });
+    unwrap(await assignLampFromStockToProject({ lampId: source.lampId, targetProjectId: target.id }));
     const [assigned] = await expectEntriesMatchTasks();
     expect(assigned!.projectId).toBe(target.id);
     expect(await prisma.timeEntry.count({ where: { projectId: source.projectId } })).toBe(0);
@@ -613,7 +618,7 @@ describe("los fichajes siguen a sus tareas al mover lámparas", () => {
     await logHours(cncOf(elements[1]!.id), 3);
     await loginAs(world.users.jefe.email);
 
-    await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[1]!.id] });
+    unwrap(await returnLampToStock({ lampId: source.lampId, lampElementIds: [elements[1]!.id] }));
 
     const entries = await expectEntriesMatchTasks();
     const kept = entries.find((e) => e.taskId === cncOf(elements[0]!.id).id)!;

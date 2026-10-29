@@ -31,7 +31,7 @@ import {
   scanAttendanceIncidents,
   scanProjectSlipping,
 } from "@/features/notifications/worker";
-import { buildWorld, createPlannableLamp, loginAs, unwrap, type World } from "@/test/integration/world";
+import { buildWorld, createPlannableLamp, expectFail, loginAs, unwrap, type World } from "@/test/integration/world";
 
 const DAY_MS = 86_400_000;
 const WEEK = getMondayOf(new Date(Date.now() + 14 * DAY_MS));
@@ -74,19 +74,23 @@ async function dayHours(personId: string, isoWeekday: number) {
 /** Lámpara aprobada y agrupada en OT con proyecto propio (entrega y responsable opcionales). */
 async function lampWithProject(opts: { name: string; deliveryDate?: string; responsibleUserId?: string; surfaceM2?: number }) {
   await loginAs(world.users.admin.email);
-  const project = await createProject({
-    name: opts.name,
-    kind: ProjectKind.PRODUCCION,
-    isBillable: true,
-    deliveryDate: opts.deliveryDate,
-    responsibleUserId: opts.responsibleUserId,
-  });
-  const lamp = await createLamp({
-    projectId: project.id,
-    name: "Lámpara",
-    elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: opts.surfaceM2 ?? 2, units: 1 }],
-  });
-  await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true });
+  const project = unwrap(
+    await createProject({
+      name: opts.name,
+      kind: ProjectKind.PRODUCCION,
+      isBillable: true,
+      deliveryDate: opts.deliveryDate,
+      responsibleUserId: opts.responsibleUserId,
+    }),
+  );
+  const lamp = unwrap(
+    await createLamp({
+      projectId: project.id,
+      name: "Lámpara",
+      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: opts.surfaceM2 ?? 2, units: 1 }],
+    }),
+  );
+  unwrap(await setLampApprovedForPlanning({ lampId: lamp.id, isApprovedForPlanning: true }));
   unwrap(await autoGroupIdenticalTasks());
   return prisma.project.findUniqueOrThrow({ where: { id: project.id } });
 }
@@ -209,20 +213,24 @@ describe("al publicar el planning", () => {
 describe("preferencias de notificación", () => {
   it("respeta los canales configurados por usuario", async () => {
     await loginAs(world.users.admin.email);
-    await updateNotificationSubscription({
-      userId: world.users.jefe.id,
-      type: NotificationType.PLAN_PUBLISHED_LOW_OCCUPATION,
-      inApp: false,
-      email: false,
-      push: false,
-    });
-    await updateNotificationSubscription({
-      userId: world.users.admin.id,
-      type: NotificationType.PLAN_PUBLISHED_LOW_OCCUPATION,
-      inApp: true,
-      email: false,
-      push: false,
-    });
+    unwrap(
+      await updateNotificationSubscription({
+        userId: world.users.jefe.id,
+        type: NotificationType.PLAN_PUBLISHED_LOW_OCCUPATION,
+        inApp: false,
+        email: false,
+        push: false,
+      }),
+    );
+    unwrap(
+      await updateNotificationSubscription({
+        userId: world.users.admin.id,
+        type: NotificationType.PLAN_PUBLISHED_LOW_OCCUPATION,
+        inApp: true,
+        email: false,
+        push: false,
+      }),
+    );
 
     await createPlannableLamp(world);
     await plan();
@@ -244,7 +252,7 @@ describe("preferencias de notificación", () => {
     await expect(updateNotificationSubscription({ ...input, userId: world.users.jefe.id })).rejects.toThrow(/NEXT_REDIRECT/);
 
     await loginAs(world.users.admin.email);
-    await expect(updateNotificationSubscription({ ...input, userId: world.users.ana.id })).rejects.toThrow(
+    expect(expectFail(await updateNotificationSubscription({ ...input, userId: world.users.ana.id }))).toMatch(
       /administradores o jefes/,
     );
     expect(await prisma.notificationSubscription.count()).toBe(0);
@@ -270,27 +278,27 @@ describe("leídas / no leídas", () => {
     const { adminRows } = await publishedWorld();
 
     await loginAs(world.users.jefe.email);
-    await markNotificationRead({ notificationId: adminRows[0]!.id });
+    unwrap(await markNotificationRead({ notificationId: adminRows[0]!.id }));
     expect(await readState(world.users.admin.id)).toEqual([false, false]);
 
-    await markAllNotificationsRead();
+    unwrap(await markAllNotificationsRead());
     expect(await readState(world.users.jefe.id)).toEqual([true, true]);
     expect(await readState(world.users.admin.id)).toEqual([false, false]);
 
     await loginAs(world.users.admin.email);
-    await markNotificationRead({ notificationId: adminRows[0]!.id });
+    unwrap(await markNotificationRead({ notificationId: adminRows[0]!.id }));
     const first = await prisma.notification.findUniqueOrThrow({ where: { id: adminRows[0]!.id } });
     expect(first.readAt).not.toBeNull();
 
     // Marcar otra vez como leída no cambia la fecha de lectura.
-    await markNotificationRead({ notificationId: adminRows[0]!.id });
+    unwrap(await markNotificationRead({ notificationId: adminRows[0]!.id }));
     expect((await prisma.notification.findUniqueOrThrow({ where: { id: adminRows[0]!.id } })).readAt).toEqual(first.readAt);
 
-    await markNotificationUnread({ notificationId: adminRows[0]!.id });
+    unwrap(await markNotificationUnread({ notificationId: adminRows[0]!.id }));
     expect(await readState(world.users.admin.id)).toEqual([false, false]);
 
     await loginAs(world.users.admin.email);
-    await markAllNotificationsUnread({ filter: "all" });
+    unwrap(await markAllNotificationsUnread({ filter: "all" }));
     expect(await readState(world.users.jefe.id)).toEqual([true, true]);
   }, 120_000);
 });
@@ -435,14 +443,16 @@ describe("worker: proyecto que se alarga", () => {
 
     // Con la entrega movida a después del plan, el aviso deja de estar activo.
     await loginAs(world.users.admin.email);
-    await updateProject({
-      projectId: project.id,
-      name: project.name,
-      kind: project.kind,
-      isBillable: project.isBillable,
-      deliveryDate: dayIso(60),
-      responsibleUserId: world.users.ana.id,
-    });
+    unwrap(
+      await updateProject({
+        projectId: project.id,
+        name: project.name,
+        kind: project.kind,
+        isBillable: project.isBillable,
+        deliveryDate: dayIso(60),
+        responsibleUserId: world.users.ana.id,
+      }),
+    );
     await scanProjectSlipping();
     const states = await prisma.notificationState.findMany({ where: { type: NotificationType.PROJECT_SLIPPING } });
     expect(states).toHaveLength(3);
@@ -451,14 +461,16 @@ describe("worker: proyecto que se alarga", () => {
 
     // Se vuelve a retrasar: es una ocurrencia nueva y se avisa otra vez (aviso y email nuevos)…
     await loginAs(world.users.admin.email);
-    await updateProject({
-      projectId: project.id,
-      name: project.name,
-      kind: project.kind,
-      isBillable: project.isBillable,
-      deliveryDate: dayIso(-3),
-      responsibleUserId: world.users.ana.id,
-    });
+    unwrap(
+      await updateProject({
+        projectId: project.id,
+        name: project.name,
+        kind: project.kind,
+        isBillable: project.isBillable,
+        deliveryDate: dayIso(-3),
+        responsibleUserId: world.users.ana.id,
+      }),
+    );
     await scanProjectSlipping();
     // …pero mientras siga activo, no se repite.
     await scanProjectSlipping();

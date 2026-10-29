@@ -15,7 +15,7 @@ import {
 } from "./dashboard-nav-config";
 import { DashboardBrand } from "./dashboard-nav";
 import { DashboardUserMenu } from "./dashboard-user-menu";
-import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-queries";
 
 interface DashboardTopNavProps {
   user: { id: string; name: string; role: string; email: string };

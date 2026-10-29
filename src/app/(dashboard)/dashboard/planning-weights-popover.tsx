@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useState, useTransition, useEffect } from "react";
 import { SlidersHorizontal, Loader2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -67,20 +66,21 @@ export function PlanningWeightsPopover({
 
   const onSave = () => {
     startTransition(async () => {
-      try {
-        await Promise.all([
-          savePlanningWeightsAction(advancedWeights),
-          saveNonlinearDeadlineSettingsAction({
-            globalDeadlineBoost,
-            deadlineCurveExponent,
-            overduePenaltyMultiplier,
-          }),
-        ]);
-        toast.success("Ajustes globales guardados");
-        setOpen(false);
-      } catch (err) {
-        toast.error(reportMutationError("No se pudieron guardar", err));
+      const results = await Promise.all([
+        savePlanningWeightsAction(advancedWeights),
+        saveNonlinearDeadlineSettingsAction({
+          globalDeadlineBoost,
+          deadlineCurveExponent,
+          overduePenaltyMultiplier,
+        }),
+      ]);
+      const failed = results.find((r) => !r.ok);
+      if (failed && !failed.ok) {
+        toast.error(`No se pudieron guardar: ${failed.error}`);
+        return;
       }
+      toast.success("Ajustes globales guardados");
+      setOpen(false);
     });
   };
 

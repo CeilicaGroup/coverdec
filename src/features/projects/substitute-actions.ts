@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
-import { runAuditedMutation } from "@/lib/server-action";
+import { runServerAction } from "@/lib/server-action";
+import type { ActionResult } from "@/lib/action-result";
 import { Role } from "@/generated/prisma";
 import { assertPersonSharesNave, assertTaskSubstitutable } from "./task-substitute";
 import { revalidateLampSurfaces } from "./revalidate-surfaces";
@@ -50,8 +51,8 @@ const addSchema = z.object({
   personId: z.string().min(1),
 });
 
-export async function addTaskSubstitute(input: z.infer<typeof addSchema>): Promise<void> {
-  return runAuditedMutation(
+export async function addTaskSubstitute(input: z.infer<typeof addSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "projects.addTaskSubstitute",
     async () => {
       const ctx = await requireDashboardContext();
@@ -84,8 +85,8 @@ const removeSchema = z.object({
   personId: z.string().min(1),
 });
 
-export async function removeTaskSubstitute(input: z.infer<typeof removeSchema>): Promise<void> {
-  return runAuditedMutation(
+export async function removeTaskSubstitute(input: z.infer<typeof removeSchema>): Promise<ActionResult<void>> {
+  return runServerAction(
     "projects.removeTaskSubstitute",
     async () => {
       const ctx = await requireDashboardContext();

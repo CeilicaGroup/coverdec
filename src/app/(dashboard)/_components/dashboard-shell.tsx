@@ -7,7 +7,7 @@ import { DashboardBrand, DashboardNav } from "./dashboard-nav";
 import { DashboardTopNav } from "./dashboard-top-nav";
 import { DashboardUserMenu } from "./dashboard-user-menu";
 import type { PlanningViewMode } from "@/features/planning/planning-visibility";
-import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-actions";
+import type { DevSwitcherUserRow } from "@/features/dev/user-switcher-queries";
 
 interface NaveSummary {
   id: string;

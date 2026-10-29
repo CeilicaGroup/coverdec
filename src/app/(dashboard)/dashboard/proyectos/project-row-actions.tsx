@@ -10,17 +10,16 @@ import {
   toggleProjectActive,
   toggleProjectWarehouse,
 } from "@/features/projects/actions";
-import { getErrorMessage } from "@/lib/error-message";
 import {
   EditProjectDialog,
   type EditableProject,
 } from "./edit-project-dialog";
 
-function formatActionError(err: unknown): string {
-  if (err instanceof Error && err.message.startsWith("ARCHIVE_ONLY:")) {
-    return err.message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
+function formatActionError(message: string): string {
+  if (message.startsWith("ARCHIVE_ONLY:")) {
+    return message.replace(/^ARCHIVE_ONLY:\s*/, "").trim();
   }
-  return getErrorMessage(err);
+  return message;
 }
 
 export function ProjectRowActions({
@@ -40,27 +39,27 @@ export function ProjectRowActions({
 
   function onArchiveToggle() {
     startTransition(async () => {
-      try {
-        await toggleProjectActive({ projectId, isActive: !isActive });
-        toast.success(isActive ? "Proyecto archivado" : "Proyecto reactivado");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const r = await toggleProjectActive({ projectId, isActive: !isActive });
+      if (!r.ok) {
+        toast.error(formatActionError(r.error));
+        return;
       }
+      toast.success(isActive ? "Proyecto archivado" : "Proyecto reactivado");
+      router.refresh();
     });
   }
 
   function onWarehouseToggle() {
     startTransition(async () => {
-      try {
-        await toggleProjectWarehouse({ projectId, isInWarehouse: !isInWarehouse });
-        toast.success(
-          isInWarehouse ? "Proyecto vuelto a producción" : "Proyecto movido a almacén",
-        );
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const r = await toggleProjectWarehouse({ projectId, isInWarehouse: !isInWarehouse });
+      if (!r.ok) {
+        toast.error(formatActionError(r.error));
+        return;
       }
+      toast.success(
+        isInWarehouse ? "Proyecto vuelto a producción" : "Proyecto movido a almacén",
+      );
+      router.refresh();
     });
   }
 
@@ -79,13 +78,13 @@ export function ProjectRowActions({
       return;
     }
     startTransition(async () => {
-      try {
-        await deleteProject({ projectId });
-        toast.success("Proyecto eliminado");
-        router.refresh();
-      } catch (e) {
-        toast.error(formatActionError(e));
+      const r = await deleteProject({ projectId });
+      if (!r.ok) {
+        toast.error(formatActionError(r.error));
+        return;
       }
+      toast.success("Proyecto eliminado");
+      router.refresh();
     });
   }
 

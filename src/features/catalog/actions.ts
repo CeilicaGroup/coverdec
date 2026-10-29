@@ -8,7 +8,7 @@ import { ElementTypology, Role } from "@/generated/prisma";
 import { PROCESS_CODE_PATTERN } from "@/types/process";
 import { getFallbackNaveId } from "@/features/projects/task-nave";
 import type { ActionResult } from "@/lib/action-result";
-import { runServerAction } from "@/lib/server-action";
+import { runServerAction, runServerQuery } from "@/lib/server-action";
 import { parseUploadedImageBuffer } from "@/lib/image-upload";
 
 const processRowSchema = z.object({
@@ -587,11 +587,13 @@ const processCodeSchema = z.object({
 
 export async function getProcessDefinitionUsage(
   input: z.infer<typeof processCodeSchema>,
-): Promise<ProcessDefinitionUsage> {
-  const ctx = await requireDashboardContext();
-  requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
-  const data = processCodeSchema.parse(input);
-  return loadProcessDefinitionUsage(data.code);
+): Promise<ActionResult<ProcessDefinitionUsage>> {
+  return runServerQuery("catalog.getProcessDefinitionUsage", async () => {
+    const ctx = await requireDashboardContext();
+    requireRole(ctx, [Role.ADMIN, Role.JEFE_PRODUCCION]);
+    const data = processCodeSchema.parse(input);
+    return loadProcessDefinitionUsage(data.code);
+  });
 }
 
 const deleteProcessSchema = z.object({

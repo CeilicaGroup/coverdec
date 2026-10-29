@@ -1,6 +1,5 @@
 "use client";
 
-import { reportMutationError } from "@/lib/mutation-error";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -166,13 +165,13 @@ export function ProjectExtrasPanel({
                           }
                           onClick={() => {
                             startTransition(async () => {
-                              try {
-                                await deleteTask({ taskId: task.id });
-                                toast.success("Proceso eliminado");
-                                router.refresh();
-                              } catch (err) {
-                                toast.error(reportMutationError("Error", err));
+                              const r = await deleteTask({ taskId: task.id });
+                              if (!r.ok) {
+                                toast.error(r.error);
+                                return;
                               }
+                              toast.success("Proceso eliminado");
+                              router.refresh();
                             });
                           }}
                         >
@@ -211,19 +210,19 @@ export function ProjectExtrasPanel({
                 return;
               }
               startTransition(async () => {
-                try {
-                  await addExtraProjectTask({
-                    projectId,
-                    process,
-                    estimatedHours: h,
-                    ...(naveId ? { naveId } : {}),
-                  });
-                  toast.success("Proceso añadido al proyecto");
-                  setOpen(false);
-                  router.refresh();
-                } catch (err) {
-                  toast.error(reportMutationError("Error", err));
+                const r = await addExtraProjectTask({
+                  projectId,
+                  process,
+                  estimatedHours: h,
+                  ...(naveId ? { naveId } : {}),
+                });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return;
                 }
+                toast.success("Proceso añadido al proyecto");
+                setOpen(false);
+                router.refresh();
               });
             }}
           >

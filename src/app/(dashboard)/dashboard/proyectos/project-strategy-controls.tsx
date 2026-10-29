@@ -89,12 +89,12 @@ export function ProjectStrategyControls({
     setDeadlineBoost(next.deadlineBoost);
 
     startTransition(async () => {
-      try {
-        await applyProjectPlanningPreset({ projectId, preset: nextPreset });
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo aplicar el preset");
+      const r = await applyProjectPlanningPreset({ projectId, preset: nextPreset });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
       }
+      router.refresh();
     });
   };
 
@@ -104,21 +104,21 @@ export function ProjectStrategyControls({
       return;
     }
     startTransition(async () => {
-      try {
-        await updateProjectPlanningStrategy({
-          projectId,
-          strategy: {
-            preset,
-            costPriority,
-            stability,
-            deadlineBoost,
-          },
-        });
-        toast.success("Estrategia del proyecto guardada");
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar");
+      const r = await updateProjectPlanningStrategy({
+        projectId,
+        strategy: {
+          preset,
+          costPriority,
+          stability,
+          deadlineBoost,
+        },
+      });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
       }
+      toast.success("Estrategia del proyecto guardada");
+      router.refresh();
     });
   };
 
@@ -200,14 +200,14 @@ export function GlobalProjectPresetControl() {
 
   const onApply = () => {
     startTransition(async () => {
-      try {
-        const result = await applyGlobalPlanningPresetToActiveProjects({ preset });
-        toast.success(`Preset aplicado a ${result.updatedCount} proyectos`);
-        setOpen(false);
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo aplicar el preset");
+      const result = await applyGlobalPlanningPresetToActiveProjects({ preset });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(`Preset aplicado a ${result.data.updatedCount} proyectos`);
+      setOpen(false);
+      router.refresh();
     });
   };
 

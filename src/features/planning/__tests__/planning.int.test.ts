@@ -172,13 +172,15 @@ describe("requisitos para planificar", () => {
   /** Oficina da de alta otra lámpara y aún no la agrupa en OT. */
   async function newLampWithoutWorkOrder(approve: boolean) {
     await loginAs(world.users.admin.email);
-    const project = await createProject({ name: "Otro", kind: ProjectKind.PRODUCCION, isBillable: true });
-    const l = await createLamp({
-      projectId: project.id,
-      name: "B",
-      elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 1, units: 1 }],
-    });
-    if (approve) await setLampApprovedForPlanning({ lampId: l.id, isApprovedForPlanning: true });
+    const project = unwrap(await createProject({ name: "Otro", kind: ProjectKind.PRODUCCION, isBillable: true }));
+    const l = unwrap(
+      await createLamp({
+        projectId: project.id,
+        name: "B",
+        elements: [{ typology: ElementTypology.TELA, elementTypeId: world.tela.id, surfaceM2: 1, units: 1 }],
+      }),
+    );
+    if (approve) unwrap(await setLampApprovedForPlanning({ lampId: l.id, isApprovedForPlanning: true }));
     return l;
   }
 
@@ -198,7 +200,7 @@ describe("requisitos para planificar", () => {
 
   it("si nada está aprobado, el error explica que faltan aprobaciones", async () => {
     await loginAs(world.users.admin.email);
-    await setLampApprovedForPlanning({ lampId: lamp.lampId, isApprovedForPlanning: false });
+    unwrap(await setLampApprovedForPlanning({ lampId: lamp.lampId, isApprovedForPlanning: false }));
     await expect(plan()).rejects.toThrow(/pendiente de aprobación/);
     expect(await prisma.planning.count()).toBe(0);
   });
