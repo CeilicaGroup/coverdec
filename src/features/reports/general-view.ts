@@ -41,7 +41,7 @@ export interface GeneralViewTotals {
   planHours: number;
   realHours: number;
   pendingHours: number;
-  /** (real − plan) / plan × 100; null si no hay plan. Mismo signo que «Tiempos por proceso». */
+  /** (real − plan) / plan × 100; null si no hay plan o no hay fichajes. Mismo signo que «Tiempos por proceso». */
   deviationPct: number | null;
   /** Avance acreditado (tarea completada = 100 % de su plan), 0–100. */
   progressPct: number;
@@ -75,8 +75,11 @@ function buildTotals(planHours: number, realHours: number, creditedHours: number
   return {
     planHours,
     realHours,
-    pendingHours: Math.max(0, planHours - realHours),
-    deviationPct: planHours > 1e-6 ? ((realHours - planHours) / planHours) * 100 : null,
+    // Pendiente sobre lo acreditado: una tarea terminada no deja horas pendientes.
+    pendingHours: Math.max(0, planHours - creditedHours),
+    // Sin fichajes no hay desviación que medir (p. ej. históricos sin hoja de horas).
+    deviationPct:
+      planHours > 1e-6 && realHours > 0 ? ((realHours - planHours) / planHours) * 100 : null,
     progressPct:
       planHours > 1e-6 ? Math.min(100, (creditedHours / planHours) * 100) : creditedHours > 0 ? 100 : 0,
   };
@@ -195,7 +198,11 @@ export async function loadGeneralView(filters: GeneralViewFilters): Promise<Gene
     where: {
       ...(filters.naveScope !== null ? { naveId: { in: filters.naveScope } } : {}),
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
-      project: { isActive: true, kind: { notIn: ["STOCK", "IMPREVISTAS"] } },
+      // Con terminados también entran los archivados: el histórico del Excel vive ahí.
+      project: {
+        ...(filters.includeFinished ? {} : { isActive: true }),
+        kind: { notIn: ["STOCK", "IMPREVISTAS"] },
+      },
     },
     select: {
       id: true,
@@ -257,9 +264,14 @@ export async function loadGeneralView(filters: GeneralViewFilters): Promise<Gene
 }
 
 /** Proyectos para el filtro de la vista General. */
-export async function listGeneralViewProjectOptions(): Promise<{ id: string; name: string }[]> {
+export async function listGeneralViewProjectOptions(
+  includeArchived: boolean,
+): Promise<{ id: string; name: string }[]> {
   return prisma.project.findMany({
-    where: { isActive: true, kind: { notIn: ["STOCK", "IMPREVISTAS"] } },
+    where: {
+      ...(includeArchived ? {} : { isActive: true }),
+      kind: { notIn: ["STOCK", "IMPREVISTAS"] },
+    },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });

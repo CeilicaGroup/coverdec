@@ -51,7 +51,7 @@ export default async function ProyectosGeneralPage({
       projectId: params.projectId || undefined,
       includeFinished,
     }),
-    listGeneralViewProjectOptions(),
+    listGeneralViewProjectOptions(includeFinished),
     getProcessBadgeStylesByCode(),
   ]);
 
@@ -91,7 +91,7 @@ export default async function ProyectosGeneralPage({
         </label>
         <label className="flex h-9 items-center gap-2 text-sm">
           <input type="checkbox" name="finished" value="1" defaultChecked={includeFinished} />
-          Incluir terminados
+          Incluir terminados y archivados
         </label>
         <button
           type="submit"

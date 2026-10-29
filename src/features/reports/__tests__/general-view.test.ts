@@ -38,13 +38,19 @@ describe("buildGeneralView", () => {
       units: 2,
       planHours: 20,
       realHours: 15,
-      pendingHours: 5,
+      pendingHours: 7, // t1 terminada no deja pendiente; t2 lleva 3 de 10
       deviationPct: -25,
       progressPct: 65, // completada acredita su plan (10) + 3 fichadas
       status: "EN_CURSO",
     });
-    expect(pintura).toMatchObject({ planHours: 5, realHours: 0, status: "PENDIENTE", progressPct: 0 });
-    expect(view.projects[0]!.totals).toMatchObject({ planHours: 25, realHours: 15, pendingHours: 10 });
+    expect(pintura).toMatchObject({
+      planHours: 5,
+      realHours: 0,
+      deviationPct: null, // sin fichajes no hay desviación
+      status: "PENDIENTE",
+      progressPct: 0,
+    });
+    expect(view.projects[0]!.totals).toMatchObject({ planHours: 25, realHours: 15, pendingHours: 12 });
   });
 
   it("marks fully completed processes as finished and handles zero plan", () => {
