@@ -53,6 +53,19 @@ describe("buildGeneralView", () => {
     expect(view.projects[0]!.totals).toMatchObject({ planHours: 25, realHours: 15, pendingHours: 12 });
   });
 
+  it("splits real hours into normal and extra per row and in totals", () => {
+    const view = buildGeneralView(
+      [task({ id: "t1" }), task({ id: "t2" })],
+      new Map([
+        ["t1", 9],
+        ["t2", 3],
+      ]),
+      new Map([["t1", 1]]),
+    );
+    expect(view.projects[0]!.rows[0]).toMatchObject({ realHours: 12, normalHours: 11, extraHours: 1 });
+    expect(view.totals).toMatchObject({ normalHours: 11, extraHours: 1 });
+  });
+
   it("marks fully completed processes as finished and handles zero plan", () => {
     const view = buildGeneralView(
       [task({ id: "t1", estimatedHours: 0, isCompleted: true })],

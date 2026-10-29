@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const COLUMN_COUNT = 12;
+const COLUMN_COUNT = 14;
 
 const STATUS_CLASS: Record<GeneralViewStatus, string> = {
   PENDIENTE: "text-muted-foreground",
@@ -114,6 +114,10 @@ export default async function ProyectosGeneralPage({
                 <TableHead>Proceso</TableHead>
                 <TableHead className="text-right">Plan</TableHead>
                 <TableHead className="text-right">Real</TableHead>
+                <TableHead className="text-right">Normal</TableHead>
+                <TableHead className="text-right" title="Lo que pasa de 8 h por persona y día">
+                  Extra
+                </TableHead>
                 <TableHead className="text-right">Pendiente</TableHead>
                 <TableHead className="text-right">Desviación</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
@@ -200,6 +204,15 @@ function TotalsCells({ totals }: { totals: GeneralViewTotals }) {
     <>
       <TableCell className="text-right font-mono text-xs">{formatHours(totals.planHours)}</TableCell>
       <TableCell className="text-right font-mono text-xs">{formatHours(totals.realHours)}</TableCell>
+      <TableCell className="text-right font-mono text-xs">{formatHours(totals.normalHours)}</TableCell>
+      <TableCell
+        className={cn(
+          "text-right font-mono text-xs",
+          totals.extraHours > 0 && "text-amber-700 dark:text-amber-400",
+        )}
+      >
+        {formatHours(totals.extraHours)}
+      </TableCell>
       <TableCell className="text-right font-mono text-xs">
         {formatHours(totals.pendingHours)}
       </TableCell>
