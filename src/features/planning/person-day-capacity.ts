@@ -55,6 +55,9 @@ export function computePersonDayCapacityHours(input: {
   const override = input.overrides.find(
     (o) => o.date.toISOString().slice(0, 10) === dateIso,
   );
+  // Fin de semana sin excepción ni horario propio: no trabaja (no hereda el viernes).
+  const isoDow = input.day.getUTCDay() === 0 ? 7 : input.day.getUTCDay();
+  if (!override && isoDow >= 6 && !input.weekly.some((d) => d.dayOfWeek === isoDow)) return 0;
   const quarters = contractQuartersForDay(
     isoWeekdayForSchedule(input.day),
     input.weekly,

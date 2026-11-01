@@ -31,6 +31,10 @@ import { getPlanningViewModeForContext } from "@/features/planning/planning-view
 import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
 import { getPlanningWeekMeta } from "@/features/planning/queries";
+import {
+  computePersonDayCapacityHours,
+  personScheduleContextFromPerson,
+} from "@/features/planning/person-day-capacity";
 
 export default async function CostesPage({
   searchParams,
@@ -53,6 +57,15 @@ export default async function CostesPage({
     getHolidaysForRange(weekMon, weekFri),
   ]);
   const workDays = Math.max(1, 5 - holidays.length);
+  // Sábado laborable: solo suma a quien lo trabaja (excepción de horario de ese sábado).
+  const weekSat = new Date(weekMon.getTime() + 5 * 86400000);
+  const saturdayHours = (person: (typeof people)[number]) =>
+    computePersonDayCapacityHours({
+      day: weekSat,
+      ...personScheduleContextFromPerson(person),
+      absenceHours: 0,
+      isHoliday: false,
+    });
 
   const byProject = new Map<
     string,
@@ -109,7 +122,7 @@ export default async function CostesPage({
     .map((p) => {
       const row = byPerson.get(p.id);
       const assignedHours = row?.hours ?? 0;
-      const availableHours = p.capacityHours * workDays;
+      const availableHours = p.capacityHours * workDays + saturdayHours(p);
       const rendimiento =
         availableHours > 0 ? (assignedHours / availableHours) * 100 : 0;
 

@@ -60,7 +60,7 @@ import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge
 import Link from "next/link";
 import { GenerateButton } from "./generate-button";
 import { SaturdayWorkButton } from "./saturday-work-button";
-import { loadSaturdayWork, saturdayOf } from "@/features/planning/saturday";
+import { loadSaturdayWork, saturdayOf, weekHasSaturday } from "@/features/planning/saturday";
 import { listActivePeopleForExecutorPicker } from "@/features/work-orders/queries";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
 import {
@@ -86,7 +86,7 @@ import { listCatalogTimeDeviations } from "@/features/time-tracking/catalog-time
 import { PlanningJobProvider } from "@/features/planning/use-planning-job-polling";
 import { PlanningJobBanner } from "./planning-job-banner";
 
-const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE"];
+const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 
 export default async function ResumenPage({
   searchParams,
@@ -99,7 +99,7 @@ export default async function ResumenPage({
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
   const currentWeekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
-  const days = weekDays(weekStart);
+  const days = weekDays(weekStart, (await weekHasSaturday(weekStart)) ? 6 : 5);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
 
@@ -112,8 +112,8 @@ export default async function ResumenPage({
     getPlanningWeekMetaAll({ weekStart }),
     getNavePersonnel(naveScope),
     getActiveProjectsWithLoad(naveScope),
-    getHolidaysForRange(days[0], days[4]),
-    getAbsencesForRange(days[0], days[4]),
+    getHolidaysForRange(days[0], days[days.length - 1]),
+    getAbsencesForRange(days[0], days[days.length - 1]),
     getPlanningWeights(ctx.naveId),
     getPlanningDeadlineSettings(ctx.naveId),
     getProcessBadgeStylesByCode(),
@@ -302,7 +302,7 @@ export default async function ResumenPage({
         <Kpi
           label="Capacidad equipo"
           value={`${formatHours(capacity.totalCapacity)}`}
-          sub={`${people.length} operarios × 5 días`}
+          sub={`${people.length} operarios × ${days.length} días`}
           icon={<Users className="size-4" />}
         />
         <Kpi
@@ -334,7 +334,7 @@ export default async function ResumenPage({
         />
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className={`grid gap-3 ${days.length === 6 ? "grid-cols-6" : "grid-cols-5"}`}>
         {days.map((day, idx) => {
           const dayKey = day.toISOString().slice(0, 10);
           const used = usedByDay.get(dayKey) ?? 0;

@@ -366,7 +366,12 @@ export async function scanAttendanceIncidents(): Promise<void> {
     }),
     prisma.person.findMany({
       where: { isActive: true, user: { isNot: null } },
-      select: { id: true, user: { select: { id: true } }, workWindows: true },
+      select: {
+        id: true,
+        user: { select: { id: true } },
+        workWindows: true,
+        scheduleOverrides: { where: { date: civilDay }, select: { windows: true } },
+      },
     }),
     prisma.holiday.findFirst({
       where: { startDate: { lte: civilDay }, endDate: { gte: civilDay } },
@@ -379,19 +384,25 @@ export async function scanAttendanceIncidents(): Promise<void> {
   ]);
 
   // "Día laborable sin fichaje" solo si hoy le toca trabajar y su jornada ya ha empezado:
-  // no en fin de semana, festivo ni ausencia de día completo (franjas en minutos de Madrid).
+  // no en festivo ni ausencia de día completo, ni en fin de semana salvo excepción de horario
+  // (sábado laborable). Franjas en minutos de Madrid.
   const weekday = madridIsoWeekday(now);
   const nowMinutes = madridMinutesOfDay(now);
   const fullDayAbsent = new Set(
     absencesToday.filter((a) => isFullDayAbsenceBlock(a)).map((a) => a.personId),
   );
   const workdayStarted = (person: (typeof people)[number]): boolean => {
-    if (holidayToday || weekday >= 6 || fullDayAbsent.has(person.id)) return false;
-    const today = buildWeeklyScheduleFromWorkWindows(person.workWindows).find(
-      (d) => d.dayOfWeek === weekday,
-    );
-    if (!today || today.windows.length === 0) return false;
-    return nowMinutes >= Math.min(...today.windows.map((w) => w.startMinutes));
+    if (holidayToday || fullDayAbsent.has(person.id)) return false;
+    const override = person.scheduleOverrides[0];
+    const windows = override
+      ? override.windows
+      : weekday >= 6
+        ? []
+        : (buildWeeklyScheduleFromWorkWindows(person.workWindows).find(
+            (d) => d.dayOfWeek === weekday,
+          )?.windows ?? []);
+    if (windows.length === 0) return false;
+    return nowMinutes >= Math.min(...windows.map((w) => w.startMinutes));
   };
 
   const sessionsByUser = new Map<string, typeof sessions>();

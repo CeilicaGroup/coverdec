@@ -59,4 +59,16 @@ describe("computePersonDayCapacityHours", () => {
       }),
     ).toBe(0);
   });
+
+  it("Saturday only counts with an override or its own weekly schedule", () => {
+    const saturday = new Date("2026-05-30T00:00:00.000Z");
+    const base = { day: saturday, weekly, absenceHours: 0, isHoliday: false };
+    expect(computePersonDayCapacityHours({ ...base, overrides: [] })).toBe(0);
+    expect(
+      computePersonDayCapacityHours({
+        ...base,
+        overrides: [{ date: saturday, windows: [{ startMinutes: 8 * 60, endMinutes: 14 * 60 }] }],
+      }),
+    ).toBe(6);
+  });
 });

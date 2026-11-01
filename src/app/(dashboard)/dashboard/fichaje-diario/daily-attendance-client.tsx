@@ -392,17 +392,16 @@ export function DailyAttendanceClient(props: {
     submitAttendanceRange(draft);
   }
 
-  const todayWeekday = (() => {
-    const d = new Date().getDay();
-    if (d === 0 || d === 6) return 5;
-    return d;
-  })();
+  const todayWeekday = new Date().getDay() || 7;
 
   const targetTodayMinutes = useMemo(() => {
     if (!visiblePerson) return 0;
-    const workMinutes = visiblePerson.workWindows
-      .filter((w) => w.dayOfWeek === todayWeekday)
-      .reduce((acc, w) => acc + Math.max(0, w.endMinutes - w.startMinutes), 0);
+    // La excepción de hoy manda (p. ej. sábado laborable); sin ella, el fin de semana no tiene objetivo.
+    const todayOverride = visiblePerson.scheduleOverrides.find((o) => o.dateIso === todayIso);
+    const workMinutes = (
+      todayOverride?.windows ??
+      visiblePerson.workWindows.filter((w) => w.dayOfWeek === todayWeekday)
+    ).reduce((acc, w) => acc + Math.max(0, w.endMinutes - w.startMinutes), 0);
     const absenceMinutes = props.absences
       .filter(
         (a) =>

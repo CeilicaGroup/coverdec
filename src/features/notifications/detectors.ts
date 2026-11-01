@@ -2,7 +2,7 @@ import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absenc
 import { scheduledHoursForPersonDay } from "@/features/people/absence-schedule";
 import { riskFromPlannedEnd } from "@/lib/format";
 import { expandHolidayRangesToIsoDays } from "@/lib/holidays";
-import { weekDays } from "@/lib/week";
+import { isSameUtcDay, weekDays } from "@/lib/week";
 import { NotificationType, Role, type Prisma } from "@/generated/prisma";
 
 export interface PlanningPublishAlert {
@@ -19,6 +19,7 @@ function computeCapacityForWeek(args: {
   people: {
     id: string;
     workWindows: { dayOfWeek: number; startMinutes: number; endMinutes: number }[];
+    scheduleOverrides: { date: Date; windows: { startMinutes: number; endMinutes: number }[] }[];
   }[];
   absences: {
     personId: string;
@@ -35,7 +36,13 @@ function computeCapacityForWeek(args: {
     const dayKey = day.toISOString().slice(0, 10);
     if (args.holidayDates.has(dayKey)) continue;
     for (const person of args.people) {
-      const dayCap = scheduledHoursForPersonDay(day, person.workWindows);
+      // La excepción del día manda (p. ej. sábado laborable); sin ella, el sábado no cuenta.
+      const override = person.scheduleOverrides.find((o) => isSameUtcDay(o.date, day));
+      const dayCap = override
+        ? override.windows.reduce((h, w) => h + Math.max(0, w.endMinutes - w.startMinutes) / 60, 0)
+        : day.getUTCDay() === 6
+          ? 0
+          : scheduledHoursForPersonDay(day, person.workWindows);
       const absenceHours = sumEffectiveAbsenceHoursForPersonOnDay(
         args.absences,
         person.id,
@@ -86,6 +93,10 @@ export async function detectPlanningPublishNotifications(
         workWindows: {
           select: { dayOfWeek: true, startMinutes: true, endMinutes: true },
         },
+        scheduleOverrides: {
+          where: { date: { gte: planning.weekStart, lte: planning.weekEnd } },
+          select: { date: true, windows: { select: { startMinutes: true, endMinutes: true } } },
+        },
       },
     }),
     tx.absence.findMany({
@@ -111,7 +122,7 @@ export async function detectPlanningPublishNotifications(
   ]);
 
   const holidayDates = expandHolidayRangesToIsoDays(holidays, planning.weekStart, planning.weekEnd);
-  const days = weekDays(planning.weekStart);
+  const days = weekDays(planning.weekStart, planning.weekEnd.getUTCDay() === 6 ? 6 : 5);
   const capacityHours = computeCapacityForWeek({
     days,
     people,

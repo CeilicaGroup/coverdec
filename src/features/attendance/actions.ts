@@ -71,10 +71,20 @@ async function emitOutsideWindowAlert(input: {
   // Las ventanas laborales son minutos de hora mural de Madrid.
   const weekday = madridIsoWeekday(input.timestamp);
   const minutes = madridMinutesOfDay(input.timestamp);
-  const windows = await prisma.personWorkWindow.findMany({
-    where: { personId: input.personId, dayOfWeek: weekday },
-    select: { startMinutes: true, endMinutes: true },
+  // La excepción del día manda (p. ej. sábado laborable) sobre el horario semanal.
+  const override = await prisma.personScheduleOverride.findFirst({
+    where: {
+      personId: input.personId,
+      date: new Date(`${madridDateIso(input.timestamp)}T00:00:00.000Z`),
+    },
+    select: { windows: { select: { startMinutes: true, endMinutes: true } } },
   });
+  const windows =
+    override?.windows ??
+    (await prisma.personWorkWindow.findMany({
+      where: { personId: input.personId, dayOfWeek: weekday },
+      select: { startMinutes: true, endMinutes: true },
+    }));
   if (windows.length === 0) return;
   const inside = windows.some((w) => minutes >= w.startMinutes && minutes < w.endMinutes);
   if (inside) return;

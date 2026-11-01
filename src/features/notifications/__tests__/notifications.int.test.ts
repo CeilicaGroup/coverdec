@@ -17,6 +17,7 @@ import { upsertNotificationSubscription } from "@/features/notifications/service
 import { createHoliday } from "@/features/holidays/actions";
 import { createManualEntry } from "@/features/time-tracking/actions";
 import { createManualAttendanceSession } from "@/features/attendance/actions";
+import { setSaturdayWork } from "@/features/planning/saturday-actions";
 import { madridWallTimeToInstant } from "@/features/attendance/madrid-time";
 import {
   markAllNotificationsRead,
@@ -626,5 +627,25 @@ describe("worker: incidencias de fichaje de presencia", () => {
     vi.setSystemTime(madrid(2, "12:00")); // miércoles: Ana de vacaciones
     await scanAttendanceIncidents();
     expect(new Set((await missing()).map(scopeOf))).toEqual(new Set([world.people.bea.id, world.people.carl.id]));
+  });
+
+  it("en sábado laborable avisa solo de quien lo trabaja y cuando empieza su horario", async () => {
+    await loginAs(world.users.jefe.email);
+    unwrap(
+      await setSaturdayWork({
+        dateIso: dayIso(5),
+        personIds: [world.people.ana.id],
+        startMinutes: 9 * 60,
+        endMinutes: 14 * 60,
+      }),
+    );
+
+    vi.useFakeTimers({ toFake: ["Date"], now: madrid(5, "08:30") }); // sábado, antes de su entrada
+    await scanAttendanceIncidents();
+    expect(await missing()).toHaveLength(0);
+
+    vi.setSystemTime(madrid(5, "09:30"));
+    await scanAttendanceIncidents();
+    expect(new Set((await missing()).map(scopeOf))).toEqual(new Set([world.people.ana.id]));
   });
 });

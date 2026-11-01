@@ -38,8 +38,9 @@ import { sumEffectiveAbsenceHoursForPersonOnDay } from "@/features/people/absenc
 import { getPlanningViewModeForContext } from "@/features/planning/planning-view-mode-server";
 import { resolvePlanningEmptyNotice } from "@/features/planning/planning-visibility";
 import { PlanningEmptyNotice } from "../../_components/planning-empty-notice";
+import { weekHasSaturday } from "@/features/planning/saturday";
 
-const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 function occupancyTone(used: number, cap: number): string {
   if (cap <= 0) return "bg-muted text-muted-foreground";
@@ -58,7 +59,7 @@ export default async function DisponibilidadPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  const days = weekDays(weekStart);
+  const days = weekDays(weekStart, (await weekHasSaturday(weekStart)) ? 6 : 5);
   const viewMode = await getPlanningViewModeForContext(ctx);
   const naveScope = naveScopeFromContext(ctx);
   const [planning, planningMeta, people, holidays, absences, actualEntries] =
@@ -66,8 +67,8 @@ export default async function DisponibilidadPage({
       getPlanningForWeek({ naveScope, weekStart, viewMode }),
       getPlanningWeekMeta({ naveScope, weekStart }),
       getNavePersonnel(naveScope),
-      getHolidaysForRange(days[0], days[4]),
-      getAbsencesForRange(days[0], days[4]),
+      getHolidaysForRange(days[0], days[days.length - 1]),
+      getAbsencesForRange(days[0], days[days.length - 1]),
       getActualHoursForWeek({ naveScope, weekStart }),
     ]);
 

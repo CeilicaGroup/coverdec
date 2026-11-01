@@ -69,6 +69,13 @@ interface SlotInterval {
 }
 
 const STANDARD_DAY: SlotInterval[] = [{ start: 0, end: PRODUCTIVE_SLOTS_PER_DAY }];
+/** Lunes a sábado; el sábado solo tiene franjas para quien lo trabaja (excepción de horario). */
+const WEEK_DAYS = 6;
+const SATURDAY_INDEX = 5;
+
+function standardAvailability(_personId: string, date: Date): SlotInterval[] {
+  return date.getUTCDay() === 6 ? [] : STANDARD_DAY;
+}
 
 function roundSlot(value: number): number {
   return Math.round(value * 100) / 100;
@@ -154,18 +161,18 @@ function commonFreeIntervals(args: {
 }
 
 function schedulableDates(weekStart: Date, firstSchedulableDayIndex: number): Date[] {
-  return Array.from({ length: Math.max(0, 5 - firstSchedulableDayIndex) }, (_, index) =>
+  return Array.from({ length: Math.max(0, WEEK_DAYS - firstSchedulableDayIndex) }, (_, index) =>
     utcDayStart(new Date(weekStart.getTime() + (firstSchedulableDayIndex + index) * DAY_MS)),
   );
 }
 
 export function firstSchedulableDayIndexFromToday(weekStart: Date): number {
   const today = utcDayStart(new Date());
-  for (let dayIndex = 0; dayIndex < 5; dayIndex += 1) {
+  for (let dayIndex = 0; dayIndex < WEEK_DAYS; dayIndex += 1) {
     const day = utcDayStart(new Date(weekStart.getTime() + dayIndex * DAY_MS));
     if (day.getTime() >= today.getTime()) return dayIndex;
   }
-  return 5;
+  return WEEK_DAYS;
 }
 
 /** Mismo criterio que la carga real: imprevistas con horas por colocar en esa semana. */
@@ -267,7 +274,7 @@ export function scheduleAdHocTasksDetailed(
   const slices: OverrideAssignmentSlice[] = [];
   const unplaced: UnplacedAdHocHours[] = [];
   const occupied = [...args.occupied];
-  const availability = args.availability ?? (() => STANDARD_DAY);
+  const availability = args.availability ?? standardAvailability;
   const dates = schedulableDates(args.weekStart, args.firstSchedulableDayIndex);
 
   for (const task of pendingTasks) {
@@ -350,9 +357,9 @@ export async function loadAdHocAvailability(
   pendingTasks: PendingAdHocTaskForScheduling[],
 ): Promise<AdHocAvailability> {
   const personIds = [...new Set(pendingTasks.flatMap((task) => task.participantIds))];
-  if (personIds.length === 0) return () => STANDARD_DAY;
+  if (personIds.length === 0) return standardAvailability;
   const monday = utcDayStart(weekStart);
-  const friday = new Date(monday.getTime() + 4 * DAY_MS);
+  const saturday = new Date(monday.getTime() + SATURDAY_INDEX * DAY_MS);
 
   const [people, holidays, absences] = await Promise.all([
     prisma.person.findMany({
@@ -361,22 +368,22 @@ export async function loadAdHocAvailability(
         id: true,
         workWindows: true,
         scheduleOverrides: {
-          where: { date: { gte: monday, lte: friday } },
+          where: { date: { gte: monday, lte: saturday } },
           include: { windows: true },
         },
       },
     }),
     prisma.holiday.findMany({
-      where: { startDate: { lte: friday }, endDate: { gte: monday } },
+      where: { startDate: { lte: saturday }, endDate: { gte: monday } },
       select: { startDate: true, endDate: true },
     }),
     prisma.absence.findMany({
-      where: { personId: { in: personIds }, ...absenceOverlapPrismaFilter(monday, friday) },
+      where: { personId: { in: personIds }, ...absenceOverlapPrismaFilter(monday, saturday) },
     }),
   ]);
 
   const byKey = new Map<string, SlotInterval[]>();
-  for (let dayIndex = 0; dayIndex < 5; dayIndex += 1) {
+  for (let dayIndex = 0; dayIndex < WEEK_DAYS; dayIndex += 1) {
     const date = new Date(monday.getTime() + dayIndex * DAY_MS);
     const iso = date.toISOString().slice(0, 10);
     const isHoliday = holidays.some(
@@ -398,7 +405,12 @@ export async function loadAdHocAvailability(
             }))
           : defaultWeeklyTemplate();
       const override = person.scheduleOverrides.find((o) => isSameUtcDay(o.date, date));
-      let slots = windowsToSlots(getWindowsForDate(date.getUTCDay(), weekly, override));
+      // Sábado sin excepción ni horario propio de sábado: no trabaja (no hereda la jornada estándar).
+      const offSaturday =
+        dayIndex === SATURDAY_INDEX && !override && !weekly.some((d) => d.dayOfWeek === 6);
+      let slots = offSaturday
+        ? []
+        : windowsToSlots(getWindowsForDate(date.getUTCDay(), weekly, override));
       for (const absence of absences) {
         if (absence.personId !== person.id || !absenceCoversCivilIso(absence, iso)) continue;
         const partial =
@@ -418,7 +430,8 @@ export async function loadAdHocAvailability(
   }
 
   return (personId, date) =>
-    byKey.get(`${personId}|${utcDayStart(date).toISOString().slice(0, 10)}`) ?? STANDARD_DAY;
+    byKey.get(`${personId}|${utcDayStart(date).toISOString().slice(0, 10)}`) ??
+    standardAvailability(personId, date);
 }
 
 export async function buildAdHocPlanningAssignmentsForNave(
@@ -489,7 +502,7 @@ export async function injectPendingAdHocIntoDraftPlanning(args: {
 
   const alreadyPlannedTaskIds = new Set(existing.map((row) => row.taskId));
   const firstSchedulableDayIndex = firstSchedulableDayIndexFromToday(planning.weekStart);
-  if (firstSchedulableDayIndex >= 5) return none;
+  if (firstSchedulableDayIndex >= WEEK_DAYS) return none;
 
   const pendingTasks = await loadPendingAdHocTasksForScheduling(args.naveId, planning.weekStart);
   const availability = await loadAdHocAvailability(planning.weekStart, pendingTasks);
