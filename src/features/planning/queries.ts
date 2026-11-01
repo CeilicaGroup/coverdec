@@ -534,14 +534,15 @@ export async function getActualHoursForWeek({
   userId?: string;
 }): Promise<ActualHourEntry[]> {
   const monday = getMondayOf(weekStart);
-  const saturdayStart = new Date(monday.getTime() + 5 * 86_400_000);
+  // Incluye el sábado (semanas con sábado laborable); el domingo no se trabaja.
+  const sundayStart = new Date(monday.getTime() + 6 * 86_400_000);
 
   if (naveScope !== null && naveScope.length === 0) return [];
 
   const entries = await prisma.timeEntry.findMany({
     where: {
       ...(userId ? { userId } : {}),
-      startedAt: { gte: monday, lt: saturdayStart },
+      startedAt: { gte: monday, lt: sundayStart },
       OR: [
         { endedAt: { not: null }, hours: { gt: 0 } },
         { endedAt: null },

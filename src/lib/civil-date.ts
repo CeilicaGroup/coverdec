@@ -69,52 +69,59 @@ function civilIsoToUtcDate(iso: string): Date {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
-/** Días laborables (lun–vie) del mes civil, en ISO UTC alineado al motor. */
+/** Días laborables (lun–vie, más los sábados trabajados) del mes civil, en ISO UTC alineado al motor. */
 export function businessDaysInMonth(
   monthStartIso: string,
   holidayDates: Set<string> = new Set(),
+  workSaturdays: Set<string> = new Set(),
 ): string[] {
   const { startIso, endIso } = monthStartEnd(monthStartIso);
   const out: string[] = [];
   for (const civilIso of expandCivilIsoRange(startIso, endIso)) {
     const utc = civilIsoToUtcDate(civilIso);
     const dow = utc.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
     const planningIso = utc.toISOString().slice(0, 10);
+    if (dow === 0 || (dow === 6 && !workSaturdays.has(planningIso))) continue;
     if (holidayDates.has(planningIso)) continue;
     out.push(planningIso);
   }
   return out;
 }
 
-/** Semanas del mes como filas de días laborables (lun–vie), con huecos null. */
+/**
+ * Semanas del mes como filas de días laborables (lun–vie), con huecos null.
+ * Si algún sábado del mes se trabajó (`workSaturdays`), las filas llevan una
+ * sexta columna con esos sábados (los demás, null).
+ */
 export function monthCalendarWeeks(
   monthStartIso: string,
+  workSaturdays: Set<string> = new Set(),
 ): Array<Array<{ iso: string; dayOfMonth: number } | null>> {
   const { startIso, endIso } = monthStartEnd(monthStartIso);
+  const monthIsos = expandCivilIsoRange(startIso, endIso).map((civilIso) =>
+    civilIsoToUtcDate(civilIso).toISOString().slice(0, 10),
+  );
+  const columns = monthIsos.some((iso) => workSaturdays.has(iso)) ? 6 : 5;
+  const emptyRow = () => Array<{ iso: string; dayOfMonth: number } | null>(columns).fill(null);
   const weeks: Array<Array<{ iso: string; dayOfMonth: number } | null>> = [];
-  let row: Array<{ iso: string; dayOfMonth: number } | null> = [
-    null,
-    null,
-    null,
-    null,
-    null,
-  ];
+  let row = emptyRow();
 
   for (const civilIso of expandCivilIsoRange(startIso, endIso)) {
     const utc = civilIsoToUtcDate(civilIso);
     const dow = utc.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
     const planningIso = utc.toISOString().slice(0, 10);
+    if (dow === 0 || (dow === 6 && columns === 5)) continue;
     const col = dow - 1;
     if (col === 0 && row.some((c) => c != null)) {
       weeks.push(row);
-      row = [null, null, null, null, null];
+      row = emptyRow();
     }
-    row[col] = { iso: planningIso, dayOfMonth: utc.getUTCDate() };
-    if (col === 4) {
+    if (dow !== 6 || workSaturdays.has(planningIso)) {
+      row[col] = { iso: planningIso, dayOfMonth: utc.getUTCDate() };
+    }
+    if (col === columns - 1) {
       weeks.push(row);
-      row = [null, null, null, null, null];
+      row = emptyRow();
     }
   }
   if (row.some((c) => c != null)) {

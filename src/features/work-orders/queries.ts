@@ -135,14 +135,18 @@ export async function workOrdersHaveTimeEntries(
  * assignments. A draft-only plan must still prefill the picker correctly.
  */
 /**
- * Ejecutores actuales de cada OT (quién tiene franjas de hoy en adelante) y qué
- * OT admiten elegirlos: todas sus tareas abiertas tienen planning desde hoy,
- * lo mismo que exige setWorkOrderExecutors.
+ * Ejecutores de cada OT: los elegidos a mano (en su orden) o, si no hay, quién
+ * tiene franjas de hoy en adelante. readyIds: OT con todas sus tareas abiertas
+ * planificadas desde hoy (el resto aplicará la elección al generar el planning).
+ * pendingIds: OT planificadas cuya elección guardada aún no es la del planning
+ * (alguien estaba ocupado): se aplicará al regenerarlo.
  */
 export async function loadWorkOrderExecutors(
   workOrderIds: string[],
-): Promise<{ executorIds: Map<string, string[]>; readyIds: Set<string> }> {
-  if (workOrderIds.length === 0) return { executorIds: new Map(), readyIds: new Set() };
+): Promise<{ executorIds: Map<string, string[]>; readyIds: Set<string>; pendingIds: Set<string> }> {
+  if (workOrderIds.length === 0) {
+    return { executorIds: new Map(), readyIds: new Set(), pendingIds: new Set() };
+  }
 
   const rows = await prisma.task.findMany({
     where: { workOrderId: { in: workOrderIds }, isCompleted: false },
@@ -165,10 +169,24 @@ export async function loadWorkOrderExecutors(
     if (row.assignments.length === 0) notReady.add(row.workOrderId);
   }
 
-  return {
-    executorIds: new Map([...byWorkOrder.entries()].map(([id, set]) => [id, [...set]])),
-    readyIds: new Set([...byWorkOrder.keys()].filter((id) => !notReady.has(id))),
-  };
+  const stored = await prisma.workOrderExecutor.findMany({
+    where: { workOrderId: { in: workOrderIds } },
+    orderBy: { position: "asc" },
+    select: { workOrderId: true, personId: true },
+  });
+  const readyIds = new Set([...byWorkOrder.keys()].filter((id) => !notReady.has(id)));
+  const executorIds = new Map([...byWorkOrder.entries()].map(([id, set]) => [id, [...set]]));
+  const pendingIds = new Set<string>();
+  for (const id of new Set(stored.map((s) => s.workOrderId))) {
+    const chosen = stored.filter((s) => s.workOrderId === id).map((s) => s.personId);
+    const planned = byWorkOrder.get(id) ?? new Set<string>();
+    if (readyIds.has(id) && (chosen.length !== planned.size || chosen.some((p) => !planned.has(p)))) {
+      pendingIds.add(id);
+    }
+    executorIds.set(id, chosen);
+  }
+
+  return { executorIds, readyIds, pendingIds };
 }
 
 export interface ActivePersonOption {

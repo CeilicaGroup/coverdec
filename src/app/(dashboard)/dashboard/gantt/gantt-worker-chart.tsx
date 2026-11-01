@@ -73,12 +73,13 @@ function isWeekend(d: Date): boolean {
   return dow === 0 || dow === 6;
 }
 
-function listBusinessDays(startIso: string, endIso: string): string[] {
+/** Días laborables del eje; `workSaturdays`: sábados con tareas, que también salen. */
+function listBusinessDays(startIso: string, endIso: string, workSaturdays: string[] = []): string[] {
   const keys: string[] = [];
   let cursor = toUtcDay(parseUtc(startIso));
   const end = toUtcDay(parseUtc(endIso));
   while (cursor.getTime() <= end.getTime()) {
-    if (!isWeekend(cursor)) {
+    if (!isWeekend(cursor) || workSaturdays.includes(toPlanningDayIso(cursor))) {
       keys.push(toPlanningDayIso(cursor));
     }
     cursor = new Date(cursor.getTime() + DAY_MS);
@@ -170,6 +171,7 @@ function TimelineBars({
 export function GanttWorkerChart({
   axisStartIso,
   axisEndIso,
+  workSaturdays,
   workWindows,
   workers,
   processStyles,
@@ -187,6 +189,7 @@ export function GanttWorkerChart({
 }: {
   axisStartIso: string;
   axisEndIso: string;
+  workSaturdays?: string[];
   workWindows: WorkWindowRow[];
   workers: GanttWorkerRow[];
   processStyles: Record<string, ProcessBadgeStyle>;
@@ -208,8 +211,8 @@ export function GanttWorkerChart({
   );
 
   const axis = useMemo(
-    () => listBusinessDays(axisStartIso, axisEndIso),
-    [axisStartIso, axisEndIso],
+    () => listBusinessDays(axisStartIso, axisEndIso, workSaturdays),
+    [axisStartIso, axisEndIso, workSaturdays],
   );
   const total = Math.max(1, axis.length);
 

@@ -35,6 +35,8 @@ export interface EngineTask {
   order: number;
   process: string;
   pendingHours: number;
+  /** Horas sin redondear a cuartos: el solver junta las tareas de menos de 15 min. */
+  rawPendingHours?: number;
   /** Nave donde se ejecuta la tarea; solo operarios de esta nave pueden asignarse. */
   naveId: string;
   /** Earliest week-quarter index (from prior-week planning on the same element chain). */

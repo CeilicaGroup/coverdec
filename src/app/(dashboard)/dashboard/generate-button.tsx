@@ -86,6 +86,7 @@ export function GenerateButton({
   activeProjects,
   disabled = false,
   disabledReason,
+  horizonDays = 5,
 }: {
   weekStart: string;
   hasPlanning: boolean;
@@ -100,6 +101,8 @@ export function GenerateButton({
   activeProjects: GenerateButtonProject[];
   disabled?: boolean;
   disabledReason?: string;
+  /** 6 si el sábado de esta semana está habilitado. */
+  horizonDays?: 5 | 6;
 }) {
   const {
     isGenerating,
@@ -118,16 +121,19 @@ export function GenerateButton({
   const [horizonKind, setHorizonKind] = useState<HorizonModeKind>("ALL_PROJECTS");
   const [projectId, setProjectId] = useState("");
   const [untilIso, setUntilIso] = useState("");
-  const workWeek = useMemo(() => weekWorkdayIsoRange(weekStart), [weekStart]);
+  const workWeek = useMemo(
+    () => weekWorkdayIsoRange(weekStart, horizonDays),
+    [weekStart, horizonDays],
+  );
   const [planFromDate, setPlanFromDate] = useState(() =>
-    defaultPlanFromDateIso(weekStart),
+    defaultPlanFromDateIso(weekStart, new Date(), horizonDays),
   );
 
   const isBusy = isGenerating || pending;
 
   useEffect(() => {
-    setPlanFromDate(defaultPlanFromDateIso(weekStart));
-  }, [weekStart]);
+    setPlanFromDate(defaultPlanFromDateIso(weekStart, new Date(), horizonDays));
+  }, [weekStart, horizonDays]);
 
   const projectsWithPending = useMemo(
     () => activeProjects.filter((p) => p.pendingHours > 0.25),
@@ -453,7 +459,7 @@ export function GenerateButton({
             type="date"
             className="h-8 w-[150px] text-xs"
             min={workWeek.mondayIso}
-            max={workWeek.fridayIso}
+            max={workWeek.lastDayIso}
             value={planFromDate}
             onChange={(e) => setPlanFromDate(e.target.value)}
             aria-label="Planificar desde"

@@ -59,6 +59,9 @@ import { RiskBadge } from "@/components/risk-badge";
 import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
 import Link from "next/link";
 import { GenerateButton } from "./generate-button";
+import { SaturdayWorkButton } from "./saturday-work-button";
+import { loadSaturdayWork, saturdayOf } from "@/features/planning/saturday";
+import { listActivePeopleForExecutorPicker } from "@/features/work-orders/queries";
 import { PlanningWeightsPopover } from "./planning-weights-popover";
 import {
   ProjectStrategyControls,
@@ -119,6 +122,9 @@ export default async function ResumenPage({
     }),
     listCatalogTimeDeviations(),
   ]);
+  const [saturdayWork, saturdayPeople] = canManagePlanningRole
+    ? await Promise.all([loadSaturdayWork(weekStart), listActivePeopleForExecutorPicker()])
+    : [null, []];
   const weekQuickStatus = await getWeekPlanningRegistroStatusRange({
     naveScope,
     anchorWeekStart: weekStart,
@@ -229,7 +235,15 @@ export default async function ResumenPage({
               />
             ) : null}
             {canManagePlanningRole ? (
+              <SaturdayWorkButton
+                saturdayIso={saturdayOf(weekStart).toISOString().slice(0, 10)}
+                current={saturdayWork}
+                people={saturdayPeople.map((p) => ({ id: p.id, label: p.label }))}
+              />
+            ) : null}
+            {canManagePlanningRole ? (
             <GenerateButton
+              horizonDays={saturdayWork ? 6 : 5}
               weekStart={getMondayOf(weekStart).toISOString()}
               hasPlanning={weekMetaAll.hasPlanning}
               anyDraft={weekMetaAll.anyDraft}

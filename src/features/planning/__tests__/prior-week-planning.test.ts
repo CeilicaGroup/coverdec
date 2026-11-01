@@ -112,4 +112,30 @@ describe("prior-week-planning", () => {
     });
     expect(minByTask.has("elem2-succ")).toBe(false);
   });
+
+  it("con sábado laborable, la sucesora puede empezar el sábado en vez de pasar a la semana siguiente", () => {
+    const tasks = [
+      { id: "pred", lampId: "l1", order: 0, process: "PINTURA", pendingToPlanHours: 0, remainingWorkHours: 0, estimatedHours: 8 },
+      { id: "succ", lampId: "l1", order: 1, process: "MONTAJE", pendingToPlanHours: 8, remainingWorkHours: 8, estimatedHours: 8 },
+    ];
+    // Termina el jueves 30/04 y seca 9 días: queda libre el sábado 09/05.
+    const priorEnds = buildLastAssignmentEndByTaskId([
+      { taskId: "pred", date: new Date("2026-04-30T00:00:00.000Z"), endSlot: 6, hours: 8 },
+    ]);
+    const args = {
+      weekStart: WEEK_START,
+      tasks,
+      engineTaskIds: new Set(["succ"]),
+      priorEnds,
+      waitHoursByProcess: new Map([["PINTURA", 9 * 24]]),
+      holidayDates: new Set<string>(),
+    };
+
+    const weekdaysOnly = computeMinWeekQuarterByTaskId(args);
+    expect(weekdaysOnly.deferredPastHorizon.has("succ")).toBe(true);
+
+    const withSaturday = computeMinWeekQuarterByTaskId({ ...args, horizonDays: 6 });
+    expect(withSaturday.deferredPastHorizon.has("succ")).toBe(false);
+    expect(Math.floor(withSaturday.minByTask.get("succ")! / 96)).toBe(5);
+  });
 });

@@ -9,7 +9,7 @@ import { getMondayOf } from "@/lib/week";
 import { MonthDayCell } from "./month-day-cell";
 import { MonthMobileList } from "./month-mobile-list";
 
-const DAY_HEADERS = ["Lun", "Mar", "Mié", "Jue", "Vie"];
+const DAY_HEADERS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 interface MonthCalendarGridProps {
   weeks: Array<Array<{ iso: string; dayOfMonth: number } | null>>;
@@ -39,7 +39,7 @@ export function MonthCalendarGrid({
               <th className="w-[108px] border-b bg-muted/40 px-2 py-2 text-left text-xs font-semibold text-muted-foreground">
                 Semana
               </th>
-              {DAY_HEADERS.map((label) => (
+              {DAY_HEADERS.slice(0, weeks[0]?.length ?? 5).map((label) => (
                 <th
                   key={label}
                   className="border-b bg-muted/40 px-2 py-2 text-left text-xs font-semibold text-muted-foreground"

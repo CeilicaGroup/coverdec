@@ -49,6 +49,7 @@ def solve(body: SolveRequest) -> SolveResponse:
             "fixedAssignmentCount": len(body.fixedAssignments),
             "busySlotCount": len(body.busySlots),
             "previousHoursCount": len(body.previousHours),
+            "horizonDays": body.horizonDays,
             "solverMaxSeconds": max_seconds,
             "solverNumWorkers": num_workers,
         },

@@ -19,6 +19,7 @@ from typing import NamedTuple
 from ortools.sat.python import cp_model
 
 from app.model.candidates import pick_candidates
+from app.model.tiny_tasks import expand_tiny_response, merge_tiny_tasks
 from app.model.work_order_collapse import (
     WoCollapseGroup,
     collapse_work_order_tasks,
@@ -53,9 +54,10 @@ logger = logging.getLogger("planning-solver")
 
 NO_CANDIDATE_PREFIX = "NO_CANDIDATE:"
 
-HORIZON_DAYS: int = 5
+# The planning horizon comes from SolveRequest.horizonDays (5 = Mon–Fri,
+# 6 = also Saturday) and travels on ProblemData.horizon_days / horizon_q.
+DEFAULT_HORIZON_DAYS: int = 5
 QUARTERS_PER_DAY = 24 * 4
-HORIZON_Q: int = HORIZON_DAYS * QUARTERS_PER_DAY
 
 NO_INTERLEAVE_MODE_LEGACY = "legacy"
 NO_INTERLEAVE_MODE_COMPACT = "compact"
@@ -81,7 +83,6 @@ class SchedulerWeights:
 
 @dataclass(frozen=True)
 class SchedulerConfig:
-    horizon_days: int = HORIZON_DAYS
     max_solve_seconds: int = 240
     weights: SchedulerWeights = field(default_factory=SchedulerWeights)
     relative_gap_limit: float = 0.0
@@ -155,6 +156,13 @@ class ProblemData:
         default_factory=dict
     )
     people_by_id: dict[str, EnginePerson] = field(default_factory=dict)
+    horizon_days: int = DEFAULT_HORIZON_DAYS
+    tiny_groups: dict[str, WoCollapseGroup] = field(default_factory=dict)
+
+    @property
+    def horizon_q(self) -> int:
+        """Week quarters covered by the horizon (upper bound for CP time vars)."""
+        return self.horizon_days * QUARTERS_PER_DAY
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -195,11 +203,15 @@ def _urgency(task: EngineTask, week_start: date) -> int:
     return 1
 
 
-def _delivery_target_q(delivery: date | None, week_start: date) -> int | None:
+def _delivery_target_q(
+    delivery: date | None,
+    week_start: date,
+    horizon_days: int = DEFAULT_HORIZON_DAYS,
+) -> int | None:
     if delivery is None:
         return None
     d = delivery.date() if hasattr(delivery, "date") else delivery
-    week_end = _add_days(week_start, HORIZON_DAYS - 1)
+    week_end = _add_days(week_start, horizon_days - 1)
     if d < week_start:
         return 0
     clamped = min(d, week_end)
@@ -354,17 +366,18 @@ def _task_candidates_cached(
 
 def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | None:
     week_start = request.weekStart
-    days = [_add_days(week_start, i) for i in range(config.horizon_days)]
+    horizon_days = request.horizonDays
+    days = [_add_days(week_start, i) for i in range(horizon_days)]
     holiday_dates = {h.date for h in request.holidays}
     sched_by_person = {s.personId: s for s in request.schedules}
     absence_lookup = {(a.personId, a.date): a for a in request.absences}
-    first_day = max(0, min(request.firstSchedulableDayIndex, config.horizon_days))
+    first_day = max(0, min(request.firstSchedulableDayIndex, horizon_days))
     first_wq = request.firstSchedulableWeekQuarter
 
     booked_q: dict[tuple[str, int], int] = {}
     for entry in request.bookedHours:
         day_idx = (entry.date - week_start).days
-        if 0 <= day_idx < config.horizon_days:
+        if 0 <= day_idx < horizon_days:
             key = (entry.personId, day_idx)
             booked_q[key] = booked_q.get(key, 0) + round(entry.hours * QUARTERS_PER_HOUR)
 
@@ -375,6 +388,12 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
     process_by_code = {p.code: p for p in request.processes}
     fixed_task_ids = {fixed.taskId for fixed in request.fixedAssignments}
     lamp_edges = _build_lamp_edges(tasks, process_by_code)
+    tasks, tiny_groups, tiny_to_synthetic = merge_tiny_tasks(
+        tasks, fixed_task_ids=fixed_task_ids
+    )
+    if tiny_to_synthetic:
+        lamp_edges = _rewire_lamp_edges(lamp_edges, tiny_to_synthetic)
+        logger.info("tiny-task merge: groups=%d members=%d", len(tiny_groups), len(tiny_to_synthetic))
     pipelines = list(request.workOrderPipelines)
     pipeline_wo_ids: set[str] = set()
     for edge in pipelines:
@@ -404,7 +423,10 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         )
 
     prev_q = remap_previous_hours(
-        {entry.key: entry.quarters for entry in request.previousHours},
+        remap_previous_hours(
+            {entry.key: entry.quarters for entry in request.previousHours},
+            tiny_groups,
+        ),
         wo_collapse,
     )
 
@@ -482,7 +504,7 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
                 person_id,
                 week_tl,
                 max_q,
-                config.horizon_days,
+                horizon_days,
             )
 
     return ProblemData(
@@ -505,6 +527,8 @@ def _prepare(request: SolveRequest, config: SchedulerConfig) -> ProblemData | No
         work_order_pipelines=pipelines,
         candidate_ids_by_process_nave=candidate_ids_by_process_nave,
         people_by_id={person.id: person for person in request.people},
+        horizon_days=horizon_days,
+        tiny_groups=tiny_groups,
     )
 
 
@@ -538,6 +562,7 @@ def _link_block_placements(
     day_load: dict[int, cp_model.IntVar],
     demand_q: int,
     week_tl_cap: int,
+    horizon_q: int,
 ) -> None:
     """Map placement_idx → block fields via AddElement (compact vs AllowedAssignments)."""
     n = len(placements)
@@ -554,8 +579,8 @@ def _link_block_placements(
 
     elem_start_idx = model.NewIntVar(0, max(0, week_tl_cap - 1), f"esi_{tag}")
     elem_assigned_q = model.NewIntVar(0, demand_q, f"eaq_{tag}")
-    elem_start_wq = model.NewIntVar(0, HORIZON_Q, f"esw_{tag}")
-    elem_end_wq = model.NewIntVar(0, HORIZON_Q + 1, f"eeq_{tag}")
+    elem_start_wq = model.NewIntVar(0, horizon_q, f"esw_{tag}")
+    elem_end_wq = model.NewIntVar(0, horizon_q + 1, f"eeq_{tag}")
 
     model.AddElement(placement_idx, start_idx_arr, elem_start_idx)
     model.AddElement(placement_idx, assigned_q_arr, elem_assigned_q)
@@ -609,12 +634,12 @@ def _build_block_variables(
             placement_idx = model.NewIntVar(0, max(0, n_placements - 1), f"bpi_{tag}")
             start_idx = model.NewIntVar(0, week_tl.cap - 1, f"bi_{tag}")
             assigned_q = model.NewIntVar(0, demand_q, f"bq_{tag}")
-            start_wq = model.NewIntVar(0, HORIZON_Q, f"bs_{tag}")
-            end_wq = model.NewIntVar(0, HORIZON_Q + 1, f"be_{tag}")
-            duration_wq = model.NewIntVar(0, HORIZON_Q + 1, f"bd_{tag}")
+            start_wq = model.NewIntVar(0, data.horizon_q, f"bs_{tag}")
+            end_wq = model.NewIntVar(0, data.horizon_q + 1, f"be_{tag}")
+            duration_wq = model.NewIntVar(0, data.horizon_q + 1, f"bd_{tag}")
 
             day_load: dict[int, cp_model.IntVar] = {}
-            for day_idx in range(HORIZON_DAYS):
+            for day_idx in range(data.horizon_days):
                 day_load[day_idx] = model.NewIntVar(
                     0, week_tl.cap, f"bdl_{tag}_{day_idx}"
                 )
@@ -632,12 +657,13 @@ def _build_block_variables(
                 day_load=day_load,
                 demand_q=demand_q,
                 week_tl_cap=week_tl.cap,
+                horizon_q=data.horizon_q,
             )
             model.Add(assigned_q == 0).OnlyEnforceIf(presence.Not())
             model.Add(start_idx == 0).OnlyEnforceIf(presence.Not())
             model.Add(start_wq == 0).OnlyEnforceIf(presence.Not())
             model.Add(end_wq == 0).OnlyEnforceIf(presence.Not())
-            for day_idx in range(HORIZON_DAYS):
+            for day_idx in range(data.horizon_days):
                 model.Add(day_load[day_idx] == 0).OnlyEnforceIf(presence.Not())
             model.Add(duration_wq == end_wq - start_wq).OnlyEnforceIf(presence)
             model.Add(duration_wq == 0).OnlyEnforceIf(presence.Not())
@@ -854,9 +880,9 @@ def _add_constraints(
     _add_work_order_constraints(model, data, mv, by_wo, task_assigned_q_by_task)
     _add_work_order_pipeline_constraints(model, data, mv)
     if _no_interleave_mode() == NO_INTERLEAVE_MODE_COMPACT:
-        _add_work_order_no_interleave_compact(model, mv, by_wo)
+        _add_work_order_no_interleave_compact(model, mv, by_wo, data.horizon_q)
     else:
-        _add_work_order_no_interleave(model, mv, by_wo)
+        _add_work_order_no_interleave(model, mv, by_wo, data.horizon_q)
 
     return unscheduled
 
@@ -935,20 +961,20 @@ def _add_work_order_constraints(
 
             pred_end_terms: list = []
             for bv in pred_blocks:
-                contrib = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pec_{_block_tag(bv)}")
+                contrib = model.NewIntVar(0, data.horizon_q + 1, f"wo_pec_{_block_tag(bv)}")
                 model.Add(contrib == bv.end_wq).OnlyEnforceIf(bv.presence)
                 model.Add(contrib == 0).OnlyEnforceIf(bv.presence.Not())
                 pred_end_terms.append(contrib)
 
-            pred_end = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pend_{pred.id}")
+            pred_end = model.NewIntVar(0, data.horizon_q + 1, f"wo_pend_{pred.id}")
             if pred_end_terms:
                 model.AddMaxEquality(pred_end, pred_end_terms)
             else:
                 model.Add(pred_end == 0)
 
-            earliest = model.NewIntVar(0, HORIZON_Q + 1, f"wo_early_{succ.id}")
+            earliest = model.NewIntVar(0, data.horizon_q + 1, f"wo_early_{succ.id}")
             model.Add(earliest == pred_end).OnlyEnforceIf(pred_done)
-            model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(pred_done.Not())
+            model.Add(earliest == data.horizon_q + 1).OnlyEnforceIf(pred_done.Not())
 
             for bv in succ_blocks:
                 model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
@@ -989,23 +1015,23 @@ def _add_work_order_pipeline_constraints(
 
         partial_end_terms: list = []
         for bv in pred_blocks:
-            ended = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_pe_{tag}_{_block_tag(bv)}")
+            ended = model.NewIntVar(0, data.horizon_q + 1, f"wo_pipe_pe_{tag}_{_block_tag(bv)}")
             model.Add(ended == bv.start_wq + threshold_q).OnlyEnforceIf(
                 [bv.presence, partial_done],
             )
-            model.Add(ended == HORIZON_Q + 1).OnlyEnforceIf(bv.presence.Not())
-            model.Add(ended == HORIZON_Q + 1).OnlyEnforceIf(partial_done.Not())
+            model.Add(ended == data.horizon_q + 1).OnlyEnforceIf(bv.presence.Not())
+            model.Add(ended == data.horizon_q + 1).OnlyEnforceIf(partial_done.Not())
             partial_end_terms.append(ended)
 
-        partial_end = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_pend_{tag}")
+        partial_end = model.NewIntVar(0, data.horizon_q + 1, f"wo_pipe_pend_{tag}")
         if partial_end_terms:
             model.AddMinEquality(partial_end, partial_end_terms)
         else:
-            model.Add(partial_end == HORIZON_Q + 1)
+            model.Add(partial_end == data.horizon_q + 1)
 
-        earliest = model.NewIntVar(0, HORIZON_Q + 1, f"wo_pipe_early_{tag}")
+        earliest = model.NewIntVar(0, data.horizon_q + 1, f"wo_pipe_early_{tag}")
         model.Add(earliest == partial_end).OnlyEnforceIf(partial_done)
-        model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(partial_done.Not())
+        model.Add(earliest == data.horizon_q + 1).OnlyEnforceIf(partial_done.Not())
 
         for bv in succ_blocks:
             model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
@@ -1016,6 +1042,7 @@ def _add_work_order_no_interleave(
     model: cp_model.CpModel,
     mv: ModelVars,
     by_wo: dict[str, list[EngineTask]],
+    horizon_q: int,
 ) -> None:
     """Once a worker starts an OT, no other task may be scheduled between its blocks."""
     if not by_wo:
@@ -1025,7 +1052,7 @@ def _add_work_order_no_interleave(
     for bv in mv.all_blocks:
         blocks_by_person[bv.block.person_id].append(bv)
 
-    horizon = HORIZON_Q + 1
+    horizon = horizon_q + 1
     for wo_id, wo_tasks in by_wo.items():
         # Una sola tarea en la OT: un bloque contiguo; NoOverlap del operario ya basta.
         if len(wo_tasks) < 2:
@@ -1099,6 +1126,7 @@ def _add_work_order_no_interleave_compact(
     model: cp_model.CpModel,
     mv: ModelVars,
     by_wo: dict[str, list[EngineTask]],
+    horizon_q: int,
 ) -> None:
     """
     Compact mode hook behind feature flag.
@@ -1106,7 +1134,7 @@ def _add_work_order_no_interleave_compact(
     Keeps exact semantics by reusing legacy implementation until the compact
     formulation is fully validated in canary.
     """
-    _add_work_order_no_interleave(model, mv, by_wo)
+    _add_work_order_no_interleave(model, mv, by_wo, horizon_q)
 
 
 def _add_worker_count_per_task(
@@ -1141,9 +1169,9 @@ def _add_worker_count_per_task(
 
         demand_q = data.demand_q.get(task.id, 0)
         task_scheduled = model.NewBoolVar(f"tsc_{task.id}")
-        task_start_wq = model.NewIntVar(0, HORIZON_Q, f"tsw_{task.id}")
-        task_end_wq = model.NewIntVar(0, HORIZON_Q + 1, f"tew_{task.id}")
-        task_dur_wq = model.NewIntVar(0, HORIZON_Q + 1, f"tdw_{task.id}")
+        task_start_wq = model.NewIntVar(0, data.horizon_q, f"tsw_{task.id}")
+        task_end_wq = model.NewIntVar(0, data.horizon_q + 1, f"tew_{task.id}")
+        task_dur_wq = model.NewIntVar(0, data.horizon_q + 1, f"tdw_{task.id}")
         task_assigned_q = model.NewIntVar(0, demand_q, f"taq_{task.id}")
 
         for bv in blocks:
@@ -1231,20 +1259,20 @@ def _add_lamp_ordering(
 
         pred_end_terms: list = []
         for bv in pred_blocks:
-            contrib = model.NewIntVar(0, HORIZON_Q + 1, f"pec_{_block_tag(bv)}")
+            contrib = model.NewIntVar(0, data.horizon_q + 1, f"pec_{_block_tag(bv)}")
             model.Add(contrib == bv.end_wq).OnlyEnforceIf(bv.presence)
             model.Add(contrib == 0).OnlyEnforceIf(bv.presence.Not())
             pred_end_terms.append(contrib)
 
-        pred_end = model.NewIntVar(0, HORIZON_Q + 1, f"pend_{edge.predecessor_id}")
+        pred_end = model.NewIntVar(0, data.horizon_q + 1, f"pend_{edge.predecessor_id}")
         if pred_end_terms:
             model.AddMaxEquality(pred_end, pred_end_terms)
         else:
             model.Add(pred_end == 0)
 
-        earliest = model.NewIntVar(0, HORIZON_Q + 1, f"early_{edge.successor_id}")
+        earliest = model.NewIntVar(0, data.horizon_q + 1, f"early_{edge.successor_id}")
         model.Add(earliest == pred_end + edge.dry_quarters).OnlyEnforceIf(pred_done)
-        model.Add(earliest == HORIZON_Q + 1).OnlyEnforceIf(pred_done.Not())
+        model.Add(earliest == data.horizon_q + 1).OnlyEnforceIf(pred_done.Not())
 
         for bv in succ_blocks:
             model.Add(bv.start_wq >= earliest).OnlyEnforceIf(bv.presence)
@@ -1324,7 +1352,7 @@ def _build_objective(
 
     w1 = _scale(w.deadline)
     if w1 > 0:
-        _add_deadline_terms(model, data, mv, w1, terms)
+        _add_deadline_terms(model, data, mv, w1, terms, unscheduled)
 
     _add_primary_preference_terms(model, data, mv, terms)
 
@@ -1362,7 +1390,9 @@ def _add_deadline_terms(
     mv: ModelVars,
     w: int,
     terms: list,
+    unscheduled: dict[str, cp_model.IntVar] | None = None,
 ) -> None:
+    unscheduled = unscheduled or {}
     by_lamp: dict[str, list[EngineTask]] = defaultdict(list)
     for t in data.tasks:
         by_lamp[t.lampId].append(t)
@@ -1371,15 +1401,29 @@ def _add_deadline_terms(
         end_vars: list = []
         for t in lamp_tasks:
             for bv in mv.by_task.get(t.id, []):
-                end_fv = model.NewIntVar(0, HORIZON_Q + 1, f"le_{lamp_id}_{_block_tag(bv)}")
+                end_fv = model.NewIntVar(0, data.horizon_q + 1, f"le_{lamp_id}_{_block_tag(bv)}")
                 model.Add(end_fv == bv.end_wq).OnlyEnforceIf(bv.presence)
                 model.Add(end_fv == 0).OnlyEnforceIf(bv.presence.Not())
                 end_vars.append(end_fv)
         if not end_vars:
             continue
 
-        lamp_end = model.NewIntVar(0, HORIZON_Q + 1, f"lend_{lamp_id}")
+        lamp_end = model.NewIntVar(0, data.horizon_q + 1, f"lend_{lamp_id}")
         model.AddMaxEquality(lamp_end, end_vars)
+
+        # Una lámpara con horas sin asignar no está terminada esta semana: cuenta
+        # como acabada al final del horizonte. Si no, dejar trabajo sin planificar
+        # "adelantaba" su fin, y en proyectos ya vencidos (el retraso pesa al
+        # cuadrado) al solver le salía más barato no planificar que planificar
+        # tarde: las horas se iban a semanas posteriores.
+        lamp_unscheduled = [unscheduled[t.id] for t in lamp_tasks if t.id in unscheduled]
+        if lamp_unscheduled:
+            incomplete = model.NewBoolVar(f"linc_{lamp_id}")
+            model.Add(sum(lamp_unscheduled) == 0).OnlyEnforceIf(incomplete.Not())
+            effective_end = model.NewIntVar(0, data.horizon_q + 1, f"leff_{lamp_id}")
+            model.Add(effective_end >= lamp_end)
+            model.Add(effective_end == data.horizon_q + 1).OnlyEnforceIf(incomplete)
+            lamp_end = effective_end
 
         sample = lamp_tasks[0]
         delivery = (
@@ -1387,11 +1431,11 @@ def _add_deadline_terms(
             if sample.projectDeliveryDate is not None
             else None
         )
-        target_q = _delivery_target_q(delivery, data.week_start)
+        target_q = _delivery_target_q(delivery, data.week_start, data.horizon_days)
         if target_q is None:
             continue
 
-        late_q = model.NewIntVar(0, HORIZON_Q + 1, f"late_{lamp_id}")
+        late_q = model.NewIntVar(0, data.horizon_q + 1, f"late_{lamp_id}")
         model.Add(late_q >= lamp_end - target_q)
         model.Add(late_q >= 0)
 
@@ -1410,14 +1454,14 @@ def _add_deadline_terms(
         terms.append(coef * late_q)
 
         late_q_sq = model.NewIntVar(
-            0, (HORIZON_Q + 1) * (HORIZON_Q + 1), f"late2_{lamp_id}"
+            0, (data.horizon_q + 1) * (data.horizon_q + 1), f"late2_{lamp_id}"
         )
         model.AddMultiplicationEquality(late_q_sq, [late_q, late_q])
         terms.append(TIER_DEADLINE * max(1, w // 8) * deadline_mult * late_q_sq)
 
         if delivery is not None:
             days_left = (delivery - data.week_start).days
-            if 0 <= days_left < HORIZON_DAYS:
+            if 0 <= days_left < data.horizon_days:
                 terms.append(TIER_DEADLINE * (w // 2) * lamp_end)
 
 
@@ -1450,7 +1494,7 @@ def _add_labor_terms(
     for person in data.people:
         rate_reg = int(person.hourlyRate * 100)
         rate_ot = int(person.overtimeHourlyRate * 100)
-        for day_idx in range(HORIZON_DAYS):
+        for day_idx in range(data.horizon_days):
             day_loads = mv.load_by_person_day.get((person.id, day_idx), [])
             if not day_loads:
                 continue
@@ -1492,7 +1536,13 @@ def _add_balance_terms(
     w: int,
     terms: list,
 ) -> None:
-    max_week_load = HORIZON_DAYS * 32
+    # A person's load never exceeds their productive week quarters (blocks of
+    # one worker cannot overlap). Floor at 8h/day over the horizon so the
+    # default Mon–Fri model keeps its historical bound (160).
+    max_week_load = max(
+        [data.horizon_days * 32]
+        + [tl.cap for tl in data.week_timelines.values()]
+    )
     person_totals: list[cp_model.IntVar] = []
     for person in data.people:
         blocks = [bv for bv in mv.all_blocks if bv.block.person_id == person.id]
@@ -1581,7 +1631,7 @@ def _add_early_start_terms(
     w: int,
     terms: list,
 ) -> None:
-    horizon = HORIZON_Q + 1
+    horizon = data.horizon_q + 1
     for task in data.tasks:
         blocks = mv.by_task.get(task.id, [])
         if not blocks:
@@ -1980,6 +2030,7 @@ def _build_component_data(
         work_order_pipelines=pipelines,
         candidate_ids_by_process_nave=candidate_ids_by_process_nave,
         people_by_id=people_by_id,
+        horizon_days=data.horizon_days,
     )
 
 
@@ -2134,13 +2185,16 @@ def solve_week(
             len(all_assignments),
             total_unscheduled,
         )
-        return SolveResponse(
-            assignments=all_assignments,
-            warnings=all_warnings,
-            unscheduledHours=total_unscheduled,
+        return expand_tiny_response(
+            SolveResponse(
+                assignments=all_assignments,
+                warnings=all_warnings,
+                unscheduledHours=total_unscheduled,
+            ),
+            data.tiny_groups,
         )
 
-    response = _solve_single(data, config, prepare_ms)
+    response = expand_tiny_response(_solve_single(data, config, prepare_ms), data.tiny_groups)
     total_ms = int((time.perf_counter() - solve_started) * 1000)
     logger.info("monolithic solve done: totalMs=%d", total_ms)
 

@@ -294,6 +294,13 @@ export default async function GanttPage({
     })),
   );
   const workerRows = axisMode === "worker" ? buildWorkerRows(filteredAssignments) : [];
+  const workSaturdays = [
+    ...new Set(
+      planningAssignments
+        .filter((a) => a.date.getUTCDay() === 6)
+        .map((a) => a.date.toISOString().slice(0, 10)),
+    ),
+  ];
   const planningByTask = new Map<string, number>();
   for (const assignment of planningAssignments) {
     planningByTask.set(
@@ -406,6 +413,7 @@ export default async function GanttPage({
 
       {axisMode === "worker" ? (
         <GanttWorkerChart
+          workSaturdays={workSaturdays}
           axisStartIso={axisRange.axisStartIso}
           axisEndIso={axisRange.axisEndIso}
           workWindows={workWindows}
@@ -425,6 +433,7 @@ export default async function GanttPage({
         />
       ) : (
         <GanttChart
+          workSaturdays={workSaturdays}
           axisStartIso={axisRange.axisStartIso}
           axisEndIso={axisRange.axisEndIso}
           todayIso={todayIso}

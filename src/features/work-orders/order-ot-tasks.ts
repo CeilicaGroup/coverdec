@@ -6,13 +6,23 @@ export interface WorkOrderSequenceTask {
   lampId: string;
   lampElementId?: string | null;
   order: number;
+  /** Entrega del proyecto (sin fecha = al final). */
+  deliveryDate?: Date | null;
 }
 
-/** Orden estable para alinear workOrderSequence entre OT del mismo tipo físico. */
+/**
+ * Orden estable para alinear workOrderSequence entre OT del mismo tipo físico.
+ * Primero la entrega más urgente: una OT la hace un solo operario en este orden,
+ * así que un proyecto urgente detrás de otros menos urgentes se retrasaba semanas.
+ */
 export function compareTasksForWorkOrderSequence(
   a: WorkOrderSequenceTask,
   b: WorkOrderSequenceTask,
 ): number {
+  const deliveryA = a.deliveryDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  const deliveryB = b.deliveryDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  if (deliveryA !== deliveryB) return deliveryA < deliveryB ? -1 : 1;
+
   const projectCmp = a.projectId.localeCompare(b.projectId, "es");
   if (projectCmp !== 0) return projectCmp;
 

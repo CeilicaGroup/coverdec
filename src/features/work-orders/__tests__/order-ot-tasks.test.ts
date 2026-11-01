@@ -57,4 +57,14 @@ describe("sortTasksForWorkOrderSequence", () => {
 
     expect(tasks.map((task) => task.id)).toEqual(["a1", "a2"]);
   });
+
+  it("la entrega más urgente va primero en la OT; sin fecha, al final", () => {
+    const base = { lampElementId: null, order: 0 };
+    const tasks = [
+      { ...base, id: "sin-fecha", projectId: "p-a", lampId: "l-a", deliveryDate: null },
+      { ...base, id: "noviembre-20", projectId: "p-b", lampId: "l-b", deliveryDate: new Date("2026-11-20") },
+      { ...base, id: "noviembre-01", projectId: "p-z", lampId: "l-z", deliveryDate: new Date("2026-11-01") },
+    ];
+    expect(sortTaskIdsForWorkOrderSequence(tasks)).toEqual(["noviembre-01", "noviembre-20", "sin-fecha"]);
+  });
 });

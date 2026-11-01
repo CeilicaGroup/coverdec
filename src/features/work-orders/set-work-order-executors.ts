@@ -7,48 +7,16 @@ import { requireDashboardContext, requireRole } from "@/lib/context";
 import { childLogger } from "@/lib/logger";
 import { runServerAction } from "@/lib/server-action";
 import type { ActionResult } from "@/lib/action-result";
-import { Role, type Prisma } from "@/generated/prisma";
-import { assertPlanningAssignmentsWorkOrderWorkers } from "./validate-planning-assignments";
-import { planExecutorChanges, todayPlanningDate } from "./plan-executor-changes";
+import { Role } from "@/generated/prisma";
+import {
+  ExecutorConflictError,
+  applyExecutorsToPlannedTasks,
+  keepAssignmentsFromToday,
+  loadOpenTasksWithAssignments,
+  saveWorkOrderExecutors,
+} from "./apply-work-order-executors";
 
 const log = childLogger({ module: "work-orders.set-work-order-executors" });
-
-async function assertExecutorsNotDoubleBooked(
-  tx: Prisma.TransactionClient,
-  personIds: string[],
-  tasks: { assignments: { date: Date }[] }[],
-): Promise<void> {
-  const dates = [
-    ...new Set(tasks.flatMap((t) => t.assignments.map((a) => a.date.getTime()))),
-  ].map((ms) => new Date(ms));
-  if (dates.length === 0) return;
-  const rows = await tx.planningAssignment.findMany({
-    where: { personId: { in: personIds }, date: { in: dates } },
-    select: {
-      personId: true,
-      date: true,
-      startSlot: true,
-      endSlot: true,
-      person: { select: { iniciales: true } },
-    },
-    orderBy: [{ personId: "asc" }, { date: "asc" }, { startSlot: "asc" }],
-  });
-  for (let i = 1; i < rows.length; i++) {
-    const prev = rows[i - 1]!;
-    const row = rows[i]!;
-    if (
-      prev.personId === row.personId &&
-      prev.date.getTime() === row.date.getTime() &&
-      row.startSlot < prev.endSlot
-    ) {
-      throw new Error(
-        `${row.person.iniciales} ya tiene otra tarea planificada a esa hora el ${row.date
-          .toISOString()
-          .slice(0, 10)}.`,
-      );
-    }
-  }
-}
 
 /** UI/business convention (not a hard schema constraint): a task can be
  * manually reinforced to at most 2 people at once. */
@@ -59,16 +27,24 @@ const schema = z.object({
   personIds: z.array(z.string().min(1)).min(1).max(MAX_EXECUTORS),
 });
 
+export interface SetWorkOrderExecutorsResult {
+  /** Alguna tarea espera al próximo planning para recibir a los elegidos. */
+  pending: boolean;
+  /** Por qué no se pudo aplicar ya (alguien ocupado o ausente en esas franjas). */
+  conflict?: string;
+}
+
 /**
- * Manually choose who executes an already-planned work order. Unlike
- * requiredWorkers (chapas: synchronized, standard hours already split
- * between N people), this duplicates hours: each chosen person gets their
- * own full-hours PlanningAssignment rows, mirroring whatever slots are
- * already there — for speeding up delivery, not splitting the same work.
+ * Manually choose who executes a work order (the first one is the
+ * responsable). The choice is stored on the OT; tasks already planned from
+ * today on get it right away (see applyExecutorsToPlannedTasks), the rest
+ * when the week's planning is generated. If someone chosen is busy in the
+ * planned slots, the choice is still stored and waits for the next
+ * (re)generation, where the solver places the responsable around it.
  */
 export async function setWorkOrderExecutors(
   input: z.infer<typeof schema>,
-): Promise<ActionResult<void>> {
+): Promise<ActionResult<SetWorkOrderExecutorsResult>> {
   return runServerAction(
     "work-orders.setWorkOrderExecutors",
     async () => {
@@ -77,27 +53,7 @@ export async function setWorkOrderExecutors(
       const data = schema.parse(input);
       const personIds = [...new Set(data.personIds)];
 
-      const openTasks = await prisma.task.findMany({
-        where: { workOrderId: data.workOrderId, isCompleted: false },
-        select: {
-          id: true,
-          naveId: true,
-          process: true,
-          assignments: {
-            select: {
-              id: true,
-              planningId: true,
-              personId: true,
-              date: true,
-              startSlot: true,
-              endSlot: true,
-              hours: true,
-              process: true,
-              isAfternoon: true,
-            },
-          },
-        },
-      });
+      const openTasks = await loadOpenTasksWithAssignments(prisma, data.workOrderId);
       if (openTasks.length === 0) {
         throw new Error("La OT no tiene tareas abiertas.");
       }
@@ -130,86 +86,29 @@ export async function setWorkOrderExecutors(
         }
       }
 
-      if (openTasks.some((t) => t.assignments.length === 0)) {
-        throw new Error(
-          "Esta OT aún no está en ningún planning. Genera el planning de la semana y luego elige los operarios.",
-        );
+      const tasks = keepAssignmentsFromToday(openTasks);
+      const planned = tasks.filter((t) => t.assignments.length > 0);
+      const pending = planned.length < tasks.length;
+
+      let result: SetWorkOrderExecutorsResult = { pending };
+      try {
+        await prisma.$transaction(async (tx) => {
+          await saveWorkOrderExecutors(tx, data.workOrderId, personIds);
+          if (planned.length > 0) await applyExecutorsToPlannedTasks(tx, planned, personIds);
+        });
+      } catch (err) {
+        if (!(err instanceof ExecutorConflictError)) throw err;
+        await prisma.$transaction((tx) => saveWorkOrderExecutors(tx, data.workOrderId, personIds));
+        result = { pending: true, conflict: err.message };
       }
-      // Solo se cambia de hoy en adelante: las franjas de días pasados son historia
-      // y no se borran, copian ni cuentan para choques.
-      const today = todayPlanningDate().getTime();
-      const tasks = openTasks.map((t) => ({
-        ...t,
-        assignments: t.assignments.filter((a) => a.date.getTime() >= today),
-      }));
-      if (tasks.some((t) => t.assignments.length === 0)) {
-        throw new Error(
-          "Alguna tarea de esta OT no tiene planning de hoy en adelante. Regenera el planning de la semana y luego elige los operarios.",
-        );
-      }
-
-      await prisma.$transaction(async (tx) => {
-        const affectedPlanningIds = new Set<string>();
-
-        for (const task of tasks) {
-          for (const row of task.assignments) {
-            affectedPlanningIds.add(row.planningId);
-          }
-
-          const plan = planExecutorChanges(task.assignments, personIds);
-          const rowById = new Map(task.assignments.map((r) => [r.id, r]));
-
-          if (plan.rowIdsToDelete.length > 0) {
-            await tx.planningAssignment.deleteMany({
-              where: { id: { in: plan.rowIdsToDelete } },
-            });
-          }
-
-          const templateRows = plan.templateRowIds
-            .map((id) => rowById.get(id))
-            .filter((row): row is (typeof task.assignments)[number] => row != null);
-
-          for (const personId of plan.personIdsToAdd) {
-            if (templateRows.length === 0) continue;
-            await tx.planningAssignment.createMany({
-              data: templateRows.map((row) => ({
-                planningId: row.planningId,
-                taskId: task.id,
-                personId,
-                date: row.date,
-                startSlot: row.startSlot,
-                endSlot: row.endSlot,
-                hours: row.hours,
-                process: row.process,
-                isAfternoon: row.isAfternoon,
-                isOverride: true,
-              })),
-            });
-          }
-
-          // Remaining rows (kept people's, usually the solver's, and past days')
-          // must be overrides too: the worker cap counts only override people, and
-          // regenerating the week keeps only override rows for this task.
-          await tx.planningAssignment.updateMany({
-            where: { taskId: task.id, isOverride: false },
-            data: { isOverride: true },
-          });
-        }
-
-        for (const planningId of affectedPlanningIds) {
-          await assertPlanningAssignmentsWorkOrderWorkers(tx, planningId);
-        }
-
-        // Duplicar franjas no puede poner a nadie en dos tareas a la vez.
-        await assertExecutorsNotDoubleBooked(tx, personIds, tasks);
-      });
 
       log.info(
-        { workOrderId: data.workOrderId, personIds },
+        { workOrderId: data.workOrderId, personIds, ...result },
         "work order executors set",
       );
       revalidatePath("/dashboard/admin/ordenes-trabajo");
       revalidatePath("/dashboard/horas");
+      return result;
     },
     () => ({
       summary: "Elegir ejecutores de OT",

@@ -288,6 +288,7 @@ export function OrdenesTrabajoClient({
   activePeople,
   workOrderExecutorIds,
   workOrderIdsReadyForExecutors,
+  workOrderIdsPendingExecutors,
 }: {
   workOrders: WorkOrderRow[];
   eligibleTasks: EligibleWorkOrderTask[];
@@ -305,6 +306,7 @@ export function OrdenesTrabajoClient({
   activePeople: ActivePersonOption[];
   workOrderExecutorIds: Record<string, string[]>;
   workOrderIdsReadyForExecutors: string[];
+  workOrderIdsPendingExecutors: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -522,6 +524,20 @@ export function OrdenesTrabajoClient({
         });
         if (!executors.ok) {
           toast.error(`No se guardaron los operarios: ${executors.error}`);
+          router.refresh();
+          return;
+        }
+        if (executors.data.conflict) {
+          toast.warning(
+            `OT actualizada. ${executors.data.conflict} Los operarios quedan guardados y se aplicarán al regenerar el planning.`,
+          );
+          setEditOrder(null);
+          router.refresh();
+          return;
+        }
+        if (executors.data.pending) {
+          toast.success("OT actualizada. Los operarios se aplicarán al generar el planning de la semana.");
+          setEditOrder(null);
           router.refresh();
           return;
         }
@@ -1003,22 +1019,26 @@ export function OrdenesTrabajoClient({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Operarios de la OT (máx. 2)</Label>
+                    <Label>Operarios de la OT (máx. 2, el primero marcado es el responsable)</Label>
                     {(() => {
                       const naveId = editOrder.tasks[0]?.nave.id;
                       const options = activePeople.filter((p) =>
                         naveId ? p.naveIds.includes(naveId) : false,
                       );
-                      // Los operarios se copian de las franjas del planning de hoy en adelante:
-                      // sin ellas no hay qué copiar.
+                      // Sin franjas de hoy en adelante la elección se guarda y se aplica al generar el planning.
                       const planned = workOrderIdsReadyForExecutors.includes(editOrder.id);
                       return (
                         <>
+                          {planned && workOrderIdsPendingExecutors.includes(editOrder.id) ? (
+                            <p className="text-xs text-muted-foreground">
+                              Pendiente: alguno de estos operarios estaba ocupado en las franjas de la OT. Se aplicarán al regenerar el planning de la semana.
+                            </p>
+                          ) : null}
                           {!planned ? (
                             <p className="text-xs text-muted-foreground">
                               {planningBlocked.has(editOrder.id)
-                                ? "Alguna tarea de esta OT no tiene planning de hoy en adelante. Regenera el planning de la semana y luego elige aquí los operarios."
-                                : "Esta OT aún no está en ningún planning. Genera el planning de la semana y luego elige aquí los operarios."}
+                                ? "Alguna tarea de esta OT no tiene planning de hoy en adelante: los operarios se guardan y se aplicarán al regenerar el planning de la semana."
+                                : "Esta OT aún no está en el planning: los operarios se guardan y se aplicarán al generar el planning de la semana."}
                             </p>
                           ) : null}
                           <div className="flex flex-wrap gap-3 rounded-md border p-2">
@@ -1046,7 +1066,7 @@ export function OrdenesTrabajoClient({
                                           return prev.filter((id) => id !== person.id);
                                         });
                                       }}
-                                      disabled={!planned || (!checked && editExecutorIds.length >= 2)}
+                                      disabled={!checked && editExecutorIds.length >= 2}
                                     />
                                     {person.label}
                                   </label>

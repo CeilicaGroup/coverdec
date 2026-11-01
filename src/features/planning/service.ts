@@ -35,6 +35,8 @@ import {
   findTasksWithMultipleWorkers,
 } from "@/features/planning/validate-assignments";
 import { buildWorkOrderIdByTaskId } from "@/features/work-orders/planning";
+import { applyStoredWorkOrderExecutors } from "@/features/work-orders/apply-work-order-executors";
+import { planningHorizonDays } from "./saturday";
 import type { EngineAssignment } from "./engine/types";
 import {
   filterOverrideAssignments,
@@ -59,7 +61,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** DB writes only; CP-SAT solver runs outside the transaction (often 10–60s). */
 const PLANNING_WRITE_TX_MS = 30_000;
 
-const ENGINE_HORIZON_DAYS = 5;
 /** Por debajo de 15 min de hueco sin colocar no bloqueamos el guardado del borrador. */
 const UNSCHEDULED_FAIL_THRESHOLD_HOURS = 0.25;
 
@@ -242,9 +243,10 @@ export async function generatePlanning(
 ): Promise<GeneratedPlanning> {
   const replaceDraft = args.replaceDraft ?? true;
   const weekStart = getMondayOf(args.weekStart);
-  const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
+  const horizonDays = await planningHorizonDays(weekStart, [args.naveId]);
+  const weekEnd = new Date(weekStart.getTime() + (horizonDays - 1) * DAY_MS);
   const { year, week } = isoWeek(weekStart);
-  log.info({ naveId: args.naveId, year, week }, "generate planning start");
+  log.info({ naveId: args.naveId, year, week, horizonDays }, "generate planning start");
 
   const existing = await prisma.planning.findUnique({
     where: {
@@ -291,7 +293,7 @@ export async function generatePlanning(
     priorWeekAssignments,
   });
 
-  if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
+  if (engineInput.firstSchedulableDayIndex >= horizonDays) {
     throw new Error(
       "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige una fecha anterior o navega a otra semana.",
     );
@@ -464,7 +466,10 @@ export async function generatePlanning(
     })),
   ];
 
-  const warnings = await formatPlanningWarningMessages(rawWarnings);
+  const warnings = [
+    ...(await formatPlanningWarningMessages(rawWarnings)),
+    ...(await applyStoredWorkOrderExecutors([planning.id])),
+  ];
 
   return {
     planningId: planning.id,
@@ -483,12 +488,13 @@ export async function generateGlobalPlanning(args: {
 }): Promise<GenerateGlobalPlanningResult> {
   const replaceDraft = args.replaceDraft ?? true;
   const weekStart = getMondayOf(args.weekStart);
-  const weekEnd = new Date(weekStart.getTime() + (ENGINE_HORIZON_DAYS - 1) * DAY_MS);
   const { year, week } = isoWeek(weekStart);
   const naveIds = args.naves.map((nave) => nave.id);
+  const horizonDays = await planningHorizonDays(weekStart, naveIds);
+  const weekEnd = new Date(weekStart.getTime() + (horizonDays - 1) * DAY_MS);
   const planFromAt = args.planFromAt ?? new Date();
 
-  log.info({ naveIds, year, week }, "generate global planning start");
+  log.info({ naveIds, year, week, horizonDays }, "generate global planning start");
 
   const existingPlannings = await prisma.planning.findMany({
     where: { naveId: { in: naveIds }, year, week },
@@ -527,7 +533,7 @@ export async function generateGlobalPlanning(args: {
     priorWeekAssignments,
   });
 
-  if (engineInput.firstSchedulableDayIndex >= ENGINE_HORIZON_DAYS) {
+  if (engineInput.firstSchedulableDayIndex >= horizonDays) {
     throw new Error(
       "«Planificar desde» no deja ningún día laborable en la semana del calendario. Elige una fecha anterior o navega a otra semana.",
     );
@@ -720,7 +726,10 @@ export async function generateGlobalPlanning(args: {
       reason: warning.reason,
     })),
   ];
-  const warnings = await formatPlanningWarningMessages(rawWarnings);
+  const warnings = [
+    ...(await formatPlanningWarningMessages(rawWarnings)),
+    ...(await applyStoredWorkOrderExecutors(perNave.map((row) => row.planningId))),
+  ];
 
   log.info(
     {

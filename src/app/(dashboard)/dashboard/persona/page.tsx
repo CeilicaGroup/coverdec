@@ -8,6 +8,7 @@ import {
   parseWeekParam,
   weekDays,
 } from "@/lib/week";
+import { weekHasSaturday } from "@/features/planning/saturday";
 import {
   getAbsencesForRange,
   getActualHoursForWeek,
@@ -68,7 +69,7 @@ export default async function PersonaPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  const days = weekDays(weekStart);
+  const days = weekDays(weekStart, (await weekHasSaturday(weekStart)) ? 6 : 5);
   const view = params.view === "actual" ? "actual" : "plan";
   const layout = parsePersonaLayout(params.layout);
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
@@ -93,8 +94,8 @@ export default async function PersonaPage({
     elementTypeImages,
   ] = await Promise.all([
     getNavePersonnel(naveScope),
-    getAbsencesForRange(days[0], days[4]),
-    getHolidaysForRange(days[0], days[4]),
+    getAbsencesForRange(days[0]!, days.at(-1)!),
+    getHolidaysForRange(days[0]!, days.at(-1)!),
     getProcessBadgeStylesByCode(),
     getProcessDefinitionsByCode(),
     getPlanningForWeek({
@@ -162,7 +163,7 @@ export default async function PersonaPage({
       ? `${formatWeekRange(weekStart)} · Tu semana en calendario`
       : `${formatWeekRange(weekStart)} · Tu semana en lista`
     : layout === "calendario"
-      ? `${formatWeekRange(weekStart)} · Calendario L–V por operario · imprimir para reparto en nave`
+      ? `${formatWeekRange(weekStart)} · Calendario ${days.length === 6 ? "L–S" : "L–V"} por operario · imprimir para reparto en nave`
       : `${formatWeekRange(weekStart)} · Lista detallada por operario · imprimir para reparto en nave`;
 
   return (

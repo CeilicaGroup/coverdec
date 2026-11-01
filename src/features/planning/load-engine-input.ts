@@ -12,6 +12,7 @@ import { getPlanningWeights } from "@/features/planning/queries";
 import { projectStrategyToWeights } from "@/features/planning/policy-schema";
 import {
   computePlanFromBounds,
+  type HorizonDays,
   relaxFirstSchedulableDayForChain,
   type PlanFrom,
 } from "@/features/planning/plan-from";
@@ -76,9 +77,12 @@ export interface PlanningAssignmentSlice {
   process: string;
 }
 
+/** Lun–sáb: el sábado solo tiene filas en semanas con sábado laborable. */
+const MAX_WEEK_DAYS = 6;
+
 export function assignmentDayIndex(weekStart: Date, date: Date): number {
   const week = toUtcDay(weekStart);
-  const days = Array.from({ length: 5 }, (_, i) =>
+  const days = Array.from({ length: MAX_WEEK_DAYS }, (_, i) =>
     new Date(week.getTime() + i * DAY_MS),
   );
   return days.findIndex((d) => isSameUtcDay(d, date));
@@ -108,6 +112,24 @@ function fixedAssignmentKey(a: PlanningAssignmentSlice): string {
 }
 
 /** Prioridad: registros de tiempo > planning previo > asignaciones fijas de la semana actual. */
+async function loadManualOwnerByWorkOrderId(
+  tasks: { workOrderId: string | null; workOrder: { status: string } | null }[],
+): Promise<Map<string, string>> {
+  const workOrderIds = [
+    ...new Set(
+      tasks
+        .filter((t) => t.workOrderId && t.workOrder?.status === "OPEN")
+        .map((t) => t.workOrderId!),
+    ),
+  ];
+  if (workOrderIds.length === 0) return new Map();
+  const rows = await prisma.workOrderExecutor.findMany({
+    where: { workOrderId: { in: workOrderIds }, position: 0 },
+    select: { workOrderId: true, personId: true },
+  });
+  return new Map(rows.map((r) => [r.workOrderId, r.personId]));
+}
+
 export function resolveOwnerPersonIdByTaskId(
   taskIds: string[],
   fromTimeEntries: Map<string, string>,
@@ -218,7 +240,7 @@ export function buildPreviousHoursFromAssignments(
   excludeTaskIds?: Set<string>,
 ): Map<string, number> {
   const week = toUtcDay(weekStart);
-  const days = Array.from({ length: 5 }, (_, i) =>
+  const days = Array.from({ length: MAX_WEEK_DAYS }, (_, i) =>
     new Date(week.getTime() + i * DAY_MS),
   );
   const previousHours = new Map<string, number>();
@@ -273,7 +295,7 @@ function allowedTaskPersonDayKeys(
   for (const task of tasks) {
     if (task.ownerPersonId) {
       if (peopleById.has(task.ownerPersonId)) {
-        for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+        for (let dayIdx = 0; dayIdx < MAX_WEEK_DAYS; dayIdx++) {
           allowed.add(`${task.id}|${task.ownerPersonId}|${dayIdx}`);
         }
       }
@@ -287,7 +309,7 @@ function allowedTaskPersonDayKeys(
       ) {
         continue;
       }
-      for (let dayIdx = 0; dayIdx < 5; dayIdx++) {
+      for (let dayIdx = 0; dayIdx < MAX_WEEK_DAYS; dayIdx++) {
         allowed.add(`${task.id}|${person.id}|${dayIdx}`);
       }
     }
@@ -361,10 +383,13 @@ export async function loadSolverInput(args: {
   }
   const isMultiNave = naveIds.length > 1;
   const weekStart = toUtcDay(args.weekStart);
+  // weekEnd es el viernes, o el sábado si esa semana hay sábado laborable.
+  const horizonDays: HorizonDays =
+    Math.round((toUtcDay(args.weekEnd).getTime() - weekStart.getTime()) / DAY_MS) + 1 === 6 ? 6 : 5;
   const planFromAt = args.planFromAt ?? new Date();
   const planFrom = args.planFrom ?? "WEEK_START";
   let { firstSchedulableDayIndex, firstSchedulableWeekQuarter } =
-    computePlanFromBounds(weekStart, planFrom, planFromAt);
+    computePlanFromBounds(weekStart, planFrom, planFromAt, horizonDays);
 
   const { year, week } = isoWeek(weekStart);
 
@@ -530,6 +555,12 @@ export async function loadSolverInput(args: {
     priorOwnerByTask,
     currentWeekOwnerByTask,
   );
+  // El responsable elegido a mano en la OT manda sobre fichajes y plannings anteriores.
+  const manualOwnerByWorkOrder = await loadManualOwnerByWorkOrderId(tasksRaw);
+  for (const task of tasksRaw) {
+    const owner = task.workOrderId ? manualOwnerByWorkOrder.get(task.workOrderId) : undefined;
+    if (owner) resolvedOwners.set(task.id, owner);
+  }
   assertConsistentWorkOrderOwners(tasksRaw, resolvedOwners);
   const ownerPersonIdByTask = propagateWorkOrderOwnerByTaskId(
     tasksRaw,
@@ -650,6 +681,7 @@ export async function loadSolverInput(args: {
   const { minByTask: minWeekQuarterByTask, deferredPastHorizon } =
     computeMinWeekQuarterByTaskId({
       weekStart,
+      horizonDays,
       tasks: tasksRaw.map((task) => ({
         id: task.id,
         lampId: task.lampId,
@@ -774,9 +806,8 @@ export async function loadSolverInput(args: {
     .map((t) => {
       const minWeekQuarter = minWeekQuarterByTask.get(t.id);
       const pendingHours = roundUpToPlanningQuarterHours(t.pendingHours);
-      return minWeekQuarter !== undefined
-        ? { ...t, pendingHours, minWeekQuarter }
-        : { ...t, pendingHours };
+      const rounded = { ...t, pendingHours, rawPendingHours: t.pendingHours };
+      return minWeekQuarter !== undefined ? { ...rounded, minWeekQuarter } : rounded;
     });
 
   const processDefs: EngineProcessDef[] = processes.map((p) => ({
@@ -881,6 +912,7 @@ export async function loadSolverInput(args: {
     deferredTasks,
     planFrom,
     workOrderPipelines,
+    horizonDays,
   };
 
   if (assignmentsForStability.length > 0) {

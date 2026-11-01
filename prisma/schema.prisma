@@ -247,6 +247,7 @@ model Person {
   scheduleOverrides PersonScheduleOverride[]
   attendanceSessions AttendanceSession[]
   taskParticipants  TaskParticipant[]
+  workOrderExecutors WorkOrderExecutor[]
 }
 
 model PersonNave {
@@ -484,9 +485,25 @@ model WorkOrder {
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
-  tasks Task[]
+  tasks     Task[]
+  executors WorkOrderExecutor[]
 
   @@unique([year, serial])
+}
+
+/// Operarios elegidos a mano para una OT (máx. 2). Se guardan aunque la OT aún no esté
+/// planificada: al generar el planning, position 0 es el dueño de sus tareas en el solver
+/// y position 1 recibe las mismas franjas duplicadas (apoyo).
+model WorkOrderExecutor {
+  workOrderId String
+  personId    String
+  position    Int
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([workOrderId, personId])
+  @@index([personId])
 }
 
 model Task {

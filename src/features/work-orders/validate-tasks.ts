@@ -64,9 +64,12 @@ export async function assignTasksToWorkOrder(
       lampId: true,
       lampElementId: true,
       order: true,
+      project: { select: { deliveryDate: true } },
     },
   });
-  const orderedTaskIds = sortTaskIdsForWorkOrderSequence(tasksForOrder);
+  const orderedTaskIds = sortTaskIdsForWorkOrderSequence(
+    tasksForOrder.map((t) => ({ ...t, deliveryDate: t.project.deliveryDate })),
+  );
 
   const current = await tx.task.findMany({
     where: { workOrderId },

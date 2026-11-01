@@ -2,7 +2,7 @@ import { PlanningStatus } from "@/generated/prisma";
 import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import { prisma } from "@/lib/db";
 import { slotEndToHour } from "@/features/planning/engine/slot-format";
-import { minuteToWeekQuarter } from "@/features/planning/plan-from";
+import { minuteToWeekQuarter, type HorizonDays } from "@/features/planning/plan-from";
 import { getMondayOf, toUtcDay } from "@/lib/week";
 
 function toPlanningDayIso(d: Date): string {
@@ -10,15 +10,11 @@ function toPlanningDayIso(d: Date): string {
 }
 
 import { taskChainKey } from "@/features/planning/task-chain-key";
-import {
-  PLANNING_HORIZON_DAYS,
-  PLANNING_HORIZON_QUARTERS,
-} from "@/features/planning/week-progress";
+import { PLANNING_HORIZON_DAYS } from "@/features/planning/week-progress";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QUARTERS_PER_DAY = 24 * 4;
-const HORIZON_Q = PLANNING_HORIZON_QUARTERS;
 
 export interface PriorPlanningAssignment {
   taskId: string;
@@ -137,9 +133,15 @@ function addWaitHours(end: Date, waitHours: number): Date {
   return new Date(end.getTime() + waitHours * 60 * 60 * 1000);
 }
 
-function advanceToBusinessDay(dt: Date, holidayDates: Set<string>): Date {
+/** `workSaturdayIso`: sábado habilitado esa semana, que cuenta como laborable. */
+function advanceToBusinessDay(
+  dt: Date,
+  holidayDates: Set<string>,
+  workSaturdayIso?: string,
+): Date {
   let d = new Date(dt);
-  while (isWeekend(d) || holidayDates.has(toPlanningDayIso(d))) {
+  const isWorkSaturday = (x: Date) => toPlanningDayIso(x) === workSaturdayIso;
+  while ((isWeekend(d) && !isWorkSaturday(d)) || holidayDates.has(toPlanningDayIso(d))) {
     d = new Date(d.getTime() + DAY_MS);
     d.setUTCHours(8, 0, 0, 0);
   }
@@ -169,12 +171,16 @@ export function buildLastAssignmentEndByTaskId(
   return byTask;
 }
 
-export function dateTimeToWeekQuarter(weekStart: Date, dt: Date): number {
+export function dateTimeToWeekQuarter(
+  weekStart: Date,
+  dt: Date,
+  horizonDays: HorizonDays = PLANNING_HORIZON_DAYS,
+): number {
   const monday = toUtcDay(weekStart);
   const day = toUtcDay(dt);
   const dayIdx = Math.floor((day.getTime() - monday.getTime()) / DAY_MS);
   if (dayIdx < 0) return 0;
-  if (dayIdx >= PLANNING_HORIZON_DAYS) return HORIZON_Q;
+  if (dayIdx >= horizonDays) return horizonDays * QUARTERS_PER_DAY;
   const minuteOfDay = dt.getUTCHours() * 60 + dt.getUTCMinutes();
   return minuteToWeekQuarter(dayIdx, minuteOfDay);
 }
@@ -186,10 +192,18 @@ export function computeMinWeekQuarterByTaskId(args: {
   priorEnds: Map<string, { date: Date; endSlot: number }>;
   waitHoursByProcess: Map<string, number>;
   holidayDates: Set<string>;
+  /** 6 si el sábado de esta semana se trabaja. */
+  horizonDays?: HorizonDays;
 }): {
   minByTask: Map<string, number>;
   deferredPastHorizon: Set<string>;
 } {
+  const horizonDays = args.horizonDays ?? PLANNING_HORIZON_DAYS;
+  const horizonQ = horizonDays * QUARTERS_PER_DAY;
+  const workSaturdayIso =
+    horizonDays === 6
+      ? toPlanningDayIso(new Date(toUtcDay(args.weekStart).getTime() + 5 * DAY_MS))
+      : undefined;
   const deferredPastHorizon = new Set<string>();
   const byChain = new Map<string, LampTaskRef[]>();
   for (const t of args.tasks) {
@@ -224,12 +238,13 @@ export function computeMinWeekQuarterByTaskId(args: {
             args.waitHoursByProcess.get(pred.process) ?? 0,
           ),
           args.holidayDates,
+          workSaturdayIso,
         );
-        const q = dateTimeToWeekQuarter(args.weekStart, earliest);
+        const q = dateTimeToWeekQuarter(args.weekStart, earliest, horizonDays);
         minQ = Math.max(minQ, q);
       }
 
-      if (minQ >= HORIZON_Q) {
+      if (minQ >= horizonQ) {
         deferredPastHorizon.add(task.id);
         continue;
       }

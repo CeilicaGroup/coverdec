@@ -35,6 +35,10 @@ def get_windows_for_date(
     for day in weekly:
         if day.dayOfWeek == day_of_week:
             return day.windows
+    # Weekends are never worked by default: Saturday capacity only comes from
+    # an explicit per-date override (or a weekly entry for that day).
+    if day_of_week >= 6:
+        return []
     return DEFAULT_WINDOWS
 
 
@@ -151,6 +155,10 @@ class WorkerDayTimeline:
 
         windows = get_windows_for_date(day_of_week, weekly, override)
         if override is not None and len(windows) == 0:
+            return empty
+        # Weekend without weekly entry nor override: no capacity, and in
+        # particular no capacity_hours fallback below.
+        if len(windows) == 0 and day_of_week >= 6:
             return empty
 
         contract_q = contract_quarters_for_day(
@@ -538,6 +546,10 @@ class WorkerPlacementCatalog:
         if week_tl.cap <= 0 or max_demand_q <= 0:
             return WorkerPlacementCatalog(person_id, week_tl, (), horizon_days, ())
 
+        # The caller passes the request horizon (5 or 6); never index past the
+        # last day actually present in the timeline (e.g. a Saturday quarter
+        # with the default horizon of 5).
+        horizon_days = max(horizon_days, week_tl.quarters[-1].day_index + 1)
         cap = week_tl.cap
         max_d = min(max_demand_q, cap)
 

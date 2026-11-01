@@ -16,6 +16,7 @@ import {
 } from "./planning-horizon";
 import { loadActiveNaveIdsOrdered } from "@/features/naves/active-naves";
 import { assertPlanFromDateInWorkWeek } from "./plan-from";
+import { planningHorizonDays } from "./saturday";
 import { getMondayOf } from "@/lib/week";
 import {
   isPlanningGenerationError,
@@ -81,7 +82,11 @@ export async function startPlanningJob(input: {
   }
 
   if (input.planFromDate) {
-    assertPlanFromDateInWorkWeek(input.weekStart, input.planFromDate);
+    assertPlanFromDateInWorkWeek(
+      input.weekStart,
+      input.planFromDate,
+      await planningHorizonDays(new Date(input.weekStart)),
+    );
   }
 
   const job = await prisma.planningJob.create({

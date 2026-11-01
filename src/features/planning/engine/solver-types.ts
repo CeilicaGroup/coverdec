@@ -39,6 +39,8 @@ export interface SolverInput extends EngineInput {
   deferredTasks?: DeferredPlanningTask[];
   /** Horas mínimas de OT predecesora antes de que pueda empezar la sucesora. */
   workOrderPipelines?: WorkOrderPipelineEdge[];
+  /** 6 si el sábado de esta semana se trabaja (capacidad solo por overrides); si no, 5. */
+  horizonDays?: 5 | 6;
 }
 
 const processCodeSchema = z.string();
@@ -62,6 +64,7 @@ export type SolveRequestPayload = {
     order: number;
     process: string;
     pendingHours: number;
+    rawPendingHours?: number;
     naveId: string;
     minWeekQuarter?: number;
     canFragment?: boolean;
@@ -87,6 +90,8 @@ export type SolveRequestPayload = {
   previousHours: { key: string; quarters: number }[];
   firstSchedulableDayIndex: number;
   firstSchedulableWeekQuarter?: number;
+  /** Solo se envía en semanas con sábado laborable (el solver asume 5). */
+  horizonDays?: 6;
   fixedAssignments: {
     taskId: string;
     personId: string;
@@ -155,6 +160,7 @@ export function summarizeSolverRequest(payload: SolveRequestPayload) {
     weekStart: payload.weekStart,
     firstSchedulableDayIndex: payload.firstSchedulableDayIndex,
     firstSchedulableWeekQuarter: payload.firstSchedulableWeekQuarter ?? null,
+    horizonDays: payload.horizonDays ?? 5,
     taskCount: payload.tasks.length,
     totalPendingHours: Math.round(
       payload.tasks.reduce((a, t) => a + t.pendingHours, 0) * 100,
@@ -264,6 +270,9 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
       return {
         ...base,
         ...(t.lampElementId ? { lampElementId: t.lampElementId } : {}),
+        ...(t.rawPendingHours != null && t.rawPendingHours !== t.pendingHours
+          ? { rawPendingHours: t.rawPendingHours }
+          : {}),
         ...(t.minWeekQuarter && t.minWeekQuarter > 0
           ? { minWeekQuarter: t.minWeekQuarter }
           : {}),
@@ -295,6 +304,7 @@ export function serializeSolverInput(input: SolverInput): SolveRequestPayload {
     ...(input.firstSchedulableWeekQuarter != null
       ? { firstSchedulableWeekQuarter: input.firstSchedulableWeekQuarter }
       : {}),
+    ...(input.horizonDays === 6 ? { horizonDays: 6 as const } : {}),
     fixedAssignments: input.fixedAssignments.map((f) => ({
       taskId: f.taskId,
       personId: f.personId,

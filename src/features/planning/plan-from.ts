@@ -39,17 +39,23 @@ export type PlanFrom = (typeof PLAN_FROM_OPTIONS)[number]["value"];
 
 export const PLAN_FROM_STORAGE_KEY = "coverdec.planFrom";
 
-export function weekWorkdayIsoRange(weekStart: Date | string): {
+/** Días de planning de la semana: 5 (lun–vie) o 6 si ese sábado se trabaja. */
+export type HorizonDays = 5 | 6;
+
+export function weekWorkdayIsoRange(
+  weekStart: Date | string,
+  horizonDays: HorizonDays = 5,
+): {
   mondayIso: string;
-  fridayIso: string;
+  lastDayIso: string;
 } {
   const monday = getMondayOf(
     typeof weekStart === "string" ? new Date(weekStart) : weekStart,
   );
-  const days = weekDays(monday);
+  const days = weekDays(monday, horizonDays);
   return {
-    mondayIso: days[0].toISOString().slice(0, 10),
-    fridayIso: days[4].toISOString().slice(0, 10),
+    mondayIso: days[0]!.toISOString().slice(0, 10),
+    lastDayIso: days.at(-1)!.toISOString().slice(0, 10),
   };
 }
 
@@ -57,36 +63,41 @@ export function weekWorkdayIsoRange(weekStart: Date | string): {
 export function defaultPlanFromDateIso(
   weekStart: Date | string,
   at: Date = new Date(),
+  horizonDays: HorizonDays = 5,
 ): string {
-  const { mondayIso, fridayIso } = weekWorkdayIsoRange(weekStart);
+  const { mondayIso, lastDayIso } = weekWorkdayIsoRange(weekStart, horizonDays);
   const todayIso = toUtcDay(at).toISOString().slice(0, 10);
-  if (todayIso < mondayIso || todayIso > fridayIso) return mondayIso;
+  if (todayIso < mondayIso || todayIso > lastDayIso) return mondayIso;
   return todayIso;
 }
 
 export function assertPlanFromDateInWorkWeek(
   weekStart: Date | string,
   planFromDateIso: string,
+  horizonDays: HorizonDays = 5,
 ): void {
-  const { mondayIso, fridayIso } = weekWorkdayIsoRange(weekStart);
-  if (planFromDateIso < mondayIso || planFromDateIso > fridayIso) {
+  const { mondayIso, lastDayIso } = weekWorkdayIsoRange(weekStart, horizonDays);
+  if (planFromDateIso < mondayIso || planFromDateIso > lastDayIso) {
     throw new Error(
-      "«Planificar desde» debe ser un día laborable (lun–vie) de la semana del calendario.",
+      horizonDays === 6
+        ? "«Planificar desde» debe ser un día laborable (lun–sáb) de la semana del calendario."
+        : "«Planificar desde» debe ser un día laborable (lun–vie) de la semana del calendario.",
     );
   }
 }
 
-/** Índice 0–4 (lun–vie) del primer día planificable; 5 = ningún día en la semana. */
+/** Índice del primer día planificable (0 = lunes); horizonDays = ningún día en la semana. */
 export function findFirstSchedulableDayIndex(
   weekStart: Date,
   anchor: Date,
+  horizonDays: HorizonDays = 5,
 ): number {
-  const days = weekDays(getMondayOf(weekStart));
+  const days = weekDays(getMondayOf(weekStart), horizonDays);
   const anchorDay = toUtcDay(anchor);
-  if (anchorDay.getTime() < days[0].getTime()) return 0;
-  if (anchorDay.getTime() > days[4].getTime()) return 5;
+  if (anchorDay.getTime() < days[0]!.getTime()) return 0;
+  if (anchorDay.getTime() > days.at(-1)!.getTime()) return horizonDays;
   const idx = days.findIndex((d) => d.getTime() >= anchorDay.getTime());
-  return idx >= 0 ? idx : 5;
+  return idx >= 0 ? idx : horizonDays;
 }
 
 export function minuteToWeekQuarter(dayIndex: number, minuteOfDay: number): number {
@@ -117,18 +128,19 @@ export function computePlanFromBounds(
   weekStart: Date,
   planFrom: PlanFrom,
   planFromAt: Date,
+  horizonDays: HorizonDays = 5,
 ): { firstSchedulableDayIndex: number; firstSchedulableWeekQuarter?: number } {
   if (planFrom === "WEEK_START") {
     return { firstSchedulableDayIndex: 0 };
   }
 
   const anchor = resolvePlanFromAnchor(weekStart, planFrom, planFromAt);
-  const firstSchedulableDayIndex = findFirstSchedulableDayIndex(weekStart, anchor);
-  if (firstSchedulableDayIndex >= 5) {
-    return { firstSchedulableDayIndex: 5 };
+  const firstSchedulableDayIndex = findFirstSchedulableDayIndex(weekStart, anchor, horizonDays);
+  if (firstSchedulableDayIndex >= horizonDays) {
+    return { firstSchedulableDayIndex: horizonDays };
   }
 
-  const days = weekDays(getMondayOf(weekStart));
+  const days = weekDays(getMondayOf(weekStart), horizonDays);
   const firstDay = days[firstSchedulableDayIndex];
   if (!firstDay) {
     return { firstSchedulableDayIndex };

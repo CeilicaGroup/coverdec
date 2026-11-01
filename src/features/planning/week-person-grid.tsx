@@ -38,7 +38,7 @@ export function toWeekPersonListItem(
   };
 }
 
-const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 import { TaskSystemKind, type ElementTypology, type WorkOrderStatus } from "@/generated/prisma";
 
@@ -338,7 +338,7 @@ export function PersonWeekCalendar({
       <div className="hidden @3xl/person-week-card:block">
         <div
           className="grid w-full border rounded-md overflow-hidden"
-          style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
+          style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
         >
           {days.map((d, idx) => {
             const key = d.toISOString().slice(0, 10);
@@ -482,7 +482,7 @@ export function WeekPersonGrid({
   const gridContent = (
     <>
       <div className="hidden md:block">
-        <div className="grid min-w-[480px]" style={{ gridTemplateColumns: "180px repeat(5, 1fr)" }}>
+        <div className="grid min-w-[480px]" style={{ gridTemplateColumns: `180px repeat(${days.length}, 1fr)` }}>
           <div className="bg-muted px-3 py-2 text-xs font-semibold border-b border-r">
             Operario
           </div>

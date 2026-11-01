@@ -8,6 +8,7 @@ import {
   parseWeekParam,
   weekDays,
 } from "@/lib/week";
+import { weekHasSaturday } from "@/features/planning/saturday";
 import {
   getAbsencesForRange,
   getActualHoursForWeek,
@@ -50,7 +51,7 @@ export default async function SemanaPage({
   const params = await searchParams;
   const weekStart = parseWeekParam(params.week);
   const { year, week } = isoWeek(weekStart);
-  const days = weekDays(weekStart);
+  const days = weekDays(weekStart, (await weekHasSaturday(weekStart)) ? 6 : 5);
   const view = params.view === "actual" ? "actual" : "plan";
   const weekIso = getMondayOf(weekStart).toISOString().slice(0, 10);
   const viewMode = await getPlanningViewModeForContext(ctx);
@@ -63,8 +64,8 @@ export default async function SemanaPage({
 
   const [people, holidays, absences, processStyles, planning, actualEntries, planningMeta, typologyImages, elementTypeImages, pendingAdHocTasks] = await Promise.all([
     getNavePersonnel(naveScope),
-    getHolidaysForRange(days[0], days[4]),
-    getAbsencesForRange(days[0], days[4]),
+    getHolidaysForRange(days[0]!, days.at(-1)!),
+    getAbsencesForRange(days[0]!, days.at(-1)!),
     getProcessBadgeStylesByCode(),
     getPlanningForWeek({
       naveScope,

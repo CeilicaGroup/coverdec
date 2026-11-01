@@ -110,13 +110,17 @@ export default async function MesPage({
     rangeStart,
     rangeEnd,
   );
-  const businessDays = businessDaysInMonth(monthStartIso, holidayDates);
-  const weeks = monthCalendarWeeks(monthStartIso);
-
   const summariesByDayRaw =
     view === "plan"
       ? summarizePlanningByDay(assignments)
       : summarizeActualByDay(actualEntries);
+  const workSaturdays = new Set(
+    [...summariesByDayRaw.keys()].filter(
+      (iso) => new Date(`${iso}T00:00:00.000Z`).getUTCDay() === 6,
+    ),
+  );
+  const businessDays = businessDaysInMonth(monthStartIso, holidayDates, workSaturdays);
+  const weeks = monthCalendarWeeks(monthStartIso, workSaturdays);
   const summariesByDay =
     view === "actual" && ctx.role === Role.OPERARIO
       ? enrichActualSummariesWithTeam(

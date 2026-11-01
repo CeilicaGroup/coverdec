@@ -87,6 +87,7 @@ export default async function OrdenesTrabajoPage({
         activePeople={activePeople}
         workOrderExecutorIds={Object.fromEntries(workOrderExecutors.executorIds)}
         workOrderIdsReadyForExecutors={[...workOrderExecutors.readyIds]}
+        workOrderIdsPendingExecutors={[...workOrderExecutors.pendingIds]}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertPlanFromDateInWorkWeek,
   computePlanFromBounds,
   defaultPlanFromDateIso,
   relaxFirstSchedulableDayForChain,
@@ -90,8 +91,39 @@ describe("weekWorkdayIsoRange", () => {
   it("returns monday and friday of the viewed week", () => {
     expect(weekWorkdayIsoRange(weekStart)).toEqual({
       mondayIso: "2026-05-04",
-      fridayIso: "2026-05-08",
+      lastDayIso: "2026-05-08",
     });
+  });
+
+  it("ends on saturday when that saturday is worked", () => {
+    expect(weekWorkdayIsoRange(weekStart, 6)).toEqual({
+      mondayIso: "2026-05-04",
+      lastDayIso: "2026-05-09",
+    });
+  });
+});
+
+describe("sábado laborable", () => {
+  const saturday = new Date("2026-05-09T00:00:00.000Z");
+
+  it("sin sábado, planificar desde el sábado no deja días; con sábado, es el día 5", () => {
+    // Con 5 días, el índice 5 es «ninguno»; con 6, es el sábado.
+    expect(computePlanFromBounds(weekStart, "DATE", saturday)).toEqual({ firstSchedulableDayIndex: 5 });
+    expect(computePlanFromBounds(weekStart, "DATE", saturday, 6)).toEqual({ firstSchedulableDayIndex: 5 });
+    expect(computePlanFromBounds(weekStart, "NOW", new Date("2026-05-09T10:00:00.000Z"), 6)).toEqual({
+      firstSchedulableDayIndex: 5,
+      firstSchedulableWeekQuarter: 5 * 96 + 40,
+    });
+    expect(computePlanFromBounds(weekStart, "DATE", new Date("2026-05-10T00:00:00.000Z"), 6)).toEqual({
+      firstSchedulableDayIndex: 6,
+    });
+  });
+
+  it("el sábado solo vale como «planificar desde» si se trabaja", () => {
+    expect(() => assertPlanFromDateInWorkWeek(weekStart, "2026-05-09")).toThrow(/lun–vie/);
+    expect(() => assertPlanFromDateInWorkWeek(weekStart, "2026-05-09", 6)).not.toThrow();
+    expect(defaultPlanFromDateIso(weekStart, new Date("2026-05-09T10:00:00.000Z"))).toBe("2026-05-04");
+    expect(defaultPlanFromDateIso(weekStart, new Date("2026-05-09T10:00:00.000Z"), 6)).toBe("2026-05-09");
   });
 });
 

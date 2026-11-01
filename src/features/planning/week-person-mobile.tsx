@@ -11,7 +11,7 @@ import { WeekDayTasks } from "./week-day-tasks";
 import type { TypologyImageAvailability } from "@/lib/typology-image";
 import type { ElementTypeImageAvailability } from "@/lib/element-type-image";
 
-const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const DAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 interface WeekPersonMobileProps {
   view: "plan" | "actual";

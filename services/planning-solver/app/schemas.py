@@ -66,6 +66,8 @@ class EngineTask(BaseModel):
     order: int
     process: str
     pendingHours: float
+    # Horas sin redondear a cuartos; permite juntar tareas de menos de 15 min.
+    rawPendingHours: float | None = None
     naveId: str = "default-nave"
     canFragment: bool = True
     minWeekQuarter: int = 0
@@ -128,6 +130,9 @@ class SolveRequest(BaseModel):
     schedules: list[PersonScheduleInput] = Field(default_factory=list)
     previousHours: list[PreviousHoursEntry] = Field(default_factory=list)
     firstSchedulableDayIndex: int = 0
+    # Days planned from weekStart: 5 = Mon–Fri, 6 = also Saturday (day index 5).
+    # Saturday capacity only comes from per-date schedule overrides.
+    horizonDays: int = Field(default=5, ge=5, le=6)
     firstSchedulableWeekQuarter: int | None = None
     fixedAssignments: list[FixedAssignment] = Field(default_factory=list)
     bookedHours: list[BookedHoursEntry] = Field(default_factory=list)

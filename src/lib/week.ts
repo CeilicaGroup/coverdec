@@ -12,24 +12,24 @@ export function getMondayOf(date: Date): Date {
   return new Date(utc.getTime() - (dow - 1) * DAY_MS);
 }
 
+/** Semana ISO 8601: la del jueves de esa semana, contada desde el 1 de enero de su año. */
 export function isoWeek(date: Date): { year: number; week: number } {
   const target = toUtcDay(date);
   const dayNr = (target.getUTCDay() + 6) % 7;
   target.setUTCDate(target.getUTCDate() - dayNr + 3);
-  const firstThursdayYear = target.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(firstThursdayYear, 0, 4));
-  const dayDiff = (target.getTime() - yearStart.getTime()) / DAY_MS;
-  const week = 1 + Math.floor(dayDiff / 7);
-  return { year: firstThursdayYear, week };
+  const year = target.getUTCFullYear();
+  const dayDiff = (target.getTime() - Date.UTC(year, 0, 1)) / DAY_MS;
+  return { year, week: 1 + Math.floor(dayDiff / 7) };
 }
 
 export function isSameUtcDay(a: Date, b: Date): boolean {
   return toUtcDay(a).getTime() === toUtcDay(b).getTime();
 }
 
-export function weekDays(weekStart: Date): Date[] {
+/** Días laborables de la semana: lun–vie, o lun–sáb (count 6) si ese sábado se trabaja. */
+export function weekDays(weekStart: Date, count: 5 | 6 = 5): Date[] {
   const monday = getMondayOf(weekStart);
-  return Array.from({ length: 5 }, (_, i) => new Date(monday.getTime() + i * DAY_MS));
+  return Array.from({ length: count }, (_, i) => new Date(monday.getTime() + i * DAY_MS));
 }
 
 export function parseWeekParam(value: string | undefined): Date {
