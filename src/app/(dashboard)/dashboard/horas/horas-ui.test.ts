@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { groupContiguousEntries } from "./entries-list";
 import { clampQuantity } from "./quantity-picker";
+import { formatEntryDuration } from "@/lib/format";
 
 type Row = Parameters<typeof groupContiguousEntries>[0][number];
 
@@ -47,5 +48,16 @@ describe("clampQuantity", () => {
     expect(clampQuantity("0", 260)).toBe(1);
     expect(clampQuantity("", 260)).toBe(1);
     expect(clampQuantity("12.7", 260)).toBe(12);
+  });
+});
+
+describe("formatEntryDuration", () => {
+  it("un timer corto no se ve como 0h", () => {
+    expect(formatEntryDuration(8 / 3600)).toBe("8 s");
+    expect(formatEntryDuration(0)).toBe("0 s");
+    expect(formatEntryDuration(20 / 60)).toBe("20 min");
+    expect(formatEntryDuration(1.5)).toBe("1.5h");
+    expect(formatEntryDuration(1)).toBe("1h");
+    expect(formatEntryDuration(null)).toBe("—");
   });
 });

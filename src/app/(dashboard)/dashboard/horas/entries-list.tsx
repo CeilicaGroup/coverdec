@@ -10,8 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatDayTimeInZone, formatHours } from "@/lib/format";
-import { ProcessBadge } from "@/components/process-badge";
+import { formatDayTimeInZone, formatEntryDuration } from "@/lib/format";
+import { ProcessBadge, type ProcessBadgeStyle } from "@/components/process-badge";
 import type { ProcessCode } from "@/types/process";
 import { TimeEntryInlineActions } from "@/features/time-tracking/time-entry-inline-actions";
 
@@ -70,9 +70,12 @@ export function groupContiguousEntries(entries: EntryRow[]): EntryGroup[] {
 export function EntriesList({
   entries,
   canEditAll = false,
+  processStyles = {},
 }: {
   entries: EntryRow[];
   canEditAll?: boolean;
+  /** Nombre y colores de cada proceso por código (para no mostrar CORTE_MANUAL en crudo). */
+  processStyles?: Record<string, ProcessBadgeStyle>;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupContiguousEntries(entries), [entries]);
@@ -122,14 +125,14 @@ export function EntriesList({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {first.process ? <ProcessBadge code={first.process} /> : "—"}
+                    {first.process ? <ProcessBadge code={first.process} definition={processStyles[first.process]} /> : "—"}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-[10px] font-mono">
                       {first.source}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right font-mono">{formatHours(total)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatEntryDuration(total)}</TableCell>
                   <TableCell>
                     <button
                       type="button"
@@ -167,14 +170,14 @@ export function EntriesList({
                   <div className="text-[10px] text-muted-foreground">{e.lamp}</div>
                 ) : null}
               </TableCell>
-              <TableCell>{e.process ? <ProcessBadge code={e.process} /> : "—"}</TableCell>
+              <TableCell>{e.process ? <ProcessBadge code={e.process} definition={processStyles[e.process]} /> : "—"}</TableCell>
               <TableCell>
                 <Badge variant="outline" className="text-[10px] font-mono">
                   {e.source}
                 </Badge>
               </TableCell>
               <TableCell className="text-right font-mono">
-                {formatHours(e.hours)}
+                {formatEntryDuration(e.hours)}
                 {!e.endedAt && (
                   <span className="ml-1 text-[10px] text-red-600">activo</span>
                 )}

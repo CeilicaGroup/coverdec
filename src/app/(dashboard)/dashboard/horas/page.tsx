@@ -617,6 +617,7 @@ export default async function HorasPage() {
         <CardContent className="p-0">
           <EntriesList
             canEditAll={ctx.role === Role.ADMIN}
+            processStyles={Object.fromEntries(processStyles)}
             entries={entries.map((e) => ({
               id: e.id,
               userId: e.userId,

@@ -118,6 +118,11 @@ export function ManualEntryForm({
   // El apoyo de una OT registra horas pero no da la tarea por terminada.
   const canComplete = selectedTask?.canComplete ?? true;
   const completing = markCompleted && canComplete;
+  // Horas que aún no han ocurrido: se permiten, pero se avisa (y bloquean iniciar el timer hasta entonces).
+  const futureRangeStart = ranges
+    .map((r) => new Date(fromDatetimeLocalInputValue(r.startedAt)))
+    .filter((d) => !Number.isNaN(d.getTime()) && d.getTime() > Date.now() + 60_000)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
   const breakScheduleContext = useMemo<BreakScheduleContext | null>(() => {
     if (!manualBreakSchedule) return null;
     return {
@@ -186,6 +191,9 @@ export function ManualEntryForm({
             }${completing ? " y tarea completada" : ""}`,
       );
       setNotes("");
+      // Sin esto el rango queda relleno y un segundo clic en Registrar duplicaría las horas.
+      setRanges([defaultRange()]);
+      setGroupedCompletionCount("1");
       setPendingDraft(null);
       setShowBreakDecisionDialog(false);
     });
@@ -344,6 +352,14 @@ export function ManualEntryForm({
               </Button>
             </div>
           ))}
+          {futureRangeStart ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Hay un rango que empieza a las{" "}
+              {futureRangeStart.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })},
+              posterior a la hora actual: estás registrando horas que aún no han pasado. Hasta
+              entonces no podrás iniciar el timer. Revisa que sea correcto.
+            </p>
+          ) : null}
           <Button
             type="button"
             variant="outline"

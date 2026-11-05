@@ -8,6 +8,19 @@ export function formatHours(hours: number | null | undefined): string {
   return `${text}h`;
 }
 
+/**
+ * Duración de un registro de tiempo: segundos si dura menos de 1 min, minutos si menos de 1 h y
+ * horas decimales a partir de ahí (un timer de 8 s no debe verse como «0h»).
+ */
+export function formatEntryDuration(hours: number | null | undefined): string {
+  if (hours == null || !Number.isFinite(hours)) return "—";
+  const seconds = Math.round(hours * 3600);
+  if (seconds <= 0) return "0 s";
+  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  return formatHours(hours);
+}
+
 /** Horas decimales → duración HH:MM (p. ej. 2.5 → 02:30). */
 export function formatHoursAsHhMm(hours: number | null | undefined): string {
   if (hours == null || !Number.isFinite(hours)) return "—";
