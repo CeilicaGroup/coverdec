@@ -34,4 +34,21 @@ describe("resolveCompletion", () => {
     expect(resolveCompletion({ ...base, requiredWorkers: 2, personId: "admin" })).toBe("close");
     expect(resolveCompletion({ ...base, requiredWorkers: 1, personId: null })).toBe("close");
   });
+
+  it("chapas asignadas por el planning (sin operarios elegidos en la OT): firman los dos planificados", () => {
+    const planned = { requiredWorkers: 2, executorIds: [] as string[], plannedIds: ["ana", "luis"] };
+    expect(resolveCompletion({ ...planned, personId: "ana", signedIds: [] })).toBe("signoff");
+    expect(resolveCompletion({ ...planned, personId: "luis", signedIds: ["ana"] })).toBe("close");
+  });
+
+  it("chapas con una sola persona planificada o quien completa no está asignado: se cierra", () => {
+    expect(resolveCompletion({ requiredWorkers: 2, executorIds: [], plannedIds: ["ana"], personId: "ana", signedIds: [] })).toBe("close");
+    expect(resolveCompletion({ requiredWorkers: 2, executorIds: [], plannedIds: ["ana", "luis"], personId: "otro", signedIds: [] })).toBe("close");
+  });
+
+  it("junta elegidos de la OT y planificados sin duplicar", () => {
+    const p = { requiredWorkers: 2, executorIds: ["ana"], plannedIds: ["ana", "luis"] };
+    expect(resolveCompletion({ ...p, personId: "luis", signedIds: [] })).toBe("signoff");
+    expect(resolveCompletion({ ...p, personId: "ana", signedIds: ["luis"] })).toBe("close");
+  });
 });

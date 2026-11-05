@@ -1,9 +1,10 @@
-import type { Prisma } from "@/generated/prisma";
+import { PlanningStatus, type Prisma } from "@/generated/prisma";
 
 /**
  * Quién da por terminada una tarea cuando la OT tiene dos operarios (WorkOrderExecutor):
  *
- * - Tarea con requiredWorkers > 1 (preparación de chapas): trabajan los dos y firman los dos.
+ * - Tarea con requiredWorkers > 1 (preparación de chapas): trabajan los dos y firman los dos
+ *   (los elegidos de la OT y los que el planning publicado asigna a la tarea).
  *   Cada firma deja de mostrar la tarea en la cola de quien firma; la tarea se cierra de verdad
  *   cuando han firmado todos los operarios de la OT. Las horas de cada uno se suman a la tarea.
  * - Resto de tareas: solo el responsable (position 0) la da por terminada. El apoyo registra
@@ -14,20 +15,29 @@ export type CompletionDecision = "close" | "signoff" | "forbidden";
 
 export function resolveCompletion(params: {
   requiredWorkers: number;
-  /** Operarios de la OT, por orden (el primero es el responsable). Vacío si no hay elegidos. */
+  /** Operarios elegidos a mano para la OT, por orden (el primero es el responsable). */
   executorIds: string[];
+  /**
+   * Personas que el planning publicado asigna a esta tarea. En las tareas de varios operarios
+   * (requiredWorkers > 1) las asigna el planificador, sin pasar por los elegidos de la OT.
+   */
+  plannedIds?: string[];
   /** Quien completa; null si no es una persona del taller (p. ej. admin sin ficha). */
   personId: string | null;
   /** Quiénes han firmado ya esta tarea, sin contar a `personId`. */
   signedIds: string[];
 }): CompletionDecision {
-  const { requiredWorkers, executorIds, personId, signedIds } = params;
-  const position = personId ? executorIds.indexOf(personId) : -1;
-  if (position < 0) return "close"; // no es operario de la OT: comportamiento de siempre
-  if (requiredWorkers <= 1) return position === 0 ? "close" : "forbidden";
-  if (executorIds.length < 2) return "close";
-  const signed = new Set([...signedIds, personId!]);
-  return executorIds.every((id) => signed.has(id)) ? "close" : "signoff";
+  const { requiredWorkers, executorIds, plannedIds = [], personId, signedIds } = params;
+  if (requiredWorkers <= 1) {
+    const position = personId ? executorIds.indexOf(personId) : -1;
+    if (position < 0) return "close"; // no es operario de la OT: comportamiento de siempre
+    return position === 0 ? "close" : "forbidden";
+  }
+  // Tarea de varios operarios: firman todos los que la tienen asignada.
+  const required = [...new Set([...executorIds, ...plannedIds])];
+  if (!personId || !required.includes(personId) || required.length < 2) return "close";
+  const signed = new Set([...signedIds, personId]);
+  return required.every((id) => signed.has(id)) ? "close" : "signoff";
 }
 
 export interface CompletableTask {
@@ -74,12 +84,30 @@ export async function completeTasksAsPerson(
     signedByTask.set(row.taskId, [...(signedByTask.get(row.taskId) ?? []), row.personId]);
   }
 
+  const plannedRows =
+    syncTaskIds.length === 0
+      ? []
+      : await tx.planningAssignment.findMany({
+          where: {
+            taskId: { in: syncTaskIds },
+            planning: { status: PlanningStatus.PUBLISHED },
+            person: { isActive: true },
+          },
+          select: { taskId: true, personId: true },
+          distinct: ["taskId", "personId"],
+        });
+  const plannedByTask = new Map<string, string[]>();
+  for (const row of plannedRows) {
+    plannedByTask.set(row.taskId, [...(plannedByTask.get(row.taskId) ?? []), row.personId]);
+  }
+
   const toClose: string[] = [];
   const toSign: string[] = [];
   for (const task of tasks) {
     const decision = resolveCompletion({
       requiredWorkers: task.requiredWorkers,
       executorIds: task.workOrderId ? (executorsByOt.get(task.workOrderId) ?? []) : [],
+      plannedIds: plannedByTask.get(task.id) ?? [],
       personId,
       signedIds: signedByTask.get(task.id) ?? [],
     });

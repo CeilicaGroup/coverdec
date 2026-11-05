@@ -360,6 +360,69 @@ describe("OT con dos operarios (responsable y apoyo)", () => {
     expect(Number((byUser.get(world.users.bea.id) ?? 0).toFixed(2))).toBe(3);
   });
 
+  it("chapas asignadas por el planning (sin operarios elegidos en la OT): no se cierra hasta que firman las dos personas planificadas", async () => {
+    const big = await createPlannableLamp(world, { name: "Hotel Chapas Planning", units: 3 });
+    const cnc = big.tasks.filter((t) => t.process === "CNC");
+    await loginAs(world.users.admin.email);
+    unwrap(
+      await recordAndCompleteGroupedOtTasks({
+        mode: "manualRanges",
+        taskId: cnc[0]!.id,
+        projectId: big.projectId,
+        lampId: big.lampId,
+        process: "CNC",
+        quantity: 3,
+        ranges: [{ startedAt: at("07:00"), endedAt: at("08:00") }],
+      }),
+    );
+    const otId = big.workOrderIdByProcess.ENSAMBLAJE!;
+    await prisma.task.updateMany({ where: { workOrderId: otId }, data: { requiredWorkers: 2 } });
+    // Como hace el solver con requiredWorkers > 1: las dos personas con la tarea en un planning publicado.
+    const planning = await prisma.planning.create({
+      data: {
+        naveId: world.naves.n1.id,
+        year: 2026,
+        week: 43,
+        weekStart: new Date("2026-10-19T00:00:00.000Z"),
+        weekEnd: new Date("2026-10-25T00:00:00.000Z"),
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+      },
+    });
+    const tareas = await prisma.task.findMany({ where: { workOrderId: otId }, orderBy: { workOrderSequence: "asc" } });
+    await prisma.planningAssignment.createMany({
+      data: tareas.flatMap((t, i) =>
+        [world.people.ana.id, world.people.bea.id].map((personId) => ({
+          planningId: planning.id,
+          taskId: t.id,
+          personId,
+          date: new Date("2026-10-20T00:00:00.000Z"),
+          startSlot: i,
+          endSlot: i + 1,
+          hours: 1,
+          process: "ENSAMBLAJE",
+        })),
+      ),
+    });
+    expect(await prisma.workOrderExecutor.count({ where: { workOrderId: otId } })).toBe(0);
+    const ot = { projectId: big.projectId, lampId: big.lampId, otId } as Parameters<typeof registrar>[0];
+    const done = () => prisma.task.count({ where: { workOrderId: otId, isCompleted: true } });
+
+    await loginAs(world.users.ana.email);
+    unwrap(await registrar(ot, (await firstPendingFor(otId, world.people.ana.id)).id, 2, "08:00", "10:00"));
+    expect(await done()).toBe(0); // falta Bea
+
+    await loginAs(world.users.bea.email);
+    // A Bea le siguen saliendo las 3, aunque Ana ya terminara 2.
+    expect(await prisma.task.count({ where: { workOrderId: otId, isCompleted: false, signoffs: { none: { personId: world.people.bea.id } } } })).toBe(3);
+    unwrap(await registrar(ot, (await firstPendingFor(otId, world.people.bea.id)).id, 3, "08:00", "11:00"));
+    expect(await done()).toBe(2); // las dos con ambas firmas; la 3ª solo con la de Bea
+
+    await loginAs(world.users.ana.email);
+    unwrap(await registrar(ot, (await firstPendingFor(otId, world.people.ana.id)).id, 1, "10:00", "11:00"));
+    expect(await done()).toBe(3);
+  });
+
   it("tarea normal: el apoyo registra horas pero no puede darla por terminada; el responsable sí", async () => {
     const ot = await otConDosOperarios(1);
 
