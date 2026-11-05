@@ -250,4 +250,29 @@ describe("OT agrupada: registrar y completar varias tareas iguales de una vez", 
       WorkOrderStatus.CLOSED,
     );
   });
+
+  it("deja completar una OT de más de 100 tareas de una vez (260 composites en un pallet)", async () => {
+    const big = await createPlannableLamp(world, { name: "Hotel Pallet", units: 260 });
+    const cncTasks = big.tasks.filter((t) => t.process === "CNC");
+    expect(cncTasks).toHaveLength(260);
+    const otId = big.workOrderIdByProcess.CNC!;
+
+    await loginAs(world.users.ana.email);
+    unwrap(
+      await recordAndCompleteGroupedOtTasks({
+        mode: "manualRanges",
+        taskId: cncTasks[0]!.id,
+        projectId: big.projectId,
+        lampId: big.lampId,
+        process: "CNC",
+        quantity: 260,
+        ranges: [{ startedAt: at("08:00"), endedAt: at("12:00") }],
+      }),
+    );
+
+    expect(await prisma.task.count({ where: { workOrderId: otId, isCompleted: true } })).toBe(260);
+    expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: otId } })).status).toBe(
+      WorkOrderStatus.CLOSED,
+    );
+  });
 });

@@ -179,12 +179,19 @@ export async function stopTimer(
 
 const completeTaskSchema = z.object({ taskId: z.string().min(1) });
 
+/**
+ * Tope de cordura, no de negocio: lo que manda es lo que queda pendiente en la OT
+ * (se comprueba más abajo). Una OT puede tener cientos de tareas iguales
+ * (p. ej. 260 composites preparados en un pallet).
+ */
+const MAX_GROUPED_QUANTITY = 5000;
+
 const groupedCompleteSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("timer"),
     taskId: z.string().min(1),
     timerEntryId: z.string().min(1),
-    quantity: z.number().int().min(1).max(100),
+    quantity: z.number().int().min(1).max(MAX_GROUPED_QUANTITY),
     notes: z.string().max(500).optional(),
   }),
   z.object({
@@ -194,7 +201,7 @@ const groupedCompleteSchema = z.discriminatedUnion("mode", [
     lampId: z.string().min(1).optional(),
     process: z.string().min(1),
     breakHandling: z.enum(["worked_extra", "took_break"]).optional(),
-    quantity: z.number().int().min(1).max(100),
+    quantity: z.number().int().min(1).max(MAX_GROUPED_QUANTITY),
     notes: z.string().max(500).optional(),
     ranges: z
       .array(
