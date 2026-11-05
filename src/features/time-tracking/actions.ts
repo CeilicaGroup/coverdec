@@ -34,7 +34,7 @@ import {
 } from "@/features/time-tracking/break-handling";
 import { loadBreakScheduleForRanges } from "@/features/time-tracking/load-break-schedule";
 import { assertCanWorkOnAdHocTask } from "@/features/ad-hoc/assert-ad-hoc-participant";
-import { completeTasksAsPerson } from "@/features/time-tracking/task-signoff";
+import { completeTasksAsPerson, type CompletionOutcome } from "@/features/time-tracking/task-signoff";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -235,10 +235,11 @@ const groupedCompleteSchema = z.discriminatedUnion("mode", [
 
 export async function recordAndCompleteGroupedOtTasks(
   input: z.infer<typeof groupedCompleteSchema>,
-): Promise<ActionResult<void>> {
+): Promise<ActionResult<CompletionOutcome>> {
   return runServerAction("time-tracking.recordAndCompleteGroupedOtTasks", async () => {
     const ctx = await requireDashboardContext();
     const data = groupedCompleteSchema.parse(input);
+    let outcome: CompletionOutcome = { signedOnly: 0 };
     let manualRangeResult:
       | ReturnType<typeof applyBreakHandling>
       | null = null;
@@ -272,7 +273,7 @@ export async function recordAndCompleteGroupedOtTasks(
           workOrderId: true,
           workOrderSequence: true,
           estimatedHours: true,
-          requiredWorkers: true,
+          signoffAll: true,
         },
       });
       if (!baseTask) throw new Error("Tarea no encontrada.");
@@ -298,7 +299,7 @@ export async function recordAndCompleteGroupedOtTasks(
           workOrderSequence: true,
           isCompleted: true,
           estimatedHours: true,
-          requiredWorkers: true,
+          signoffAll: true,
         },
       });
 
@@ -406,7 +407,7 @@ export async function recordAndCompleteGroupedOtTasks(
         });
       }
 
-      await completeTasksAsPerson(tx, selectedTasks, ctx.personId ?? null);
+      outcome = await completeTasksAsPerson(tx, selectedTasks, ctx.personId ?? null);
       await closeWorkOrderIfAllTasksComplete(tx, baseTask.workOrderId);
     });
 
@@ -428,26 +429,28 @@ export async function recordAndCompleteGroupedOtTasks(
     void evaluateCatalogTimeDeviationForTask(data.taskId).catch(() => {
       /* scanner errors must not block grouped completion */
     });
+    return outcome;
   });
 }
 
 export async function completeTask(
   input: z.infer<typeof completeTaskSchema>,
-): Promise<ActionResult<void>> {
+): Promise<ActionResult<CompletionOutcome>> {
   return runServerAction("time-tracking.completeTask", async () => {
   const ctx = await requireDashboardContext();
   const data = completeTaskSchema.parse(input);
   await assertTaskAccessible(ctx, data.taskId);
   await assertNoOpenTimer(ctx.userId);
 
+  let outcome: CompletionOutcome = { signedOnly: 0 };
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, isCompleted: true, workOrderId: true, requiredWorkers: true },
+      select: { id: true, isCompleted: true, workOrderId: true, signoffAll: true },
     });
     if (!task) throw new Error("Tarea no encontrada.");
     if (task.isCompleted) return;
-    await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
+    outcome = await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
     if (task.workOrderId) {
       await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
     }
@@ -462,6 +465,7 @@ export async function completeTask(
   void evaluateCatalogTimeDeviationForTask(data.taskId).catch(() => {
     /* scanner errors must not block task completion */
   });
+  return outcome;
   });
 }
 
@@ -560,7 +564,7 @@ const manualRangesSchema = z.object({
 
 export async function createManualEntriesFromRanges(
   input: z.infer<typeof manualRangesSchema>,
-): Promise<ActionResult<void>> {
+): Promise<ActionResult<CompletionOutcome>> {
   return runServerAction("time-tracking.createManualEntriesFromRanges", async () => {
   const ctx = await requireDashboardContext();
   const data = manualRangesSchema.parse(input);
@@ -589,6 +593,7 @@ export async function createManualEntriesFromRanges(
 
   const totalHours = computeTotalHours(handledRanges.ranges);
 
+  let outcome: CompletionOutcome = { signedOnly: 0 };
   await prisma.$transaction(async (tx) => {
     for (const r of handledRanges.ranges) {
       const hours = (r.endedAt.getTime() - r.startedAt.getTime()) / 3600000;
@@ -610,10 +615,10 @@ export async function createManualEntriesFromRanges(
     if (data.markCompleted) {
       const task = await tx.task.findFirst({
         where: { id: data.taskId },
-        select: { id: true, workOrderId: true, requiredWorkers: true },
+        select: { id: true, workOrderId: true, signoffAll: true },
       });
       if (!task) throw new Error("Tarea no encontrada.");
-      await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
+      outcome = await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
       if (task.workOrderId) {
         await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
       }
@@ -631,6 +636,7 @@ export async function createManualEntriesFromRanges(
     "manual ranges created",
   );
   revalidateHorasAndLoad();
+  return outcome;
   });
 }
 

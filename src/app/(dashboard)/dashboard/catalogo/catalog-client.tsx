@@ -68,6 +68,7 @@ interface FrameProcessRow {
   hoursPerUnit: number;
   fixedHours: number;
   requiredWorkers: number;
+  signoffAll: boolean;
   naveId: string | null;
   nave: NaveOption | null;
 }
@@ -176,6 +177,7 @@ interface ProcessFormRow {
   hoursPerUnit: string;
   fixedHours: string;
   requiredWorkers: string;
+  signoffAll: boolean;
   naveId: string;
 }
 
@@ -191,6 +193,7 @@ function defaultProcessRow(
     hoursPerUnit: "0",
     fixedHours: "0",
     requiredWorkers: "1",
+    signoffAll: false,
     naveId: "",
   };
 }
@@ -277,6 +280,7 @@ export function CatalogoCatalogClient({
             hoursPerUnit: String(p.hoursPerUnit),
             fixedHours: String(p.fixedHours),
             requiredWorkers: String(p.requiredWorkers ?? 1),
+            signoffAll: p.signoffAll ?? false,
             naveId: p.naveId ?? "",
           }))
         : defaultProcessRow(elementProcessDefs, new Set())
@@ -347,6 +351,7 @@ export function CatalogoCatalogClient({
           hoursPerUnit: Number(r.hoursPerUnit),
           fixedHours: Number(r.fixedHours),
           requiredWorkers: r.requiredWorkers === "2" ? 2 : 1,
+          signoffAll: r.signoffAll,
           naveId: r.naveId || null,
         }));
       for (const r of rows) {
@@ -598,6 +603,7 @@ export function CatalogoCatalogClient({
                                   .filter(Boolean)
                                   .join(" + ")}
                                 {p.requiredWorkers > 1 ? ` · ${p.requiredWorkers} op.` : ""}
+                                {p.signoffAll ? " · firman todos" : ""}
                               </span>
                             </span>
                             );
@@ -822,7 +828,7 @@ export function CatalogoCatalogClient({
                     return (
                     <div
                       key={r.key}
-                      className="grid grid-cols-[auto_1fr_minmax(7rem,1fr)_72px_72px_72px_auto] gap-2 items-end border rounded-md p-2"
+                      className="grid grid-cols-[auto_1fr_minmax(7rem,1fr)_72px_72px_72px_88px_auto] gap-2 items-end border rounded-md p-2"
                     >
                       <div className="flex flex-col gap-0.5 pb-0.5">
                         <Button
@@ -943,6 +949,18 @@ export function CatalogoCatalogClient({
                           </SelectContent>
                         </Select>
                       </div>
+                      <label
+                        className="flex items-center gap-1.5 pb-2 text-[10px] text-muted-foreground"
+                        title="La tarea la dan por terminada todos los operarios de la OT (p. ej. preparación de chapas). Si en una OT trabaja un solo operario, la cierra él solo, sin esperar a nadie. Se aplica también a las tareas pendientes ya creadas; no cambia el planning (para eso está «Operarios»)."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={r.signoffAll}
+                          disabled={pending}
+                          onChange={(e) => updateRow(r.key, { signoffAll: e.target.checked })}
+                        />
+                        Firman todos
+                      </label>
                       <Button
                         type="button"
                         variant="ghost"

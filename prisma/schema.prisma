@@ -375,6 +375,8 @@ model ElementTypeProcess {
   hoursPerUnit   Float
   fixedHours     Float   @default(0)
   requiredWorkers Int    @default(1)
+  /// Firman todos los operarios de la OT para dar la tarea por terminada (p. ej. preparación de chapas).
+  signoffAll     Boolean @default(false)
   notes          String?
   naveId         String?
 
@@ -515,6 +517,7 @@ model Task {
   process        String
   estimatedHours Float
   requiredWorkers Int     @default(1)
+  signoffAll     Boolean  @default(false)
   isCompleted    Boolean  @default(false)
   order          Int      @default(0)
   naveId         String

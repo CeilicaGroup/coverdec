@@ -3,8 +3,9 @@ import { PlanningStatus, type Prisma } from "@/generated/prisma";
 /**
  * Quién da por terminada una tarea cuando la OT tiene dos operarios (WorkOrderExecutor):
  *
- * - Tarea con requiredWorkers > 1 (preparación de chapas): trabajan los dos y firman los dos
- *   (los elegidos de la OT y los que el planning publicado asigna a la tarea).
+ * - Tarea «firman todos» (Task.signoffAll, p. ej. preparación de chapas): firman todos los que la
+ *   tienen asignada (los elegidos de la OT y los que el planning publicado asigna a la tarea);
+ *   si solo hay una persona, la cierra ella sola. Es independiente de requiredWorkers.
  *   Cada firma deja de mostrar la tarea en la cola de quien firma; la tarea se cierra de verdad
  *   cuando han firmado todos los operarios de la OT. Las horas de cada uno se suman a la tarea.
  * - Resto de tareas: solo el responsable (position 0) la da por terminada. El apoyo registra
@@ -14,7 +15,8 @@ import { PlanningStatus, type Prisma } from "@/generated/prisma";
 export type CompletionDecision = "close" | "signoff" | "forbidden";
 
 export function resolveCompletion(params: {
-  requiredWorkers: number;
+  /** La tarea la dan por terminada todos sus operarios (catálogo: «Firman todos»). */
+  signoffAll: boolean;
   /** Operarios elegidos a mano para la OT, por orden (el primero es el responsable). */
   executorIds: string[];
   /**
@@ -27,22 +29,27 @@ export function resolveCompletion(params: {
   /** Quiénes han firmado ya esta tarea, sin contar a `personId`. */
   signedIds: string[];
 }): CompletionDecision {
-  const { requiredWorkers, executorIds, plannedIds = [], personId, signedIds } = params;
-  if (requiredWorkers <= 1) {
+  const { signoffAll, executorIds, plannedIds = [], personId, signedIds } = params;
+  if (!signoffAll) {
     const position = personId ? executorIds.indexOf(personId) : -1;
     if (position < 0) return "close"; // no es operario de la OT: comportamiento de siempre
     return position === 0 ? "close" : "forbidden";
   }
-  // Tarea de varios operarios: firman todos los que la tienen asignada.
+  // Firman todos los que la tienen asignada.
   const required = [...new Set([...executorIds, ...plannedIds])];
   if (!personId || !required.includes(personId) || required.length < 2) return "close";
   const signed = new Set([...signedIds, personId]);
   return required.every((id) => signed.has(id)) ? "close" : "signoff";
 }
 
+/** Resultado de dar tareas por terminadas: cuántas solo quedaron firmadas por esta persona. */
+export interface CompletionOutcome {
+  signedOnly: number;
+}
+
 export interface CompletableTask {
   id: string;
-  requiredWorkers: number;
+  signoffAll: boolean;
   workOrderId: string | null;
 }
 
@@ -54,8 +61,8 @@ export async function completeTasksAsPerson(
   tx: Prisma.TransactionClient,
   tasks: CompletableTask[],
   personId: string | null,
-): Promise<void> {
-  if (tasks.length === 0) return;
+): Promise<CompletionOutcome> {
+  if (tasks.length === 0) return { signedOnly: 0 };
 
   const workOrderIds = [...new Set(tasks.map((t) => t.workOrderId).filter((id): id is string => !!id))];
   const executorRows =
@@ -71,7 +78,7 @@ export async function completeTasksAsPerson(
     executorsByOt.set(row.workOrderId, [...(executorsByOt.get(row.workOrderId) ?? []), row.personId]);
   }
 
-  const syncTaskIds = tasks.filter((t) => t.requiredWorkers > 1).map((t) => t.id);
+  const syncTaskIds = tasks.filter((t) => t.signoffAll).map((t) => t.id);
   const signedRows =
     syncTaskIds.length === 0
       ? []
@@ -105,7 +112,7 @@ export async function completeTasksAsPerson(
   const toSign: string[] = [];
   for (const task of tasks) {
     const decision = resolveCompletion({
-      requiredWorkers: task.requiredWorkers,
+      signoffAll: task.signoffAll,
       executorIds: task.workOrderId ? (executorsByOt.get(task.workOrderId) ?? []) : [],
       plannedIds: plannedByTask.get(task.id) ?? [],
       personId,
@@ -129,4 +136,5 @@ export async function completeTasksAsPerson(
   if (toClose.length > 0) {
     await tx.task.updateMany({ where: { id: { in: toClose } }, data: { isCompleted: true } });
   }
+  return { signedOnly: toSign.length };
 }

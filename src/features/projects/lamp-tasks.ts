@@ -19,6 +19,7 @@ export interface TaskBlueprint {
   order: number;
   naveId: string;
   requiredWorkers?: number;
+  signoffAll?: boolean;
   systemKind?: TaskSystemKind | null;
   transportFromNaveId?: string | null;
   transportToNaveId?: string | null;
@@ -30,6 +31,7 @@ export interface ElementProcessInput {
   fixedHours: number;
   sequence: number;
   requiredWorkers?: number;
+  signoffAll?: boolean;
   naveId?: string | null;
 }
 
@@ -232,6 +234,7 @@ export function computeTaskBlueprintsFromProcesses(
       order: order++,
       naveId: fp.naveId ?? fallbackNaveId,
       requiredWorkers: fp.requiredWorkers ?? 1,
+      signoffAll: fp.signoffAll ?? false,
     });
   }
   return blueprints;
@@ -258,6 +261,7 @@ export async function buildTasksFromElement(
       fixedHours: fp.fixedHours,
       sequence: fp.sequence,
       requiredWorkers: fp.requiredWorkers,
+      signoffAll: fp.signoffAll,
       naveId: resolveNaveForElementProcess({
         processNaveId: fp.naveId,
         elementTypeId,

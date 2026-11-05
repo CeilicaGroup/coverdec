@@ -358,6 +358,7 @@ export function blueprintToTaskCreateData(
     process: blueprint.process,
     estimatedHours: blueprint.estimatedHours,
     requiredWorkers: blueprint.requiredWorkers ?? 1,
+    signoffAll: blueprint.signoffAll ?? false,
     naveId: blueprint.naveId,
     systemKind: blueprint.systemKind ?? null,
     transportFromNaveId: blueprint.transportFromNaveId ?? null,

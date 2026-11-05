@@ -70,6 +70,7 @@ export default async function CatalogoPage({
       hoursPerUnit: p.hoursPerUnit,
       fixedHours: p.fixedHours,
       requiredWorkers: p.requiredWorkers,
+      signoffAll: p.signoffAll,
       naveId: p.naveId,
       nave: p.nave,
     })),

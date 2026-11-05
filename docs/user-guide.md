@@ -29,12 +29,12 @@ Abre **Operativa → Ayuda** para la guía completa. Este archivo es un resumen 
 ## Operario
 
 - **Fichaje diario**: jornada y descansos.
-- **Mis horas**: cola (Activa / Libre / Bloqueada), **Iniciar** / **Parar**, **Completar 1** / **Completar varias**, **Registro manual**, imprevistas. Bloqueos por precedencia o secado. **Completar varias** no tiene tope fijo (manda lo pendiente en la OT). En una OT con dos operarios, el **apoyo** registra horas pero no da la tarea por terminada (la termina el responsable); en las tareas con `requiredWorkers > 1` (preparación de chapas) firman los dos: cada uno registra su cantidad y horas, la tarea se cierra al firmar ambos.
+- **Mis horas**: cola (Activa / Libre / Bloqueada), **Iniciar** / **Parar**, **Completar 1** / **Completar varias**, **Registro manual**, imprevistas. Bloqueos por precedencia o secado. **Completar varias** no tiene tope fijo (manda lo pendiente en la OT). En una OT con dos operarios, el **apoyo** registra horas pero no da la tarea por terminada (la termina el responsable); en los procesos con «Firman todos» (preparación de chapas) firman todos los operarios de la OT: cada uno registra su cantidad y horas, la tarea se cierra al firmar todos.
 
 ## Catálogo y personal
 
 - **Proyectos** → lámparas (elementos o horas) → checkbox **Aprobada** para entrar al planning.
-- **Elementos** / procesos: tiempos del catálogo. Cada proceso tiene una columna **Operarios** (1 o 2): con 2, la tarea la trabajan y firman los dos operarios (p. ej. preparación de chapas). Solo afecta a las tareas que se creen después; las ya creadas conservan su valor.
+- **Elementos** / procesos: tiempos del catálogo. Cada proceso tiene una columna **Operarios** (1 o 2: cuántas personas planifica el sistema a la vez; solo afecta a tareas nuevas) y una casilla **Firman todos**: la tarea la dan por terminada todos los operarios de la OT (p. ej. preparación de chapas; con un solo operario se cierra normal). «Firman todos» se aplica también a las tareas pendientes ya creadas.
 - **Personal**: Responsable vs Apoyo; horario; ausencias (regenerar planning tras cambios).
 
 ## Admin

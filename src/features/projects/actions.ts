@@ -685,16 +685,19 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
       );
     }
 
-    async function resolveExtraTaskRequiredWorkers(
+    async function resolveExtraTaskWorkers(
       elementTypeId: string | null,
       process: string,
     ) {
-      if (!elementTypeId) return 1;
+      if (!elementTypeId) return { requiredWorkers: 1, signoffAll: false };
       const catalogProcess = await prisma.elementTypeProcess.findUnique({
         where: { elementTypeId_process: { elementTypeId, process } },
-        select: { requiredWorkers: true },
+        select: { requiredWorkers: true, signoffAll: true },
       });
-      return catalogProcess?.requiredWorkers ?? 1;
+      return {
+        requiredWorkers: catalogProcess?.requiredWorkers ?? 1,
+        signoffAll: catalogProcess?.signoffAll ?? false,
+      };
     }
 
     if (data.elementGroupKey) {
@@ -741,10 +744,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
           throw new Error("No hay unidades en este elemento.");
         }
 
-        const requiredWorkers = await resolveExtraTaskRequiredWorkers(
-          elementTypeId,
-          data.process,
-        );
+        const workers = await resolveExtraTaskWorkers(elementTypeId, data.process);
         for (const lampElement of lampElements) {
           const order = await getNextOrderInChain(tx, lamp.id, lampElement.id);
           await tx.task.create({
@@ -754,7 +754,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
               lampElementId: lampElement.id,
               process: data.process,
               estimatedHours: data.estimatedHours,
-              requiredWorkers,
+              ...workers,
               order,
               naveId,
             },
@@ -775,10 +775,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
     }
   
     const naveId = await resolveExtraTaskNaveId(lamp.elementTypeId, data.process);
-    const requiredWorkers = await resolveExtraTaskRequiredWorkers(
-      lamp.elementTypeId,
-      data.process,
-    );
+    const workers = await resolveExtraTaskWorkers(lamp.elementTypeId, data.process);
 
     await prisma.$transaction(async (tx) => {
       const order = await getNextOrderInChain(tx, lamp.id, null);
@@ -789,7 +786,7 @@ export async function addExtraTask(input: z.infer<typeof addExtraTaskSchema>) {
           lampElementId: null,
           process: data.process,
           estimatedHours: data.estimatedHours,
-          requiredWorkers,
+          ...workers,
           order,
           naveId,
         },

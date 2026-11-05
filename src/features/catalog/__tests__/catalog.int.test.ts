@@ -59,7 +59,7 @@ async function lampWithTela(name: string, surfaceM2 = 2, projectName = "Hotel Te
   return prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { order: "asc" } });
 }
 
-const telaInput = (processes: Array<{ process: string; hoursPerUnit: number; fixedHours?: number; requiredWorkers?: number; naveId?: string | null }>) => ({
+const telaInput = (processes: Array<{ process: string; hoursPerUnit: number; fixedHours?: number; requiredWorkers?: number; signoffAll?: boolean; naveId?: string | null }>) => ({
   code: "TELA",
   name: "Panel de tela",
   typology: ElementTypology.TELA,
@@ -189,9 +189,15 @@ describe("tipos de elemento", () => {
   });
 
   it("operarios requeridos: se guarda al crear/editar, se conserva si no se envía y solo lo heredan las tareas nuevas", async () => {
-    const input = (requiredWorkers?: number) =>
+    const input = (requiredWorkers?: number, signoffAll?: boolean) =>
       telaInput([
-        { process: "CNC", hoursPerUnit: 0.5, fixedHours: 1, ...(requiredWorkers != null ? { requiredWorkers } : {}) },
+        {
+          process: "CNC",
+          hoursPerUnit: 0.5,
+          fixedHours: 1,
+          ...(requiredWorkers != null ? { requiredWorkers } : {}),
+          ...(signoffAll != null ? { signoffAll } : {}),
+        },
         { process: "ENSAMBLAJE", hoursPerUnit: 1 },
         { process: "PINTURA", hoursPerUnit: 0.4 },
       ]);
@@ -228,6 +234,47 @@ describe("tipos de elemento", () => {
     // Fuera de rango se rechaza sin escribir.
     expectFail(await upsertElementType(input(3)));
     expect(await workersByProcess()).toEqual({ CNC: 2, ENSAMBLAJE: 1, PINTURA: 1 });
+  });
+
+  it("firman todos: es independiente de los operarios, se conserva si no se envía, se aplica a las tareas pendientes ya creadas y no a las completadas", async () => {
+    const signoffOf = async () =>
+      await prisma.elementTypeProcess.findFirstOrThrow({ where: { elementType: { code: "TELA" }, process: "CNC" } });
+    const cncOf = async (tasks: { id: string }[]) =>
+      (await prisma.task.findMany({ where: { id: { in: tasks.map((t) => t.id) }, process: "CNC" } }))[0]!;
+    const abiertas = await lampWithTela("Abierta", 2);
+    const hechas = await lampWithTela("Hecha", 2, "Otro proyecto");
+    await prisma.task.updateMany({ where: { id: { in: hechas.map((t) => t.id) }, process: "CNC" }, data: { isCompleted: true } });
+
+    const input = (signoffAll?: boolean) =>
+      telaInput([
+        { process: "CNC", hoursPerUnit: 0.5, fixedHours: 1, ...(signoffAll != null ? { signoffAll } : {}) },
+        { process: "ENSAMBLAJE", hoursPerUnit: 1 },
+        { process: "PINTURA", hoursPerUnit: 0.4 },
+      ]);
+    unwrap(await upsertElementType(input(true)));
+    expect(await signoffOf()).toMatchObject({ signoffAll: true, requiredWorkers: 1 });
+    expect((await cncOf(abiertas)).signoffAll).toBe(true); // pendiente: se actualiza
+    expect((await cncOf(hechas)).signoffAll).toBe(false); // completada: no se toca
+
+    unwrap(await upsertElementType(input())); // sin enviar: conserva
+    expect((await signoffOf()).signoffAll).toBe(true);
+
+    // Una firma parcial desaparece al quitar «firman todos», y la tarea vuelve a verse.
+    const cnc = await cncOf(abiertas);
+    await prisma.taskSignoff.create({ data: { taskId: cnc.id, personId: world.people.ana.id } });
+    unwrap(await upsertElementType(input(false)));
+    expect((await signoffOf()).signoffAll).toBe(false);
+    expect((await cncOf(abiertas)).signoffAll).toBe(false);
+    expect(await prisma.taskSignoff.count()).toBe(0);
+
+    // Las tareas nuevas lo heredan.
+    unwrap(await upsertElementType(input(true)));
+    const nuevas = await lampWithTela("Nueva", 2, "Tercer proyecto");
+    expect(Object.fromEntries(nuevas.map((t) => [t.process, [t.signoffAll, t.requiredWorkers]]))).toEqual({
+      CNC: [true, 1],
+      ENSAMBLAJE: [false, 1],
+      PINTURA: [false, 1],
+    });
   });
 
   it("archivar lo saca de las listas de alta pero conserva elemento, procesos y lámparas; se puede reactivar", async () => {

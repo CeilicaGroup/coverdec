@@ -227,7 +227,7 @@ const SECTIONS: HelpSection[] = [
     title: "Catálogo de elementos y procesos",
     roles: JEFE_ADMIN,
     paragraphs: [
-      "Elementos es el motor de tiempos: tipologías, procesos y horas por unidad o fijas. De aquí salen las tareas al crear lámparas. La columna Operarios (1 o 2) de cada proceso indica si lo trabajan y firman dos personas (p. ej. preparación de chapas); solo afecta a tareas nuevas.",
+      "Elementos es el motor de tiempos: tipologías, procesos y horas por unidad o fijas. De aquí salen las tareas al crear lámparas. En cada proceso, Operarios (1 o 2) indica cuántas personas planifica el sistema a la vez (solo afecta a tareas nuevas) y la casilla Firman todos hace que la tarea la den por terminada todos los operarios de la OT (p. ej. preparación de chapas; con un solo operario se cierra normal). Firman todos se aplica también a las tareas pendientes ya creadas.",
     ],
     bullets: [
       "Catálogo de elementos: Nuevo elemento (código, nombre, tipología, nave por defecto o heredar tipología, imagen, cadena de procesos con h/unidad, horas fijas, nave por proceso, reordenar). Editar, Duplicar, archivar/reactivar, eliminar.",
@@ -267,7 +267,7 @@ const SECTIONS: HelpSection[] = [
       "Parar: detiene el timer y guarda el tramo.",
       "Completar 1: marca la tarea actual como completada.",
       "Completar varias: si la OT tiene más de un producto pendiente, indica la cantidad (sin límite fijo: puedes completar toda la OT, p. ej. 260 piezas de un pallet; en OT grandes la cantidad se escribe y hay botón Todas). La cola agrupa por OT (N tareas iguales en la OT) y Esta semana agrupa en una fila los registros de un mismo reparto (Ver N / Agrupar); el tiempo se reparte proporcionalmente por horas estimadas.",
-      "OT con dos operarios: quien da apoyo registra sus horas, pero no puede dar la tarea por terminada (no ve Completar); la termina el responsable. En las tareas que se hacen entre los dos (p. ej. preparación de chapas) firman los dos: cada uno registra su cantidad y sus horas, la tarea se cierra cuando han firmado ambos y las horas de los dos se suman.",
+      "OT con dos operarios: quien da apoyo registra sus horas, pero no puede dar la tarea por terminada (no ve Completar); la termina el responsable. En los procesos marcados Firman todos en el catálogo (p. ej. preparación de chapas) firman todos los operarios de la OT: cada uno registra su cantidad y sus horas, la tarea se cierra cuando han firmado ambos y las horas de los dos se suman.",
       "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Un rango Inicio/Fin con la fecha/hora actuales; Añadir rango si hace falta más. No admite días futuros (sí horas posteriores del mismo día o días anteriores). Toggle Completar tarea al guardar Sí/No. Si es OT con varios productos, Cantidad de tareas de la OT completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
     ],
     bullets: [

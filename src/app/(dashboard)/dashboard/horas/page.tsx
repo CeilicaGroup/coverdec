@@ -219,7 +219,7 @@ export default async function HorasPage() {
     systemKind: true,
     workOrderId: true,
     estimatedHours: true,
-    requiredWorkers: true,
+    signoffAll: true,
     project: { select: { id: true, name: true } },
     lamp: {
       select: {
@@ -392,7 +392,15 @@ export default async function HorasPage() {
       ? []
       : prisma.task.findMany({
           where: { lampId: { in: assignedLampIds } },
-          select: { id: true, lampId: true, order: true, process: true, isCompleted: true },
+          select: {
+            id: true,
+            lampId: true,
+            order: true,
+            process: true,
+            isCompleted: true,
+            signoffAll: true,
+            _count: { select: { signoffs: true } },
+          },
           orderBy: [{ lampId: "asc" }, { order: "asc" }],
         }),
     prisma.processDefinition.findMany({
@@ -428,7 +436,11 @@ export default async function HorasPage() {
     const prev = [...lampList].reverse().find((x) => x.order < task.order);
     if (!prev) return null;
     if (!prev.isCompleted) {
-      return `Bloqueada: aún no se ha completado ${processLabels[prev.process] ?? prev.process}.`;
+      const prevLabel = processLabels[prev.process] ?? prev.process;
+      if (prev.signoffAll && prev._count.signoffs > 0) {
+        return `Bloqueada: ${prevLabel} está pendiente de que la termine otro operario.`;
+      }
+      return `Bloqueada: aún no se ha completado ${prevLabel}.`;
     }
     const waitHours = waitHoursByProcess.get(prev.process) ?? 0;
     if (waitHours <= 0) return null;
@@ -479,7 +491,7 @@ export default async function HorasPage() {
       groupPendingCount: t.workOrderId
         ? groupedPendingCount.get(t.workOrderId) ?? 1
         : 1,
-      canComplete: !(t.workOrderId && supportOtIds.has(t.workOrderId) && t.requiredWorkers <= 1),
+      canComplete: !(t.workOrderId && supportOtIds.has(t.workOrderId) && !t.signoffAll),
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 

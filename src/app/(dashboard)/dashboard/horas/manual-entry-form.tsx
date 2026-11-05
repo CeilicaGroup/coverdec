@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { QuantityPicker, clampQuantity } from "./quantity-picker";
+import { completionToast } from "./completion-toast";
 import {
   createManualEntriesFromRanges,
   recordAndCompleteGroupedOtTasks,
@@ -184,11 +185,14 @@ export function ManualEntryForm({
         return;
       }
       toast.success(
-        draft.shouldUseGroupedAction
-          ? `Registros creados y ${Math.min(draft.quantity, groupedPendingCount)} tareas completadas`
-          : `${
-              breakHandling === "took_break" ? "Registro creado con ajuste de descanso" : "Registro creado"
-            }${completing ? " y tarea completada" : ""}`,
+        completionToast(
+          outcome.data.signedOnly,
+          draft.shouldUseGroupedAction
+            ? `Registros creados y ${Math.min(draft.quantity, groupedPendingCount)} tareas completadas`
+            : `${
+                breakHandling === "took_break" ? "Registro creado con ajuste de descanso" : "Registro creado"
+              }${completing ? " y tarea completada" : ""}`,
+        ),
       );
       setNotes("");
       // Sin esto el rango queda relleno y un segundo clic en Registrar duplicaría las horas.

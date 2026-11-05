@@ -20,6 +20,8 @@ const processRowSchema = z.object({
    * Sin valor, al editar conserva el actual y al crear queda en 1. Solo afecta a tareas nuevas.
    */
   requiredWorkers: z.number().int().min(1).max(2).optional(),
+  /** Firman todos los operarios de la OT para dar la tarea por terminada (p. ej. chapas). Independiente de requiredWorkers. */
+  signoffAll: z.boolean().optional(),
   naveId: z.string().min(1).nullable().optional(),
 });
 
@@ -139,6 +141,7 @@ export async function upsertElementType(
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
         ...(p.requiredWorkers != null ? { requiredWorkers: p.requiredWorkers } : {}),
+        ...(p.signoffAll != null ? { signoffAll: p.signoffAll } : {}),
         naveId: p.naveId ?? null,
       },
       create: {
@@ -148,9 +151,29 @@ export async function upsertElementType(
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
         requiredWorkers: p.requiredWorkers ?? 1,
+        signoffAll: p.signoffAll ?? false,
         naveId: p.naveId ?? null,
       },
     });
+  }
+
+  // «Firman todos» no cambia el planning, así que también se aplica a las tareas pendientes ya
+  // creadas de ese elemento (las completadas no se tocan). Al quitarlo se borran las firmas
+  // parciales para que esas tareas vuelvan a verse. «Operarios» sí cambia el planning: solo tareas nuevas.
+  for (const p of data.processes) {
+    if (p.signoffAll == null) continue;
+    const openTasks = {
+      process: p.process,
+      isCompleted: false,
+      lampElement: { elementTypeId: element.id },
+    };
+    await prisma.task.updateMany({
+      where: { ...openTasks, signoffAll: !p.signoffAll },
+      data: { signoffAll: p.signoffAll },
+    });
+    if (!p.signoffAll) {
+      await prisma.taskSignoff.deleteMany({ where: { task: openTasks } });
+    }
   }
 
   const keep = data.processes.map((p) => p.process);
@@ -304,6 +327,7 @@ export async function duplicateElementType(
             hoursPerUnit: process.hoursPerUnit,
             fixedHours: process.fixedHours,
             requiredWorkers: process.requiredWorkers,
+            signoffAll: process.signoffAll,
             notes: process.notes,
             naveId: process.naveId,
           },

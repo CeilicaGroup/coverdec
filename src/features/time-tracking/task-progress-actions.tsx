@@ -30,7 +30,7 @@ export function TaskCompletionAction({
           const result = isCompleted
             ? await uncompleteTask({ taskId })
             : await completeTask({ taskId });
-          const outcome = handleActionResult(
+          const outcome = handleActionResult<unknown>(
             isCompleted ? "task.uncomplete" : "task.complete",
             result,
           );

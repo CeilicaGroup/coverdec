@@ -1,6 +1,7 @@
 "use client";
 
 import { QuantityPicker, clampQuantity } from "./quantity-picker";
+import { completionToast } from "./completion-toast";
 import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Play, Square, CheckCircle2, ClipboardPenLine } from "lucide-react";
@@ -472,7 +473,7 @@ export function TaskQueuePanel({
                         toast.error(outcome.message);
                         return;
                       }
-                      toast.success("Tarea completada");
+                      toast.success(completionToast(outcome.data.signedOnly, "Tarea completada"));
                     });
                   }}
                 >
@@ -567,7 +568,9 @@ export function TaskQueuePanel({
                             toast.error(outcome.message);
                             return;
                           }
-                          toast.success(`Completadas ${quantity} tareas agrupadas`);
+                          toast.success(
+                            completionToast(outcome.data.signedOnly, `Completadas ${quantity} tareas agrupadas`),
+                          );
                           setShowGroupedDialog(false);
                         });
                       }}
