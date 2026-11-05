@@ -1,5 +1,6 @@
 "use client";
 
+import { QuantityPicker, clampQuantity } from "./quantity-picker";
 import { handleActionResult } from "@/lib/mutation-error";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Play, Square, CheckCircle2, ClipboardPenLine } from "lucide-react";
@@ -17,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   completeTask,
@@ -161,6 +161,26 @@ export function TaskQueuePanel({
   const [showGroupedDialog, setShowGroupedDialog] = useState(false);
   const [groupedQuantity, setGroupedQuantity] = useState("1");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [showAllQueue, setShowAllQueue] = useState(false);
+
+  // Una fila por OT (y estado de bloqueo): 260 piezas iguales no deben tapar el resto de la cola.
+  const { displayQueue, sameInGroup } = useMemo(() => {
+    const keyOf = (t: WorkerQueueTask) =>
+      t.workOrderId ? `${t.workOrderId}|${t.blockedReason ?? ""}` : t.id;
+    const counts = new Map<string, number>();
+    for (const t of queue) counts.set(keyOf(t), (counts.get(keyOf(t)) ?? 0) + 1);
+    const seen = new Set<string>();
+    const rows = queue.filter((t) => {
+      const key = keyOf(t);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return {
+      displayQueue: rows,
+      sameInGroup: (t: WorkerQueueTask) => counts.get(keyOf(t)) ?? 1,
+    };
+  }, [queue]);
 
   const activeTask = useMemo(
     () => resolveActiveTask(queue, nextTask, selectedTaskId, openTimer),
@@ -169,9 +189,9 @@ export function TaskQueuePanel({
 
   const recommendedTaskIndex = useMemo(() => {
     if (!nextTask) return null;
-    const idx = queue.findIndex((t) => t.id === nextTask.id);
+    const idx = displayQueue.findIndex((t) => t.id === nextTask.id);
     return idx >= 0 ? idx + 1 : null;
-  }, [queue, nextTask]);
+  }, [displayQueue, nextTask]);
 
   const showsRecommendedHint = Boolean(
     activeTask &&
@@ -241,6 +261,7 @@ export function TaskQueuePanel({
               status={t.workOrderStatus ?? undefined}
             />
             {elementsLabel ? <span>· {elementsLabel}</span> : null}
+            {sameInGroup(t) > 1 ? <span>· {sameInGroup(t)} tareas iguales en la OT</span> : null}
             {t.isSubstitute ? (
               <span className="font-medium text-sky-700 dark:text-sky-400">· Sustituto</span>
             ) : null}
@@ -278,7 +299,36 @@ export function TaskQueuePanel({
         </CardHeader>
         <CardContent className="space-y-4">
           {!activeTask ? (
-            <div className="text-sm text-muted-foreground">No tienes tareas pendientes.</div>
+            <>
+              <div className="text-sm text-muted-foreground">No tienes tareas pendientes.</div>
+              {openTimer ? (
+                <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+                  <div>
+                    Tienes un timer en marcha (proyecto: {openTimer.projectName}). Páralo para
+                    guardar las horas.
+                  </div>
+                  <Button
+                    variant="destructive"
+                    disabled={pending}
+                    className="gap-2"
+                    onClick={() => {
+                      startTransition(async () => {
+                        const result = await stopTimer({ entryId: openTimer.id });
+                        const outcome = handleActionResult("task-queue.stop", result);
+                        if (!outcome.success) {
+                          toast.error(outcome.message);
+                          return;
+                        }
+                        toast.success("Timer parado");
+                      });
+                    }}
+                  >
+                    <Square className="size-4" />
+                    Parar
+                  </Button>
+                </div>
+              ) : null}
+            </>
           ) : (
             <>
               <div {...withWorkOrderHighlight(activeTask.workOrderNumber, "space-y-1")}>
@@ -480,21 +530,12 @@ export function TaskQueuePanel({
                   <div className="space-y-3">
                     <div className="space-y-2">
                       <Label htmlFor="grouped-quantity">Cantidad completada</Label>
-                      <Select value={groupedQuantity} onValueChange={(value) => setGroupedQuantity(value ?? "1")}>
-                        <SelectTrigger id="grouped-quantity" className="h-10">
-                          <SelectValue placeholder="Selecciona cantidad" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from(
-                            { length: Math.max(1, activeTask?.groupPendingCount ?? 1) },
-                            (_, idx) => idx + 1,
-                          ).map((amount) => (
-                            <SelectItem key={amount} value={String(amount)}>
-                              {amount}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <QuantityPicker
+                        id="grouped-quantity"
+                        value={groupedQuantity}
+                        max={Math.max(1, activeTask?.groupPendingCount ?? 1)}
+                        onChange={setGroupedQuantity}
+                      />
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Se registrarán entradas individuales para las {groupedQuantity} primeras
@@ -514,7 +555,7 @@ export function TaskQueuePanel({
                       onClick={() => {
                         if (!activeTask || !openTimer) return;
                         startTransition(async () => {
-                          const quantity = Number(groupedQuantity) || 1;
+                          const quantity = clampQuantity(groupedQuantity, activeTask.groupPendingCount);
                           const result = await recordAndCompleteGroupedOtTasks({
                             mode: "timer",
                             taskId: activeTask.id,
@@ -554,8 +595,15 @@ export function TaskQueuePanel({
                 Selecciona una tarea libre para fichar sobre ella.
               </p>
               <ul className={cn("space-y-2", queue.length > 5 && "max-h-96 overflow-y-auto pr-1")}>
-                {queue.slice(0, 20).map((t, idx) => {
-                  const isActive = activeTask?.id === t.id;
+                {(showAllQueue ? displayQueue : displayQueue.slice(0, 20)).map((t, idx) => {
+                  const isActive =
+                    activeTask?.id === t.id ||
+                    Boolean(
+                      activeTask &&
+                        t.workOrderId &&
+                        activeTask.workOrderId === t.workOrderId &&
+                        (activeTask.blockedReason ?? "") === (t.blockedReason ?? ""),
+                    );
                   const isFree = !t.blockedReason;
 
                   if (isFree) {
@@ -593,6 +641,11 @@ export function TaskQueuePanel({
                   );
                 })}
               </ul>
+              {!showAllQueue && displayQueue.length > 20 ? (
+                <Button variant="outline" className="w-full" onClick={() => setShowAllQueue(true)}>
+                  Ver las {displayQueue.length - 20} restantes
+                </Button>
+              ) : null}
             </>
           )}
         </CardContent>

@@ -402,3 +402,31 @@ describe("OT con dos operarios (responsable y apoyo)", () => {
     expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: ot.otId } })).status).toBe(WorkOrderStatus.CLOSED);
   });
 });
+
+describe("timer: no se inicia si ya hay horas registradas por delante", () => {
+  it("rechaza iniciar el timer con un registro que acaba después de ahora, y lo permite sin él", async () => {
+    await loginAs(world.users.ana.email);
+    const cnc = task("CNC");
+    const start = () =>
+      startTimer({ projectId: lamp.projectId, lampId: lamp.lampId, taskId: cnc.id, process: "CNC" });
+
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const entry = unwrap(
+      await createManualEntry({
+        projectId: lamp.projectId,
+        lampId: lamp.lampId,
+        taskId: cnc.id,
+        process: "CNC",
+        startedAt: future,
+        hours: 1,
+      }),
+    );
+    void entry;
+    expect(expectFail(await start())).toContain("horas registradas");
+    expect(await prisma.timeEntry.count({ where: { endedAt: null } })).toBe(0);
+
+    await prisma.timeEntry.deleteMany({});
+    unwrap(await start());
+    expect(await prisma.timeEntry.count({ where: { endedAt: null } })).toBe(1);
+  });
+});

@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { QuantityPicker, clampQuantity } from "./quantity-picker";
 import {
   createManualEntriesFromRanges,
   recordAndCompleteGroupedOtTasks,
@@ -180,9 +181,9 @@ export function ManualEntryForm({
       toast.success(
         draft.shouldUseGroupedAction
           ? `Registros creados y ${Math.min(draft.quantity, groupedPendingCount)} tareas completadas`
-          : breakHandling === "took_break"
-            ? "Registro creado con ajuste de descanso"
-            : "Registro creado",
+          : `${
+              breakHandling === "took_break" ? "Registro creado con ajuste de descanso" : "Registro creado"
+            }${completing ? " y tarea completada" : ""}`,
       );
       setNotes("");
       setPendingDraft(null);
@@ -211,7 +212,7 @@ export function ManualEntryForm({
           startedAt: fromDatetimeLocalInputValue(r.startedAt),
           endedAt: fromDatetimeLocalInputValue(r.endedAt),
         }));
-        const selectedQuantity = Number(groupedCompletionCount) || 1;
+        const selectedQuantity = clampQuantity(groupedCompletionCount, groupedPendingCount);
         const shouldUseGroupedAction =
           completing && groupedPendingCount > 1 && selectedQuantity > 1;
         const overlap = summarizeBreakOverlap(
@@ -399,21 +400,11 @@ export function ManualEntryForm({
       {completing && groupedPendingCount > 1 ? (
         <div className="space-y-2">
           <Label>Cantidad de tareas de la OT completadas</Label>
-          <Select
+          <QuantityPicker
             value={groupedCompletionCount}
-            onValueChange={(value) => setGroupedCompletionCount(value ?? "1")}
-          >
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Selecciona cantidad" />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: groupedPendingCount }, (_, idx) => idx + 1).map((amount) => (
-                <SelectItem key={amount} value={String(amount)}>
-                  {amount}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            max={groupedPendingCount}
+            onChange={setGroupedCompletionCount}
+          />
           <p className="text-xs text-muted-foreground">
             El tiempo total de los rangos se reparte proporcionalmente por horas estimadas en cada
             producto de la OT.

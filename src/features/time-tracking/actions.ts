@@ -124,6 +124,23 @@ export async function startTimer(
   if (open) {
     throw new Error("Ya tienes un timer activo. Detenlo primero.");
   }
+  // Con horas registradas desde ahora en adelante, el timer chocaría con ellas al pararlo
+  // y quedaría colgado: se rechaza al iniciarlo.
+  const registeredAhead = await prisma.timeEntry.findFirst({
+    where: { userId: ctx.userId, endedAt: { gt: new Date() } },
+    orderBy: { endedAt: "desc" },
+    select: { endedAt: true },
+  });
+  if (registeredAhead?.endedAt) {
+    const until = registeredAhead.endedAt.toLocaleTimeString("es-ES", {
+      timeZone: "Europe/Madrid",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    throw new Error(
+      `Tienes horas registradas hasta las ${until}: no puedes iniciar el timer hasta entonces. Ajusta ese registro o usa el registro manual.`,
+    );
+  }
   await assertTaskAccessible(ctx, data.taskId);
   await assertTaskMatchesSelection(data);
   const unlocked = await isTaskUnlocked(data.taskId);

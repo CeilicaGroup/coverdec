@@ -300,6 +300,8 @@ export default async function HorasPage() {
             lampElementId: true,
             isCompleted: true,
             estimatedHours: true,
+            // Chapas: lo que yo ya firmé cuenta como hecho en mi contador aunque falte el otro.
+            signoffs: { where: { personId: ctx.personId ?? "__none__" }, select: { personId: true } },
           },
         }),
   ]);
@@ -351,7 +353,7 @@ export default async function HorasPage() {
       }
       const entry = elements.get(elementKey) ?? { total: 0, completed: 0 };
       entry.total += 1;
-      if (task.isCompleted) entry.completed += 1;
+      if (task.isCompleted || task.signoffs.length > 0) entry.completed += 1;
       elements.set(elementKey, entry);
     }
     for (const [woId, elements] of byWo) {
