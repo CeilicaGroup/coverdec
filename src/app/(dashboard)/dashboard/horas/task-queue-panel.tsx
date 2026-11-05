@@ -62,6 +62,8 @@ export interface WorkerQueueTask {
   workOrderId: string | null;
   groupKey: string | null;
   groupPendingCount: number;
+  /** false si eres el apoyo de la OT en una tarea normal: registras horas, no la das por terminada. */
+  canComplete: boolean;
   workOrderNumber: string | null;
   workOrderStatus: import("@/generated/prisma").WorkOrderStatus | null;
 }
@@ -144,6 +146,7 @@ export function TaskQueuePanel({
       workOrderId: string | null;
       groupKey: string | null;
       groupPendingCount: number;
+      canComplete: boolean;
       elementLabel: string;
       measureLabel: string;
     }[];
@@ -198,8 +201,11 @@ export function TaskQueuePanel({
   const isTimerOnOtherTask = Boolean(openTimer && !isTimerOnActiveTask);
   const isActiveTaskBlocked = Boolean(activeTask?.blockedReason);
   const isGroupedActiveTask = (activeTask?.groupPendingCount ?? 1) > 1;
-  const canCompleteSingle = !isActiveTaskBlocked && (!openTimer || isTimerOnActiveTask);
-  const canCompleteMultiple = !isActiveTaskBlocked && isTimerOnActiveTask;
+  const isSupportOnActiveTask = activeTask ? !activeTask.canComplete : false;
+  const canCompleteSingle =
+    !isActiveTaskBlocked && !isSupportOnActiveTask && (!openTimer || isTimerOnActiveTask);
+  const canCompleteMultiple =
+    !isActiveTaskBlocked && !isSupportOnActiveTask && isTimerOnActiveTask;
 
   useEffect(() => {
     setGroupedQuantity("1");
@@ -316,7 +322,13 @@ export function TaskQueuePanel({
                     {processLabels[nextTask.process] ?? nextTask.process}
                   </div>
                 ) : null}
-                {isGroupedActiveTask && !isTimerOnActiveTask ? (
+                {isSupportOnActiveTask ? (
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    Eres el apoyo de esta OT: registra tus horas con el timer o el registro manual. La
+                    tarea la da por terminada el responsable.
+                  </div>
+                ) : null}
+                {isGroupedActiveTask && !isTimerOnActiveTask && !isSupportOnActiveTask ? (
                   <div className="text-xs text-muted-foreground">
                     Para completar varias tareas de la OT con reparto por horas estimadas, inicia el
                     timer en esta tarea o usa registro manual.

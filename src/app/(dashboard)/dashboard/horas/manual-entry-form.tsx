@@ -81,6 +81,7 @@ export function ManualEntryForm({
       workOrderId: string | null;
       groupKey: string | null;
       groupPendingCount: number;
+      canComplete: boolean;
       elementLabel: string;
       measureLabel: string;
     }[];
@@ -113,6 +114,9 @@ export function ManualEntryForm({
     project?.tasks.filter((t) => (lampId ? t.lampId === lampId : true)) ?? [];
   const selectedTask = availableTasks.find((t) => t.id === taskId) ?? null;
   const groupedPendingCount = selectedTask?.groupPendingCount ?? 1;
+  // El apoyo de una OT registra horas pero no da la tarea por terminada.
+  const canComplete = selectedTask?.canComplete ?? true;
+  const completing = markCompleted && canComplete;
   const breakScheduleContext = useMemo<BreakScheduleContext | null>(() => {
     if (!manualBreakSchedule) return null;
     return {
@@ -164,7 +168,7 @@ export function ManualEntryForm({
             taskId,
             process: selectedTask.process,
             notes: notes || undefined,
-            markCompleted,
+            markCompleted: completing,
             breakHandling,
             ranges: draft.normalizedRanges,
           });
@@ -209,7 +213,7 @@ export function ManualEntryForm({
         }));
         const selectedQuantity = Number(groupedCompletionCount) || 1;
         const shouldUseGroupedAction =
-          markCompleted && groupedPendingCount > 1 && selectedQuantity > 1;
+          completing && groupedPendingCount > 1 && selectedQuantity > 1;
         const overlap = summarizeBreakOverlap(
           normalizedRanges.map((range) => ({
             startedAt: new Date(range.startedAt),
@@ -368,6 +372,12 @@ export function ManualEntryForm({
         </div>
       </div>
 
+      {!canComplete ? (
+        <div className="rounded-md border px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Eres el apoyo de esta OT: se guardan tus horas, pero la tarea la da por terminada el
+          responsable.
+        </div>
+      ) : (
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
         <div>
           <div className="text-sm font-medium">Completar tarea al guardar</div>
@@ -384,8 +394,9 @@ export function ManualEntryForm({
           {markCompleted ? "Sí" : "No"}
         </Button>
       </div>
+      )}
 
-      {markCompleted && groupedPendingCount > 1 ? (
+      {completing && groupedPendingCount > 1 ? (
         <div className="space-y-2">
           <Label>Cantidad de tareas de la OT completadas</Label>
           <Select

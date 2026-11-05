@@ -29,7 +29,7 @@ Abre **Operativa → Ayuda** para la guía completa. Este archivo es un resumen 
 ## Operario
 
 - **Fichaje diario**: jornada y descansos.
-- **Mis horas**: cola (Activa / Libre / Bloqueada), **Iniciar** / **Parar**, **Completar 1** / **Completar varias**, **Registro manual**, imprevistas. Bloqueos por precedencia o secado.
+- **Mis horas**: cola (Activa / Libre / Bloqueada), **Iniciar** / **Parar**, **Completar 1** / **Completar varias**, **Registro manual**, imprevistas. Bloqueos por precedencia o secado. **Completar varias** no tiene tope fijo (manda lo pendiente en la OT). En una OT con dos operarios, el **apoyo** registra horas pero no da la tarea por terminada (la termina el responsable); en las tareas con `requiredWorkers > 1` (preparación de chapas) firman los dos: cada uno registra su cantidad y horas, la tarea se cierra al firmar ambos.
 
 ## Catálogo y personal
 

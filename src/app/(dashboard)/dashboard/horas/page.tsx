@@ -219,6 +219,7 @@ export default async function HorasPage() {
     systemKind: true,
     workOrderId: true,
     estimatedHours: true,
+    requiredWorkers: true,
     project: { select: { id: true, name: true } },
     lamp: {
       select: {
@@ -249,6 +250,8 @@ export default async function HorasPage() {
             isCompleted: false,
             ...productiveTaskSystemKindWhere(),
             participants: { none: {} },
+            // Chapas: lo que ya firmé deja mi cola aunque el otro operario aún no lo haya firmado.
+            ...(ctx.personId ? { signoffs: { none: { personId: ctx.personId } } } : {}),
             project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },
@@ -261,6 +264,7 @@ export default async function HorasPage() {
             isCompleted: false,
             ...productiveTaskSystemKindWhere(),
             participants: { some: { personId: ctx.personId } },
+            signoffs: { none: { personId: ctx.personId } },
             project: { isActive: true },
             ...(taskNaveFilter ?? {}),
           },
@@ -358,6 +362,18 @@ export default async function HorasPage() {
       workOrderElementProgress.set(woId, { done, total: elements.size });
     }
   }
+
+  // Apoyo de una OT: registra horas pero no da por terminada una tarea normal (ver task-signoff.ts).
+  const supportOtIds = new Set(
+    ctx.personId && workOrderIds.length > 0
+      ? (
+          await prisma.workOrderExecutor.findMany({
+            where: { personId: ctx.personId, workOrderId: { in: workOrderIds }, position: { gt: 0 } },
+            select: { workOrderId: true },
+          })
+        ).map((row) => row.workOrderId)
+      : [],
+  );
 
   const groupedPendingCount = new Map<string, number>();
   for (const task of queueTasks) {
@@ -461,6 +477,7 @@ export default async function HorasPage() {
       groupPendingCount: t.workOrderId
         ? groupedPendingCount.get(t.workOrderId) ?? 1
         : 1,
+      canComplete: !(t.workOrderId && supportOtIds.has(t.workOrderId) && t.requiredWorkers <= 1),
     }))
     .sort((a, b) => (taskSortKey.get(a.id) ?? 0) - (taskSortKey.get(b.id) ?? 0));
 
@@ -478,6 +495,7 @@ export default async function HorasPage() {
             workOrderId: string | null;
             groupKey: string | null;
             groupPendingCount: number;
+            canComplete: boolean;
             elementLabel: string;
             measureLabel: string;
           }[],
@@ -490,6 +508,7 @@ export default async function HorasPage() {
           workOrderId: t.workOrderId ?? null,
           groupKey: t.groupKey ?? null,
           groupPendingCount: t.groupPendingCount ?? 1,
+          canComplete: t.canComplete,
           elementLabel: t.elementLabel,
           measureLabel: t.measureLabel,
         });
@@ -509,6 +528,7 @@ export default async function HorasPage() {
             workOrderId: string | null;
             groupKey: string | null;
             groupPendingCount: number;
+            canComplete: boolean;
             elementLabel: string;
             measureLabel: string;
           }[];

@@ -247,6 +247,7 @@ model Person {
   scheduleOverrides PersonScheduleOverride[]
   attendanceSessions AttendanceSession[]
   taskParticipants  TaskParticipant[]
+  taskSignoffs      TaskSignoff[]
   workOrderExecutors WorkOrderExecutor[]
 }
 
@@ -541,6 +542,7 @@ model Task {
   assignments       PlanningAssignment[]
   timeEntries       TimeEntry[]
   participants      TaskParticipant[]
+  signoffs          TaskSignoff[]
 
   @@index([lampElementId])
   @@index([workOrderId, workOrderSequence])
@@ -549,6 +551,21 @@ model Task {
 model TaskParticipant {
   taskId   String
   personId String
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, personId])
+  @@index([personId])
+}
+
+/// «Yo ya he registrado y dado por terminada esta tarea». Solo se usa en tareas con
+/// requiredWorkers > 1 (chapas): la tarea se cierra cuando firman todos los operarios de la OT,
+/// y cada uno deja de verla en su cola al firmar. En el resto, solo el responsable cierra.
+model TaskSignoff {
+  taskId    String
+  personId  String
+  createdAt DateTime @default(now())
 
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)

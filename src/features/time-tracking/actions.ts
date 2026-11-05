@@ -34,6 +34,7 @@ import {
 } from "@/features/time-tracking/break-handling";
 import { loadBreakScheduleForRanges } from "@/features/time-tracking/load-break-schedule";
 import { assertCanWorkOnAdHocTask } from "@/features/ad-hoc/assert-ad-hoc-participant";
+import { completeTasksAsPerson } from "@/features/time-tracking/task-signoff";
 
 const log = childLogger({ module: "time-tracking.actions" });
 
@@ -254,6 +255,7 @@ export async function recordAndCompleteGroupedOtTasks(
           workOrderId: true,
           workOrderSequence: true,
           estimatedHours: true,
+          requiredWorkers: true,
         },
       });
       if (!baseTask) throw new Error("Tarea no encontrada.");
@@ -262,19 +264,24 @@ export async function recordAndCompleteGroupedOtTasks(
         throw new Error("Esta tarea no pertenece a una OT agrupable.");
       }
 
+      // Pendientes para quien registra: en tareas de varios operarios (chapas) no cuentan las que
+      // esta persona ya firmó, aunque otra aún no las haya firmado.
       const pendingTasks = await tx.task.findMany({
         where: {
           workOrderId: baseTask.workOrderId,
           isCompleted: false,
+          ...(ctx.personId ? { signoffs: { none: { personId: ctx.personId } } } : {}),
         },
         select: {
           id: true,
           projectId: true,
           lampId: true,
           process: true,
+          workOrderId: true,
           workOrderSequence: true,
           isCompleted: true,
           estimatedHours: true,
+          requiredWorkers: true,
         },
       });
 
@@ -382,10 +389,7 @@ export async function recordAndCompleteGroupedOtTasks(
         });
       }
 
-      await tx.task.updateMany({
-        where: { id: { in: selectedTasks.map((task) => task.id) } },
-        data: { isCompleted: true },
-      });
+      await completeTasksAsPerson(tx, selectedTasks, ctx.personId ?? null);
       await closeWorkOrderIfAllTasksComplete(tx, baseTask.workOrderId);
     });
 
@@ -422,16 +426,11 @@ export async function completeTask(
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id: data.taskId },
-      select: { id: true, isCompleted: true, workOrderId: true },
+      select: { id: true, isCompleted: true, workOrderId: true, requiredWorkers: true },
     });
     if (!task) throw new Error("Tarea no encontrada.");
     if (task.isCompleted) return;
-    await tx.task.update({
-      where: { id: task.id },
-      data: {
-        isCompleted: true,
-      },
-    });
+    await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
     if (task.workOrderId) {
       await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
     }
@@ -466,6 +465,7 @@ export async function uncompleteTask(
       where: { id: data.taskId },
       data: { isCompleted: false },
     });
+    await tx.taskSignoff.deleteMany({ where: { taskId: data.taskId } });
     if (task.workOrderId) {
       await reopenWorkOrderIfClosed(tx, task.workOrderId);
     }
@@ -593,10 +593,10 @@ export async function createManualEntriesFromRanges(
     if (data.markCompleted) {
       const task = await tx.task.findFirst({
         where: { id: data.taskId },
-        select: { id: true, workOrderId: true },
+        select: { id: true, workOrderId: true, requiredWorkers: true },
       });
       if (!task) throw new Error("Tarea no encontrada.");
-      await tx.task.update({ where: { id: task.id }, data: { isCompleted: true } });
+      await completeTasksAsPerson(tx, [task], ctx.personId ?? null);
       if (task.workOrderId) {
         await closeWorkOrderIfAllTasksComplete(tx, task.workOrderId);
       }

@@ -12,6 +12,7 @@ import {
   uncompleteTask,
   updateEntry,
 } from "@/features/time-tracking/actions";
+import { setWorkOrderExecutors } from "@/features/work-orders/set-work-order-executors";
 import {
   buildWorld,
   createPlannableLamp,
@@ -274,5 +275,130 @@ describe("OT agrupada: registrar y completar varias tareas iguales de una vez", 
     expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: otId } })).status).toBe(
       WorkOrderStatus.CLOSED,
     );
+  });
+});
+
+describe("OT con dos operarios (responsable y apoyo)", () => {
+  /** 4 ensamblajes en una OT con Ana (responsable) y Bea (apoyo); el CNC previo ya hecho por admin. */
+  async function otConDosOperarios(requiredWorkers: number) {
+    const big = await createPlannableLamp(world, { name: "Hotel Chapas", units: 4 });
+    const cnc = big.tasks.filter((t) => t.process === "CNC");
+    await loginAs(world.users.admin.email);
+    unwrap(
+      await recordAndCompleteGroupedOtTasks({
+        mode: "manualRanges",
+        taskId: cnc[0]!.id,
+        projectId: big.projectId,
+        lampId: big.lampId,
+        process: "CNC",
+        quantity: 4,
+        ranges: [{ startedAt: at("07:00"), endedAt: at("08:00") }],
+      }),
+    );
+    const otId = big.workOrderIdByProcess.ENSAMBLAJE!;
+    unwrap(await setWorkOrderExecutors({ workOrderId: otId, personIds: [world.people.ana.id, world.people.bea.id] }));
+    await prisma.task.updateMany({ where: { workOrderId: otId }, data: { requiredWorkers } });
+    return { ...big, otId };
+  }
+
+  /** Lo que ve quien registra: primera tarea de la OT que sigue pendiente para esa persona. */
+  async function firstPendingFor(otId: string, personId: string) {
+    return prisma.task.findFirstOrThrow({
+      where: { workOrderId: otId, isCompleted: false, signoffs: { none: { personId } } },
+      orderBy: { workOrderSequence: "asc" },
+    });
+  }
+
+  function registrar(
+    ot: Awaited<ReturnType<typeof otConDosOperarios>>,
+    taskId: string,
+    quantity: number,
+    from: string,
+    to: string,
+  ) {
+    return recordAndCompleteGroupedOtTasks({
+      mode: "manualRanges",
+      taskId,
+      projectId: ot.projectId,
+      lampId: ot.lampId,
+      process: "ENSAMBLAJE",
+      quantity,
+      ranges: [{ startedAt: at(from), endedAt: at(to) }],
+    });
+  }
+
+  it("chapas: el segundo operario puede registrar aunque el primero ya terminara 3 de 4, y se cierra al firmar los dos", async () => {
+    const ot = await otConDosOperarios(2);
+    const done = () => prisma.task.count({ where: { workOrderId: ot.otId, isCompleted: true } });
+
+    await loginAs(world.users.ana.email);
+    unwrap(await registrar(ot, (await firstPendingFor(ot.otId, world.people.ana.id)).id, 3, "08:00", "10:00"));
+    // Ana firmó 3, pero ninguna se cierra todavía: falta Bea.
+    expect(await done()).toBe(0);
+    expect(await prisma.taskSignoff.count({ where: { personId: world.people.ana.id } })).toBe(3);
+
+    // A Bea le siguen saliendo las 4 (no solo la que le falta a Ana).
+    await loginAs(world.users.bea.email);
+    const beaFirst = await firstPendingFor(ot.otId, world.people.bea.id);
+    expect(await prisma.task.count({ where: { workOrderId: ot.otId, isCompleted: false, signoffs: { none: { personId: world.people.bea.id } } } })).toBe(4);
+    unwrap(await registrar(ot, beaFirst.id, 4, "08:00", "11:00"));
+    // 3 con las dos firmas se cierran; la 4ª solo tiene la de Bea.
+    expect(await done()).toBe(3);
+    expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: ot.otId } })).status).toBe(WorkOrderStatus.OPEN);
+
+    // Ana firma la que falta y se cierra la OT.
+    await loginAs(world.users.ana.email);
+    unwrap(await registrar(ot, (await firstPendingFor(ot.otId, world.people.ana.id)).id, 1, "10:00", "11:00"));
+    expect(await done()).toBe(4);
+    expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: ot.otId } })).status).toBe(WorkOrderStatus.CLOSED);
+
+    // Las horas de los dos quedan en las tareas del proceso.
+    const entries = await prisma.timeEntry.findMany({ where: { task: { workOrderId: ot.otId } } });
+    const byUser = new Map<string, number>();
+    for (const e of entries) byUser.set(e.userId, (byUser.get(e.userId) ?? 0) + (e.hours ?? 0));
+    expect(Number((byUser.get(world.users.ana.id) ?? 0).toFixed(2))).toBe(3);
+    expect(Number((byUser.get(world.users.bea.id) ?? 0).toFixed(2))).toBe(3);
+  });
+
+  it("tarea normal: el apoyo registra horas pero no puede darla por terminada; el responsable sí", async () => {
+    const ot = await otConDosOperarios(1);
+
+    await loginAs(world.users.bea.email);
+    const first = await firstPendingFor(ot.otId, world.people.bea.id);
+    const msg = expectFail(await registrar(ot, first.id, 4, "08:00", "10:00"));
+    expect(msg).toContain("apoyo");
+    expect(await prisma.task.count({ where: { workOrderId: ot.otId, isCompleted: true } })).toBe(0);
+    expect(await prisma.timeEntry.count({ where: { userId: world.users.bea.id, taskId: first.id } })).toBe(0);
+
+    expectFail(await completeTask({ taskId: first.id }));
+
+    // Sí puede registrar sus horas sin cerrar.
+    unwrap(
+      await createManualEntriesFromRanges({
+        projectId: ot.projectId,
+        lampId: ot.lampId,
+        taskId: first.id,
+        process: "ENSAMBLAJE",
+        markCompleted: false,
+        ranges: [{ startedAt: at("08:00"), endedAt: at("09:00") }],
+      }),
+    );
+    expect(await prisma.timeEntry.count({ where: { userId: world.users.bea.id, taskId: first.id } })).toBe(1);
+    // ...pero ni siquiera pidiendo cerrar.
+    expectFail(
+      await createManualEntriesFromRanges({
+        projectId: ot.projectId,
+        lampId: ot.lampId,
+        taskId: first.id,
+        process: "ENSAMBLAJE",
+        markCompleted: true,
+        ranges: [{ startedAt: at("09:00"), endedAt: at("10:00") }],
+      }),
+    );
+
+    await loginAs(world.users.ana.email);
+    unwrap(await registrar(ot, (await firstPendingFor(ot.otId, world.people.ana.id)).id, 4, "08:00", "12:00"));
+    expect(await prisma.task.count({ where: { workOrderId: ot.otId, isCompleted: true } })).toBe(4);
+    expect((await prisma.workOrder.findUniqueOrThrow({ where: { id: ot.otId } })).status).toBe(WorkOrderStatus.CLOSED);
   });
 });

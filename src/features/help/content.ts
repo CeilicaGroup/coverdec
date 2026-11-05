@@ -266,7 +266,8 @@ const SECTIONS: HelpSection[] = [
       "Iniciar: arranca el timer (Fichando HH:MM:SS). Si ya tienes otro timer: primero para el contador activo.",
       "Parar: detiene el timer y guarda el tramo.",
       "Completar 1: marca la tarea actual como completada.",
-      "Completar varias: si la OT tiene más de un producto pendiente, indica la cantidad; el tiempo se reparte proporcionalmente por horas estimadas.",
+      "Completar varias: si la OT tiene más de un producto pendiente, indica la cantidad (sin límite fijo: puedes completar toda la OT, p. ej. 260 piezas de un pallet); el tiempo se reparte proporcionalmente por horas estimadas.",
+      "OT con dos operarios: quien da apoyo registra sus horas, pero no puede dar la tarea por terminada (no ve Completar); la termina el responsable. En las tareas que se hacen entre los dos (p. ej. preparación de chapas) firman los dos: cada uno registra su cantidad y sus horas, la tarea se cierra cuando han firmado ambos y las horas de los dos se suman.",
       "Registro manual: abre el formulario (proyecto / lámpara / tarea suelen venir de la tarea activa). Un rango Inicio/Fin con la fecha/hora actuales; Añadir rango si hace falta más. No admite días futuros (sí horas posteriores del mismo día o días anteriores). Toggle Completar tarea al guardar Sí/No. Si es OT con varios productos, Cantidad de tareas de la OT completadas. Si cruza descanso: Coincide con franja de descanso → He trabajado extra | He hecho descanso. Registrar.",
     ],
     bullets: [
