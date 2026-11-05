@@ -67,6 +67,7 @@ interface FrameProcessRow {
   process: ProcessCode;
   hoursPerUnit: number;
   fixedHours: number;
+  requiredWorkers: number;
   naveId: string | null;
   nave: NaveOption | null;
 }
@@ -174,6 +175,7 @@ interface ProcessFormRow {
   process: ProcessCode;
   hoursPerUnit: string;
   fixedHours: string;
+  requiredWorkers: string;
   naveId: string;
 }
 
@@ -188,6 +190,7 @@ function defaultProcessRow(
     process: next.code,
     hoursPerUnit: "0",
     fixedHours: "0",
+    requiredWorkers: "1",
     naveId: "",
   };
 }
@@ -273,6 +276,7 @@ export function CatalogoCatalogClient({
             process: p.process,
             hoursPerUnit: String(p.hoursPerUnit),
             fixedHours: String(p.fixedHours),
+            requiredWorkers: String(p.requiredWorkers ?? 1),
             naveId: p.naveId ?? "",
           }))
         : defaultProcessRow(elementProcessDefs, new Set())
@@ -342,6 +346,7 @@ export function CatalogoCatalogClient({
           process: r.process,
           hoursPerUnit: Number(r.hoursPerUnit),
           fixedHours: Number(r.fixedHours),
+          requiredWorkers: r.requiredWorkers === "2" ? 2 : 1,
           naveId: r.naveId || null,
         }));
       for (const r of rows) {
@@ -592,6 +597,7 @@ export function CatalogoCatalogClient({
                                 ]
                                   .filter(Boolean)
                                   .join(" + ")}
+                                {p.requiredWorkers > 1 ? ` · ${p.requiredWorkers} op.` : ""}
                               </span>
                             </span>
                             );
@@ -816,7 +822,7 @@ export function CatalogoCatalogClient({
                     return (
                     <div
                       key={r.key}
-                      className="grid grid-cols-[auto_1fr_minmax(7rem,1fr)_72px_72px_auto] gap-2 items-end border rounded-md p-2"
+                      className="grid grid-cols-[auto_1fr_minmax(7rem,1fr)_72px_72px_72px_auto] gap-2 items-end border rounded-md p-2"
                     >
                       <div className="flex flex-col gap-0.5 pb-0.5">
                         <Button
@@ -915,6 +921,27 @@ export function CatalogoCatalogClient({
                           onChange={(e) => updateRow(r.key, { fixedHours: e.target.value })}
                           disabled={pending}
                         />
+                      </div>
+                      <div className="space-y-1">
+                        <span
+                          className="text-[10px] text-muted-foreground"
+                          title="Operarios que trabajan a la vez. Con 2, firman los dos y las horas se reparten. Solo afecta a tareas nuevas."
+                        >
+                          Operarios
+                        </span>
+                        <Select
+                          value={r.requiredWorkers}
+                          onValueChange={(value) => updateRow(r.key, { requiredWorkers: value ?? "1" })}
+                          disabled={pending}
+                        >
+                          <SelectTrigger className="h-9 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1</SelectItem>
+                            <SelectItem value="2">2</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <Button
                         type="button"

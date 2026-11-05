@@ -227,7 +227,7 @@ const SECTIONS: HelpSection[] = [
     title: "Catálogo de elementos y procesos",
     roles: JEFE_ADMIN,
     paragraphs: [
-      "Elementos es el motor de tiempos: tipologías, procesos y horas por unidad o fijas. De aquí salen las tareas al crear lámparas.",
+      "Elementos es el motor de tiempos: tipologías, procesos y horas por unidad o fijas. De aquí salen las tareas al crear lámparas. La columna Operarios (1 o 2) de cada proceso indica si lo trabajan y firman dos personas (p. ej. preparación de chapas); solo afecta a tareas nuevas.",
     ],
     bullets: [
       "Catálogo de elementos: Nuevo elemento (código, nombre, tipología, nave por defecto o heredar tipología, imagen, cadena de procesos con h/unidad, horas fijas, nave por proceso, reordenar). Editar, Duplicar, archivar/reactivar, eliminar.",

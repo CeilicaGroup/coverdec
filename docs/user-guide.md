@@ -34,7 +34,7 @@ Abre **Operativa → Ayuda** para la guía completa. Este archivo es un resumen 
 ## Catálogo y personal
 
 - **Proyectos** → lámparas (elementos o horas) → checkbox **Aprobada** para entrar al planning.
-- **Elementos** / procesos: tiempos del catálogo.
+- **Elementos** / procesos: tiempos del catálogo. Cada proceso tiene una columna **Operarios** (1 o 2): con 2, la tarea la trabajan y firman los dos operarios (p. ej. preparación de chapas). Solo afecta a las tareas que se creen después; las ya creadas conservan su valor.
 - **Personal**: Responsable vs Apoyo; horario; ausencias (regenerar planning tras cambios).
 
 ## Admin

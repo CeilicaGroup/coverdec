@@ -15,6 +15,11 @@ const processRowSchema = z.object({
   process: z.string().min(1),
   hoursPerUnit: z.number().nonnegative(),
   fixedHours: z.number().nonnegative().default(0),
+  /**
+   * Operarios que trabajan a la vez la tarea (p. ej. preparación de chapas = 2: firman los dos).
+   * Sin valor, al editar conserva el actual y al crear queda en 1. Solo afecta a tareas nuevas.
+   */
+  requiredWorkers: z.number().int().min(1).max(2).optional(),
   naveId: z.string().min(1).nullable().optional(),
 });
 
@@ -133,6 +138,7 @@ export async function upsertElementType(
         sequence: i,
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
+        ...(p.requiredWorkers != null ? { requiredWorkers: p.requiredWorkers } : {}),
         naveId: p.naveId ?? null,
       },
       create: {
@@ -141,6 +147,7 @@ export async function upsertElementType(
         sequence: i,
         hoursPerUnit: p.hoursPerUnit,
         fixedHours: p.fixedHours,
+        requiredWorkers: p.requiredWorkers ?? 1,
         naveId: p.naveId ?? null,
       },
     });

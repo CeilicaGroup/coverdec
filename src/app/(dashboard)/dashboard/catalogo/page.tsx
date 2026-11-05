@@ -69,6 +69,7 @@ export default async function CatalogoPage({
       process: p.process,
       hoursPerUnit: p.hoursPerUnit,
       fixedHours: p.fixedHours,
+      requiredWorkers: p.requiredWorkers,
       naveId: p.naveId,
       nave: p.nave,
     })),

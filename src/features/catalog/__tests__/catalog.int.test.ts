@@ -59,7 +59,7 @@ async function lampWithTela(name: string, surfaceM2 = 2, projectName = "Hotel Te
   return prisma.task.findMany({ where: { lampId: lamp.id }, orderBy: { order: "asc" } });
 }
 
-const telaInput = (processes: Array<{ process: string; hoursPerUnit: number; fixedHours?: number; naveId?: string | null }>) => ({
+const telaInput = (processes: Array<{ process: string; hoursPerUnit: number; fixedHours?: number; requiredWorkers?: number; naveId?: string | null }>) => ({
   code: "TELA",
   name: "Panel de tela",
   typology: ElementTypology.TELA,
@@ -186,6 +186,48 @@ describe("tipos de elemento", () => {
       ["ENSAMBLAJE", 4],
       ["PINTURA", 0.8],
     ]);
+  });
+
+  it("operarios requeridos: se guarda al crear/editar, se conserva si no se envía y solo lo heredan las tareas nuevas", async () => {
+    const input = (requiredWorkers?: number) =>
+      telaInput([
+        { process: "CNC", hoursPerUnit: 0.5, fixedHours: 1, ...(requiredWorkers != null ? { requiredWorkers } : {}) },
+        { process: "ENSAMBLAJE", hoursPerUnit: 1 },
+        { process: "PINTURA", hoursPerUnit: 0.4 },
+      ]);
+    const workersByProcess = async () =>
+      Object.fromEntries(
+        (
+          await prisma.elementTypeProcess.findMany({
+            where: { elementType: { code: "TELA" } },
+            select: { process: true, requiredWorkers: true },
+          })
+        ).map((p) => [p.process, p.requiredWorkers]),
+      );
+
+    const oldTasks = await lampWithTela("Vieja", 2);
+    expect(await workersByProcess()).toEqual({ CNC: 1, ENSAMBLAJE: 1, PINTURA: 1 });
+
+    unwrap(await upsertElementType(input(2)));
+    expect(await workersByProcess()).toEqual({ CNC: 2, ENSAMBLAJE: 1, PINTURA: 1 });
+
+    // Editar sin enviar el campo no lo pisa.
+    unwrap(await upsertElementType(input()));
+    expect(await workersByProcess()).toEqual({ CNC: 2, ENSAMBLAJE: 1, PINTURA: 1 });
+
+    // Las tareas ya creadas no cambian; las nuevas heredan el valor.
+    const old = await prisma.task.findMany({ where: { id: { in: oldTasks.map((t) => t.id) } } });
+    expect(old.every((t) => t.requiredWorkers === 1)).toBe(true);
+    const newTasks = await lampWithTela("Nueva", 2);
+    expect(Object.fromEntries(newTasks.map((t) => [t.process, t.requiredWorkers]))).toEqual({
+      CNC: 2,
+      ENSAMBLAJE: 1,
+      PINTURA: 1,
+    });
+
+    // Fuera de rango se rechaza sin escribir.
+    expectFail(await upsertElementType(input(3)));
+    expect(await workersByProcess()).toEqual({ CNC: 2, ENSAMBLAJE: 1, PINTURA: 1 });
   });
 
   it("archivar lo saca de las listas de alta pero conserva elemento, procesos y lámparas; se puede reactivar", async () => {
