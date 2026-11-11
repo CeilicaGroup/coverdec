@@ -99,6 +99,7 @@ export function ManualEntryForm({
   lockTaskSelection?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  // El preset solo se lee al montar: para cambiar de tarea, dale otra `key` al formulario.
   const [projectId, setProjectId] = useState(preset?.projectId ?? "");
   const [lampId, setLampId] = useState(preset?.lampId ?? "");
   const [taskId, setTaskId] = useState(preset?.taskId ?? "");
@@ -134,18 +135,6 @@ export function ManualEntryForm({
       })),
     };
   }, [manualBreakSchedule]);
-
-  useEffect(() => {
-    if (!preset) return;
-    setProjectId(preset.projectId);
-    setLampId(preset.lampId);
-    setTaskId(preset.taskId);
-  }, [preset?.projectId, preset?.lampId, preset?.taskId]);
-
-  useEffect(() => {
-    if (!preset?.taskId) return;
-    setRanges([defaultRange()]);
-  }, [preset?.taskId]);
 
   useEffect(() => {
     setGroupedCompletionCount("1");

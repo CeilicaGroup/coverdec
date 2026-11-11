@@ -504,7 +504,10 @@ export function TaskQueuePanel({
 
               {showManual && activeTask ? (
                 <div className="rounded-md border p-3">
+                  {/* Se monta de nuevo con cada tarea: si sus Select cambian de valor por código,
+                      Base UI los "repara" al cambiar la cola y vacía lámpara y tarea. */}
                   <ManualEntryForm
+                    key={activeTask.id}
                     projects={projects}
                     manualBreakSchedule={manualBreakSchedule}
                     processLabels={processLabels}
